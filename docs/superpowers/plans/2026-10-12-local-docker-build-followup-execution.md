@@ -10,7 +10,7 @@ Round 2 has 1 implementer task (the APKMirror fix — it depends on round 1's in
 
 ## Before round 2: user action
 
-The user writes a GitHub token to `$HOME/.config/rv-local/github_token` (fine-grained, public repositories read-only; `printf %s <token> > file`). The lead confirms the file is non-empty with `test -s`, never by reading it. Without it, AC2's mount check, AC3, AC4 and AC8 cannot pass (the shared WARP IP's unauthenticated quota was 0/60 at epoch 1791736766).
+The user writes a GitHub token to `$REPO_ROOT/src/keystore/github_token` (fine-grained, public repositories read-only; `printf %s <token> > file`). The lead confirms the file is non-empty with `test -s`, never by reading it. Without it, AC2's mount check, AC3, AC4 and AC8 cannot pass (the shared WARP IP's unauthenticated quota was 0/60 at epoch 1791736766).
 
 ## Long-running commands (runners only, never implementers)
 

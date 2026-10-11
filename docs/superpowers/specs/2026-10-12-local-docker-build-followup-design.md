@@ -69,19 +69,19 @@ Alternative sources already in the scripts: `get_apkpure` (`utils.sh:535`) has n
 
 | Item | Value |
 |---|---|
-| Host file | `$RV_GITHUB_TOKEN_FILE`, default `$HOME/.config/rv-local/github_token` (outside the repo, so it cannot be committed). Content: the token on one line. Empty file = no token. |
+| Host file | `$RV_GITHUB_TOKEN_FILE`, default `$REPO_ROOT/src/keystore/github_token` (inside the repo but listed in .gitignore, so it cannot be committed). Content: the token on one line. Empty file = no token. |
 | Container path | `/run/secrets/github_token`, read-only |
 | Container variable | `GITHUB_TOKEN` (the name `manual-patch.yml:5` and `experimental-check` already use) |
 | Header | `Authorization: Bearer $GITHUB_TOKEN` |
 
 Flow:
-1. `local/build.sh` (host): `RV_GITHUB_TOKEN_FILE=${RV_GITHUB_TOKEN_FILE:-$HOME/.config/rv-local/github_token}`; export it; if the file is missing, create its directory and an empty file with mode `600`. Never read or print its content on the host.
+1. `local/build.sh` (host): `RV_GITHUB_TOKEN_FILE=${RV_GITHUB_TOKEN_FILE:-$REPO_ROOT/src/keystore/github_token}`; export it; if the file is missing, create its directory and an empty file with mode `600`. Never read or print its content on the host.
 2. `local/docker-compose.yml`, builder service:
    ```yaml
    volumes:
      - ..:/repo
      - type: bind
-       source: ${RV_GITHUB_TOKEN_FILE:-${HOME}/.config/rv-local/github_token}
+       source: ${RV_GITHUB_TOKEN_FILE:-../src/keystore/github_token}
        target: /run/secrets/github_token
        read_only: true
        bind:
@@ -154,3 +154,7 @@ Each is checked by a command; the reviewer quotes the output line.
 ## Shortcuts (declared)
 
 - Header added inline at 6 call sites instead of a shared helper: `connection.sh` and `ci.sh` do not source `utils.sh`, and `utils.sh` has side effects on source (mkdir, downloads), so a shared helper would mean a new upstream file for a one-token expansion. Reason: design-improving move (fewer files). Ticket/owner: TBD by lead.
+
+## Token location (user decision, supersedes the default above where they differ)
+
+The user stores the token at `src/keystore/github_token` inside the repo. Lead added it to `.gitignore` and set mode 600. The builder's existing repo bind mount (`..:/repo`) also exposes it at `/repo/src/keystore/github_token`; this is acceptable (still a volume mount, never in the image: `local/Dockerfile.dockerignore` excludes everything except the requirements file). Acceptance adds: `git check-ignore -q src/keystore/github_token` exits 0, and `git log --all -- src/keystore/github_token` is empty.

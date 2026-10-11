@@ -8,7 +8,7 @@
 
 **Architecture:** Host file → compose read-only bind at `/run/secrets/github_token` → `build.sh` exports `GITHUB_TOKEN` inside the in-container `bash -c` → each `api.github.com` call adds `${GITHUB_TOKEN:+<auth header>}`. APKMirror: investigate in a scratch dir inside the builder, then patch `_cfb_get` / the `get_apk` download step only.
 
-**Interface names (frozen; every task uses these exactly):** `RV_GITHUB_TOKEN_FILE` (host, default `$HOME/.config/rv-local/github_token`), `/run/secrets/github_token` (container, read-only), `GITHUB_TOKEN` (container env), header `Authorization: Bearer $GITHUB_TOKEN`.
+**Interface names (frozen; every task uses these exactly):** `RV_GITHUB_TOKEN_FILE` (host, default `$REPO_ROOT/src/keystore/github_token`), `/run/secrets/github_token` (container, read-only), `GITHUB_TOKEN` (container env), header `Authorization: Bearer $GITHUB_TOKEN`.
 
 **Shared rules for all tasks**
 - Never write a real token anywhere. Tests use `dummy-not-a-token`.
@@ -62,14 +62,14 @@
 - [ ] Add under `builder.volumes` (keep `..:/repo`):
   ```yaml
       - type: bind
-        source: ${RV_GITHUB_TOKEN_FILE:-${HOME}/.config/rv-local/github_token}
+        source: ${RV_GITHUB_TOKEN_FILE:-../src/keystore/github_token}
         target: /run/secrets/github_token
         read_only: true
         bind:
           create_host_path: false
   ```
   Add a comment line above it: token file is created by `build.sh`; `create_host_path: false` stops Docker from creating a directory there.
-- [ ] Check green: `RV_GITHUB_TOKEN_FILE=/tmp/x docker compose -f local/docker-compose.yml config` shows `source: /tmp/x`, `target: /run/secrets/github_token`, `read_only: true`, `create_host_path: false`; `... config | grep -c 'published\|ports:'` → `0`. Also without the variable: `source:` ends with `/.config/rv-local/github_token`.
+- [ ] Check green: `RV_GITHUB_TOKEN_FILE=/tmp/x docker compose -f local/docker-compose.yml config` shows `source: /tmp/x`, `target: /run/secrets/github_token`, `read_only: true`, `create_host_path: false`; `... config | grep -c 'published\|ports:'` → `0`. Also without the variable: `source:` ends with `/src/keystore/github_token`.
 - [ ] Review Dockerfile/dockerignore against original spec; write findings into the commit message body (one line each, "no change" allowed).
 - [ ] Commit with pathspec on the files actually changed.
 
@@ -81,7 +81,7 @@
   ```bash
   # GitHub token: host file, bind-mounted read-only at /run/secrets/github_token (docker-compose.yml).
   # Never read or printed on the host. Empty file = unauthenticated (60 req/h per IP).
-  export RV_GITHUB_TOKEN_FILE=${RV_GITHUB_TOKEN_FILE:-$HOME/.config/rv-local/github_token}
+  export RV_GITHUB_TOKEN_FILE=${RV_GITHUB_TOKEN_FILE:-$REPO_ROOT/src/keystore/github_token}
   [ -e "$RV_GITHUB_TOKEN_FILE" ] || { mkdir -p "$(dirname "$RV_GITHUB_TOKEN_FILE")" && (umask 077 && : >"$RV_GITHUB_TOKEN_FILE"); }
   # Expanded inside the builder only (single quotes): the docker command line never carries the value.
   tok='[ -s /run/secrets/github_token ] && export GITHUB_TOKEN=$(tr -d "[:space:]" </run/secrets/github_token);'
@@ -95,7 +95,7 @@
   	else echo "GitHub API: $([ -n "${GITHUB_TOKEN:-}" ] && echo authenticated || echo unauthenticated) remaining=$(jq -r .rate.remaining /tmp/rl.json 2>/dev/null)"; fi' </dev/null
   ```
 - [ ] Prefix the per-run command string with `$tok`: `"$tok bash src/etc/connection.sh && grep -q 'internet_error=0' github_output && bash src/build/$script $arg"`.
-- [ ] Review the rest of `build.sh` and `.gitignore` against original spec ("Files" → `local/build.sh`, AC5, AC7). Decide on `up -d --build` per invocation (keep or drop; one-line reason in the commit body). `.gitignore` needs no token entry (file lives outside the repo) — confirm, do not add speculative entries.
+- [ ] Review the rest of `build.sh` and `.gitignore` against original spec ("Files" → `local/build.sh`, AC5, AC7). Decide on `up -d --build` per invocation (keep or drop; one-line reason in the commit body). `.gitignore` already lists `src/keystore/github_token` (added by lead) — confirm `git check-ignore src/keystore/github_token` succeeds; do not add other speculative entries.
 - [ ] Checks: `bash -n local/build.sh`; `RV_GITHUB_TOKEN_FILE=$(mktemp -d)/sub/tok ./local/build.sh >/dev/null; stat -f '%HT %Lp' <that path>` → `Regular File 600`; `./local/build.sh | grep -c '^  [a-z]'` → 18 orgs still listed; `./local/build.sh nosuch; echo $?` → `2`; `grep -n 'GITHUB_TOKEN' local/build.sh` shows no `-e GITHUB_TOKEN`, no `echo $GITHUB_TOKEN`.
 - [ ] Commit with pathspec.
 
@@ -136,7 +136,7 @@
 
 ## Task 6 — Stack + probes runner (round 2, run only)
 
-Precondition: the user has written a real token into `$HOME/.config/rv-local/github_token` (lead confirms; the runner never prints it).
+Precondition: the user has written a real token into `$REPO_ROOT/src/keystore/github_token` (lead confirms; the runner never prints it).
 - [ ] `docker compose -f local/docker-compose.yml up -d --build > local/work/r2-up.log 2>&1; echo RC=$?` (rebuild may exceed 150 s; detach with `nohup` if so and check the log once within 5 minutes).
 - [ ] `docker image inspect -f '{{.Architecture}}' rv-local-builder rv-local-cfbypass:0f628b9` → `arm64` twice.
 - [ ] In builder: `curl -s localhost:47191` contains `FlareSolverr is ready!`; `curl -s -o /dev/null -w '%{http_code}' localhost:47800/` ≠ `000`.
@@ -150,7 +150,7 @@ Precondition: the user has written a real token into `$HOME/.config/rv-local/git
 Depends on Tasks 5 and 6.
 - [ ] `nohup bash -c './local/build.sh morphe > docs/logs/2026-10-12-local-docker-build-e2e.log 2>&1; echo RC=$? >> docs/logs/2026-10-12-local-docker-build-e2e.log' >/dev/null 2>&1 &` — record PID. Within 5 minutes confirm the log grows and shows `GitHub API: authenticated` and `=== morphe run 1`. Then end the turn; the lead wakes the runner later (no sleep/poll loops).
 - [ ] After `RC=` appears: copy the `===== Summary =====` block; `for f in local/out/morphe/*.apk; do docker compose -f local/docker-compose.yml exec -T builder apksigner verify "/repo/$f"; echo "RC=$? $f"; done` (only APKs newer than the log start).
-- [ ] `grep -cF -f "$HOME/.config/rv-local/github_token" docs/logs/2026-10-12-local-docker-build-e2e.log` → `0`.
+- [ ] `grep -cF -f "$REPO_ROOT/src/keystore/github_token" docs/logs/2026-10-12-local-docker-build-e2e.log` → `0`.
 - [ ] Empty-token check (AC4 second half): `f=$(mktemp); RV_GITHUB_TOKEN_FILE=$f docker compose -f local/docker-compose.yml up -d builder` then `RV_GITHUB_TOKEN_FILE=$f ./local/build.sh morphe 2 > local/work/r2-notoken.log 2>&1` (detached as above); `grep 'GitHub API:' local/work/r2-notoken.log` → `unauthenticated`. Then restore with `docker compose -f local/docker-compose.yml up -d builder` (default file).
 - [ ] `git status --porcelain` (only `docs/logs/` expected untracked); `git diff --name-only fb56773 HEAD -- src .github`.
 
