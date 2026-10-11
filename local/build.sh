@@ -7,6 +7,7 @@ compose=(docker compose -f local/docker-compose.yml)
 # GitHub token: host file, bind-mounted read-only at /run/secrets/github_token (docker-compose.yml).
 # Never read or printed on the host. Empty file = unauthenticated (60 req/h per IP).
 export RV_GITHUB_TOKEN_FILE=${RV_GITHUB_TOKEN_FILE:-$PWD/src/keystore/github_token}
+[ -e "$RV_GITHUB_TOKEN_FILE" ] && ! [ -f "$RV_GITHUB_TOKEN_FILE" ] && { echo "ERROR: $RV_GITHUB_TOKEN_FILE exists but is not a regular file" >&2; exit 1; }
 [ -e "$RV_GITHUB_TOKEN_FILE" ] || { mkdir -p "$(dirname "$RV_GITHUB_TOKEN_FILE")" && (umask 077 && : >"$RV_GITHUB_TOKEN_FILE"); }
 # Expanded inside the builder only (single quotes): the docker command line never carries the value.
 tok='[ -s /run/secrets/github_token ] && export GITHUB_TOKEN=$(tr -d "[:space:]" </run/secrets/github_token);'

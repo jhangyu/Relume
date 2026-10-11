@@ -246,11 +246,17 @@ _cfb_get() {
 		if [[ "$http_code" == "200" ]]; then
 			html=$(cat "$response_file")
 			if [[ -n "$html" ]]; then
-				export FS_COOKIES
-				FS_COOKIES=$(grep -i '^x-cf-bypasser-cookies:' /tmp/cfb_response_headers.txt 2>/dev/null | cut -d':' -f2- | xargs)
-				local cfb_ua
-				cfb_ua=$(grep -i '^x-cf-bypasser-user-agent:' /tmp/cfb_response_headers.txt 2>/dev/null | cut -d':' -f2- | xargs)
-				[[ -n "$cfb_ua" ]] && user_agent="$cfb_ua"
+				export FS_COOKIES=""
+				local ck cfb_ck cfb_ua
+				# /cookies JSON: {"cookies": {k: v}, "user_agent": "..."}; the cookies response header is only a count
+				ck=$(curl -sf --max-time 120 -G --data-urlencode "url=$url" "http://localhost:${CFBYPASS_PORT:-8000}/cookies")
+				cfb_ck=$(jq -r '.cookies // {} | to_entries | map(.key + "=" + (.value|tostring)) | join("; ")' <<<"$ck" 2>/dev/null)
+				cfb_ua=$(jq -r '.user_agent // ""' <<<"$ck" 2>/dev/null)
+				# empty UA -> 403, so only use cookies + UA together
+				if [[ -n "$cfb_ck" && -n "$cfb_ua" ]]; then
+					FS_COOKIES="$cfb_ck"
+					user_agent="$cfb_ua"
+				fi
 				rm -f "$response_file" /tmp/cfb_response_headers.txt
 				return 0
 			fi
@@ -514,10 +520,12 @@ get_apk() {
 		"${cookie_args[@]}" \
 		--timeout=120 \
 		"$base_url$final_href"
+	local wget_rc=$?
 
-	if [[ -f "./download/$base_apk" ]]; then
+	if [[ $wget_rc -eq 0 && -s "./download/$base_apk" ]]; then
 		green_log "[+] Successfully downloaded $apk_name"
 	else
+		rm -f "./download/$base_apk"
 		red_log "[-] Failed to download $apk_name"
 		return 1
 	fi
@@ -592,10 +600,12 @@ get_apkpure() {
 		"${cookie_args[@]}" \
 		--timeout=120 \
 		"$download_url"
+	local wget_rc=$?
 
-	if [[ -f "./download/$base_apk" ]]; then
+	if [[ $wget_rc -eq 0 && -s "./download/$base_apk" ]]; then
 		green_log "[+] Successfully downloaded $apk_name"
 	else
+		rm -f "./download/$base_apk"
 		red_log "[-] Failed to download $apk_name"
 		return 1
 	fi
