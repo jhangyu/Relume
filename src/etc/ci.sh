@@ -2,7 +2,7 @@
 
 # Check new patch:
 get_date() {
-	json=$(wget -qO- "https://api.github.com/repos/$1/releases")
+	json=$(wget -qO- ${GITHUB_TOKEN:+--header="Authorization: Bearer $GITHUB_TOKEN"} "https://api.github.com/repos/$1/releases")
 	case "$2" in
 		latest)
 			updated_at=$(echo "$json" | jq -r 'first(.[] | select(.prerelease == false) | .assets[] | select(.name | test("'$3'")) | .updated_at)')

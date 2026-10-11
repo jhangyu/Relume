@@ -39,7 +39,7 @@ dl_gh() {
     local repo=$1
     for repo in $1 ; do
       local owner=$2 tag=$3 found=0 assets=0
-      releases=$(wget -qO- "https://api.github.com/repos/$owner/$repo/releases")
+      releases=$(wget -qO- ${GITHUB_TOKEN:+--header="Authorization: Bearer $GITHUB_TOKEN"} "https://api.github.com/repos/$owner/$repo/releases")
       while read -r line; do
         if [[ $line == *"\"tag_name\":"* ]]; then
           tag_name=$(echo $line | cut -d '"' -f 4)
@@ -83,7 +83,7 @@ dl_gh() {
   else
     for repo in $1 ; do
       tags=$( [ "$3" == "latest" ] && echo "latest" || echo "tags/$3" )
-      wget -qO- "https://api.github.com/repos/$2/$repo/releases/$tags" \
+      wget -qO- ${GITHUB_TOKEN:+--header="Authorization: Bearer $GITHUB_TOKEN"} "https://api.github.com/repos/$2/$repo/releases/$tags" \
         | jq -r '.assets[] | "\(.browser_download_url) \(.name)"' \
         | while read -r url names; do
           if [[ $url != *.asc ]]; then
@@ -684,7 +684,7 @@ telegram_dl() {
 	if [[ ! -f "./tdl" ]]; then
 		green_log "[+] Downloading tdl from iyear"
 		local tdl_url
-		tdl_url=$(wget -qO- "https://api.github.com/repos/iyear/tdl/releases/latest" \
+		tdl_url=$(wget -qO- ${GITHUB_TOKEN:+--header="Authorization: Bearer $GITHUB_TOKEN"} "https://api.github.com/repos/iyear/tdl/releases/latest" \
 			| jq -r '.assets[] | select(.name | test("Linux_64bit\\.tar\\.gz$")) | .browser_download_url')
 		wget -q -O ./tdl.tar.gz "$tdl_url"
 		if [[ ! -f "./tdl.tar.gz" ]]; then
