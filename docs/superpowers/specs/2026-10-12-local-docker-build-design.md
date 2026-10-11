@@ -15,7 +15,7 @@ without GitHub Actions, and collect the patched APKs locally.
 | Version control | New files live in `local/` and are committed. Build outputs and caches are gitignored. |
 | Scheduling | None. Manual runs only. |
 | Ports | Use 5-digit ports for the two anti-Cloudflare services: FlareSolverr `47191`, CloudflareBypassForScraping `47800`. Do not publish any port to the host. |
-| CloudflareBypassForScraping image | Upstream image is single-arch (not arm64). Build it locally for arm64 from source (https://github.com/sarperavci/CloudflareBypassForScraping). If the arm64 build cannot work (for example, its CloakBrowser Chromium has no linux arm64 binary), fall back to the upstream image with `platform: linux/amd64` and report the reason. |
+| CloudflareBypassForScraping image | Upstream image is single-arch (not arm64). Build it locally for arm64 from source (https://github.com/sarperavci/CloudflareBypassForScraping). The user recalls CloakBrowser (its bundled Chromium) ships a linux arm64 build; verify this against CloakBrowser's actual release/download code before relying on it. If the arm64 build cannot work, fall back to the upstream image with `platform: linux/amd64` and report the reason. |
 
 ## Files
 
