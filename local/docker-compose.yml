@@ -28,4 +28,11 @@ services:
       CFBYPASS_PORT: "47800"
     volumes:
       - ..:/repo
+      # token file is created by build.sh; create_host_path: false stops Docker from creating a directory there
+      - type: bind
+        source: ${RV_GITHUB_TOKEN_FILE:-../src/keystore/github_token}
+        target: /run/secrets/github_token
+        read_only: true
+        bind:
+          create_host_path: false
     working_dir: /repo
