@@ -1,0 +1,31 @@
+# No `ports:` anywhere: all services share flaresolverr's network namespace,
+# so the builder reaches both sidecars on localhost and nothing is published to the host.
+name: rv-local
+services:
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    environment:
+      PORT: "47191"
+  cfbypass:
+    build:
+      # pinned upstream commit; its Dockerfile is multi-arch (ubuntu:rolling + CloakBrowser linux-arm64)
+      context: https://github.com/sarperavci/CloudflareBypassForScraping.git#0f628b9ccbea9ab69ca61bc1c896c2ef766a0f06
+    image: rv-local-cfbypass:0f628b9
+    # upstream has CMD (no ENTRYPOINT); the entrypoint forwards args to server.py
+    command: ["/app/docker-entrypoint.sh", "--port", "47800"]
+    shm_size: 2g
+    network_mode: service:flaresolverr
+    depends_on: [flaresolverr]
+  builder:
+    build:
+      context: ..
+      dockerfile: local/Dockerfile
+    image: rv-local-builder
+    network_mode: service:flaresolverr
+    depends_on: [flaresolverr, cfbypass]
+    environment:
+      FLARESOLVERR_PORT: "47191"
+      CFBYPASS_PORT: "47800"
+    volumes:
+      - ..:/repo
+    working_dir: /repo

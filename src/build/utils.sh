@@ -3,7 +3,8 @@
 mkdir ./release ./download
 
 #Setup pup for download apk files
-wget -q -O ./pup.zip https://github.com/ericchiang/pup/releases/download/v0.4.0/pup_v0.4.0_linux_amd64.zip
+case "$(uname -m)" in aarch64|arm64) pup_arch=arm64 ;; *) pup_arch=amd64 ;; esac
+wget -q -O ./pup.zip https://github.com/ericchiang/pup/releases/download/v0.4.0/pup_v0.4.0_linux_${pup_arch}.zip
 unzip "./pup.zip" -d "./" > /dev/null 2>&1
 pup="./pup"
 #Setup APKEditor for install combine split apks
@@ -208,7 +209,7 @@ _fs_get() {
 	local attempt
 	for attempt in $(seq 1 $max_retries); do
 		local response
-		response=$(curl -s -X POST 'http://localhost:8191/v1' \
+		response=$(curl -s -X POST "http://localhost:${FLARESOLVERR_PORT:-8191}/v1" \
 			-H 'Content-Type: application/json' \
 			-d "{\"cmd\":\"request.get\",\"url\":\"$url\",\"maxTimeout\":15000}")
 		local status
@@ -241,7 +242,7 @@ _cfb_get() {
 			-D /tmp/cfb_response_headers.txt \
 			-G --data-urlencode "url=$url" \
 			--max-time 120 \
-			"http://localhost:8000/html")
+			"http://localhost:${CFBYPASS_PORT:-8000}/html")
 		if [[ "$http_code" == "200" ]]; then
 			html=$(cat "$response_file")
 			if [[ -n "$html" ]]; then
