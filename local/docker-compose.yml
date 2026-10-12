@@ -16,16 +16,27 @@ services:
     shm_size: 2g
     network_mode: service:flaresolverr
     depends_on: [flaresolverr]
+  apkmsolver:
+    # headed CloakBrowser Turnstile solver for APKMirror downloads; same image as cfbypass, own entrypoint starts Xvfb
+    image: rv-local-cfbypass:0f628b9
+    entrypoint: ["sh", "/repo/local/solver/xrun.sh"]
+    command: ["/app/venv/bin/python3", "-u", "/repo/local/solver/solver.py", "47900"]
+    shm_size: 2g
+    network_mode: service:flaresolverr
+    depends_on: [flaresolverr, cfbypass]
+    volumes:
+      - ..:/repo:ro
   builder:
     build:
       context: ..
       dockerfile: local/Dockerfile
     image: rv-local-builder
     network_mode: service:flaresolverr
-    depends_on: [flaresolverr, cfbypass]
+    depends_on: [flaresolverr, cfbypass, apkmsolver]
     environment:
       FLARESOLVERR_PORT: "47191"
       CFBYPASS_PORT: "47800"
+      APKM_SOLVER_PORT: "47900"
     volumes:
       - ..:/repo
       # token file is created by build.sh; create_host_path: false stops Docker from creating a directory there
