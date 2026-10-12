@@ -522,6 +522,19 @@ get_apk() {
 		"$base_url$final_href"
 	local wget_rc=$?
 
+	if [[ $wget_rc -ne 0 && -n "${APKM_SOLVER_PORT:-}" ]]; then
+		yellow_log "[!] Download blocked, asking Turnstile solver"
+		local sol
+		sol=$(curl -sf --max-time 150 -G --data-urlencode "url=$base_url$final_href" \
+			--data-urlencode "referer=$base_url$dl_btn_href" "http://localhost:$APKM_SOLVER_PORT/clearance")
+		if [[ -n "$sol" ]]; then
+			wget -nv -O "./download/$base_apk" --header="User-Agent: $(jq -r .ua <<<"$sol")" \
+				--header="Cookie: $(jq -r .cookies <<<"$sol")" --referer="$base_url$dl_btn_href" \
+				--timeout=120 "$base_url$final_href"
+			wget_rc=$?
+		fi
+	fi
+
 	if [[ $wget_rc -eq 0 && -s "./download/$base_apk" ]]; then
 		green_log "[+] Successfully downloaded $apk_name"
 	else
