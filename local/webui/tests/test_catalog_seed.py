@@ -1,5 +1,6 @@
 """Seed import / export tests (spec catalog §8, §10, ci §4.4)."""
 import json
+import re
 import unittest
 
 from webui import catalog, db
@@ -25,6 +26,52 @@ class SeedImportTest(helpers.DataTestCase):
         self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM item").fetchone()[0], len(seeded["items"]))
 
     def test_export_round_trip_bytes(self):
+        catalog.seed_import()
+        self.assertEqual(catalog.seed_text(), catalog.SEED_PATH.read_text())
+
+
+REPORT = catalog.REPO_ROOT / "docs" / "logs" / "2026-10-19-seed-report.md"
+
+
+class CommittedSeedTest(helpers.DataTestCase):
+    def setUp(self):
+        super().setUp()
+        self.d = json.loads(catalog.SEED_PATH.read_text())
+
+    def test_counts(self):
+        self.assertEqual(len(self.d["sources"]), 20)
+        self.assertEqual(len(self.d["items"]), 64)
+        xp = [i for i in self.d["items"] if i["source_id"] in ("revenge-lspatch", "nexalloy-lspatch", "nexalloy-npatch")]
+        self.assertEqual(len(xp), 8)
+        fb = [i for i in xp if i["package"] == "com.facebook.katana"][0]
+        self.assertEqual((fb["version_mode"], fb["version_pin"]), ("pinned", "580.0.0.51.74"))
+
+    def test_abis(self):
+        kept_all = set(int(x) for x in re.findall(r"^- item (\d+)", REPORT.read_text().split("## Kept all ABIs")[1].split("\n## ")[0], re.M))
+        for it in self.d["items"]:
+            abis = {v["abi"] for v in it["variants"]}
+            if it["id"] not in kept_all:
+                self.assertLessEqual(abis, {"universal", "arm64-v8a"}, it["id"])
+
+    def test_report_lines_match_items(self):
+        mapped = re.findall(r"^\| `src/build/[^`]+:\d+` \| (\d+) \|", REPORT.read_text(), re.M)
+        self.assertEqual(len({int(m) for m in mapped}), len(self.d["items"]))
+
+    def test_overrides_present(self):
+        root = catalog.REPO_ROOT
+        # every non-empty referenced include/exclude line appears in some item's overrides
+        refs = set()
+        for f in (root / "src" / "build").glob("*.sh"):
+            refs |= set(re.findall(r'^\s*get_patches_key "([^"]+)"', f.read_text(), re.M))
+        names = {n for it in self.d["items"] for n in it["patch_overrides"]}
+        for k in refs:
+            for fn in ("include-patches", "exclude-patches"):
+                p = root / "src" / "patches" / k / fn
+                for line in (p.read_text().splitlines() if p.is_file() else []):
+                    if line.strip():
+                        self.assertIn(line.split("|")[0].strip(), names, f"{k}/{fn}")
+
+    def test_round_trip(self):
         catalog.seed_import()
         self.assertEqual(catalog.seed_text(), catalog.SEED_PATH.read_text())
 

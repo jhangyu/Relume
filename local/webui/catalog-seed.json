@@ -1,24 +1,494 @@
 {
   "apps": [
     {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/proton-technologies-ag/protonmail-encrypted-email/proton-mail-encrypted-email-7-9-4-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=protonmail-encrypted-email",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "ch.protonmail.android"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/proton-technologies-ag/protonvpn-secure-and-free-vpn/proton-vpn-fast-secure-vpn-5-18-18-0-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=protonvpn-secure-and-free-vpn",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "ch.protonvpn.android"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/wps-software-pte-ltd/wps-office-pdf/wps-office-pdf-word-sheet-18-25-2-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=wps-office-pdf",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "cn.wps.moffice_eng"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/adguard-software-limited/adguard/adguard-for-android-4-12-81-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=adguard",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.adguard.android"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/amazon-mobile-llc/amazon-prime-video/amazon-prime-video-3-0-447-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=amazon-prime-video",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.amazon.avod.thirdpartyclient"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/bilibili/bilibili/bilibili-3-20-2-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=bilibili",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.bilibili.app.in"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/brave-software/brave-browser/brave-private-web-browser-vpn-1-92-140-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=brave-browser",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.brave.browser"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/discord/discord-chat-for-gamers/discord-talk-play-hang-out-327-12-stable-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=discord-chat-for-gamers",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.discord"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/duolingo/duolingo-duolingo/duolingo-language-lessons-6-77-5-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=duolingo-duolingo",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.duolingo"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/facebook-2/facebook/facebook-490-0-0-63-82-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=facebook",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.facebook.katana"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/facebook-2/messenger/facebook-messenger-560-0-0-55-69-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=messenger",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.facebook.orca"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/google-inc/google-news/google-news-daily-headlines-5-158-0-908428942-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=google-news",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.google.android.apps.magazines"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/google-inc/photos/google-photos-7-74-0-910345644-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=photos",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.google.android.apps.photos"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/google-inc/google-recorder/google-recorder-4-2-20260409-906192856-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=google-recorder",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.google.android.apps.recordero"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/google-inc/youtube-music/youtube-music-9-17-51-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=youtube-music",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.google.android.apps.youtube.music"
+    },
+    {
       "apkmirror_example_url": "https://www.apkmirror.com/apk/google-inc/youtube/youtube-21-18-168-release/",
       "apkmirror_example_url2": null,
       "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=youtube",
       "apkpure_url": null,
       "display_name": null,
       "package": "com.google.android.youtube"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/instagram/instagram-instagram/instagram-428-0-0-47-67-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=instagram-instagram",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.instagram.android"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/instagram/threads-an-instagram-app/threads-428-0-0-46-66-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=threads-an-instagram-app",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.instagram.barcelona"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/intsig-pte/camscanner-phone-pdf-creator/camscanner-scanner-pdf-maker-7-20-0-2606230000-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=camscanner-phone-pdf-creator",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.intsig.camscanner"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/google-inc/photomath/photomath-8-47-1-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=photomath",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.microblink.photomath"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/paget96/battery-guru-health-saver/battery-guru-battery-health-2-4-8-1-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=battery-guru-health-saver",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.paget96.batteryguru"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/psiphon-inc/psiphon-pro-the-internet-freedom-vpn/psiphon-vpn-freedom-online-479-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=psiphon-pro-the-internet-freedom-vpn",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.psiphon3.subscription"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/rarlab-published-by-win-rar-gmbh/rar/rar-7-20-build131-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=rar",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.rarlab.rar"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/redditinc/reddit/reddit-2026-18-0-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=reddit",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.reddit.frontpage"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/soundcloud/soundcloud-soundcloud/soundcloud-play-music-songs-2026-04-30-release-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=soundcloud-soundcloud",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.soundcloud.android"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/tiktok-pte-ltd/tik-tok/tiktok-43-8-3-2-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=tik-tok",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.ss.android.ugc.trill"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/instabridge-sweden-ab/nova-launcher/nova-launcher-87300-8-7-3-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=nova-launcher",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.teslacoilsw.launcher"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/true-software-scandinavia-ab/truecaller-caller-id-block/truecaller-trusted-caller-id-26-17-6-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=truecaller-caller-id-block",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.truecaller"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/tumblr-inc/tumblr/tumblr-social-media-art-blog-44-4-0-108-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=tumblr",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.tumblr"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/x-corp/twitter/x-12-19-1-release-0-release/",
+      "apkmirror_example_url2": "https://www.apkmirror.com/apk/x-corp/twitter/x-12-24-0-prod-02-release/",
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=twitter",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.twitter.android"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/viber-media-s-a-r-l/viber/rakuten-viber-messenger-27-8-1-0-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=viber",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.viber.voip"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/waze/waze-gps-maps-traffic-alerts-live-navigation/waze-navigation-live-traffic-5-21-0-0-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=waze-gps-maps-traffic-alerts-live-navigation",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.waze"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/windscribe/windscribe-vpn/windscribe-fast-secure-vpn-4-1-2274-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=windscribe-vpn",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.windscribe.vpn"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/tiktok-pte-ltd/tik-tok-including-musical-ly/tiktok-46-9-1-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=tik-tok-including-musical-ly",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.zhiliaoapp.musically"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/zalo-group/zalo/zalo-26-07-01-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=zalo",
+      "apkpure_url": "https://apkpure.com/zalo/com.zing.zalo/downloading/",
+      "display_name": null,
+      "package": "com.zing.zalo"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/smart-launcher-team/smart-launcher/smart-launcher-6-%e2%80%a7-home-screen-6-6-build-010-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=smart-launcher",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "ginlemon.flowerfree"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/pixiv-inc/pixiv/pixiv-6-180-1-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=pixiv",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "jp.pxv.android"
+    },
+    {
+      "apkmirror_example_url": null,
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": null,
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "net.dinglisch.android.taskerm"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/nextapp-inc/fx-file-explorer/fx-file-explorer-9-1-0-0-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=fx-file-explorer",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "nextapp.fx"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/neatbytes/solid-explorer-file-manager/solid-explorer-file-manager-3-4-10-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=solid-explorer-file-manager",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "pl.solidexplorer2"
+    },
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/twitch-interactive-inc/twitch/twitch-live-streaming-29-3-1-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=twitch",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "tv.twitch.android.app"
     }
   ],
-  "dependency_apps": [],
+  "dependency_apps": [
+    {
+      "display_name": "MicroG RE",
+      "id": 1,
+      "package": "app.revanced.android.gms",
+      "upstream_id": 23
+    }
+  ],
   "groups": [
     {
       "color": null,
       "id": 1,
       "name": "Morphe",
       "position": 0
+    },
+    {
+      "color": null,
+      "id": 2,
+      "name": "Morphe Beta",
+      "position": 1
+    },
+    {
+      "color": null,
+      "id": 3,
+      "name": "RVE-anddea-stable",
+      "position": 2
+    },
+    {
+      "color": null,
+      "id": 4,
+      "name": "RVE-anddea-beta",
+      "position": 3
+    },
+    {
+      "color": null,
+      "id": 5,
+      "name": "Twitter Piko Stable",
+      "position": 4
+    },
+    {
+      "color": null,
+      "id": 6,
+      "name": "Twitter Piko Beta",
+      "position": 5
+    },
+    {
+      "color": null,
+      "id": 7,
+      "name": "Piko NewX",
+      "position": 6
+    },
+    {
+      "color": null,
+      "id": 8,
+      "name": "DeRevanced",
+      "position": 7
+    },
+    {
+      "color": null,
+      "id": 9,
+      "name": "HushFacebook",
+      "position": 8
+    },
+    {
+      "color": null,
+      "id": 10,
+      "name": "hoo-dles",
+      "position": 9
+    },
+    {
+      "color": null,
+      "id": 11,
+      "name": "bufferk",
+      "position": 10
+    },
+    {
+      "color": null,
+      "id": 12,
+      "name": "arandomhooman",
+      "position": 11
+    },
+    {
+      "color": null,
+      "id": 13,
+      "name": "icysymmetra",
+      "position": 12
+    },
+    {
+      "color": null,
+      "id": 14,
+      "name": "docbt",
+      "position": 13
+    },
+    {
+      "color": null,
+      "id": 15,
+      "name": "rushiranpise",
+      "position": 14
+    },
+    {
+      "color": null,
+      "id": 16,
+      "name": "BiliRoamingM",
+      "position": 15
+    },
+    {
+      "color": null,
+      "id": 17,
+      "name": "Dropped Patches - indrastorms",
+      "position": 16
+    },
+    {
+      "color": null,
+      "id": 18,
+      "name": "Xposed",
+      "position": 17
     }
   ],
-  "item_dependencies": [],
+  "item_dependencies": [
+    [
+      1,
+      1
+    ],
+    [
+      3,
+      1
+    ],
+    [
+      4,
+      1
+    ],
+    [
+      6,
+      1
+    ],
+    [
+      7,
+      1
+    ],
+    [
+      8,
+      1
+    ],
+    [
+      9,
+      1
+    ],
+    [
+      10,
+      1
+    ],
+    [
+      16,
+      1
+    ],
+    [
+      38,
+      1
+    ]
+  ],
   "items": [
     {
       "allow_nearest": false,
@@ -46,9 +516,2606 @@
           "exclude_splits": null,
           "name": "universal",
           "strip_libs": null
+        },
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "arm64-v8a",
+          "strip_libs": "arm64-v8a"
         }
       ],
       "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 1,
+      "id": 2,
+      "key": "reddit",
+      "package": "com.reddit.frontpage",
+      "patch_overrides": {},
+      "position": 1,
+      "source_id": "morphe",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle_extract",
+            "url": null
+          },
+          "exclude_splits": [],
+          "name": "all-splits",
+          "strip_libs": null
+        },
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle_extract",
+            "url": null
+          },
+          "exclude_splits": [
+            "split_config.armeabi_v7a",
+            "split_config.x86_64",
+            "split_config.mdpi",
+            "split_config.ldpi",
+            "split_config.hdpi",
+            "split_config.xhdpi",
+            "split_config.xxhdpi",
+            "split_config.tvdpi"
+          ],
+          "name": "arm64-v8a",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 1,
+      "id": 3,
+      "key": "youtube-music-arm64-v8a",
+      "package": "com.google.android.apps.youtube.music",
+      "patch_overrides": {},
+      "position": 2,
+      "source_id": "morphe",
+      "variants": [
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": "arm64-v8a",
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "arm64-v8a",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 2,
+      "id": 4,
+      "key": "youtube-beta",
+      "package": "com.google.android.youtube",
+      "patch_overrides": {},
+      "position": 0,
+      "source_id": "morphe-beta",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        },
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "arm64-v8a",
+          "strip_libs": "arm64-v8a"
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 2,
+      "id": 5,
+      "key": "reddit-beta",
+      "package": "com.reddit.frontpage",
+      "patch_overrides": {},
+      "position": 1,
+      "source_id": "morphe-beta",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle_extract",
+            "url": null
+          },
+          "exclude_splits": [],
+          "name": "all-splits",
+          "strip_libs": null
+        },
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle_extract",
+            "url": null
+          },
+          "exclude_splits": [
+            "split_config.armeabi_v7a",
+            "split_config.x86_64",
+            "split_config.mdpi",
+            "split_config.ldpi",
+            "split_config.hdpi",
+            "split_config.xhdpi",
+            "split_config.xxhdpi",
+            "split_config.tvdpi"
+          ],
+          "name": "arm64-v8a",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 2,
+      "id": 6,
+      "key": "youtube-music-beta-arm64-v8a",
+      "package": "com.google.android.apps.youtube.music",
+      "patch_overrides": {},
+      "position": 2,
+      "source_id": "morphe-beta",
+      "variants": [
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": "arm64-v8a",
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "arm64-v8a",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 3,
+      "id": 7,
+      "key": "youtube-stable",
+      "package": "com.google.android.youtube",
+      "patch_overrides": {
+        "Custom branding": {
+          "enabled": true
+        }
+      },
+      "position": 0,
+      "source_id": "rve-anddea-stable",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        },
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "arm64-v8a",
+          "strip_libs": "arm64-v8a"
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 3,
+      "id": 8,
+      "key": "youtube-music-stable-arm64-v8a",
+      "package": "com.google.android.apps.youtube.music",
+      "patch_overrides": {
+        "Custom branding icon for YouTube Music": {
+          "enabled": true
+        },
+        "Custom branding name for YouTube Music": {
+          "enabled": true
+        }
+      },
+      "position": 1,
+      "source_id": "rve-anddea-stable",
+      "variants": [
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": "arm64-v8a",
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "arm64-v8a",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 4,
+      "id": 9,
+      "key": "youtube-beta",
+      "package": "com.google.android.youtube",
+      "patch_overrides": {
+        "Custom branding": {
+          "enabled": true
+        }
+      },
+      "position": 0,
+      "source_id": "rve-anddea-beta",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        },
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "arm64-v8a",
+          "strip_libs": "arm64-v8a"
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 4,
+      "id": 10,
+      "key": "youtube-music-beta-arm64-v8a",
+      "package": "com.google.android.apps.youtube.music",
+      "patch_overrides": {
+        "Custom branding icon for YouTube Music": {
+          "enabled": true
+        },
+        "Custom branding name for YouTube Music": {
+          "enabled": true
+        }
+      },
+      "position": 1,
+      "source_id": "rve-anddea-beta",
+      "variants": [
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": "arm64-v8a",
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "arm64-v8a",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 5,
+      "id": 11,
+      "key": "twitter-stable",
+      "package": "com.twitter.android",
+      "patch_overrides": {},
+      "position": 0,
+      "source_id": "piko-stable",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 5,
+      "id": 12,
+      "key": "instagram-arm64-v8a",
+      "package": "com.instagram.android",
+      "patch_overrides": {},
+      "position": 1,
+      "source_id": "piko-stable",
+      "variants": [
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": "arm64-v8a",
+            "dpi": "120-640dpi",
+            "kind": "apkmirror",
+            "minver": "Android 9.0+",
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "arm64-v8a",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 6,
+      "id": 13,
+      "key": "twitter-beta",
+      "package": "com.twitter.android",
+      "patch_overrides": {},
+      "position": 0,
+      "source_id": "piko-beta",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 6,
+      "id": 14,
+      "key": "instagram-beta-arm64-v8a",
+      "package": "com.instagram.android",
+      "patch_overrides": {},
+      "position": 1,
+      "source_id": "piko-beta",
+      "variants": [
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": "arm64-v8a",
+            "dpi": "120-640dpi",
+            "kind": "apkmirror",
+            "minver": "Android 9.0+",
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "arm64-v8a",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 7,
+      "id": 15,
+      "key": "twitter",
+      "package": "com.twitter.android",
+      "patch_overrides": {
+        "NewX: Browse tweet object": {
+          "enabled": false
+        },
+        "NewX: Classic inline action spacing": {
+          "enabled": true
+        },
+        "NewX: Clone": {
+          "enabled": false,
+          "options": {
+            "appName": "X Piko",
+            "packageName": "com.twitter.android.piko"
+          }
+        },
+        "NewX: Crash logs": {
+          "enabled": true
+        },
+        "NewX: Custom font": {
+          "enabled": true
+        },
+        "NewX: Custom sharing domain": {
+          "enabled": true
+        },
+        "NewX: Customize drawer items": {
+          "enabled": true
+        },
+        "NewX: Customize inline actions": {
+          "enabled": true
+        },
+        "NewX: Customize media menu items": {
+          "enabled": true
+        },
+        "NewX: Customize navigation bar": {
+          "enabled": true
+        },
+        "NewX: Customize post menu items": {
+          "enabled": true
+        },
+        "NewX: Customize profile tabs": {
+          "enabled": true
+        },
+        "NewX: Customize timeline tabs": {
+          "enabled": true
+        },
+        "NewX: Disable automatic timeline refresh": {
+          "enabled": true
+        },
+        "NewX: Disable blur effects": {
+          "enabled": true
+        },
+        "NewX: Disable video player scrolling": {
+          "enabled": true
+        },
+        "NewX: Feature switch overrides": {
+          "enabled": true
+        },
+        "NewX: Filter For You by topic": {
+          "enabled": true
+        },
+        "NewX: Filter posts by keyword": {
+          "enabled": true
+        },
+        "NewX: Force highest video/audio quality": {
+          "enabled": true
+        },
+        "NewX: Gallery profile Photos tab": {
+          "enabled": true
+        },
+        "NewX: Hide AI-generated posts": {
+          "enabled": true
+        },
+        "NewX: Hide Discover more": {
+          "enabled": true
+        },
+        "NewX: Hide Spaces bar": {
+          "enabled": true
+        },
+        "NewX: Hide compose button": {
+          "enabled": true
+        },
+        "NewX: Hide new posts pill": {
+          "enabled": true
+        },
+        "NewX: Hide post dividers": {
+          "enabled": false
+        },
+        "NewX: Hide post reply bar": {
+          "enabled": true
+        },
+        "NewX: Hide posts by verified account type": {
+          "enabled": true
+        },
+        "NewX: Hide premium upsell": {
+          "enabled": true
+        },
+        "NewX: Hide timeline tabs bar": {
+          "enabled": true
+        },
+        "NewX: Hide who to follow": {
+          "enabled": true
+        },
+        "NewX: Inline download button": {
+          "enabled": true
+        },
+        "NewX: Open canonical URLs": {
+          "enabled": true
+        },
+        "NewX: Redirect downloads to chosen folder": {
+          "enabled": true
+        },
+        "NewX: Remove ads": {
+          "enabled": true
+        },
+        "NewX: Restore Twitter branding": {
+          "enabled": false
+        },
+        "NewX: Restore pinned home tab": {
+          "enabled": true
+        },
+        "NewX: Restore timeline position": {
+          "enabled": true
+        },
+        "NewX: Server error logging": {
+          "enabled": false
+        },
+        "NewX: Set default media tab": {
+          "enabled": true
+        },
+        "NewX: Set default profile post sorting": {
+          "enabled": true
+        },
+        "NewX: Set default reply sorting": {
+          "enabled": true
+        },
+        "NewX: Share post as image": {
+          "enabled": false
+        },
+        "NewX: Show poll results": {
+          "enabled": true
+        },
+        "NewX: Show sensitive media": {
+          "enabled": true
+        },
+        "NewX: Theme": {
+          "enabled": true
+        },
+        "NewX: Unlock color customization": {
+          "enabled": true
+        },
+        "NewX: Unlock downloads": {
+          "enabled": true
+        }
+      },
+      "position": 0,
+      "source_id": "piko-newx",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "pinned",
+      "version_pin": "12.24.0-prod.02"
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 8,
+      "id": 16,
+      "key": "gg-photos-arm64-v8a",
+      "package": "com.google.android.apps.photos",
+      "patch_overrides": {},
+      "position": 0,
+      "source_id": "derevanced",
+      "variants": [
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "arm64-v8a",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 8,
+      "id": 17,
+      "key": "messenger-arm64-v8a",
+      "package": "com.facebook.orca",
+      "patch_overrides": {
+        "Disable switching emoji to sticker": {
+          "enabled": false
+        }
+      },
+      "position": 1,
+      "source_id": "derevanced",
+      "variants": [
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": "arm64-v8a",
+            "dpi": "nodpi",
+            "kind": "apkmirror",
+            "minver": "Android 9.0+",
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "arm64-v8a",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 8,
+      "id": 18,
+      "key": "facebook-arm64-v8a",
+      "package": "com.facebook.katana",
+      "patch_overrides": {},
+      "position": 2,
+      "source_id": "derevanced",
+      "variants": [
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": "arm64-v8a",
+            "dpi": "nodpi",
+            "kind": "apkmirror",
+            "minver": "Android 11+",
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "arm64-v8a",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 8,
+      "id": 19,
+      "key": "pixiv",
+      "package": "jp.pxv.android",
+      "patch_overrides": {},
+      "position": 3,
+      "source_id": "derevanced",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 8,
+      "id": 20,
+      "key": "twitch",
+      "package": "tv.twitch.android.app",
+      "patch_overrides": {},
+      "position": 4,
+      "source_id": "derevanced",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle_extract",
+            "url": null
+          },
+          "exclude_splits": [],
+          "name": "all-splits",
+          "strip_libs": null
+        },
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle_extract",
+            "url": null
+          },
+          "exclude_splits": [
+            "split_config.armeabi_v7a",
+            "split_config.x86",
+            "split_config.x86_64"
+          ],
+          "name": "arm64-v8a",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 8,
+      "id": 21,
+      "key": "tumblr",
+      "package": "com.tumblr",
+      "patch_overrides": {},
+      "position": 5,
+      "source_id": "derevanced",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle_extract",
+            "url": null
+          },
+          "exclude_splits": [],
+          "name": "all-splits",
+          "strip_libs": null
+        },
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle_extract",
+            "url": null
+          },
+          "exclude_splits": [
+            "split_config.armeabi_v7a",
+            "split_config.x86",
+            "split_config.x86_64"
+          ],
+          "name": "arm64-v8a",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "latest",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 8,
+      "id": 22,
+      "key": "soundcloud",
+      "package": "com.soundcloud.android",
+      "patch_overrides": {},
+      "position": 6,
+      "source_id": "derevanced",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle_extract",
+            "url": null
+          },
+          "exclude_splits": [],
+          "name": "all-splits",
+          "strip_libs": null
+        },
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle_extract",
+            "url": null
+          },
+          "exclude_splits": [
+            "split_config.armeabi_v7a",
+            "split_config.x86",
+            "split_config.x86_64"
+          ],
+          "name": "arm64-v8a",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "latest",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 8,
+      "id": 23,
+      "key": "rar",
+      "package": "com.rarlab.rar",
+      "patch_overrides": {},
+      "position": 7,
+      "source_id": "derevanced",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "latest",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 8,
+      "id": 24,
+      "key": "photomath",
+      "package": "com.microblink.photomath",
+      "patch_overrides": {},
+      "position": 8,
+      "source_id": "derevanced",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle_extract",
+            "url": null
+          },
+          "exclude_splits": [],
+          "name": "all-splits",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "latest",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 8,
+      "id": 25,
+      "key": "protonmail",
+      "package": "ch.protonmail.android",
+      "patch_overrides": {},
+      "position": 9,
+      "source_id": "derevanced",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "latest",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 8,
+      "id": 26,
+      "key": "threads-arm64-v8a",
+      "package": "com.instagram.barcelona",
+      "patch_overrides": {},
+      "position": 10,
+      "source_id": "derevanced",
+      "variants": [
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": "arm64-v8a",
+            "dpi": "120-640dpi",
+            "kind": "apkmirror",
+            "minver": "Android 9.0+",
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "arm64-v8a",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "latest",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 8,
+      "id": 27,
+      "key": "viber",
+      "package": "com.viber.voip",
+      "patch_overrides": {},
+      "position": 11,
+      "source_id": "derevanced",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 8,
+      "id": 28,
+      "key": "google-recorder",
+      "package": "com.google.android.apps.recordero",
+      "patch_overrides": {},
+      "position": 12,
+      "source_id": "derevanced",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "latest",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 8,
+      "id": 29,
+      "key": "tiktok",
+      "package": "com.zhiliaoapp.musically",
+      "patch_overrides": {},
+      "position": 13,
+      "source_id": "derevanced",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": "arm64-v8a + armeabi-v7a",
+            "dpi": "nodpi",
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "latest",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 8,
+      "id": 30,
+      "key": "tiktok-asia",
+      "package": "com.ss.android.ugc.trill",
+      "patch_overrides": {},
+      "position": 14,
+      "source_id": "derevanced",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": "arm64-v8a + armeabi-v7a",
+            "dpi": "nodpi",
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "latest",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 9,
+      "id": 31,
+      "key": "facebook-arm64-v8a",
+      "package": "com.facebook.katana",
+      "patch_overrides": {
+        "AMOLED black theme": {
+          "enabled": false,
+          "options": {
+            "backgroundColour": "#000000"
+          }
+        },
+        "Accent color": {
+          "enabled": true
+        },
+        "Allow screenshots": {
+          "enabled": true
+        },
+        "Block Instant Games ads": {
+          "enabled": true
+        },
+        "Block ad telemetry": {
+          "enabled": true
+        },
+        "Block background ad prefetch": {
+          "enabled": true
+        },
+        "Block background-return feed refresh": {
+          "enabled": true
+        },
+        "Block promotional notifications": {
+          "enabled": true
+        },
+        "Block screenshot detection": {
+          "enabled": true
+        },
+        "Clean up Facebook's chat list": {
+          "enabled": true
+        },
+        "Clean up Reels": {
+          "enabled": true
+        },
+        "Comment sheet options": {
+          "enabled": true
+        },
+        "Default comment order": {
+          "enabled": true
+        },
+        "Default playback quality": {
+          "enabled": true
+        },
+        "Disable Audience Network": {
+          "enabled": true
+        },
+        "Disable Play Store updates": {
+          "enabled": false
+        },
+        "Don't send reel watch history": {
+          "enabled": true
+        },
+        "Download any photo": {
+          "enabled": true
+        },
+        "Download any reel": {
+          "enabled": true
+        },
+        "Download any story": {
+          "enabled": true
+        },
+        "Download any video": {
+          "enabled": true
+        },
+        "Following feed on Home": {
+          "enabled": true
+        },
+        "Force dark mode": {
+          "enabled": true
+        },
+        "Frame step": {
+          "enabled": true
+        },
+        "Hide AI-detected posts": {
+          "enabled": true
+        },
+        "Hide Menu promotions": {
+          "enabled": true
+        },
+        "Hide Meta AI comment summaries": {
+          "enabled": true
+        },
+        "Hide Meta AI in search": {
+          "enabled": true
+        },
+        "Hide Meta AI questions under posts": {
+          "enabled": true
+        },
+        "Hide Meta upsells": {
+          "enabled": true
+        },
+        "Hide Reels in the feed": {
+          "enabled": true
+        },
+        "Hide Stories tray": {
+          "enabled": true
+        },
+        "Hide affiliate product links": {
+          "enabled": true
+        },
+        "Hide post prompts": {
+          "enabled": true
+        },
+        "Hide posts by words": {
+          "enabled": true
+        },
+        "Hide read receipts": {
+          "enabled": true
+        },
+        "Hide reel interest prompts": {
+          "enabled": true
+        },
+        "Hide seen posts": {
+          "enabled": true
+        },
+        "Hide sponsored Marketplace listings": {
+          "enabled": true
+        },
+        "Hide sponsored posts": {
+          "enabled": true
+        },
+        "Hide sponsored profile posts": {
+          "enabled": true
+        },
+        "Hide sponsored reels": {
+          "enabled": true
+        },
+        "Hide sponsored search results": {
+          "enabled": true
+        },
+        "Hide sponsored stories": {
+          "enabled": true
+        },
+        "Hide suggested and promoted posts": {
+          "enabled": true
+        },
+        "Hide suggested stories": {
+          "enabled": true
+        },
+        "Hide tab badges": {
+          "enabled": true
+        },
+        "Hide tabs": {
+          "enabled": true
+        },
+        "Hide the Feeds header": {
+          "enabled": true
+        },
+        "Hide the Get Messenger card": {
+          "enabled": true
+        },
+        "Hide the Reels tab": {
+          "enabled": true
+        },
+        "Hide the Reels tab dot": {
+          "enabled": true
+        },
+        "Hide typing indicator": {
+          "enabled": true
+        },
+        "Hold a reel for 2x": {
+          "enabled": true
+        },
+        "Hold back analytics uploads": {
+          "enabled": true
+        },
+        "Hushfacebook in the Menu": {
+          "enabled": true
+        },
+        "Hushfacebook settings": {
+          "enabled": true
+        },
+        "Install beside Meta's apps": {
+          "enabled": true
+        },
+        "Keep post dates": {
+          "enabled": true
+        },
+        "Keep the progress bar": {
+          "enabled": true
+        },
+        "Keep the reel speed": {
+          "enabled": true
+        },
+        "Marketplace only": {
+          "enabled": true
+        },
+        "Material You theme": {
+          "enabled": false
+        },
+        "Open Messenger from the top bar": {
+          "enabled": true
+        },
+        "Open links in external browser": {
+          "enabled": true
+        },
+        "Open on a chosen tab": {
+          "enabled": true
+        },
+        "Picture-in-picture": {
+          "enabled": true
+        },
+        "Restore screens on re-signed builds": {
+          "enabled": true
+        },
+        "Resume long videos": {
+          "enabled": true
+        },
+        "Sanitize sharing links": {
+          "enabled": true
+        },
+        "Send chat photos and videos at original quality": {
+          "enabled": true
+        },
+        "Share sheet items": {
+          "enabled": true
+        },
+        "Show View profile on Marketplace sellers": {
+          "enabled": true
+        },
+        "Start on x86 devices": {
+          "enabled": true
+        },
+        "Stop Story auto-advance": {
+          "enabled": true
+        },
+        "Stop update prompts": {
+          "enabled": true
+        },
+        "Tab bar at the bottom": {
+          "enabled": true
+        },
+        "Tag suggestions only after @": {
+          "enabled": true
+        },
+        "Tap to play": {
+          "enabled": true
+        },
+        "Turn off HDR brightness": {
+          "enabled": true
+        },
+        "Turn off auto-translation": {
+          "enabled": true
+        },
+        "Turn off double tap to like": {
+          "enabled": true
+        },
+        "Turn off haptics": {
+          "enabled": true
+        },
+        "Turn off screen transitions": {
+          "enabled": true
+        },
+        "Unlock app icons": {
+          "enabled": true
+        },
+        "Use the phone's emoji": {
+          "enabled": true
+        },
+        "Use the system font": {
+          "enabled": true
+        },
+        "View stories anonymously": {
+          "enabled": true
+        }
+      },
+      "position": 0,
+      "source_id": "hushfacebook",
+      "variants": [
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": "arm64-v8a",
+            "dpi": "320-640dpi",
+            "kind": "apkmirror",
+            "minver": "Android 11+",
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "arm64-v8a",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 10,
+      "id": 32,
+      "key": "prime-video-arm64-v8a",
+      "package": "com.amazon.avod.thirdpartyclient",
+      "patch_overrides": {},
+      "position": 0,
+      "source_id": "hoo-dles",
+      "variants": [
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": "arm64-v8a",
+            "dpi": "nodpi",
+            "kind": "apkmirror",
+            "minver": "Android 9.0+",
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "arm64-v8a",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "pinned",
+      "version_pin": "3.0.447"
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 10,
+      "id": 33,
+      "key": "adguard",
+      "package": "com.adguard.android",
+      "patch_overrides": {},
+      "position": 1,
+      "source_id": "hoo-dles",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": true,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 10,
+      "id": 34,
+      "key": "duolingo",
+      "package": "com.duolingo",
+      "patch_overrides": {},
+      "position": 2,
+      "source_id": "hoo-dles",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": "universal",
+            "dpi": "120-640dpi",
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 10,
+      "id": 35,
+      "key": "protonvpn",
+      "package": "ch.protonvpn.android",
+      "patch_overrides": {},
+      "position": 3,
+      "source_id": "hoo-dles",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": "universal",
+            "dpi": "120-640dpi",
+            "kind": "apkmirror",
+            "minver": "Android 8.0+",
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 10,
+      "id": 36,
+      "key": "smart-launcher",
+      "package": "ginlemon.flowerfree",
+      "patch_overrides": {},
+      "position": 4,
+      "source_id": "hoo-dles",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "pinned",
+      "version_pin": "6.6.build.008"
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 10,
+      "id": 37,
+      "key": "soundcloud",
+      "package": "com.soundcloud.android",
+      "patch_overrides": {},
+      "position": 5,
+      "source_id": "hoo-dles",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": "universal",
+            "dpi": "nodpi",
+            "kind": "apkmirror",
+            "minver": "Android 12L+",
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 10,
+      "id": 38,
+      "key": "solid-explorer",
+      "package": "pl.solidexplorer2",
+      "patch_overrides": {},
+      "position": 6,
+      "source_id": "hoo-dles",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 10,
+      "id": 39,
+      "key": "wps-office",
+      "package": "cn.wps.moffice_eng",
+      "patch_overrides": {},
+      "position": 7,
+      "source_id": "hoo-dles",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 10,
+      "id": 40,
+      "key": "camscanner",
+      "package": "com.intsig.camscanner",
+      "patch_overrides": {},
+      "position": 8,
+      "source_id": "hoo-dles",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 11,
+      "id": 41,
+      "key": "brave-browser-arm64-v8a",
+      "package": "com.brave.browser",
+      "patch_overrides": {},
+      "position": 0,
+      "source_id": "bufferk",
+      "variants": [
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": "arm64-v8a",
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "arm64-v8a",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 11,
+      "id": 42,
+      "key": "truecaller-arm64-v8a",
+      "package": "com.truecaller",
+      "patch_overrides": {},
+      "position": 1,
+      "source_id": "bufferk",
+      "variants": [
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "arm64-v8a",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 12,
+      "id": 43,
+      "key": "twitch",
+      "package": "tv.twitch.android.app",
+      "patch_overrides": {},
+      "position": 0,
+      "source_id": "arandomhooman",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 12,
+      "id": 44,
+      "key": "tumblr",
+      "package": "com.tumblr",
+      "patch_overrides": {},
+      "position": 1,
+      "source_id": "arandomhooman",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 12,
+      "id": 45,
+      "key": "battery-guru",
+      "package": "com.paget96.batteryguru",
+      "patch_overrides": {},
+      "position": 2,
+      "source_id": "arandomhooman",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 13,
+      "id": 46,
+      "key": "tiktok",
+      "package": "com.zhiliaoapp.musically",
+      "patch_overrides": {},
+      "position": 0,
+      "source_id": "icysymmetra",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": "arm64-v8a + armeabi-v7a",
+            "dpi": "nodpi",
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 14,
+      "id": 47,
+      "key": "googlenews",
+      "package": "com.google.android.apps.magazines",
+      "patch_overrides": {},
+      "position": 0,
+      "source_id": "docbt",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 15,
+      "id": 48,
+      "key": "waze",
+      "package": "com.waze",
+      "patch_overrides": {},
+      "position": 0,
+      "source_id": "rushiranpise",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "latest",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 15,
+      "id": 49,
+      "key": "adguard",
+      "package": "com.adguard.android",
+      "patch_overrides": {},
+      "position": 1,
+      "source_id": "rushiranpise",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 15,
+      "id": 50,
+      "key": "psiphon",
+      "package": "com.psiphon3.subscription",
+      "patch_overrides": {},
+      "position": 2,
+      "source_id": "rushiranpise",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "pinned",
+      "version_pin": "474"
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 15,
+      "id": 51,
+      "key": "protonvpn",
+      "package": "ch.protonvpn.android",
+      "patch_overrides": {},
+      "position": 3,
+      "source_id": "rushiranpise",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": "universal",
+            "dpi": "120-640dpi",
+            "kind": "apkmirror",
+            "minver": "Android 8.0+",
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 15,
+      "id": 52,
+      "key": "windscribe",
+      "package": "com.windscribe.vpn",
+      "patch_overrides": {},
+      "position": 4,
+      "source_id": "rushiranpise",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 16,
+      "id": 53,
+      "key": "bilibili",
+      "package": "com.bilibili.app.in",
+      "patch_overrides": {},
+      "position": 0,
+      "source_id": "biliroamingm",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle_extract",
+            "url": null
+          },
+          "exclude_splits": [],
+          "name": "all-splits",
+          "strip_libs": null
+        },
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle_extract",
+            "url": null
+          },
+          "exclude_splits": [
+            "split_config.armeabi_v7a",
+            "split_config.x86",
+            "split_config.x86_64"
+          ],
+          "name": "arm64-v8a",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 17,
+      "id": 54,
+      "key": "tasker",
+      "package": "net.dinglisch.android.taskerm",
+      "patch_overrides": {},
+      "position": 0,
+      "source_id": "dropped-patches",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "url",
+            "minver": null,
+            "type": "apk",
+            "url": "https://tasker.joaoapps.com/releases/playstore/Tasker.6.0.10.apk"
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 17,
+      "id": 55,
+      "key": "nova-launcher",
+      "package": "com.teslacoilsw.launcher",
+      "patch_overrides": {},
+      "position": 1,
+      "source_id": "dropped-patches",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 17,
+      "id": 56,
+      "key": "fx-file-explorer",
+      "package": "nextapp.fx",
+      "patch_overrides": {},
+      "position": 2,
+      "source_id": "dropped-patches",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": {
+        "injectdex": false,
+        "sigbypass": 0
+      },
+      "group_id": 18,
+      "id": 57,
+      "key": "discord",
+      "package": "com.discord",
+      "patch_overrides": {},
+      "position": 0,
+      "source_id": "revenge-lspatch",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "latest",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": {
+        "injectdex": true,
+        "sigbypass": 3
+      },
+      "group_id": 18,
+      "id": 58,
+      "key": "facebook-arm64-v8a",
+      "package": "com.facebook.katana",
+      "patch_overrides": {},
+      "position": 1,
+      "source_id": "nexalloy-lspatch",
+      "variants": [
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": "arm64-v8a",
+            "dpi": "320-640dpi",
+            "kind": "apkmirror",
+            "minver": "Android 11+",
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "arm64-v8a",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "pinned",
+      "version_pin": "580.0.0.51.74"
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": {
+        "injectdex": true,
+        "sigbypass": 3
+      },
+      "group_id": 18,
+      "id": 59,
+      "key": "messenger-arm64-v8a",
+      "package": "com.facebook.orca",
+      "patch_overrides": {},
+      "position": 2,
+      "source_id": "nexalloy-lspatch",
+      "variants": [
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": "arm64-v8a",
+            "dpi": "nodpi",
+            "kind": "apkmirror",
+            "minver": "Android 9.0+",
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "arm64-v8a",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "latest",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": {
+        "injectdex": true,
+        "sigbypass": 3
+      },
+      "group_id": 18,
+      "id": 60,
+      "key": "instagram-arm64-v8a",
+      "package": "com.instagram.android",
+      "patch_overrides": {},
+      "position": 3,
+      "source_id": "nexalloy-lspatch",
+      "variants": [
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": "arm64-v8a",
+            "dpi": "120-640dpi",
+            "kind": "apkmirror",
+            "minver": "Android 9.0+",
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "arm64-v8a",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "latest",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": {
+        "injectdex": true,
+        "sigbypass": 3
+      },
+      "group_id": 18,
+      "id": 61,
+      "key": "threads-arm64-v8a",
+      "package": "com.instagram.barcelona",
+      "patch_overrides": {},
+      "position": 4,
+      "source_id": "nexalloy-lspatch",
+      "variants": [
+        {
+          "abi": "arm64-v8a",
+          "download": {
+            "arch": "arm64-v8a",
+            "dpi": "160-640dpi",
+            "kind": "apkmirror",
+            "minver": "Android 9.0+",
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "arm64-v8a",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "latest",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": {
+        "injectdex": true,
+        "sigbypass": 3
+      },
+      "group_id": 18,
+      "id": 62,
+      "key": "zalo",
+      "package": "com.zing.zalo",
+      "patch_overrides": {},
+      "position": 5,
+      "source_id": "nexalloy-lspatch",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkpure",
+            "minver": null,
+            "type": "bundle",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "latest",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": {
+        "injectdex": false,
+        "sigbypass": 3
+      },
+      "group_id": 18,
+      "id": 63,
+      "key": "tiktok",
+      "package": "com.zhiliaoapp.musically",
+      "patch_overrides": {},
+      "position": 6,
+      "source_id": "nexalloy-npatch",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "latest",
+      "version_pin": null
+    },
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": {
+        "injectdex": false,
+        "sigbypass": 3
+      },
+      "group_id": 18,
+      "id": 64,
+      "key": "tiktok-asian",
+      "package": "com.ss.android.ugc.trill",
+      "patch_overrides": {},
+      "position": 7,
+      "source_id": "nexalloy-npatch",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "latest",
       "version_pin": null
     }
   ],
@@ -56,10 +3123,162 @@
     {
       "cli_upstream_id": 1,
       "engine": "morphe",
+      "id": "arandomhooman",
+      "keystore": "morphe.keystore",
+      "name": "arandomhooman",
+      "upstream_id": 13
+    },
+    {
+      "cli_upstream_id": 1,
+      "engine": "morphe",
+      "id": "biliroamingm",
+      "keystore": "morphe.keystore",
+      "name": "BiliRoamingM",
+      "upstream_id": 17
+    },
+    {
+      "cli_upstream_id": 1,
+      "engine": "morphe",
+      "id": "bufferk",
+      "keystore": "morphe.keystore",
+      "name": "bufferk",
+      "upstream_id": 12
+    },
+    {
+      "cli_upstream_id": 1,
+      "engine": "morphe",
+      "id": "derevanced",
+      "keystore": "morphe.keystore",
+      "name": "DeRevanced",
+      "upstream_id": 9
+    },
+    {
+      "cli_upstream_id": 1,
+      "engine": "morphe",
+      "id": "docbt",
+      "keystore": "morphe.keystore",
+      "name": "docbt",
+      "upstream_id": 15
+    },
+    {
+      "cli_upstream_id": 1,
+      "engine": "morphe",
+      "id": "dropped-patches",
+      "keystore": "morphe.keystore",
+      "name": "Dropped Patches - indrastorms",
+      "upstream_id": 18
+    },
+    {
+      "cli_upstream_id": 1,
+      "engine": "morphe",
+      "id": "hoo-dles",
+      "keystore": "morphe.keystore",
+      "name": "hoo-dles",
+      "upstream_id": 11
+    },
+    {
+      "cli_upstream_id": 1,
+      "engine": "morphe",
+      "id": "hushfacebook",
+      "keystore": "morphe.keystore",
+      "name": "HushFacebook",
+      "upstream_id": 10
+    },
+    {
+      "cli_upstream_id": 1,
+      "engine": "morphe",
+      "id": "icysymmetra",
+      "keystore": "morphe.keystore",
+      "name": "icysymmetra",
+      "upstream_id": 14
+    },
+    {
+      "cli_upstream_id": 1,
+      "engine": "morphe",
       "id": "morphe",
       "keystore": "morphe.keystore",
       "name": "Morphe",
       "upstream_id": 2
+    },
+    {
+      "cli_upstream_id": 1,
+      "engine": "morphe",
+      "id": "morphe-beta",
+      "keystore": "morphe.keystore",
+      "name": "Morphe Beta",
+      "upstream_id": 3
+    },
+    {
+      "cli_upstream_id": 19,
+      "engine": "lspatch",
+      "id": "nexalloy-lspatch",
+      "keystore": "lspatch-signing.p12",
+      "name": "NexAlloy",
+      "upstream_id": 22
+    },
+    {
+      "cli_upstream_id": 20,
+      "engine": "npatch",
+      "id": "nexalloy-npatch",
+      "keystore": "fiorenmas.ks",
+      "name": "NexAlloy",
+      "upstream_id": 22
+    },
+    {
+      "cli_upstream_id": 1,
+      "engine": "morphe",
+      "id": "piko-beta",
+      "keystore": "morphe.keystore",
+      "name": "Twitter Piko Beta",
+      "upstream_id": 7
+    },
+    {
+      "cli_upstream_id": 1,
+      "engine": "morphe",
+      "id": "piko-newx",
+      "keystore": "morphe.keystore",
+      "name": "Piko NewX",
+      "upstream_id": 8
+    },
+    {
+      "cli_upstream_id": 1,
+      "engine": "morphe",
+      "id": "piko-stable",
+      "keystore": "morphe.keystore",
+      "name": "Twitter Piko Stable",
+      "upstream_id": 6
+    },
+    {
+      "cli_upstream_id": 19,
+      "engine": "lspatch",
+      "id": "revenge-lspatch",
+      "keystore": "lspatch-signing.p12",
+      "name": "Revenge",
+      "upstream_id": 21
+    },
+    {
+      "cli_upstream_id": 1,
+      "engine": "morphe",
+      "id": "rushiranpise",
+      "keystore": "morphe.keystore",
+      "name": "rushiranpise",
+      "upstream_id": 16
+    },
+    {
+      "cli_upstream_id": 1,
+      "engine": "morphe",
+      "id": "rve-anddea-beta",
+      "keystore": "morphe.keystore",
+      "name": "RVE-anddea-beta",
+      "upstream_id": 5
+    },
+    {
+      "cli_upstream_id": 1,
+      "engine": "morphe",
+      "id": "rve-anddea-stable",
+      "keystore": "morphe.keystore",
+      "name": "RVE-anddea-stable",
+      "upstream_id": 4
     }
   ],
   "upstreams": [
@@ -77,6 +3296,174 @@
       "id": 2,
       "kind": "patches",
       "repo": "MorpheApp/morphe-patches",
+      "tag": null
+    },
+    {
+      "asset_regex": "\\.mpp$",
+      "channel": "prerelease",
+      "id": 3,
+      "kind": "patches",
+      "repo": "MorpheApp/morphe-patches",
+      "tag": null
+    },
+    {
+      "asset_regex": "\\.mpp$",
+      "channel": "stable",
+      "id": 4,
+      "kind": "patches",
+      "repo": "anddea/revanced-patches",
+      "tag": null
+    },
+    {
+      "asset_regex": "\\.mpp$",
+      "channel": "prerelease",
+      "id": 5,
+      "kind": "patches",
+      "repo": "anddea/revanced-patches",
+      "tag": null
+    },
+    {
+      "asset_regex": "\\.mpp$",
+      "channel": "stable",
+      "id": 6,
+      "kind": "patches",
+      "repo": "crimera/piko",
+      "tag": null
+    },
+    {
+      "asset_regex": "\\.mpp$",
+      "channel": "prerelease",
+      "id": 7,
+      "kind": "patches",
+      "repo": "crimera/piko",
+      "tag": null
+    },
+    {
+      "asset_regex": "\\.mpp$",
+      "channel": "stable",
+      "id": 8,
+      "kind": "patches",
+      "repo": "crimera/piko-newx",
+      "tag": null
+    },
+    {
+      "asset_regex": "\\.mpp$",
+      "channel": "stable",
+      "id": 9,
+      "kind": "patches",
+      "repo": "RookieEnough/De-ReVanced",
+      "tag": null
+    },
+    {
+      "asset_regex": "\\.mpp$",
+      "channel": "stable",
+      "id": 10,
+      "kind": "patches",
+      "repo": "SysAdminDoc/Hushfacebook",
+      "tag": null
+    },
+    {
+      "asset_regex": "\\.mpp$",
+      "channel": "stable",
+      "id": 11,
+      "kind": "patches",
+      "repo": "hoo-dles/morphe-patches",
+      "tag": null
+    },
+    {
+      "asset_regex": "\\.mpp$",
+      "channel": "stable",
+      "id": 12,
+      "kind": "patches",
+      "repo": "bufferk/morphe-patches",
+      "tag": null
+    },
+    {
+      "asset_regex": "\\.mpp$",
+      "channel": "stable",
+      "id": 13,
+      "kind": "patches",
+      "repo": "arandomhooman/hoomans-morphe-patches",
+      "tag": null
+    },
+    {
+      "asset_regex": "\\.mpp$",
+      "channel": "stable",
+      "id": 14,
+      "kind": "patches",
+      "repo": "icysymmetra/tiktok-patches-for-morphe",
+      "tag": null
+    },
+    {
+      "asset_regex": "\\.mpp$",
+      "channel": "stable",
+      "id": 15,
+      "kind": "patches",
+      "repo": "docbt/patched-up",
+      "tag": null
+    },
+    {
+      "asset_regex": "\\.mpp$",
+      "channel": "stable",
+      "id": 16,
+      "kind": "patches",
+      "repo": "rushiranpise/morphe-patches",
+      "tag": null
+    },
+    {
+      "asset_regex": "\\.jar$",
+      "channel": "stable",
+      "id": 17,
+      "kind": "patches",
+      "repo": "sakarie9/BiliRoamingM",
+      "tag": null
+    },
+    {
+      "asset_regex": "\\.jar$",
+      "channel": "tag",
+      "id": 18,
+      "kind": "patches",
+      "repo": "indrastorms/Dropped-Patches",
+      "tag": "v1.4.2"
+    },
+    {
+      "asset_regex": "^lspatch-.*-release\\.jar$",
+      "channel": "stable",
+      "id": 19,
+      "kind": "cli",
+      "repo": "JingMatrix/LSPatch",
+      "tag": null
+    },
+    {
+      "asset_regex": "^jar-.*-release\\.jar$",
+      "channel": "tag",
+      "id": 20,
+      "kind": "cli",
+      "repo": "7723mod/NPatch",
+      "tag": "v1.0.5"
+    },
+    {
+      "asset_regex": "^app-release\\.apk$",
+      "channel": "stable",
+      "id": 21,
+      "kind": "module",
+      "repo": "revenge-mod/revenge-xposed",
+      "tag": null
+    },
+    {
+      "asset_regex": "^NexAlloy-.*\\.apk$",
+      "channel": "tag",
+      "id": 22,
+      "kind": "module",
+      "repo": "gnadgnaoh/NexAlloy",
+      "tag": "v1.1"
+    },
+    {
+      "asset_regex": "^microg-[0-9.]+\\.apk$",
+      "channel": "stable",
+      "id": 23,
+      "kind": "dependency",
+      "repo": "MorpheApp/MicroG-RE",
       "tag": null
     }
   ]
