@@ -26,7 +26,7 @@ One Docker Compose file, five containers. The existing builder container becomes
 | GitHub Actions builds kept (decision Q1) | ci §2–§9 |
 | Xposed / LSPatch / NPatch items kept (decision Q2) | xposed §2–§9 |
 | Decisions Q3–Q5 (seed BiliRoamingM/Dropped-Patches, auto rebuild, seed ABIs) | catalog §8 (Q3, Q5), catalog §5.2 + core §6 (Q4) |
-| Restored mockup features (§0.6 R1–R5): group zip download, "keep me signed in", option colour picker, newer APKMirror versions, login server summary | build §3.4 (`GET /api/groups/{id}/download`); core §7, §8 (`remember`); ui §2 App detail (colour picker, client); build §3.2, §4 step 5d + catalog §3, §6 (`apkmirror_versions`); core §8 `GET /api/health` + ui §2 Login |
+| Restored mockup features (§0.6 R1–R6): group zip download, "keep me signed in", option colour picker, newer APKMirror versions, login server summary, group colour | build §3.4 (`GET /api/groups/{id}/download`); core §7, §8 (`remember`); ui §2 App detail (colour picker, client); build §3.2, §4 step 5d + catalog §3, §6 (`apkmirror_versions`); core §8 `GET /api/health` + ui §2 Login; catalog §3, §3.1, §6 (`grp.color`) + ui §2 App list |
 | Deferred mockup features (§0.6 F1–F3): cron editor, locked required patches, device latency | not in v1; next phase |
 
 ## 0.3 Shared contracts (binding for all parts)
@@ -78,7 +78,7 @@ All routes need the admin session except the two marked "no auth". Mutating requ
 | `GET /api/catalog` | catalog | app list: groups with ordered items, names, icons, versions, upstream state |
 | `GET/POST /api/sources`, `PUT/DELETE /api/sources/{id}` | catalog | patch sources |
 | `GET/POST /api/items`, `GET/PUT/DELETE /api/items/{id}` | catalog | items: display name, group, enabled, variants, dependency apps, engine options |
-| `GET/POST /api/groups`, `PUT/DELETE /api/groups/{id}`, `PUT /api/groups/order`, `PUT /api/groups/{id}/items/order` (id `0` = Ungrouped) | catalog | groups and ordering |
+| `GET/POST /api/groups`, `PUT/DELETE /api/groups/{id}`, `PUT /api/groups/order`, `PUT /api/groups/{id}/items/order` (id `0` = Ungrouped) | catalog | groups (name, colour) and ordering |
 | `GET/PUT /api/items/{id}/patches`, `PUT /api/items/{id}/version` | catalog | patch selection and options, version pin |
 | `GET /api/apps/{pkg}/icon`, `POST /api/apps/{pkg}/icon/refresh`, `PUT /api/apps/{pkg}` | catalog | icon, display name, APKMirror/APKPure URLs |
 | `GET /api/upstreams`, `POST /api/upstreams/check`, `POST /api/upstreams/{id}/pull` | catalog | upstream state, check now, pull (job) |
@@ -144,6 +144,7 @@ Contradictions between the parts and how they were resolved (arch-core is the ti
 | R3 | Mockup colour picker for colour-valued patch options | restore | ui §2 App detail (client only) |
 | R4 | Mockup "newer versions on APKMirror" in the pin list | restore, cached, no extra scrape per page load | catalog §3, §6; build §3.2, §4 step 5d; ui §2 App detail |
 | R5 | Mockup server summary on the login page | restore with non-sensitive data only | core §8 `GET /api/health`; ui §2 Login |
+| R6 | Colour per group (user, 2026-10-19) | include in v1: one `grp.color` column, set by the group create/update route, shown on the App list group header | catalog §3, §3.1, §6; ui §2 App list |
 | F1 | Mockup cron editor | deferred to next phase | core §6 (three spec forms only); ui §2 Schedules |
 | F2 | Mockup locked "required" patches | deferred to next phase | ui §2 App detail |
 | F3 | Mockup device latency | deferred to next phase | ui §2 Devices |
@@ -452,7 +453,7 @@ source      id PK (slug, e.g. 'morphe', 'morphe-beta'), name, upstream_id → up
 app         package PK, display_name, icon_file, icon_fetched_at,
             apkmirror_list_url, apkmirror_example_url, apkmirror_example_url2, apkpure_url,
             apkmirror_versions (JSON array, newest first, null = never seen), apkmirror_checked_at
-grp         id PK, name, position
+grp         id PK, name, color (text '#rrggbb', null = no colour), position
 item        id PK, source_id → source, package → app, key, display_name (null = default),
             group_id → grp (null = "Ungrouped", shown last), position, enabled,
             version_mode ('auto'|'pinned'|'latest'), version_pin, allow_nearest,
@@ -477,6 +478,7 @@ Rules:
 
 #### 3.1 Groups and ordering
 - Groups are global (`grp.position`). Items have `group_id` and `position` inside the group.
+- Group colour (§0.6 R6): `POST /api/groups {name, color?}` and `PUT /api/groups/{id} {name?, color?}` set `grp.color`; `color` must match `^#[0-9A-Fa-f]{6}$` or be null (null clears it), else 400. Ungrouped has no colour. Seed groups have `color` null.
 - Reorder is "send the full new order": `PUT /api/groups/order {ids:[…]}` and `PUT /api/groups/{id}/items/order {item_ids:[…]}`. The second call also moves items into the group. The server rewrites `position` as 0..n-1 in one transaction. No fractional ranks needed for lists of this size (seed ≈ 55 items).
 - Deleting a group moves its items to "Ungrouped". Ungrouped has no `grp` row; `PUT /api/groups/0/items/order` orders it and moves items into it (`group_id` null). Seed: one group per source, in `local/build.sh:16-34` order, then group "Xposed" (xposed §4.1).
 
@@ -569,7 +571,7 @@ Seed: one daily schedule `{"every":"day","at":"09:00"}` of kind `upstream`, targ
 | consumes | `build.item_status(item_ids)` for the item object (build §3.4); Java toolchain in the web container (build §2.1); `jobs.enqueue('build', ..., 'upstream')` (core §5); token file; scheduler (core §6); notification sender (device) |
 
 Item object (one shape for the App list and App detail, ui §2):
-- `GET /api/catalog` → `{groups:[{id, name, position, items:[item…]}], ungrouped:[item…]}`, groups and items in `position` order.
+- `GET /api/catalog` → `{groups:[{id, name, color, position, items:[item…]}], ungrouped:[item…]}`, groups and items in `position` order.
 - item = `{id, label (§3.2), display_name, source_id, source_name, engine, package, key, enabled, group_id, position, icon_url, abis:[variant abi…], upstream:{id, repo, channel, downloaded_tag, latest_tag, checked_at, check_error}, last_build, last_success, active_job}`; the last three come from `build.item_status` (build §3.4).
 - `GET /api/items/{id}` = item + `version {mode, pin, allow_nearest}`, `variants`, `engine_options`, `dependency_app_ids`, `apkmirror {versions, checked_at}` (from `app.apkmirror_versions`/`apkmirror_checked_at`, §3; the Version tab marks versions newer than `compatible_versions[0]` as "not in patch list", ui §2).
 - `POST /api/items {source_id, package, group_id, display_name?, variants?, engine_options?}`: creates the `app` row if missing (icon fetched by the background task, §3.3); `variants` default = universal + arm64-v8a, APKMirror `apk` download (decision Q5). `PUT /api/items/{id}` takes the same fields plus `enabled`, `dependency_app_ids`. `DELETE /api/items/{id}` follows the delete rules of §0.3 (409 while a build of the item is queued or running). When the created item's source upstream is a `patches` row with a `downloaded_tag` and no `bundle_info` row exists for `(upstream_id, downloaded_tag, package)`, `POST /api/items` also enqueues the pull job of that upstream with `options` `{"rebuild":false}`; step 1 of §5.2 then finds the missing package and re-inspects. The step-1 rule alone would wait for the next scheduled or manual pull, so the edit page would show "patch list unavailable" until then; one enqueue at creation is the smallest fix.
@@ -626,6 +628,7 @@ app created ──► icon fetcher (Play) → <data>/icons/<pkg>, app.display_na
 - Override merge: defaults + overrides + stale → expected `options_file_json`; empty overrides produce `[{"patches":{}}]`.
 - Seed: import into an empty DB; assert source count = 20 (18 org rows minus scrazzz, plus 3 Xposed sources), the 8 Xposed items present with Facebook pinned `580.0.0.51.74`, no seeded variant with an ABI other than universal/arm64-v8a unless the item has neither, item count = number of distinct (source, package) pairs reported by the seed script, every non-empty `src/patches` and `src/options` value present as an override; second start does not re-import.
 - Reorder: full-order PUT yields positions 0..n-1; moving an item between groups.
+- Group colour: create and update with `#1a2B3c` stored and returned by `GET /api/catalog`; `red`, `#123` → 400; null clears it.
 - End-to-end (user-run, long): pull morphe, edit one override, build YouTube, confirm the override appears in the CLI log line for that patch.
 - Xposed and CI tests: xposed §11, ci §8.
 
@@ -1098,6 +1101,7 @@ Rendering rules: lists are rebuilt from JSON with template strings; every server
 | Group: OTA group to devices | `POST /api/devices/{id}/ota {item_ids}` per device that has group items assigned (device §3.2) | covered, client fans out |
 | Group: Download all (zip) | `GET /api/groups/{id}/download` (build §3.4) | **restored** (§0.6 R1): menu entry is a plain link (`<a href download>`, the session cookie is sent); ZIP streamed with no temp file; menu text notes "newest successful build of each item" |
 | Group: Rename / Delete, New group | `PUT/DELETE /api/groups/{id}`, `POST /api/groups` | covered |
+| (not in mockup) Group colour | `grp.color`, `POST /api/groups` / `PUT /api/groups/{id}` `color` (catalog §3.1, §0.6 R6) | **add**: native `<input type="color">` in the New group / Rename dialog plus a "No colour" button (sends null); the group header shows a 4 px left border and a dot in that colour; no colour = no border |
 | Top bar "Check upstream" | `POST /api/upstreams/check` (catalog §5.4) | covered |
 | Top bar "Add app" (pick source, then app) | `POST /api/items`, `POST /api/sources`, `PUT /api/apps/{pkg}` | covered; **add** body fields of `POST /api/items` and `POST /api/sources` to catalog §6. Package is typed (no bundle package list); new items get the seed default variants (decision Q5). |
 
