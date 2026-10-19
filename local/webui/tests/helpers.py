@@ -7,7 +7,7 @@ import unittest
 import urllib.error
 import urllib.request
 
-from webui import db, events, jobs, server
+from webui import auth, db, events, jobs, server
 
 
 class DataTestCase(unittest.TestCase):
@@ -24,6 +24,7 @@ class DataTestCase(unittest.TestCase):
         db.migrate(self.schema_dir)
         events.reset()
         jobs.reset()
+        auth.reset_lockout()
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -62,3 +63,10 @@ def http(method, url, body=None, cookie=None, headers=None):
             return r.status, dict(r.headers), r.read()
     except urllib.error.HTTPError as e:
         return e.code, dict(e.headers), e.read()
+
+
+def login(base_url, password='correct-horse-42'):
+    auth.set_password(password)
+    st, h, body = http('POST', base_url + '/api/auth/login', {'password': password, 'remember': True})
+    assert st == 200, (st, body)
+    return h['Set-Cookie'].split(';')[0]

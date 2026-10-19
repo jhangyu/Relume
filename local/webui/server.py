@@ -176,6 +176,8 @@ class Handler(BaseHTTPRequestHandler):
                 req.json = json.loads(raw) if raw else {}
             except ValueError:
                 raise HttpError(400, 'invalid json')
+            if not isinstance(req.json, dict):  # every API body is an object (ui-api-shapes)
+                raise HttpError(400, 'body must be a JSON object')
         if (method, pattern) not in auth.PUBLIC:
             req.session = auth.session_token(self.headers.get('Cookie'))
             if not req.session:

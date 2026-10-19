@@ -58,6 +58,9 @@ class RouterTest(PublicRoutesMixin, DataTestCase):
         st, _, _ = http('PATCH', self.base + '/api/t/1', body={}, headers={'Origin': 'http://evil.example'})
         self.assertEqual(st, 403)
 
+    def test_non_object_body(self):
+        self.assertEqual(http('PATCH', self.base + '/api/t/1', body=[1])[0], 400)
+
     def test_too_large(self):
         st, _, _ = http('PATCH', self.base + '/api/t/1', body={'a': 'x' * (1 << 20)})
         self.assertEqual(st, 413)
