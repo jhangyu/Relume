@@ -1,0 +1,27 @@
+{
+  "job_id": 1,
+  "work_dir": "@WORK@",
+  "item_id": 1,
+  "source_id": "morphe",
+  "package": "com.google.android.youtube",
+  "key": "youtube",
+  "engine": "morphe",
+  "engine_options": null,
+  "upstream_tag": "v1.2.3",
+  "cli_tag": "v1.0.0",
+  "patches_files": ["@UP@/patches-1.0.0.mpp"],
+  "cli_jar": "@UP@/morphe-desktop-1.0.0-all.jar",
+  "options_file_json": [{"patches": {}}],
+  "version": {"mode": "pinned", "value": "1.0.0", "near": false},
+  "apkmirror": {"list_url": null, "example_url": null, "example_url2": null, "versions_due": false},
+  "apkpure_url": null,
+  "keystore": "morphe.keystore",
+  "recipe": {"variants": [
+    {"name": "universal", "abi": "universal",
+     "download": {"kind": "url", "type": "apk", "arch": null, "dpi": null, "minver": null, "url": "https://fixture.invalid/input.apk"},
+     "exclude_splits": null, "strip_libs": null},
+    {"name": "arm64-v8a", "abi": "arm64-v8a",
+     "download": {"kind": "url", "type": "apk", "arch": null, "dpi": null, "minver": null, "url": "https://fixture.invalid/input.apk"},
+     "exclude_splits": null, "strip_libs": "arm64-v8a"}
+  ]}
+}
