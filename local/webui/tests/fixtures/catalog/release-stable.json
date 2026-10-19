@@ -1,0 +1,7 @@
+{"tag_name": "v1.47.0", "published_at": "2026-10-10T00:00:00Z", "draft": false, "prerelease": false,
+ "assets": [
+  {"name": "patches-1.47.0.mpp", "size": 5, "browser_download_url": "https://dl.invalid/patches-1.47.0.mpp",
+   "digest": "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"},
+  {"name": "patches-1.47.0.mpp.asc", "size": 5, "browser_download_url": "https://dl.invalid/patches-1.47.0.mpp.asc"},
+  {"name": "patches-dev-1.47.0.mpp", "size": 5, "browser_download_url": "https://dl.invalid/patches-dev-1.47.0.mpp"}
+ ]}

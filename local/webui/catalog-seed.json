@@ -1,0 +1,83 @@
+{
+  "apps": [
+    {
+      "apkmirror_example_url": "https://www.apkmirror.com/apk/google-inc/youtube/youtube-21-18-168-release/",
+      "apkmirror_example_url2": null,
+      "apkmirror_list_url": "https://www.apkmirror.com/uploads/?appcategory=youtube",
+      "apkpure_url": null,
+      "display_name": null,
+      "package": "com.google.android.youtube"
+    }
+  ],
+  "dependency_apps": [],
+  "groups": [
+    {
+      "color": null,
+      "id": 1,
+      "name": "Morphe",
+      "position": 0
+    }
+  ],
+  "item_dependencies": [],
+  "items": [
+    {
+      "allow_nearest": false,
+      "display_name": null,
+      "enabled": true,
+      "engine_options": null,
+      "group_id": 1,
+      "id": 1,
+      "key": "youtube",
+      "package": "com.google.android.youtube",
+      "patch_overrides": {},
+      "position": 0,
+      "source_id": "morphe",
+      "variants": [
+        {
+          "abi": "universal",
+          "download": {
+            "arch": null,
+            "dpi": null,
+            "kind": "apkmirror",
+            "minver": null,
+            "type": "apk",
+            "url": null
+          },
+          "exclude_splits": null,
+          "name": "universal",
+          "strip_libs": null
+        }
+      ],
+      "version_mode": "auto",
+      "version_pin": null
+    }
+  ],
+  "sources": [
+    {
+      "cli_upstream_id": 1,
+      "engine": "morphe",
+      "id": "morphe",
+      "keystore": "morphe.keystore",
+      "name": "Morphe",
+      "upstream_id": 2
+    }
+  ],
+  "upstreams": [
+    {
+      "asset_regex": "^morphe-desktop-.*-all\\.jar$",
+      "channel": "stable",
+      "id": 1,
+      "kind": "cli",
+      "repo": "MorpheApp/morphe-desktop",
+      "tag": null
+    },
+    {
+      "asset_regex": "\\.mpp$",
+      "channel": "stable",
+      "id": 2,
+      "kind": "patches",
+      "repo": "MorpheApp/morphe-patches",
+      "tag": null
+    }
+  ]
+}

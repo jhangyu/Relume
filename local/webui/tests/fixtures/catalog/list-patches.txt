@@ -1,0 +1,1413 @@
+INFO: Index: 0
+Name: Clone app
+Description: Changes the app package name to allow installing the same app multiple times. By default ".morphe" is appended to the package name. Each cloned install must use a unique package name. Cloning does not work with all apps and using this patch may cause app crashes or other unexpected behavior.
+Enabled: false
+Options:
+	Title: packageName
+	Description: Package name to use for the cloned app.
+	Required: true
+	Key: packageName
+	Default: Default
+	Possible values:
+		Default (Default)
+	Type: kotlin.String
+	
+	Title: updatePermissions
+	Description: Update custom permissions declared by the app. Fixes installation conflicts, but can break features in certain apps.
+	Required: false
+	Key: updatePermissions
+	Default: true
+	Type: kotlin.Boolean
+	
+	Title: updateProviders
+	Description: Update provider names declared by the app. Fixes installation conflicts, but can break features in certain apps.
+	Required: false
+	Key: updateProviders
+	Default: true
+	Type: kotlin.Boolean
+
+Index: 1
+Name: Change installer source
+Description: Spoofs the installer source so the app appears to be installed from an app store.
+Enabled: false
+Options:
+	Title: packageInstallerName
+	Required: false
+	Key: packageInstallerName
+	Default: com.android.vending
+	Possible values:
+		com.android.vending (Google Play)
+		com.sec.android.app.samsungapps (Samsung Galaxy Store)
+		com.amazon.venezia (Amazon Appstore)
+		com.huawei.appmarket (Huawei AppGallery)
+		com.xiaomi.mipicks (Xiaomi GetApps)
+	Type: kotlin.String
+
+Index: 2
+Name: Override certificate pinning
+Description: Overrides certificate pinning, allowing to inspect traffic via a proxy.
+Enabled: false
+
+Index: 3
+Name: Spoof signature
+Description: Spoofs the package signature of the original APK.
+Enabled: false
+
+Index: 4
+Name: Disable Play Store updates
+Description: Disables Play Store updates by setting the version code to the maximum allowed. This patch may cause unexpected issues with some apps and does not work if the app is installed by root mounting
+Enabled: false
+
+Index: 73
+Name: Hide ads
+Description: Adds options to hide general ads, Premium promotions and video ads.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 74
+Name: Channel search
+Description: Adds an option to search inside the channel that is currently open instead of searching all of YouTube.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 75
+Name: Disable continue watching prompt
+Description: Adds an option to keep autoplay going instead of pausing with a "Continue watching" prompt after a period of inactivity.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 76
+Name: Copy text
+Description: Adds options to copy the video title and comments by tapping and holding them.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 77
+Name: Copy video link
+Description: Adds options to display buttons in the video player to copy video links.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 78
+Name: Remove viewer discretion dialog
+Description: Adds an option to remove the dialog that appears when opening a video that has been age-restricted by accepting it automatically. This does not bypass the age restriction.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 79
+Name: Disable double tap actions
+Description: Adds an option to disable player double tap gestures.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 80
+Name: Double tap to seek
+Description: Adds additional double-tap to seek values to the YouTube settings menu.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 81
+Name: Downloads
+Description: Adds support to download videos with an external downloader app using the in-app download button or a video player action button.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 82
+Name: Disable haptic feedback
+Description: Adds an option to disable haptic feedback in the player for various actions.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 83
+Name: Loop video
+Description: Adds an option to loop videos and display loop video button in the video player.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 84
+Name: Picture-in-picture button
+Description: Adds an option to display a picture-in-picture button in the video player.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 85
+Name: Play all
+Description: Adds an option to play all the videos from a channel and to display play all button in the video player.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 86
+Name: Reload video
+Description: Adds an option to display reload video button in the video player.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 87
+Name: Save to Watch later
+Description: Adds an option to display save to Watch later button in the video player.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 88
+Name: Seekbar
+Description: Adds options to show old seekbar thumbnails, disable precise seeking when swiping up on the seekbar, slide to seek instead of playing at 2x speed when pressing and holding, tapping the player seekbar to seek, hiding the video player seekbar, enabling seeking in live streams, and expanding the live stream DVR duration.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 89
+Name: Swipe controls
+Description: Adds options to enable and configure volume and brightness swipe controls.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 90
+Name: Custom branding
+Description: Adds options to change the app icon and app name. For mounted (root) installations the branding is applied while patching, because it cannot be changed from the app settings.
+Enabled: true
+Options:
+	Title: customName
+	Description: Custom app name.
+	Required: false
+	Key: customName
+	Type: kotlin.String
+	
+	Title: customIcon
+	Description: 
+	            Folder with images to use as a custom icon.
+            
+	            The folder must contain one or more of the following folders, depending on the DPI of the device:
+	            - mipmap-mdpi
+	- mipmap-hdpi
+	- mipmap-xhdpi
+	- mipmap-xxhdpi
+	- mipmap-xxxhdpi
+            
+	            Each of the folders must contain all of the following files:
+	            morphe_adaptive_background_custom.png
+	morphe_adaptive_foreground_custom.png
+            
+	            The image dimensions must be as follows:
+	            - mipmap-mdpi: 108x108 px
+	- mipmap-hdpi: 162x162 px
+	- mipmap-xhdpi: 216x216 px
+	- mipmap-xxhdpi: 324x324 px
+	- mipmap-xxxhdpi: 432x432 px
+	
+	            Optionally, the path contains a 'drawable' folder with a monochrome icon file:
+	            morphe_adaptive_monochrome_custom.xml
+	
+	            Optionally, the path contains a notification icon in one of the following formats:
+	            - XML vector drawable placed in 'drawable':
+	              morphe_notification_icon_custom.xml
+	            - PNG raster images placed in the matching 'drawable-<dpi>' folders:
+	              - drawable-mdpi/morphe_notification_icon_custom.png (24x24 px)
+	- drawable-hdpi/morphe_notification_icon_custom.png (36x36 px)
+	- drawable-xhdpi/morphe_notification_icon_custom.png (48x48 px)
+	- drawable-xxhdpi/morphe_notification_icon_custom.png (72x72 px)
+	- drawable-xxxhdpi/morphe_notification_icon_custom.png (96x96 px)
+        
+	Required: false
+	Key: customIcon
+	Type: kotlin.String
+	
+	Title: appIcon
+	Description: 
+	            The app icon to use, including the notification icon.
+	
+	            'Automatic' uses the custom icon if one is provided, and otherwise 'Black'.
+	            Select 'Original' to keep the icon of the unpatched app.
+	
+	            The icon can be changed later in the app settings, but only for the launcher.
+	            Android Auto, the app list of the system settings and the apk file always show
+	            the icon chosen here, and a mounted (root) installation can only change it by
+	            patching again.
+        
+	Required: false
+	Key: appIcon
+	Possible values:
+		null (Automatic)
+		original (Original)
+		black (Black)
+		dark (Dark)
+		light (Light)
+		play (Play)
+		play_black (Play black)
+		custom (Custom)
+	Type: kotlin.String
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 91
+Name: Change header
+Description: Adds an option to change the header logo in the top left corner of the app.
+Enabled: true
+Options:
+	Title: custom
+	Description: 
+	            Folder with images to use as a custom header logo.
+	
+	            The folder must contain one or more of the following folders, depending on the DPI of the device:
+	            - drawable-hdpi
+	- drawable-xhdpi
+	- drawable-xxhdpi
+	- drawable-xxxhdpi
+	
+	            Each of the folders must contain the following file(s):
+	            - morphe_header_custom_light.png
+	- morphe_header_custom_dark.png
+	
+	            Required dimensions:
+	            - drawable-hdpi: 194x72 px
+	- drawable-xhdpi: 258x96 px
+	- drawable-xxhdpi: 387x144 px
+	- drawable-xxxhdpi: 512x192 px
+        
+	Required: false
+	Key: custom
+	Type: kotlin.String
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 92
+Name: Hide video action buttons
+Description: Adds options to hide video action buttons in fullscreen and portrait modes.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 93
+Name: Navigation bar
+Description: Adds options to hide and change the bottom navigation bar (such as the Shorts button) and the upper navigation toolbar.
+Enabled: true
+Options:
+	Title: hideSearchAppShortcut
+	Description: Permanently hides the shortcut to open Search when long pressing the app icon in your launcher.
+	Required: false
+	Key: hideSearchAppShortcut
+	Default: false
+	Type: kotlin.Boolean
+	
+	Title: hideSubscriptionsAppShortcut
+	Description: Permanently hides the shortcut to open Subscriptions when long pressing the app icon in your launcher.
+	Required: false
+	Key: hideSubscriptionsAppShortcut
+	Default: false
+	Type: kotlin.Boolean
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 94
+Name: Hide player overlay buttons
+Description: Adds options to hide the player Cast, Autoplay, Captions, Previous & Next buttons, and to hide or change the opacity of the player control buttons background.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 95
+Name: Captions
+Description: Adds an option to disable captions from being automatically enabled or to set caption cookies.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 96
+Name: DeArrow
+Description: Adds options to replace video thumbnails and titles using the DeArrow API, or replace video thumbnails with image captures from the video.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 97
+Name: Disable layout updates
+Description: Adds an option to disable server side layout updates and use an older UI.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 98
+Name: Disable auto feed refresh
+Description: Adds an option to stop feeds from refreshing automatically after they become outdated.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 99
+Name: Add to queue
+Description: Overrides the feed flyout 'Play next in queue' with the Morphe video queue.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 100
+Name: Force system font
+Description: Adds an option to show the app with the device system font instead of YouTube Sans.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 101
+Name: Change form factor
+Description: Adds an option to change the UI appearance to a phone, tablet, or automotive device.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 102
+Name: Ambient mode
+Description: Adds options to bypass power saving restrictions for Ambient mode and disable it entirely or in fullscreen.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 103
+Name: Hide autoplay preview
+Description: Adds an option to hide the autoplay preview at the end of videos.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 104
+Name: Hide end screen cards
+Description: Adds an option to hide suggested video cards at the end of videos.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 105
+Name: Hide end screen suggested video
+Description: Adds an option to hide the suggested video at the end of videos.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 106
+Name: Hide layout components
+Description: Adds options to hide general layout components.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 107
+Name: Hide info cards
+Description: Adds an option to hide info cards that creators add in the video player.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 108
+Name: Hide player flyout menu components
+Description: Adds options to hide menu components that appear when pressing the gear icon in the video player.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 109
+Name: Disable player popup panels
+Description: Adds an option to disable panels (such as live chat) from opening automatically.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 110
+Name: Hide related video overlay
+Description: Adds an option to hide the related video overlay shown when swiping up in fullscreen.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 111
+Name: Hide related videos
+Description: Adds options to hide related videos.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 112
+Name: Disable rolling number animations
+Description: Adds an option to disable rolling number animations of video view count, user likes, and upload time.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 113
+Name: Settings menu filter
+Description: Adds an option to hide items on the standard YouTube settings screen by their visible name.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 114
+Name: Hide Shorts components
+Description: Adds options to hide components related to Shorts.
+Enabled: true
+Options:
+	Title: hideShortsAppShortcut
+	Description: Permanently hides the shortcut to open Shorts when long pressing the app icon in your launcher.
+	Required: false
+	Key: hideShortsAppShortcut
+	Default: false
+	Type: kotlin.Boolean
+	
+	Title: hideShortsWidget
+	Description: Permanently hides the launcher widget Shorts button.
+	Required: false
+	Key: hideShortsWidget
+	Default: false
+	Type: kotlin.Boolean
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 115
+Name: Disable sign in to TV popup
+Description: Adds options to disable the popups asking to sign into or connect to a TV on the same local network.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 116
+Name: Hide timestamp
+Description: Adds an option to hide the timestamp in the bottom left of the video player.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 117
+Name: Open channel of live avatar
+Description: Adds an option to prevent a channel's current live video from opening when tapping its avatar.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 118
+Name: Miniplayer
+Description: Adds options to change the in-app minimized player. Patching 21.28.206 and lower has more miniplayer types to choose from.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 119
+Name: Override YouTube Music buttons
+Description: Overrides YouTube Music buttons to open Morphe Music or any compatible third-party client.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 120
+Name: Restore original titles
+Description: Adds an option to show the original video titles, video descriptions and channel descriptions instead of the auto-translated ones.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 121
+Name: Playback in feeds
+Description: Adds the 'Playback in feeds' setting of YouTube to the Morphe settings, where it is always available even if YouTube hides it.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 122
+Name: Mute button
+Description: Adds an option to show a player button that mutes the video audio.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 123
+Name: Disable fullscreen gestures
+Description: Adds options to selectively disable gestures for entering and exiting fullscreen mode, and to disable pinch-to-zoom.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 124
+Name: Exit fullscreen mode
+Description: Adds options to automatically exit fullscreen mode when a video reaches the end.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 125
+Name: Force fullscreen landscape
+Description: Adds an option to rotate the player to landscape when entering fullscreen mode on tablets and other large screen devices.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 126
+Name: Fullscreen video scale
+Description: Adds options to stretch or zoom videos to fill the screen in fullscreen mode.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 127
+Name: Open videos fullscreen
+Description: Adds options to automatically open videos in fullscreen portrait or landscape mode.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 128
+Name: Player icon style
+Description: Adds an option to change the style of the player button icons.
+Enabled: true
+Options:
+	Title: customIcons
+	Description: 
+	    Zip file with icons to use as the 'Custom' icon style.
+	
+	    Each icon is named after the icon it replaces, such as 'morphe_yt_copy.xml'.
+	    An icon is a vector drawable (.xml), or a white square PNG image (.png, 96x96 pixels is recommended).
+	    Icons missing from the file keep the 'Automatic' style.
+	
+	Required: false
+	Key: customIcons
+	Type: kotlin.String
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 129
+Name: Custom player overlay opacity
+Description: Adds an option to change the opacity of the video player background when player controls are visible.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 130
+Name: Disable playlist autoplay
+Description: Adds an option to stop a playlist from automatically advancing to the next video.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 131
+Name: Return YouTube Dislike
+Description: Adds an option to show the dislike count of videos with Return YouTube Dislike.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 132
+Name: Disable scrolling speed limit
+Description: Adds an option to remove limits of how fast the home and subscription feed can be scrolled.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 133
+Name: Open system share sheet
+Description: Adds an option to always open the system share sheet instead of the in-app share sheet.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 134
+Name: Shorts autoplay
+Description: Adds options to automatically play the next Short.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 135
+Name: Shorts icon style
+Description: Adds an option to change the style of the Shorts action button icons.
+Enabled: true
+Options:
+	Title: customIcons
+	Description: 
+	    Zip file with icons to use as the 'Custom' icon style.
+	
+	    Each icon is named after the icon it replaces, such as 'morphe_shorts_heart.xml'.
+	    An icon is a vector drawable (.xml), or a white square PNG image (.png, 96x96 pixels is recommended).
+	    Icons missing from the file keep the 'Automatic' style.
+	
+	Required: false
+	Key: customIcons
+	Type: kotlin.String
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 136
+Name: Disable Shorts resuming on startup
+Description: Adds an option to disable Shorts from resuming on app startup when Shorts were last being watched.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 137
+Name: Open Shorts in regular player
+Description: Adds options to open Shorts in the regular video player.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 138
+Name: SponsorBlock
+Description: Adds options to enable and configure SponsorBlock, which can skip undesired video segments such as sponsored content.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 139
+Name: Change start page
+Description: Adds an option to set which page the app opens in instead of the homepage.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 140
+Name: Hide status bar
+Description: Adds an option to hide the system status bar. Swipe down from the top edge to show it for a moment.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 141
+Name: Theme
+Description: Adds options for theming, and settings to change the app foreground and background colors.
+Enabled: true
+Options:
+	Title: darkThemeColor
+	Description: Can be a hex color (#RRGGBB) or a color resource reference. Setting a color of either theme applies both while patching and removes the in-app theme color settings.
+	Required: false
+	Key: darkThemeColor
+	Default: in-app
+	Possible values:
+		in-app (Change in the app)
+		@android:color/black (Pure black)
+		@android:color/system_neutral1_900 (Material You (Neutral))
+		@android:color/system_accent1_800 (Material You (Primary))
+		@android:color/system_accent2_800 (Material You (Secondary))
+		@android:color/system_accent3_800 (Material You (Tertiary))
+		#0F0F0F (Modern YouTube)
+		#212121 (Classic YouTube)
+		#181825 (Catppuccin (Mocha))
+		#290025 (Dark pink)
+		#001029 (Dark blue)
+		#002905 (Dark green)
+		#282900 (Dark yellow)
+		#291800 (Dark orange)
+		#290000 (Dark red)
+	Type: kotlin.String
+	
+	Title: lightThemeColor
+	Description: Can be a hex color (#RRGGBB) or a color resource reference. Setting a color of either theme applies both while patching and removes the in-app theme color settings.
+	Required: false
+	Key: lightThemeColor
+	Default: in-app
+	Possible values:
+		in-app (Change in the app)
+		@android:color/white (White)
+		@android:color/system_neutral1_100 (Material You (Neutral))
+		@android:color/system_accent1_200 (Material You (Primary))
+		@android:color/system_accent2_200 (Material You (Secondary))
+		@android:color/system_accent3_200 (Material You (Tertiary))
+		#E6E9EF (Catppuccin (Latte))
+		#FCCFF3 (Light pink)
+		#D1E0FF (Light blue)
+		#CCFFCC (Light green)
+		#FDFFCC (Light yellow)
+		#FFE6CC (Light orange)
+		#FFD6D6 (Light red)
+	Type: kotlin.String
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 142
+Name: Bypass image region restrictions
+Description: Adds an option to use a different host for user avatar and channel images and can fix missing images that are blocked in some countries.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 143
+Name: Wide search bar
+Description: Adds a wide search bar to the top of the home and subscription feed.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 144
+Name: AI channel filter
+Description: Adds options to hide videos from channels flagged as AI-generated by the AiSList community list and to report AI channels from the video menu.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 145
+Name: Remove background playback restrictions
+Description: Removes restrictions on background playback, including playing kids videos in the background.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 146
+Name: Enable debugging
+Description: Adds options for debugging and exporting Morphe logs to the clipboard.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 147
+Name: Check watch history domain name resolution
+Description: Checks if the device DNS server is preventing user watch history from being saved.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 148
+Name: GmsCore support
+Description: Allows the app to work without root by using a different package name when patched using a GmsCore instead of Google Play Services.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 149
+Name: Bypass link redirects
+Description: Adds an option to bypass redirects and open the original link directly.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 150
+Name: Open links externally
+Description: Adds an option to always open links in your browser instead of with the in-app browser.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 151
+Name: Media notification controls
+Description: Adds options to disable the seekbar and previous/next buttons in the media notification and headphone controls.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 152
+Name: PoToken provider
+Description: Adds option to get PoToken using an external PoToken minter app.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 153
+Name: Sanitize sharing links
+Description: Removes the tracking query parameters from shared links.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 154
+Name: Network proxy
+Description: Adds settings to route supported network requests through an HTTP or HTTPS proxy. Including this patch may cause connectivity problems on certain devices
+Enabled: false
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 155
+Name: Disable QUIC protocol
+Description: Adds an option to disable QUIC (Quick UDP Internet Connections) network protocol.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 156
+Name: App refresh rate
+Description: Adds an option to change the app refresh rate.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 157
+Name: Spoof video streams
+Description: Adds options to spoof the client video streams to fix playback.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 158
+Name: Spoof app version
+Description: Adds an option to trick the app into thinking you are running an older version.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 159
+Name: Spoof device dimensions
+Description: Adds an option to spoof the device dimensions which can unlock higher video qualities.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 160
+Name: Channel whitelist
+Description: Adds options to allow whitelisting specific channels to show ads or override playback speeds.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 161
+Name: Disable DRC audio
+Description: Adds an option to disable DRC (Dynamic Range Compression) audio.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 162
+Name: Force original audio
+Description: Adds an option to always use the original audio track.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 163
+Name: Skip silence
+Description: Adds an option to automatically skip silent pauses in audio playback.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 164
+Name: Playback buffer
+Description: Adds an option to change the video playback buffer size.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 165
+Name: Disable video codecs
+Description: Adds options to disable or force HDR, and to disable VP9 codecs.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 166
+Name: Remember live stream playback position
+Description: Adds an option to remember the playback position of an ongoing live stream and resume from there when reopening that live stream.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 167
+Name: Video quality
+Description: Adds options to set default video qualities and always use the advanced video quality menu.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 168
+Name: Playback speed
+Description: Adds options to customize available playback speeds, set a default playback speed, and show a speed dialog button in the video player.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37
+
+Index: 169
+Name: Voice over translation
+Description: Adds additional voice over languages using text-to-speech synchronized to the video playback.
+Enabled: true
+Compatible packages:
+	Package name: com.google.android.youtube
+	Compatible versions:
+		21.20.405
+		21.16.256
+		20.51.39
+		20.21.37 

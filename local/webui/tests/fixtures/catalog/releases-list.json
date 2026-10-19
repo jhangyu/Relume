@@ -1,0 +1,8 @@
+[
+ {"tag_name": "v1.49.0-dev.1", "published_at": "2026-10-18T00:00:00Z", "draft": true, "prerelease": true,
+  "assets": [{"name": "patches-1.49.0-dev.1.mpp", "size": 5, "browser_download_url": "https://dl.invalid/a.mpp"}]},
+ {"tag_name": "v1.47.0", "published_at": "2026-10-10T00:00:00Z", "draft": false, "prerelease": false,
+  "assets": [{"name": "patches-1.47.0.mpp", "size": 5, "browser_download_url": "https://dl.invalid/b.mpp"}]},
+ {"tag_name": "v1.48.0-dev.3", "published_at": "2026-10-15T00:00:00Z", "draft": false, "prerelease": true,
+  "assets": [{"name": "patches-1.48.0-dev.3.mpp", "size": 5, "browser_download_url": "https://dl.invalid/c.mpp"}]}
+]
