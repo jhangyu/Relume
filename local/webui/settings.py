@@ -12,3 +12,6 @@ def put(key, value):
     with db.tx() as c:
         c.execute('INSERT INTO settings(key, value) VALUES (?, ?) '
                   'ON CONFLICT(key) DO UPDATE SET value=excluded.value', (key, json.dumps(value)))
+
+
+ROUTES = []

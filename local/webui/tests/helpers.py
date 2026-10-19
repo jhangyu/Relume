@@ -1,8 +1,13 @@
+import json
 import pathlib
 import tempfile
+import threading
+import types
 import unittest
+import urllib.error
+import urllib.request
 
-from webui import db, events, jobs
+from webui import db, events, jobs, server
 
 
 class DataTestCase(unittest.TestCase):
@@ -19,3 +24,41 @@ class DataTestCase(unittest.TestCase):
         db.migrate(self.schema_dir)
         events.reset()
         jobs.reset()
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **k):
+        return None
+
+
+_opener = urllib.request.build_opener(_NoRedirect)
+
+
+def serve(tc, names=()):
+    """Live server on 127.0.0.1:<free port>; names = module names or already-imported modules."""
+    mods = [server.load_modules([n])[0] if isinstance(n, str) else n for n in names]
+    srv = server.make_server(mods, '127.0.0.1', 0)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    tc.addCleanup(srv.server_close)
+    tc.addCleanup(srv.shutdown)
+    return f'http://127.0.0.1:{srv.server_address[1]}'
+
+
+def fake_request(method='GET', path='/', json=None, params=None, query=None, headers=None, session='test'):
+    """Route-handler input without HTTP (auth, CSRF and body parsing are tested in test_core_*)."""
+    return types.SimpleNamespace(method=method, path=path, json=json or {}, params=params or {},
+                                 query=query or {}, headers=headers or {}, session=session)
+
+
+def http(method, url, body=None, cookie=None, headers=None):
+    data = json.dumps(body).encode() if body is not None else None
+    h = {'Content-Type': 'application/json'} if method != 'GET' else {}
+    if cookie:
+        h['Cookie'] = cookie
+    h.update(headers or {})
+    req = urllib.request.Request(url, data=data, method=method, headers=h)
+    try:
+        with _opener.open(req, timeout=15) as r:
+            return r.status, dict(r.headers), r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, dict(e.headers), e.read()
