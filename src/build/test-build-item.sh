@@ -107,6 +107,24 @@ rm -rf "${T:?}/work" && mkdir -p "$T/work" && make_job '.' && rm "$SHIM_SERVE/in
 rc2=$(run_runner)
 if [ "$rc1" = 0 ] && [ "$rc2" = 0 ] && grep -q 'Input from cache' "$T/out.txt"; then pass runner_cache_hit; else fail runner_cache_hit "rc1=$rc1 rc2=$rc2"; fi
 # ---- inspect cases (Task P3.4) ----
+new_env
+o=$T/inspect
+(bash "$REPO/src/build/inspect.sh" "$T/up/morphe-desktop-1.0.0-all.jar" com.google.android.youtube "$o" "$T/up/patches-1.0.0.mpp" > "$T/out.txt" 2>&1)
+rc=$?
+if [ "$rc" = 0 ] && [ -s "$o/options.json" ] && [ -s "$o/list-patches.txt" ] &&
+	grep -q -- "options-create -p $T/up/patches-1.0.0.mpp -f com.google.android.youtube -o $o/options.json" "$SHIM_LOG" &&
+	grep -q -- "list-patches --with-packages --with-versions --with-options -f com.google.android.youtube --patches $T/up/patches-1.0.0.mpp" "$SHIM_LOG"; then
+	pass inspect_ok
+else fail inspect_ok "rc=$rc $(cat "$T/out.txt")"; fi
+
+new_env; export SHIM_EMPTY=1
+(bash "$REPO/src/build/inspect.sh" "$T/up/morphe-desktop-1.0.0-all.jar" com.google.android.youtube "$T/inspect" "$T/up/patches-1.0.0.mpp" > "$T/out.txt" 2>&1)
+rc=$?; unset SHIM_EMPTY
+if [ "$rc" = 1 ] && [ "$(grep -c '^\[-\]' "$T/out.txt")" = 1 ]; then pass inspect_empty; else fail inspect_empty "rc=$rc $(cat "$T/out.txt")"; fi
+
+(bash "$REPO/src/build/inspect.sh" only-two args > "$T/out.txt" 2>&1)
+rc=$?
+if [ "$rc" = 2 ] && grep -q '^\[-\] usage' "$T/out.txt"; then pass inspect_usage; else fail inspect_usage "rc=$rc"; fi
 
 [ "$fails" -eq 0 ] || { echo "$fails case(s) failed"; exit 1; }
 echo "ALL PASS"
