@@ -269,3 +269,100 @@ def to_json(row, with_detail=True):
 def get(job_id):
     r = db.conn().execute('SELECT * FROM jobs WHERE id=?', (job_id,)).fetchone()
     return to_json(r, with_detail=False) if r else None
+
+
+KEEPALIVE = 15
+
+
+def log_stream(job_id, offset=0):
+    path = db.DATA / 'logs' / f'{job_id}.log'
+    cond = log_condition(job_id)
+    last = time.monotonic()
+    while True:
+        row = db.conn().execute('SELECT status FROM jobs WHERE id=?', (job_id,)).fetchone()
+        done = row is None or row['status'] not in ('queued', 'running')
+        chunk = b''
+        if path.exists():
+            with open(path, 'rb') as f:
+                f.seek(offset)
+                chunk = f.read()
+            if not done:
+                chunk = chunk[:chunk.rfind(b'\n') + 1]
+        if chunk:
+            offset += len(chunk)
+            lines = chunk.decode('utf-8', 'replace').rstrip('\n').split('\n')
+            yield (f'id: {offset}\n' + ''.join(f'data: {x}\n' for x in lines) + '\n').encode()
+            last = time.monotonic()
+        if done:
+            yield f"event: end\ndata: {row['status'] if row else 'missing'}\n\n".encode()
+            return
+        with cond:
+            cond.wait(1)
+        if time.monotonic() - last >= KEEPALIVE:
+            yield b': keepalive\n\n'
+            last = time.monotonic()
+
+
+def _int(q, key):
+    from .server import HttpError
+    try:
+        return int(q[key])
+    except ValueError:
+        raise HttpError(400, f'invalid {key}')
+
+
+def list_route(req):
+    q, where, args = req.query, [], []
+    for key in ('kind', 'status'):
+        if key in q:
+            where.append(f'{key}=?')
+            args.append(q[key])
+    for key in ('item_id', 'device_id'):
+        if key in q:
+            where.append(f"json_extract(target,'$.{key}')=?")
+            args.append(_int(q, key))
+    if 'before_id' in q:
+        where.append('id<?')
+        args.append(_int(q, 'before_id'))
+    limit = max(1, min(_int(q, 'limit'), 100)) if 'limit' in q else 50  # LIMIT <0 = unlimited in SQLite
+    sql = 'SELECT * FROM jobs' + (' WHERE ' + ' AND '.join(where) if where else '') + ' ORDER BY id DESC LIMIT ?'
+    return 200, {'jobs': [to_json(r) for r in db.conn().execute(sql, (*args, limit))]}
+
+
+def _row_or_404(job_id):
+    from .server import HttpError
+    r = db.conn().execute('SELECT * FROM jobs WHERE id=?', (job_id,)).fetchone()
+    if r is None:
+        raise HttpError(404, 'job not found')
+    return r
+
+
+def get_route(req):
+    return 200, to_json(_row_or_404(req.params['id']))
+
+
+def cancel_route(req):
+    from .server import HttpError
+    _row_or_404(req.params['id'])
+    res = cancel(req.params['id'])
+    if res is None:
+        raise HttpError(409, 'job already finished')
+    return 200, {'status': res}
+
+
+def log_route(req):
+    from .server import SSEResponse
+    _row_or_404(req.params['id'])
+    try:
+        offset = max(0, int(req.headers.get('Last-Event-ID') or 0))
+    except ValueError:
+        offset = 0
+    return SSEResponse(log_stream(req.params['id'], offset))
+
+
+ROUTES = [
+    ('GET', '/api/jobs', list_route),
+    ('GET', '/api/jobs/{id}', get_route),
+    ('POST', '/api/jobs/{id}/cancel', cancel_route),
+    ('GET', '/api/jobs/{id}/log', log_route),
+]
