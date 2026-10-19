@@ -51,7 +51,7 @@ Events (`events.emit` / `events.subscribe`, core §5):
 
 | event | emitted by | payload | consumers |
 |---|---|---|---|
-| `upstream.new_version` | catalog (check or pull, once per new tag) | `{upstream_id, tag, item_ids}` | notifier |
+| `upstream.new_version` | catalog (check or pull, once per new tag) | `{upstream_id, tag, item_ids, job_id}` (`job_id` = the upstream job that ran the check; null for `POST /api/upstreams/check` and the CI check) | notifier |
 | `build.succeeded` | build | `{item_id, job_id, app_version, patches_version, artifacts}` | notifier, device (OTA after build) |
 | `build.failed` | build | `{item_id, job_id, fail_code, fail_detail}` | notifier |
 | `ota.done` | device | `{job_id, device_id, outcome}` | notifier |
@@ -531,7 +531,7 @@ For each upstream row (deduplicated):
 - Asset filter: `asset_regex` on `assets[].name`, defaults: patches `\.mpp$`, cli `^morphe-desktop-.*-all\.jar$` (seen: `local/work/morphe-1/morphe-desktop-1.18.1-all.jar`), always skip `\.asc$`; for `stable` also skip names containing `dev` (`utils.sh:90`).
 - Auth: the existing token file mounted read-only (`local/docker-compose.yml:45-52`); empty file = unauthenticated (60 req/h, `local/build.sh:8`). One check of all upstreams ≈ 18 requests (one per distinct repo+channel), within the unauthenticated budget once per hour.
 - Result: `latest_tag`, `latest_published_at`, `checked_at`, `check_error` (null on success). If `latest_tag != downloaded_tag` the source's items show "Update available".
-- Event: when `latest_tag != notified_tag`, emit `upstream.new_version {upstream_id, tag, item_ids}` once and set `notified_tag` (prevents a notification on every scheduled check). Notification delivery is arch-device's section.
+- Event: when `latest_tag != notified_tag`, emit `upstream.new_version {upstream_id, tag, item_ids, job_id}` once and set `notified_tag` (prevents a notification on every scheduled check). Notification delivery is arch-device's section.
 
 #### 5.2 Pull ("Update upstream" button and scheduled pull)
 1. Check (5.1). If `latest_tag == downloaded_tag`: done ("up to date") when the row is not a `patches` row or a `bundle_info` row exists for `(upstream_id, downloaded_tag, package)` for every package used by items of the sources on this upstream (the same package set as step 3); otherwise skip to step 3 (re-inspect).
@@ -557,7 +557,7 @@ The build never calls GitHub: `dl_gh`, `morphe_dl`-style functions and `src/etc/
 
 #### 5.4 Schedules
 The scheduler engine is core's (core §6). A pull is a core job: `kind='upstream'`, target `{"upstream_id":N}`, registered by `upstream.py` with `jobs.register('upstream', handler)`; its log shows each GitHub call, download and inspect step. Schedules of kind `upstream` target `{"source_ids":[…]}` or `{"all":true}` (expanded by `catalog.resolve_upstreams`), `options.pull` (default true) and `options.rebuild` (default true, Q4): enqueue `jobs.enqueue('build', {"item_id":N}, 'upstream')` for enabled items whose source got a new tag.
-"Check only" (no download) is the synchronous route `POST /api/upstreams/check` (≈18 GitHub requests, no job); it updates state and emits `upstream.new_version`.
+"Check only" (no download) is the synchronous route `POST /api/upstreams/check` (≈18 GitHub requests, no job); it updates state and emits `upstream.new_version` with `job_id` null.
 Seed: one daily schedule `{"every":"day","at":"09:00"}` of kind `upstream`, target all, `rebuild=true`, matching the existing CI cadence `0 9 * * *` (`.github/workflows/ci.yml:4-5`, kept by `.github/workflows/build.yml`, ci §5).
 
 ### 6. Interfaces summary
@@ -844,7 +844,7 @@ Owned by other parts: `src/options/*`, `src/patches/*`, `src/build/helper/apps.j
 - APKMirror versions: a `::apkm_versions::` line from a fake runner → `app.apkmirror_versions` set; runner self-check with `versions_due=false` and a pinned version makes no list-page fetch (fetch shim records calls).
 - Failure classification test: fake runner scripts that print each `::fail::` code / no marker / exit 0 without result.json → expected `fail_code`.
 - Engine cases (LSPatch/NPatch argv, output-dir rule, unknown keystore): xposed §11.
-- One live end-to-end (user-run, long): morphe YouTube item builds, artifact name carries app + patches version, `apksigner verify` passes (as `docs/superpowers/specs/2026-10-12-local-docker-build-design.md` acceptance 2).
+- One live end-to-end (user-run, long): morphe YouTube item builds, artifact name carries app + patches version, `apksigner verify` passes.
 
 ### 9. User decisions (build)
 
@@ -941,7 +941,7 @@ Secrets (`bot_token`, `webhook_url`, ntfy `token`) are write-only through the AP
 
 #### 3.3 Events
 
-Consumed (core event bus): `build.succeeded {item_id, job_id, ...}`, `build.failed {item_id, job_id, fail_code, fail_detail}`, `upstream.new_version {upstream_id, tag, item_ids}`. Scheduled OTA arrives as a core job, not an event.
+Consumed (core event bus): `build.succeeded {item_id, job_id, ...}`, `build.failed {item_id, job_id, fail_code, fail_detail}`, `upstream.new_version {upstream_id, tag, item_ids, job_id}`. Scheduled OTA arrives as a core job, not an event.
 Emitted: `ota.done {job_id, device_id, outcome}` (outcome `done`/`partial`), `ota.failed {job_id, device_id, reason}`, `device.offline {job_id, device_id}` (only when a scheduled/after-build job is skipped).
 Notifier event names = these names; default toggles for a new channel: all except `device.offline`.
 
@@ -981,7 +981,7 @@ The connect port is random per enable of Wireless debugging (RT §5, inference).
 `after_build`: on `build.succeeded(item_id)`, every device with `ota_after_build` and that item assigned gets a job limited to that item.
 
 #### 4.4 Notification
-Event → notifier subscriber → `queue.Queue.put` (returns at once, in the emitting worker or request thread) → notifier thread → if the channel is enabled, subscribed to the event, and the event's job does not carry `options.notify = false` (core §6): one HTTPS POST (§6), timeout 10 s, 3 attempts with backoff (honor Telegram `parameters.retry_after` and Discord 429). Failure is logged. Because sending happens only on the notifier thread, a slow or down provider never holds the build or OTA worker or the synchronous `POST /api/upstreams/check` request. Under the CLI start-up (no `start()`, core §3) events queue and are never sent; CI has no channel configured. The queue is in memory: events still queued at a server stop are lost.
+Event → notifier subscriber → `queue.Queue.put` (returns at once, in the emitting worker or request thread) → notifier thread → if the channel is enabled, subscribed to the event, and the event's job (payload `job_id`, every event kind incl. `upstream.new_version`) does not carry `options.notify = false` (core §6; `job_id` null = sent): one HTTPS POST (§6), timeout 10 s, 3 attempts with backoff (honor Telegram `parameters.retry_after` and Discord 429). Failure is logged. Because sending happens only on the notifier thread, a slow or down provider never holds the build or OTA worker or the synchronous `POST /api/upstreams/check` request. Under the CLI start-up (no `start()`, core §3) events queue and are never sent; CI has no channel configured. The queue is in memory: events still queued at a server stop are lost.
 
 ### 5. Error handling
 
