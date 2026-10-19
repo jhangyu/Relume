@@ -48,6 +48,7 @@ services:
     image: rv-local-app
     network_mode: service:netns
     depends_on: [netns, flaresolverr, cfbypass, apkmsolver]
+    init: true  # reaps orphaned grandchildren of killed jobs (PID 1 is python3 -m webui)
     user: "${RV_UID:-0}:${RV_GID:-0}"
     environment:
       HOME: /data/home
