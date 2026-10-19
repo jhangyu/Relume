@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+echo "curl $*" >> "${SHIM_LOG:-/dev/null}"
+exit 7

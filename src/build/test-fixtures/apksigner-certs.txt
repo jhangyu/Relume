@@ -1,0 +1,5 @@
+Signer #1 certificate DN: CN=Morphe
+Signer #1 certificate SHA-256 digest: b1901f3565b6afefe8e4ee773c17de36a24016a8e6d9b648f5f0cedde42f84e9
+Signer #1 certificate SHA-1 digest: ababe400f8d2460988c7eafe274759c5bdc29141
+Signer #1 certificate MD5 digest: da2ff3bf419b8296a8e037405e344991
+WARNING: No SourceStamp signature

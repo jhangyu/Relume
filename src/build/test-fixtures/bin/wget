@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Serves https://fixture.invalid/<f> from $SHIM_SERVE; every other URL fails (offline test).
+echo "wget $*" >> "${SHIM_LOG:-/dev/null}"
+out="" url="" prev=""
+for a in "$@"; do
+	case $prev in -O) out=$a ;; esac
+	case $a in https://*|http://*) url=$a ;; esac
+	prev=$a
+done
+case $url in
+https://fixture.invalid/*)
+	src="$SHIM_SERVE/${url#https://fixture.invalid/}"
+	[ -f "$src" ] || exit 8
+	if [ -z "$out" ] || [ "$out" = - ]; then cat "$src"; else cp "$src" "$out"; fi
+	;;
+*) exit 4 ;;
+esac

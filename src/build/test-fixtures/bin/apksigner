@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+echo "apksigner $*" >> "${SHIM_LOG:-/dev/null}"
+cat "$SHIM_FIXTURES/apksigner-certs.txt"

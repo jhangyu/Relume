@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Test stand-in for java (spec build §8): replays captured output, copies inputs.
+echo "java $*" >> "${SHIM_LOG:-/dev/null}"
+[ "$1" = -jar ] || exit 2
+shift 2
+case "$1" in
+patch)
+	out="" in=""
+	for a in "$@"; do case $a in --out=*) out=${a#--out=} ;; esac; in=$a; done
+	if [ "${SHIM_PATCH_FAIL:-0}" = 1 ]; then echo "SEVERE: shim patch failure"; exit 1; fi
+	cp "$in" "$out"
+	;;
+list-patches)
+	[ "${SHIM_EMPTY:-0}" = 1 ] && exit 0
+	cat "${SHIM_LIST_PATCHES:-$SHIM_FIXTURES/list-patches.txt}"
+	;;
+options-create)
+	out="" prev=""
+	for a in "$@"; do [ "$prev" = -o ] && out=$a; prev=$a; done
+	[ "${SHIM_EMPTY:-0}" = 1 ] && exit 0
+	printf '[{"patches":{}}]\n' > "$out"
+	;;
+info) cat "$SHIM_FIXTURES/apkeditor-info.txt" ;;
+m)
+	in="" out="" prev=""
+	for a in "$@"; do case $prev in -i) in=$a ;; -o) out=$a ;; esac; prev=$a; done
+	out=$(realpath -m "$out")
+	if [ -d "$in" ]; then (cd "$in" && zip -qr "$out" .); else cp "$in" "$out"; fi
+	;;
+*) echo "java shim: unknown command $1" >&2; exit 2 ;;
+esac
