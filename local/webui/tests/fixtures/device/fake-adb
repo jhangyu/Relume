@@ -1,0 +1,28 @@
+"""Fake adb for tests. Run as: python3 fake-adb <adb args>. Rules: see device_helpers.FakeAdb."""
+import json
+import os
+import sys
+import threading
+
+d = os.environ['FAKE_ADB_DIR']
+argv = sys.argv[1:]
+with open(os.path.join(d, 'argv.log'), 'a', encoding='utf-8') as f:
+    f.write(json.dumps(argv) + '\n')
+path = os.path.join(d, 'rules.json')
+with open(path, encoding='utf-8') as f:
+    rules = json.load(f)
+for i, r in enumerate(rules):
+    if all(t in argv for t in r['match']):
+        if r.get('times') is not None:
+            r['times'] -= 1
+            if r['times'] <= 0:
+                rules.pop(i)
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(rules, f)
+        if r.get('hang'):
+            threading.Event().wait(60)
+        if r.get('delay'):
+            threading.Event().wait(r['delay'])
+        sys.stdout.write(r.get('out', ''))
+        sys.exit(r.get('rc', 0))
+sys.exit(0)

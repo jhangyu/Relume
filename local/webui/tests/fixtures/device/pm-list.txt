@@ -1,0 +1,3 @@
+package:com.google.android.youtube
+package:app.revanced.android.gms
+package:com.android.settings
