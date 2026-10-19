@@ -76,4 +76,4 @@ class H(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
-ThreadingHTTPServer(("0.0.0.0", int(sys.argv[1])), H).serve_forever()
+ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()

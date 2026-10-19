@@ -1,49 +1,71 @@
-# No `ports:` anywhere: all services share flaresolverr's network namespace,
-# so the builder reaches both sidecars on localhost and nothing is published to the host.
+# One compose file for macOS (RV_NETWORK_MODE=bridge) and Linux (host). Spec core §1.
+# netns holds the network namespace; app and the three sidecars join it and reach each other on 127.0.0.1.
 name: rv-local
 services:
+  netns:
+    image: busybox:1.38.0-musl
+    command: ["tail", "-f", "/dev/null"]
+    network_mode: ${RV_NETWORK_MODE:?set RV_NETWORK_MODE in local/.env}
+    ports: ["${RV_WEB_PORT:-47000}:47000"]
+    restart: unless-stopped
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest
+    network_mode: service:netns
+    depends_on: [netns]
     environment:
+      HOST: "127.0.0.1"
       PORT: "47191"
+    restart: unless-stopped
   cfbypass:
     build:
       # pinned upstream commit; its Dockerfile is multi-arch (ubuntu:rolling + CloakBrowser linux-arm64)
       context: https://github.com/sarperavci/CloudflareBypassForScraping.git#0f628b9ccbea9ab69ca61bc1c896c2ef766a0f06
     image: rv-local-cfbypass:0f628b9
     # upstream has CMD (no ENTRYPOINT); the entrypoint forwards args to server.py
-    command: ["/app/docker-entrypoint.sh", "--port", "47800"]
+    command: ["/app/docker-entrypoint.sh", "--host", "127.0.0.1", "--port", "47800"]
     shm_size: 2g
-    network_mode: service:flaresolverr
-    depends_on: [flaresolverr]
+    network_mode: service:netns
+    depends_on: [netns]
+    restart: unless-stopped
   apkmsolver:
     # headed CloakBrowser Turnstile solver for APKMirror downloads; same image as cfbypass, own entrypoint starts Xvfb
     build:
-      # same build as cfbypass so a fresh host builds the image instead of trying to pull it
       context: https://github.com/sarperavci/CloudflareBypassForScraping.git#0f628b9ccbea9ab69ca61bc1c896c2ef766a0f06
     image: rv-local-cfbypass:0f628b9
     entrypoint: ["sh", "/solver/xrun.sh"]
     command: ["/app/venv/bin/python3", "-u", "/solver/solver.py", "47900"]
     shm_size: 2g
-    network_mode: service:flaresolverr
-    depends_on: [flaresolverr, cfbypass]
+    network_mode: service:netns
+    depends_on: [netns, cfbypass]
     volumes:
       # only the solver code: the browser container must not see the repo (token file)
       - ./solver:/solver:ro
-  builder:
+    restart: unless-stopped
+  app:
     build:
       context: ..
       dockerfile: local/Dockerfile
-    image: rv-local-builder
-    network_mode: service:flaresolverr
-    depends_on: [flaresolverr, cfbypass, apkmsolver]
+    image: rv-local-app
+    network_mode: service:netns
+    depends_on: [netns, flaresolverr, cfbypass, apkmsolver]
+    user: "${RV_UID:-0}:${RV_GID:-0}"
     environment:
-      FLARESOLVERR_PORT: "47191"
-      CFBYPASS_PORT: "47800"
-      APKM_SOLVER_PORT: "47900"
+      HOME: /data/home
+      TZ: ${TZ:-UTC}
+      RV_NETWORK_MODE: ${RV_NETWORK_MODE}
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONPATH: /repo/local
+      FLARESOLVERR_URL: http://127.0.0.1:47191
+      CFBYPASS_URL: http://127.0.0.1:47800
+      APKM_SOLVER_URL: http://127.0.0.1:47900
     volumes:
-      - ..:/repo
-      # token file is created by build.sh; create_host_path: false stops Docker from creating a directory there
+      - ..:/repo:ro
+      # create_host_path: false: a missing dir would be created root-owned; the user creates it (.env.example)
+      - type: bind
+        source: ${RV_DATA_DIR:-./data}
+        target: /data
+        bind:
+          create_host_path: false
       - type: bind
         source: ${RV_GITHUB_TOKEN_FILE:-../src/keystore/github_token}
         target: /run/secrets/github_token
@@ -51,3 +73,9 @@ services:
         bind:
           create_host_path: false
     working_dir: /repo
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:47000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
