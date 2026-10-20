@@ -16,7 +16,7 @@ RUNNER = str(REPO_ROOT / "src" / "build" / "build-item.sh")
 CATALOG = None  # test seam; None -> webui.catalog (imported at call time)
 FAIL_CODES = ("upstream_missing", "version_unresolved", "apk_not_listed", "download_failed",
               "merge_failed", "patch_failed", "timeout", "internal")
-ENV_KEYS = ("PATH", "HOME", "TZ", "LANG", "FLARESOLVERR_URL", "CFBYPASS_URL", "APKM_SOLVER_URL")
+ENV_KEYS = ("PATH", "TZ", "LANG", "FLARESOLVERR_URL", "CFBYPASS_URL", "APKM_SOLVER_URL")
 _steps = {}
 _steps_lock = threading.Lock()
 
@@ -33,9 +33,10 @@ def now_iso():
 
 
 def runner_env():
-    """X10: no GITHUB_TOKEN, the runner executes third-party patch code (spec L779)."""
+    """X10: no GITHUB_TOKEN, the runner executes third-party patch code (spec L779). HOME is set per job to its
+    work dir: the server's HOME holds the adb key."""
     env = {k: os.environ[k] for k in ENV_KEYS if k in os.environ}
-    env["RV_APK_CACHE"] = str(db.DATA / "apk-cache")
+    env["RV_APK_CACHE"] = jobs.runner_path(db.DATA / "apk-cache")
     return env
 
 
@@ -131,7 +132,11 @@ def handler(job, log):
         for name in cat.stale_overrides(item_id):
             log.line(f"[!] stale override dropped: {name}")
         work.mkdir(parents=True, exist_ok=True)
-        (work / "job.json").write_text(json.dumps(dict(inp, job_id=job.id, work_dir=str(work)), indent=2))
+        work.chmod(0o770)  # the isolated runner uid shares the server's gid
+        rp = jobs.runner_path
+        rwork = rp(work)
+        (work / "job.json").write_text(json.dumps(dict(inp, job_id=job.id, work_dir=rwork, cli_jar=rp(inp["cli_jar"]),
+                                                       patches_files=[rp(f) for f in inp["patches_files"]]), indent=2))
         if inp["options_file_json"] is not None:
             (work / "options.json").write_text(json.dumps(inp["options_file_json"]))
         with db.tx() as c:
@@ -142,7 +147,8 @@ def handler(job, log):
             _fail(job, item_id, "upstream_missing", f"missing file {Path(missing[0]).name}")
         m = _Markers(job.id, inp["package"])
         try:
-            rc = log.run(["bash", RUNNER, str(work / "job.json")], cwd=str(work), env=runner_env(), timeout=3600, on_line=m.feed)
+            rc = log.run(jobs.isolate(["bash", RUNNER, rp(work / "job.json")]), cwd=rwork,
+                         env=dict(runner_env(), HOME=rwork), timeout=3600, on_line=m.feed)
         except jobs.JobFailed as e:
             if str(e) == "timeout":
                 _fail(job, item_id, "timeout", "runner exceeded 3600 s")
@@ -187,6 +193,7 @@ def start():
     if w.is_dir():
         for d in w.iterdir():
             shutil.rmtree(d, ignore_errors=True)
+    (db.DATA / "apk-cache").chmod(0o770)  # the isolated runner (same gid) writes the APK cache
 
 
 def run_retention(item_id=None):

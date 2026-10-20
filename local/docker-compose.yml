@@ -49,9 +49,20 @@ services:
     network_mode: service:netns
     depends_on: [netns, flaresolverr, cfbypass, apkmsolver]
     init: true  # reaps orphaned grandchildren of killed jobs (PID 1 is python3 -m webui)
-    user: "${RV_UID:-0}:${RV_GID:-0}"
+    # Spec L779: patch code must not read the token, adb key, adb server or database. Build children run as
+    # RV_RUNNER_UID (jobs.isolate). The container starts as root only so setpriv can drop the server to RV_UID:RV_GID
+    # while keeping the capabilities it needs for that: setuid/setgid (switch uid), kill (cancel), dac_override
+    # (enter /private, clean up runner files).
+    user: "0:0"
+    command: ["setpriv", "--reuid=${RV_UID:-0}", "--regid=${RV_GID:-0}", "--clear-groups",
+              "--inh-caps=+setuid,+setgid,+kill,+dac_override", "--ambient-caps=+setuid,+setgid,+kill,+dac_override",
+              "python3", "-m", "webui"]
     environment:
-      HOME: /data/home
+      HOME: /private/data/home
+      RV_DATA: /private/data
+      RV_RUNNER_UID: "10001"
+      RV_RUNNER_DATA: /data
+      ADB_SERVER_SOCKET: localfilesystem:/private/adb.sock
       TZ: ${TZ:-UTC}
       RV_NETWORK_MODE: ${RV_NETWORK_MODE}
       PYTHONDONTWRITEBYTECODE: "1"
@@ -61,14 +72,44 @@ services:
       APKM_SOLVER_URL: http://127.0.0.1:47900
     volumes:
       - ..:/repo:ro
+      # the default data dir lies inside the repo: hide it from /repo (local/data must exist, see .env.example)
+      - type: tmpfs
+        target: /repo/local/data
+      # Root-only 0700 tmpfs: the kernel enforces it, file modes on Docker Desktop bind mounts are not enforced.
+      # Holds what the runner uid must not reach: database, HOME with the adb key, adb server socket.
+      - type: tmpfs
+        target: /private
+        tmpfs:
+          mode: 0o700
       # create_host_path: false: a missing dir would be created root-owned; the user creates it (.env.example)
       - type: bind
         source: ${RV_DATA_DIR:-./data}
-        target: /data
+        target: /private/data
+        bind:
+          create_host_path: false
+      # the runner's view of DATA (RV_RUNNER_DATA): only these three subdirectories
+      - type: bind
+        source: ${RV_DATA_DIR:-./data}/work
+        target: /data/work
         bind:
           create_host_path: false
       - type: bind
-        source: ${RV_GITHUB_TOKEN_FILE:-../src/keystore/github_token}
+        source: ${RV_DATA_DIR:-./data}/apk-cache
+        target: /data/apk-cache
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${RV_DATA_DIR:-./data}/upstream
+        target: /data/upstream
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: tmpfs
+        target: /run/secrets
+        tmpfs:
+          mode: 0o700
+      - type: bind
+        source: ${RV_GITHUB_TOKEN_FILE:-./data/github_token}
         target: /run/secrets/github_token
         read_only: true
         bind:

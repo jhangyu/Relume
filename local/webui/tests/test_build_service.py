@@ -222,6 +222,37 @@ class HandlerFailTest(BuildCase):
         self.assertEqual(list((self.data / "work").iterdir()), [])
 
 
+class IsolationTest(BuildCase):
+    """Spec L779: patch code runs as RV_RUNNER_UID, sees DATA through RV_RUNNER_DATA (compose: /data), keeps no caps.
+    T_PY runs as root, so setpriv can switch uid here."""
+
+    def test_runner_uid_paths_and_secret(self):
+        os.chmod(self.data, 0o755)  # TemporaryDirectory is 0700; in compose the runner gets its own mounts instead
+        view = self.data / "view"
+        view.symlink_to(self.data)  # a second path to DATA, as the compose runner mounts are
+        secret = self.data / "secret"
+        secret.write_text("s")
+        secret.chmod(0o600)
+        script = self.data / "runner-id.sh"
+        script.write_text(f'echo "UID $(id -u)"; echo "HOME $HOME"; echo "WORK $(jq -r .work_dir "$1")"\n'
+                          f'echo "CLI $(jq -r .cli_jar "$1")"; echo "CACHE $RV_APK_CACHE"; grep CapEff /proc/self/status\n'
+                          f'cat {secret} 2>/dev/null && echo LEAK || echo DENIED; touch out && echo WROTE\n')
+        build.RUNNER = str(script)
+        with mock.patch.dict(os.environ, {"RV_RUNNER_UID": "10001", "RV_RUNNER_DATA": str(view)}):
+            job, log, err = self.run_handler()
+        work = f"{view}/work/{job.id}"
+        self.assertEqual(log.argv[:2], ["setpriv", "--reuid=10001"])
+        for want in ("UID 10001", f"HOME {work}", f"WORK {work}", f"CLI {view}/up/morphe-desktop-1.0.0-all.jar",
+                     f"CACHE {view}/apk-cache", "CapEff:\t0000000000000000", "DENIED", "WROTE"):
+            self.assertIn(want, log.lines)
+        self.assertFalse((self.data / "work" / str(job.id)).exists())
+
+    def test_unset_runs_unchanged(self):
+        job, log, err = self.run_handler("runner-noresult.sh")
+        self.assertEqual(log.argv[0], "bash")
+        self.assertTrue(log.argv[2].startswith(str(self.data)))
+
+
 class HandlerOkTest(BuildCase):
     def test_success_registers_artifacts(self):
         job, log, err = self.run_handler()
