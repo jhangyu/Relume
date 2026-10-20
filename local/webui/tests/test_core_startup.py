@@ -56,3 +56,15 @@ class StartupTest(DataTestCase):
         with contextlib.redirect_stderr(err):
             self.assertEqual(cli.main(['bogus']), 2)
         self.assertIn('usage', err.getvalue())
+
+
+class EmptyVolumeTest(DataTestCase):
+    def test_boot_creates_dirs_with_modes(self):
+        fresh = self.data / 'vol'          # does not exist: an empty, unprepared data volume
+        with mock.patch.dict('os.environ', {'RV_DATA': str(fresh)}):
+            cli.boot(names=[])
+        for d in db.SUBDIRS + ('secrets',):
+            self.assertTrue((fresh / d).is_dir(), d)
+        modes = {d: (fresh / d).stat().st_mode & 0o777 for d in ('secrets', 'home', 'work', 'apk-cache')}
+        self.assertEqual(modes, {'secrets': 0o700, 'home': 0o700, 'work': 0o770, 'apk-cache': 0o770})
+        self.assertTrue((fresh / 'webui.db').is_file())

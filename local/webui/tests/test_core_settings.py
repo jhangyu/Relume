@@ -1,4 +1,4 @@
-import contextlib, io, json, pathlib, sys, tempfile, types
+import contextlib, io, json, os, pathlib, subprocess, sys, tempfile, types
 from unittest import mock
 from webui import settings
 from webui.tests.helpers import DataTestCase, serve, http, login
@@ -78,3 +78,43 @@ class SettingsTest(DataTestCase):
         disk = self.get()['server']['disk']
         self.assertEqual((disk['artifacts'], disk['artifacts_count'], disk['logs']), (10, 1, 3))
         self.assertGreater(disk['total'], 0)
+
+
+def as_runner(cmd):
+    """Run sh -c cmd as the isolated runner uid 10001 (same gid, no groups), like jobs.isolate."""
+    return subprocess.run(['setpriv', '--reuid=10001', f'--regid={os.getgid()}', '--clear-groups', 'sh', '-c', cmd],
+                          capture_output=True, text=True).stdout.strip()
+
+
+class UiTokenTest(SettingsTest):
+    """Token entered on the Settings page: write-only, preferred over the mounted file, unreadable by the runner."""
+
+    def put(self, body):
+        return http('PUT', self.base + '/api/settings', body, cookie=self.c)
+
+    def test_put_token_used_never_returned(self):
+        st, _, body = self.put({'github_token': 'github_pat_UI9876'})
+        self.assertEqual(st, 200)
+        self.assertNotIn(b'github_pat_UI9876', body)
+        self.assertNotIn(b'github_pat_UI9876', http('GET', self.base + '/api/settings', cookie=self.c)[2])
+        self.assertEqual(settings.github_token(), 'github_pat_UI9876')     # UI token wins over the file
+        g = self.get('?recheck=1')['github']
+        self.assertEqual((g['state'], g['source'], g['token_hint']), ('authenticated', 'ui', '****9876'))
+        self.assertEqual(self.fetch.call_args[0][0], 'github_pat_UI9876')
+        self.put({'github_token': ''})                                       # clear -> file fallback
+        self.assertEqual(settings.github_token(), 'ghp_abcdefgh1234')
+        self.assertEqual(self.get('?recheck=1')['github']['source'], 'file')
+        settings.TOKEN_PATH.unlink()
+        self.assertEqual(self.get('?recheck=1')['github']['state'], 'absent')
+        for bad in ('has space', 'x' * 256, 5, 'a\nb'):
+            self.assertEqual(self.put({'github_token': bad})[0], 400, bad)
+
+    def test_token_modes_and_runner_denied(self):
+        self.put({'github_token': 'ghp_secret1234'})
+        f = settings.ui_token_path()
+        self.assertEqual((f.stat().st_mode & 0o777, f.parent.stat().st_mode & 0o777), (0o600, 0o700))
+        if os.geteuid() != 0:
+            self.skipTest('setpriv needs root (T_PY runs as root)')
+        os.chmod(self.data, 0o755)  # TemporaryDirectory is 0700: open it so only the secrets modes are under test
+        self.assertEqual(as_runner(f'ls {self.data} >/dev/null || echo NO; echo SEES_DATA'), 'SEES_DATA')  # instrument
+        self.assertEqual(as_runner(f'cat {f} 2>/dev/null || echo DENIED'), 'DENIED')

@@ -1,3 +1,4 @@
+import os
 import sys
 
 from . import auth, db, jobs, scheduler, server, settings
@@ -5,8 +6,26 @@ from . import auth, db, jobs, scheduler, server, settings
 USAGE = 'usage: python3 -m webui [serve|reset-password|ci-plan|ci-build|export-seed]'
 
 
+# Modes of the data subdirectories, set at every boot so an empty volume needs no host preparation. The server
+# creates them, so they are owned by the server uid. The isolated runner (other uid, same gid) writes work and
+# apk-cache; secrets (UI GitHub token) and home (adb key) are the server's only.
+DIR_MODES = {'secrets': 0o700, 'home': 0o700, 'work': 0o770, 'apk-cache': 0o770}
+
+
+def prepare_data():
+    for d in db.SUBDIRS + ('secrets',):
+        p = db.DATA / d
+        p.mkdir(parents=True, exist_ok=True)
+        if d in DIR_MODES:
+            try:
+                p.chmod(DIR_MODES[d])
+            except PermissionError:  # dir owned by another uid (e.g. made by `exec` as root): keep its mode
+                print(f'cannot set mode of {p}: not owned by uid {os.getuid()}', flush=True)
+
+
 def boot(start=False, names=None):
     db.init()
+    prepare_data()
     db.migrate()
     mods = server.load_modules(server.MODULES if names is None else names)
     by_name = {m.__name__.rsplit('.', 1)[1]: m for m in mods}

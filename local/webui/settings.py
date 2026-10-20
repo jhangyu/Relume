@@ -18,6 +18,7 @@ RATE_URL = 'https://api.github.com/rate_limit'
 _gh_cache = {}
 _gh_lock = threading.Lock()
 LIMITS = {'job_history_count': (1, 100000), 'artifact_retention': (1, 100)}
+TOKEN_RE = re.compile(r'[A-Za-z0-9_]{0,255}\Z')  # GitHub classic and fine-grained tokens; '' clears
 
 
 def get(key, default=None):
@@ -31,11 +32,47 @@ def put(key, value):
                   'ON CONFLICT(key) DO UPDATE SET value=excluded.value', (key, json.dumps(value)))
 
 
-def github_token():
+def ui_token_path():
+    """Token entered on the Settings page. DATA sits in the root-only /private tmpfs (compose), and the
+    secrets dir is 0700 / the file 0600, so the isolated runner uid cannot read it."""
+    return db.DATA / 'secrets' / 'github_token'
+
+
+def _read(p):
     try:
-        return TOKEN_PATH.read_text().strip() if TOKEN_PATH.is_file() else ''
+        return p.read_text().strip() if p.is_file() else ''
     except OSError:
         return ''
+
+
+def _token_source():
+    """(token, source): the UI-stored token first, else the optional mounted file TOKEN_PATH."""
+    t = _read(ui_token_path())
+    if t:
+        return t, 'ui'
+    return _read(TOKEN_PATH), 'file' if TOKEN_PATH.is_file() else None
+
+
+def github_token():
+    return _token_source()[0]
+
+
+def set_github_token(token):
+    """'' deletes the UI token (the mounted file, if any, applies again)."""
+    f = ui_token_path()
+    f.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    f.parent.chmod(0o700)
+    if not token:
+        f.unlink(missing_ok=True)
+    else:
+        tmp = f.with_name(f.name + '.tmp')
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, 'w') as fh:
+            fh.write(token + '\n')
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, f)
+    with _gh_lock:
+        _gh_cache.clear()
 
 
 def check_token_file():
@@ -59,10 +96,10 @@ def github_status(recheck=False):
         hit = _gh_cache.get('v')
         if hit and not recheck and time.monotonic() - _gh_cache['at'] < 300:
             return hit
-    present = TOKEN_PATH.is_file()
-    token = github_token()
+    token, source = _token_source()
+    present = source is not None
     v = dict.fromkeys(('limit', 'remaining', 'reset_at', 'expires_at', 'scopes'))
-    v.update(path=str(TOKEN_PATH), token_hint='****' + token[-4:] if token else None)
+    v.update(path=str(TOKEN_PATH), source=source, token_hint='****' + token[-4:] if token else None)
     try:
         status, body, headers = fetch_rate_limit(token)
     except OSError as e:
@@ -113,8 +150,10 @@ def get_route(req):
 def put_route(req):
     from .server import HttpError
     b = req.json
-    if not isinstance(b, dict) or set(b) - {'job_history_count', 'base_url', 'artifact_retention'}:
+    if not isinstance(b, dict) or set(b) - {'job_history_count', 'base_url', 'artifact_retention', 'github_token'}:
         raise HttpError(400, 'unknown setting')
+    if 'github_token' in b and not (isinstance(b['github_token'], str) and TOKEN_RE.match(b['github_token'])):
+        raise HttpError(400, 'invalid github_token')
     for k, (lo, hi) in LIMITS.items():
         if k in b and (isinstance(b[k], bool) or not isinstance(b[k], int) or not lo <= b[k] <= hi):
             raise HttpError(400, f'invalid {k}')
@@ -122,7 +161,10 @@ def put_route(req):
         raise HttpError(400, 'invalid base_url')
     old_keep = get('artifact_retention', 3)
     for k, v in b.items():
-        put(k, v.rstrip('/') if k == 'base_url' else v)
+        if k == 'github_token':
+            set_github_token(v)   # write-only: never stored in the settings table, never returned
+        else:
+            put(k, v.rstrip('/') if k == 'base_url' else v)
     if 'artifact_retention' in b and b['artifact_retention'] != old_keep:
         importlib.import_module('webui.build').run_retention()
     return 200, _payload()
