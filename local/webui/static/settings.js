@@ -58,6 +58,8 @@ function renderSettings() {
   $('#gh-scopes').textContent = g.scopes || '—';
   $('#gh-gauge').style.width = `${g.limit ? Math.round((100 * g.remaining) / g.limit) : 0}%`;
   $('#gh-reset').textContent = g.limit ? `${g.remaining} / ${g.limit} left · resets ${fmt.rel(g.reset_at)}` : '—';
+  $('#gh-src').textContent = { ui: 'set (saved here)', file: 'set (secret file)' }[g.source] || 'not set';
+  $('#gh-clear').hidden = g.source !== 'ui';
   $('#gh-60').hidden = g.state !== 'unauthenticated';
 }
 
@@ -110,6 +112,13 @@ $('#n-test').addEventListener('click', async () => {
 });
 $('#keep').addEventListener('input', renderEstimate);
 $('#a-save').addEventListener('click', () => saveSettings().catch(() => {}));
+async function saveToken(v) {
+  Z.settings = await act('PUT', '/api/settings', { github_token: v }, v ? 'Token saved' : 'Token removed');
+  $('#gh-token').value = '';
+  renderSettings();
+}
+$('#gh-save').addEventListener('click', () => { if ($('#gh-token').value.trim()) saveToken($('#gh-token').value.trim()).catch(() => {}); });
+$('#gh-clear').addEventListener('click', () => saveToken('').catch(() => {}));
 $('#gh-recheck').addEventListener('click', () => loadSettings(true).then(() => toast('Re-checked')).catch(() => {}));
 $('#gh-cli').addEventListener('click', async () => {
   try {
