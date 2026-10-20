@@ -16,11 +16,10 @@ def prepare_data():
     for d in db.SUBDIRS + ('secrets',):
         p = db.DATA / d
         p.mkdir(parents=True, exist_ok=True)
-        if d in DIR_MODES:
-            try:
-                p.chmod(DIR_MODES[d])
-            except PermissionError:  # dir owned by another uid (e.g. made by `exec` as root): keep its mode
-                print(f'cannot set mode of {p}: not owned by uid {os.getuid()}', flush=True)
+        # only dirs this process owns: a pre-existing host-owned dir keeps its mode, also when we run as root
+        # (CI ci-build: root server, workflow-made data/work 0755; 0770 would lock out the runner, review B1)
+        if d in DIR_MODES and p.stat().st_uid == os.getuid():
+            p.chmod(DIR_MODES[d])
 
 
 def boot(start=False, names=None):

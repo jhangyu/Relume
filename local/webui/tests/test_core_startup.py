@@ -1,4 +1,4 @@
-import contextlib, io, sys, threading, types
+import contextlib, io, os, subprocess, sys, threading, types
 from unittest import mock
 from webui import db, server
 from webui.tests.helpers import DataTestCase
@@ -68,3 +68,19 @@ class EmptyVolumeTest(DataTestCase):
         modes = {d: (fresh / d).stat().st_mode & 0o777 for d in ('secrets', 'home', 'work', 'apk-cache')}
         self.assertEqual(modes, {'secrets': 0o700, 'home': 0o700, 'work': 0o770, 'apk-cache': 0o770})
         self.assertTrue((fresh / 'webui.db').is_file())
+
+    def test_foreign_owned_dir_keeps_mode(self):
+        """CI case (review B1): ci-build runs as root, the workflow made data/work as the host user (uid 1001,
+        mode 0755). boot must not tighten it, or the runner (uid 10001, gid 0) cannot enter it."""
+        if os.geteuid() != 0:
+            self.skipTest('chown and setpriv need root (T_PY runs as root)')
+        os.chmod(self.data, 0o755)
+        work = self.data / 'work'
+        work.chmod(0o755)
+        os.chown(work, 1001, 1001)
+        with mock.patch.dict('os.environ', {'RV_DATA': str(self.data)}):
+            cli.boot(names=[])
+        self.assertEqual(work.stat().st_mode & 0o777, 0o755)
+        r = subprocess.run(['setpriv', '--reuid=10001', f'--regid={os.getgid()}', '--clear-groups',
+                            'sh', '-c', f'cd {work} && echo ENTER'], capture_output=True, text=True)
+        self.assertEqual(r.stdout.strip(), 'ENTER')
