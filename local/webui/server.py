@@ -167,7 +167,11 @@ class Handler(BaseHTTPRequestHandler):
             origin = self.headers.get('Origin')
             if origin and urllib.parse.urlsplit(origin).netloc != self.headers.get('Host'):
                 raise HttpError(403, 'origin mismatch')
-            n = int(self.headers.get('Content-Length') or 0)
+            cl = self.headers.get('Content-Length') or '0'
+            if not (cl.isascii() and cl.isdigit()):  # also rejects '-1': rfile.read(-1) would read until the client closes
+                self.close_connection = True
+                raise HttpError(400, 'invalid content-length')
+            n = int(cl)
             if n > MAX_BODY:
                 self.close_connection = True
                 raise HttpError(413, 'body too large')

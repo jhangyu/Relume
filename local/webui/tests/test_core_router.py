@@ -65,6 +65,20 @@ class RouterTest(PublicRoutesMixin, DataTestCase):
         st, _, _ = http('PATCH', self.base + '/api/t/1', body={'a': 'x' * (1 << 20)})
         self.assertEqual(st, 413)
 
+    def raw_patch(self, length):
+        import socket, urllib.parse
+        u = urllib.parse.urlsplit(self.base)
+        with socket.create_connection((u.hostname, u.port), timeout=15) as s:
+            s.sendall(f'PATCH /api/t/1 HTTP/1.1\r\nHost: {u.netloc}\r\nContent-Type: application/json\r\n'
+                      f'Content-Length: {length}\r\n\r\n{{}}'.encode())
+            s.shutdown(socket.SHUT_WR)  # a read(-1) would return here instead of hanging the test
+            return int(s.makefile('rb').readline().split()[1])
+
+    def test_bad_content_length_400(self):
+        self.assertEqual(self.raw_patch('-1'), 400)
+        self.assertEqual(self.raw_patch('abc'), 400)
+        self.assertEqual(self.raw_patch('2'), 200)
+
     def test_error_mapping(self):
         self.assertEqual(http('GET', self.base + '/api/boom')[:3:2], (500, b'{"error": "internal error"}'))
         self.assertEqual(http('GET', self.base + '/api/locked')[0], 503)
