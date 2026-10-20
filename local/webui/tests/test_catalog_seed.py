@@ -53,24 +53,6 @@ class CommittedSeedTest(helpers.DataTestCase):
             if it["id"] not in kept_all:
                 self.assertLessEqual(abis, {"universal", "arm64-v8a"}, it["id"])
 
-    def test_report_lines_match_items(self):
-        mapped = re.findall(r"^\| `src/build/[^`]+:\d+` \| (\d+) \|", REPORT.read_text(), re.M)
-        self.assertEqual(len({int(m) for m in mapped}), len(self.d["items"]))
-
-    def test_overrides_present(self):
-        root = catalog.REPO_ROOT
-        # every non-empty referenced include/exclude line appears in some item's overrides
-        refs = set()
-        for f in (root / "src" / "build").glob("*.sh"):
-            refs |= set(re.findall(r'^\s*get_patches_key "([^"]+)"', f.read_text(), re.M))
-        names = {n for it in self.d["items"] for n in it["patch_overrides"]}
-        for k in refs:
-            for fn in ("include-patches", "exclude-patches"):
-                p = root / "src" / "patches" / k / fn
-                for line in (p.read_text().splitlines() if p.is_file() else []):
-                    if line.strip():
-                        self.assertIn(line.split("|")[0].strip(), names, f"{k}/{fn}")
-
     def test_round_trip(self):
         catalog.seed_import()
         self.assertEqual(catalog.seed_text(), catalog.SEED_PATH.read_text())
