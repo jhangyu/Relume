@@ -20,11 +20,15 @@ class StartupTest(DataTestCase):
         calls = []
         names = [self.fake('catalog', calls), self.fake('build', calls)]
         before = threading.active_count()
-        with mock.patch.dict('os.environ', {'RV_DATA': str(self.data)}):
+        # patch.dict restores sys.modules afterwards; popping webui.ci makes the check
+        # independent of whether an earlier test (test_ci) already imported it
+        with mock.patch.dict('os.environ', {'RV_DATA': str(self.data)}), mock.patch.dict(sys.modules):
+            sys.modules.pop('webui.ci', None)
             cli.boot(names=names)
+            ci_imported = 'webui.ci' in sys.modules
         self.assertEqual(calls, ['catalog.seed_import', 'catalog.register', 'build.register'])
         self.assertEqual(threading.active_count(), before)
-        self.assertNotIn('webui.ci', sys.modules)
+        self.assertFalse(ci_imported)
 
     def test_boot_start(self):
         calls = []
