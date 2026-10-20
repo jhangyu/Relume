@@ -112,3 +112,16 @@ class XposedCatalogTest(helpers.DataTestCase):
         v = dict(XV, download=dict(XV['download'], arch='arm64-v8a + armeabi-v7a'))
         st, _ = self.call('PUT', '/api/items/1', {'variants': [v]})
         self.assertLess(st, 300)
+
+    def test_module_item_defaults(self):
+        st, body = self.call('POST', '/api/items', {'source_id': 'nexalloy-lspatch', 'package': 'com.zhiliaoapp.musically', 'group_id': None})
+        self.assertEqual(st, 201, body)
+        r = db.conn().execute('SELECT variants, engine_options FROM item WHERE id=?', (body['id'],)).fetchone()
+        self.assertEqual(json.loads(r['engine_options']), {'sigbypass': 0, 'injectdex': False})
+        vs = json.loads(r['variants'])
+        self.assertTrue(vs and all(v['strip_libs'] is None and v['exclude_splits'] is None for v in vs))
+        st, _ = self.call('PUT', f"/api/items/{body['id']}", {'variants': vs})  # echoing the defaults must save
+        self.assertLess(st, 300)
+        st, _ = self.call('POST', '/api/items', {'source_id': 'nexalloy-npatch', 'package': 'com.zhiliaoapp.musically', 'group_id': None,
+                                                  'engine_options': {'sigbypass': 4, 'injectdex': True}})
+        self.assertEqual(st, 201)

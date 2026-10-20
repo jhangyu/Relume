@@ -334,6 +334,10 @@ def xposed_item_rules(body, item_id=None):
         engine = _engine_of_item(item_id) if item_id is not None else None
     if engine is None:
         return  # unknown source or item: P2's own checks answer 400/404
+    if item_id is None and engine in _ENGINE_MAX:  # POST defaults for module items (spec xposed 5.1)
+        body.setdefault('engine_options', {'sigbypass': 0, 'injectdex': False})
+        if body.get('variants') is None:
+            body['variants'] = [dict(v, strip_libs=None) for v in default_variants()]
     if item_id is None or 'engine_options' in body:
         body['engine_options'] = validate_engine_options(engine, body.get('engine_options'))
     if engine in _ENGINE_MAX and 'variants' in body:
