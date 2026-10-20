@@ -279,8 +279,11 @@ def inspect_row(upstream_id, tag, log):
         return
     for pkg in _packages(upstream_id):
         with tempfile.TemporaryDirectory() as out:
+            # third-party CLI and patch bundle code: isolated runner uid (spec L779), same gid writes into out
+            os.chmod(out, 0o770)
+            argv = ["bash", INSPECT, jobs.runner_path(jars[0]), pkg, out, *(jobs.runner_path(f) for f in files)]
             try:
-                rc = log.run(["bash", INSPECT, str(jars[0]), pkg, out, *files], cwd=out, env=_child_env(), timeout=120)
+                rc = log.run(jobs.isolate(argv), cwd=out, env=dict(_child_env(), HOME=out), timeout=120)
             except jobs.JobFailed as e:
                 if str(e) == "cancelled":
                     raise

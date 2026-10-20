@@ -1,5 +1,6 @@
 """Inspector, patch selection, version pin and job input tests (spec catalog §4, §5.2-5.3, §10)."""
 import json
+import os
 import re
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -201,6 +202,35 @@ class InspectRowTest(PatchesCase):
             upstream.inspect_row(2, "v1", log)
         self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM bundle_info").fetchone()[0], 0)
         self.assertTrue(any(l.startswith("[!] inspect failed for") for l in log.lines))
+
+    def test_inspect_runs_isolated(self):
+        """Spec L779: the inspector runs bundle code as RV_RUNNER_UID with DATA paths in the runner view.
+        T_PY runs as root, so setpriv can switch uid here."""
+        self.add_cli()
+        with db.tx() as c:
+            c.execute("DELETE FROM bundle_info")
+        os.chmod(self.data, 0o755)  # TemporaryDirectory is 0700; in compose the runner gets its own mounts
+        view = self.data / "view"
+        view.symlink_to(self.data)
+        secret = self.data / "secret"
+        secret.write_text("s")
+        secret.chmod(0o600)
+        script = self.data / "inspect-id.sh"
+        script.write_text(f'echo "UID $(id -u)"; echo "HOME $HOME"; echo "CLI $1"; echo "FILE $4"\n'
+                          f'grep CapEff /proc/self/status; cat {secret} 2>/dev/null && echo LEAK || echo DENIED\n'
+                          f'cp {FIX}/list-patches.txt {FIX}/options.json "$3/"\n')
+        log = FakeLog()
+        with mock.patch.object(upstream, "INSPECT", str(script)), \
+                mock.patch.dict(os.environ, {"RV_RUNNER_UID": "10001", "RV_RUNNER_DATA": str(view)}):
+            upstream.inspect_row(2, "v1", log)
+        self.assertEqual(log.runs[0][:2], ["setpriv", "--reuid=10001"])
+        for want in ("UID 10001", f"CLI {view}/upstream/1/v1.18.1/morphe-desktop-1.18.1-all.jar",
+                     f"FILE {view}/upstream/2/v1/patches-1.mpp", "CapEff:\t0000000000000000", "DENIED"):
+            self.assertIn(want, log.lines)
+        home = [l for l in log.lines if l.startswith("HOME ")]
+        self.assertTrue(home and home[0] != "HOME " + os.environ.get("HOME", ""), home)
+        pk = {r[0] for r in db.conn().execute("SELECT package FROM bundle_info WHERE upstream_id=2 AND tag='v1'")}
+        self.assertEqual(pk, {YT, "com.reddit.frontpage"})
 
 
 class ReinspectTest(UpstreamCase):
