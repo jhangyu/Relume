@@ -86,6 +86,27 @@ class WorkerTest(DataTestCase):
             state = 'gone'
         self.assertIn(state, ('gone', 'Z'))
 
+    def test_on_line_raise_kills_process_group(self):
+        pidfile = self.data / 'child.pid'
+
+        def boom(s):
+            if s == 'go':
+                raise RuntimeError('callback failed')
+
+        def h(job, log):
+            log.run(['sh', '-c', f'sleep 60 & echo $! > {pidfile}; echo go; wait'], on_line=boom)
+
+        jobs.register('build', h)
+        t0 = time.monotonic()
+        j = wait_status(jobs.enqueue('build', {'item_id': 1}, 'manual'), {'failed'}, timeout=15)
+        self.assertLess(time.monotonic() - t0, 15)
+        pid = int(pidfile.read_text())
+        try:  # same zombie note as test_cancel_kills_process_group
+            state = pathlib.Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[0]
+        except FileNotFoundError:
+            state = 'gone'
+        self.assertIn(state, ('gone', 'Z'))
+
     def test_cancel_queued_never_runs(self):
         ran = []
         gate = threading.Event()

@@ -101,14 +101,19 @@ class Log:
                     return
 
         threading.Thread(target=watch, daemon=True).start()
-        for raw in p.stdout:
-            s = ANSI.sub('', raw.rstrip('\n'))
-            self.line(s)
-            if on_line:
-                on_line(s)
-        p.stdout.close()
-        rc = p.wait()
-        done.set()
+        try:
+            for raw in p.stdout:
+                s = ANSI.sub('', raw.rstrip('\n'))
+                self.line(s)
+                if on_line:
+                    on_line(s)
+        except BaseException:  # a failing on_line must not leave the child running (1 build at a time)
+            _kill_group(p)
+            raise
+        finally:
+            p.stdout.close()
+            rc = p.wait()
+            done.set()
         if timed_out.is_set():
             raise JobFailed('timeout')
         if self.job.cancel_event.is_set():
