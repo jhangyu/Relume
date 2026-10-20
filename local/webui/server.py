@@ -18,6 +18,7 @@ CORE = ('auth', 'jobs', 'scheduler', 'settings')
 STATIC = pathlib.Path(__file__).with_name('static')
 MUTATING = {'POST', 'PUT', 'PATCH', 'DELETE'}
 MAX_BODY = 1 << 20
+MAX_DRAIN = 16 << 20  # bodies up to this size are read and discarded before a 413
 CTYPES = {'.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript',
           '.svg': 'image/svg+xml'}
 PAGE = re.compile(r'^/([a-z]+\.html)$')
@@ -174,6 +175,12 @@ class Handler(BaseHTTPRequestHandler):
             n = int(cl)
             if n > MAX_BODY:
                 self.close_connection = True
+                if n <= MAX_DRAIN:  # let the client finish sending, else it may see a broken pipe, not the 413
+                    while n > 0:
+                        got = self.rfile.read(min(n, 1 << 16))
+                        if not got:
+                            break
+                        n -= len(got)
                 raise HttpError(413, 'body too large')
             raw = self.rfile.read(n) if n else b''
             try:
