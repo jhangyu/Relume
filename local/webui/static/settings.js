@@ -52,7 +52,7 @@ function renderSettings() {
   const cls = { authenticated: 'b-ok', unauthenticated: 'b-warn', rejected: 'b-err', absent: 'b-mute' }[g.state] || 'b-mute';
   $('#gh-state').className = `badge ${cls}`;
   $('#gh-state').textContent = g.state + (g.error ? ` · ${g.error}` : '');
-  $('#gh-hint').textContent = g.token_hint || (g.state === 'absent' ? `Token file not found at ${g.path}` : 'empty token');
+  $('#gh-hint').textContent = g.token_hint || (g.state === 'absent' ? 'No token set' : 'empty token');
   $('#gh-path').textContent = g.path;
   $('#gh-exp').textContent = g.expires_at || '—';
   $('#gh-scopes').textContent = g.scopes || '—';
