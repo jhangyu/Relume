@@ -3,6 +3,7 @@ import argparse
 import contextlib
 import json
 import os
+import pathlib
 import re
 import shutil
 import sys
@@ -120,7 +121,12 @@ def _publish(source_id, item_id, job_id, rel):
     with open(rel / 'upload.list', 'a', encoding='utf-8') as f:
         for a in c.execute('SELECT variant, path FROM artifacts WHERE job_id=? ORDER BY id', (job_id,)):
             name = asset_name(source_id, key, a['variant'])
-            shutil.copyfile(a['path'], rel / name)
+            src = pathlib.Path(a['path'])
+            try:  # no symlink swapped in by a lingering runner child (round-2 review S3)
+                with jobs.open_runner_file(src.parent, src.name) as fin, open(rel / name, 'wb') as out:
+                    shutil.copyfileobj(fin, out, 1 << 20)
+            except OSError as e:
+                raise CiFatal(f'artifact {src} rejected: {e}')
             f.write(f"{name}#{label(name, bj['app_version'], bj['patches_version'])}\n")
 
 
@@ -146,7 +152,11 @@ def build(source_id, force=False):
         sys.stdout.write(log.read_text(encoding='utf-8', errors='replace') if log.exists() else 'no log\n')
         sys.stdout.flush()
         if row['status'] == 'success':
-            _publish(source_id, item_id, row['id'], rel)
+            try:
+                _publish(source_id, item_id, row['id'], rel)
+            except CiFatal as e:
+                print(f'error: {e}', file=sys.stderr)
+                ok = False
         else:
             ok = False
     return 0 if ok else 1

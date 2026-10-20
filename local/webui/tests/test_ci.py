@@ -138,7 +138,7 @@ class CiBuildTest(helpers.DataTestCase):
         with db.tx() as c:  # second enabled morphe item (reddit) that will fail
             c.execute("UPDATE item SET enabled=1, variants=? WHERE id=3", (V('universal'),))
             c.execute("UPDATE item SET variants=? WHERE id=1", (V('universal'),))
-        self.calls, self.fail_items = [], {3}
+        self.calls, self.fail_items, self.swap = [], {3}, None
 
         def fake_run_inline(*args, **kwargs):
             self.calls.append((args, kwargs))
@@ -154,6 +154,9 @@ class CiBuildTest(helpers.DataTestCase):
                     if status == 'success':
                         f = db.DATA / f'art-{jid}.apk'
                         f.write_bytes(b'APK')
+                        if self.swap:
+                            f.unlink()
+                            f.symlink_to(self.swap)
                         c.execute('INSERT INTO artifacts(job_id,item_id,variant,abi,package,version_name,version_code,'
                                   'patches_version,signer_sha256,path,size,sha256,created_at) '
                                   "VALUES (?,?,'universal','universal','p','19.47.53',1,'v1.21.1','s',?,3,'h',?)",
@@ -212,3 +215,13 @@ class CiBuildTest(helpers.DataTestCase):
 
     def test_build_unknown_source(self):
         self.assertEqual(self.build('nope')[0], 1)
+
+    def test_build_symlink_artifact_not_published(self):
+        secret = db.DATA / 'github_token'
+        secret.write_text('TOKEN')
+        self.swap = secret
+        rc, out = self.build('morphe', '--force')
+        self.assertEqual(rc, 1)
+        rel = db.DATA / 'release'
+        self.assertFalse(any(b'TOKEN' in p.read_bytes() for p in rel.iterdir() if p.name != 'upload.list'))
+        self.assertNotIn('apk#', (rel / 'upload.list').read_text() if (rel / 'upload.list').exists() else '')
