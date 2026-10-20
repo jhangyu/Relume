@@ -56,7 +56,7 @@ class PageIdsTest(unittest.TestCase):
     def test_item_page_has_no_mockup_leftovers(self):
         for name in ('item.html', 'item.js'):
             t = (STATIC / name).read_text()
-            self.assertNotRegex(t, r'patchName|src/options|shared by every item', name)
+            self.assertNotRegex(t, r'patchName|src/option[s]|shared by every item', name)
         self.assertNotRegex((STATIC / 'builds.html').read_text(), r'Patch 4 / 41|patch update 1\.10\.0')
 
     def test_item_js_keeps_colour_picker_and_version_labels(self):
