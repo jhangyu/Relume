@@ -193,7 +193,9 @@ def start():
     if w.is_dir():
         for d in w.iterdir():
             shutil.rmtree(d, ignore_errors=True)
-    (db.DATA / "apk-cache").chmod(0o770)  # the isolated runner (same gid) writes the APK cache
+    cache = db.DATA / "apk-cache"  # the isolated runner (same gid) writes the APK cache
+    if cache.stat().st_uid == os.getuid():  # a host-owned dir (CI) keeps its mode
+        cache.chmod(0o770)
 
 
 def run_retention(item_id=None):

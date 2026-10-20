@@ -221,6 +221,17 @@ class HandlerFailTest(BuildCase):
         build.start()
         self.assertEqual(list((self.data / "work").iterdir()), [])
 
+    def test_start_keeps_foreign_owned_apk_cache_mode(self):
+        """CI case: the workflow made apk-cache as the host user. start() must not retighten it."""
+        if os.geteuid() != 0:
+            self.skipTest("chown needs root (T_PY runs as root)")
+        cache = self.data / "apk-cache"
+        cache.mkdir(exist_ok=True)
+        cache.chmod(0o755)
+        os.chown(cache, 1001, 1001)
+        build.start()
+        self.assertEqual(cache.stat().st_mode & 0o777, 0o755)
+
 
 class IsolationTest(BuildCase):
     """Spec L779: patch code runs as RV_RUNNER_UID, sees DATA through RV_RUNNER_DATA (compose: /data), keeps no caps.
