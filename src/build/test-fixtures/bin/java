@@ -27,5 +27,17 @@ m)
 	out=$(realpath -m "$out")
 	if [ -d "$in" ]; then (cd "$in" && zip -qr "$out" .); else cp "$in" "$out"; fi
 	;;
+*.apk)
+	# Engine mode (LSPatch/NPatch): <input.apk> -k ... -o <dir> -f
+	odir="" prev=""
+	for a in "$@"; do
+		[ "$prev" = "-o" ] && odir=$a
+		prev=$a
+	done
+	for ((i = 1; i <= ${SHIM_ENGINE_APKS:-1}; i++)); do
+		cp "$1" "$odir/in-$i-lspatched.apk"
+	done
+	exit "${SHIM_ENGINE_RC:-0}"
+	;;
 *) echo "java shim: unknown command $1" >&2; exit 2 ;;
 esac

@@ -17,14 +17,20 @@ source "$RV_REPO/src/build/utils.sh"
 
 j() { jq -r "$1 // empty" "$job"; }
 
-# ponytail: round-1 stub; P8 (Xposed) fills the keystore credential table here
+# Keystore credentials for Xposed engines (spec xposed 5.3; values from utils.sh:811,835 at 9fd15dc, already public).
 keystore_creds() {
-	return 1
+	case "$1" in
+	lspatch-signing.p12) echo "morphe fiorenmas morphe" ;;
+	fiorenmas.ks) echo "fiorenmas morphe fiorenmas" ;;
+	*) return 1 ;;
+	esac
 }
 
 work=$(j .work_dir)
 package=$(j .package)
 engine=$(j .engine)
+engine_sigbypass=$(j .engine_options.sigbypass)
+engine_injectdex=$(j .engine_options.injectdex)
 cli_jar=$(j .cli_jar)
 keystore=$(j .keystore)
 upstream_tag=$(j .upstream_tag)

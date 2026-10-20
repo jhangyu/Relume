@@ -293,8 +293,8 @@ get_apk() {
 	for try_type in "${type_attempts[@]}"; do
 		local filtered_rows
 		filtered_rows=$(echo "$rows" | grep -iP "apkm-badge[^>]*>\s*$try_type\s*<")
-		[[ -n "$arch" ]] && filtered_rows=$(echo "$filtered_rows" | grep -iF "$arch")
-		[[ -n "$minver" ]] && filtered_rows=$(echo "$filtered_rows" | grep -iF "$minver")
+		[[ -n "$arch" ]] && filtered_rows=$(echo "$filtered_rows" | grep -iF -- "$arch")
+		[[ -n "$minver" ]] && filtered_rows=$(echo "$filtered_rows" | grep -iF -- "$minver")
 
 		if [[ -n "$dpi" ]]; then
 			local dpi_filtered fb_dpi
@@ -513,10 +513,47 @@ patch_variant() {
 		args+=("--out=$out" "$in")
 		java "${args[@]}" || { red_log "[-] Patch failed: $out"; return 1; }
 		;;
-	lspatch|npatch)
-		FAIL_CODE=internal
-		LAST_ERR="engine not implemented"
-		return 1
+	lspatch | npatch)
+		# spec xposed 5.3: module(s) embedded by the engine; output = the only APK in an empty dir
+		local creds odir a rc
+		local -a ks cmd apks
+		: "${engine_sigbypass:=}" "${engine_injectdex:=false}" # set by build-item.sh from job.json engine_options
+		if ! creds=$(keystore_creds "$keystore"); then
+			FAIL_CODE=internal
+			LAST_ERR="unknown keystore"
+			return 1
+		fi
+		if [[ ! "$engine_sigbypass" =~ ^[0-4]$ ]]; then
+			FAIL_CODE=internal
+			LAST_ERR="bad engine_options"
+			return 1
+		fi
+		read -r -a ks <<<"$creds"
+		odir="${out%.apk}.d"
+		rm -rf "$odir"
+		mkdir -p "$odir"
+		cmd=(java -jar "$cli_jar" "$in" -k "$RV_REPO/src/keystore/$keystore" "${ks[0]}" "${ks[1]}" "${ks[2]}"
+			-l "$engine_sigbypass")
+		[ "$engine_injectdex" = "true" ] && cmd+=(--injectdex)
+		for a in "${patches_files[@]}"; do
+			cmd+=(-m "$a")
+		done
+		cmd+=(-o "$odir" -f)
+		"${cmd[@]}"
+		rc=$?
+		if [ "$rc" -ne 0 ]; then
+			LAST_ERR="engine exit $rc"
+			return 1
+		fi
+		shopt -s nullglob
+		apks=("$odir"/*.apk)
+		shopt -u nullglob
+		if [ "${#apks[@]}" -ne 1 ]; then
+			LAST_ERR="engine produced ${#apks[@]} apks"
+			return 1
+		fi
+		mv "${apks[0]}" "$out"
+		rm -rf "$odir"
 		;;
 	*)
 		FAIL_CODE=internal

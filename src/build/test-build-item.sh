@@ -55,10 +55,6 @@ if [ "$out" = OK ] && [ -s "$T/work/release/x.apk" ] && grep -q -- "--striplibs 
 	pass patch_variant_argv
 else fail patch_variant_argv "$out / $log"; fi
 
-out=$(cd "$T/work" && source "$REPO/src/build/utils.sh" && engine=lspatch &&
-	{ patch_variant a b ""; echo "rc=$? code=$FAIL_CODE err=$LAST_ERR"; })
-if grep -q 'rc=1 code=internal err=engine not implemented' <<<"$out"; then pass engine_stub; else fail engine_stub "$out"; fi
-
 # ---- runner cases (Task P3.3) ----
 run_runner() { (bash "$REPO/src/build/build-item.sh" "$T/job.json" > "$T/out.txt" 2>&1); echo $?; }
 fail_lines() { grep -c '^::fail::' "$T/out.txt"; }
@@ -97,9 +93,45 @@ new_env; make_job '.recipe.variants[].download.kind="apkmirror"'
 rc=$(run_runner)
 if [ "$rc" != 0 ] && grep -q '^::fail::apk_not_listed::' "$T/out.txt"; then pass runner_apk_not_listed; else fail runner_apk_not_listed "rc=$rc"; fi
 
-new_env; make_job '.engine="lspatch"'
+# ---- Xposed engine cases (P8, spec xposed 5.3 / 11) ----
+XP_LS='.engine="lspatch" | .engine_options={"sigbypass":3,"injectdex":true} | .keystore="lspatch-signing.p12" | .recipe.variants=[.recipe.variants[0] | .name="arm64-v8a" | .abi="arm64-v8a" | .strip_libs=null]'
+XP_NP='.engine="npatch" | .engine_options={"sigbypass":3,"injectdex":false} | .keystore="fiorenmas.ks" | .recipe.variants=[.recipe.variants[0] | .strip_libs=null]'
+
+new_env; make_job "$XP_LS"
 rc=$(run_runner)
-if [ "$rc" != 0 ] && [ "$(fail_lines)" = 1 ] && grep -q '^::fail::internal::engine not implemented$' "$T/out.txt"; then pass runner_engine_stub; else fail runner_engine_stub "rc=$rc"; fi
+if [ "$rc" = 0 ] && [ -s "$T/work/release/arm64-v8a.apk" ] && [ ! -e "$T/work/release/arm64-v8a.d" ] &&
+	grep -Eq 'src/keystore/lspatch-signing\.p12 morphe fiorenmas morphe -l 3 --injectdex -m [^ ]+ -o [^ ]*release/arm64-v8a\.d -f' "$SHIM_LOG"; then
+	pass xposed_lspatch_argv
+else fail xposed_lspatch_argv "rc=$rc $(tail -3 "$T/out.txt")"; fi
+
+new_env; make_job "$XP_NP"
+rc=$(run_runner)
+if [ "$rc" = 0 ] && [ -s "$T/work/release/universal.apk" ] &&
+	grep -Eq 'src/keystore/fiorenmas\.ks fiorenmas morphe fiorenmas -l 3 -m ' "$SHIM_LOG" && ! grep -q -- '--injectdex' "$SHIM_LOG"; then
+	pass xposed_npatch_argv
+else fail xposed_npatch_argv "rc=$rc $(tail -3 "$T/out.txt")"; fi
+
+for n in 0 2; do
+	new_env; make_job "$XP_LS"
+	export SHIM_ENGINE_APKS=$n
+	rc=$(run_runner)
+	unset SHIM_ENGINE_APKS
+	if [ "$rc" != 0 ] && [ "$(fail_lines)" = 1 ] && grep -q "^::fail::patch_failed::engine produced $n apks$" "$T/out.txt"; then
+		pass "xposed_${n}_apks"
+	else fail "xposed_${n}_apks" "rc=$rc $(grep '^::fail::' "$T/out.txt")"; fi
+done
+
+new_env; make_job "$XP_LS | .keystore=\"other.ks\""
+rc=$(run_runner)
+if [ "$rc" != 0 ] && [ "$(fail_lines)" = 1 ] && grep -q '^::fail::internal::unknown keystore$' "$T/out.txt"; then
+	pass xposed_unknown_keystore
+else fail xposed_unknown_keystore "rc=$rc"; fi
+
+new_env; make_job "$XP_LS | .engine_options.sigbypass=9"
+rc=$(run_runner)
+if [ "$rc" != 0 ] && grep -q '^::fail::internal::bad engine_options$' "$T/out.txt"; then
+	pass xposed_bad_sigbypass
+else fail xposed_bad_sigbypass "rc=$rc"; fi
 
 new_env; make_job '.'
 rc1=$(run_runner)
