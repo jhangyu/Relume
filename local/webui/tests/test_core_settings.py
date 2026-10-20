@@ -69,6 +69,7 @@ class SettingsTest(DataTestCase):
             with contextlib.redirect_stdout(out):
                 settings.check_token_file()
             self.assertIn('github token path is not a file', out.getvalue())
+            self.assertIn('enter one on the Settings page', out.getvalue())
             self.assertEqual(settings.github_token(), '')
 
     def test_disk(self):
@@ -109,17 +110,28 @@ class UiTokenTest(SettingsTest):
         for bad in ('has space', 'x' * 256, 5, 'a\nb'):
             self.assertEqual(self.put({'github_token': bad})[0], 400, bad)
 
-    def test_dev_null_default_is_quiet_absent(self):
-        # compose binds /dev/null when RV_GITHUB_TOKEN_FILE is unset: no warning, no token, UI token still used
+    def check_output(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            settings.check_token_file()
+        return out.getvalue()
+
+    def test_dev_null_default_points_to_settings_page(self):
+        # compose binds /dev/null when RV_GITHUB_TOKEN_FILE is unset: no file warning, a Settings-page hint instead
         with mock.patch.object(settings, 'TOKEN_PATH', pathlib.Path('/dev/null')):
-            out = io.StringIO()
-            with contextlib.redirect_stdout(out):
-                settings.check_token_file()
-            self.assertEqual(out.getvalue(), '')
+            self.assertEqual(self.check_output(), 'no GitHub token set: enter one on the Settings page\n')
             self.assertEqual(settings.github_token(), '')
             self.assertEqual(self.get('?recheck=1')['github']['state'], 'absent')
             self.put({'github_token': 'ghp_ui0001'})
             self.assertEqual(settings.github_token(), 'ghp_ui0001')
+            self.assertEqual(self.check_output(), '')          # UI token set: no message at all
+
+    def test_startup_message_quiet_when_a_token_exists(self):
+        self.assertEqual(self.check_output(), '')              # usable mounted file (setUp)
+        d = self.data / 'tokdir'; d.mkdir()
+        with mock.patch.object(settings, 'TOKEN_PATH', d):
+            self.put({'github_token': 'ghp_ui0002'})
+            self.assertEqual(self.check_output(), '')          # UI token wins: no file warning either
 
     def test_token_modes_and_runner_denied(self):
         self.put({'github_token': 'ghp_secret1234'})

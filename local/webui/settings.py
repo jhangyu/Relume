@@ -76,9 +76,13 @@ def set_github_token(token):
 
 
 def check_token_file():
-    # /dev/null = compose default when RV_GITHUB_TOKEN_FILE is unset (the file is optional): no warning
+    """Start-up message. Silent when a token is usable (a UI token always wins). /dev/null is the compose default
+    when RV_GITHUB_TOKEN_FILE is unset (the file is optional), so it gets no file warning."""
+    if github_token():
+        return
     if TOKEN_PATH.exists() and not TOKEN_PATH.is_file() and not TOKEN_PATH.samefile(os.devnull):
         print(f'github token path is not a file: {TOKEN_PATH}', flush=True)
+    print('no GitHub token set: enter one on the Settings page', flush=True)
 
 
 def fetch_rate_limit(token):
