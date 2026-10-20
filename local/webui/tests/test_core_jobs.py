@@ -86,6 +86,20 @@ class WorkerTest(DataTestCase):
             state = 'gone'
         self.assertIn(state, ('gone', 'Z'))
 
+    def test_success_kills_leftover_group_members(self):
+        pidfile = self.data / 'child.pid'
+        # the leftover ignores SIGTERM and keeps no pipe open, so only an explicit group kill ends it
+        jobs.register('build', lambda job, log: log.run(
+            ['sh', '-c', f"(trap '' TERM; exec sleep 60) >/dev/null 2>&1 & echo $! > {pidfile}"]))
+        wait_status(jobs.enqueue('build', {'item_id': 1}, 'manual'), {'success'})
+        pid = int(pidfile.read_text())
+        time.sleep(0.2)
+        try:  # same zombie note as test_cancel_kills_process_group
+            state = pathlib.Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[0]
+        except FileNotFoundError:
+            state = 'gone'
+        self.assertIn(state, ('gone', 'Z'))
+
     def test_on_line_raise_kills_process_group(self):
         pidfile = self.data / 'child.pid'
 

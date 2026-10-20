@@ -1,8 +1,10 @@
 import json
 import os
+import pathlib
 import re
 import signal
 import sqlite3
+import stat
 import subprocess
 import threading
 import time
@@ -87,6 +89,29 @@ def runner_path(p):
     return os.path.join(root, os.path.relpath(p, db.DATA)) if root else str(p)
 
 
+def open_runner_file(base, rel):
+    """Binary file object for base/rel, a file the isolated runner wrote. No symlink is followed anywhere below
+    base (every component is opened O_NOFOLLOW relative to its parent fd) and the open fd must be a regular file
+    with one link, so a runner leftover cannot swap in a link to a secret (round-2 review S3). Raises OSError."""
+    parts = pathlib.PurePath(rel).parts
+    if not parts or pathlib.PurePath(rel).is_absolute() or '..' in parts:
+        raise OSError(f'bad runner path: {rel}')
+    fd = os.open(base, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for part in parts[:-1]:
+            nfd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = nfd
+        f = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
+    finally:
+        os.close(fd)
+    st = os.fstat(f)
+    if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
+        os.close(f)
+        raise OSError(f'not a regular file: {rel}')
+    return os.fdopen(f, 'rb')
+
+
 class Log:
     def __init__(self, job):
         self.job = job
@@ -129,6 +154,15 @@ class Log:
             raise
         finally:
             p.stdout.close()
+            if p.returncode is None:
+                try:  # wait without reaping: the leader's pid (= the group id) cannot be reused before the kill
+                    os.waitid(os.P_PID, p.pid, os.WEXITED | os.WNOWAIT)
+                except ChildProcessError:  # the watch thread reaped it
+                    pass
+            try:  # nothing of the group outlives the job, also on success (round-2 review S3)
+                os.killpg(p.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
             rc = p.wait()
             done.set()
         if timed_out.is_set():

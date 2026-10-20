@@ -1,6 +1,7 @@
 """Build job service tests (spec build §3-§6, §8)."""
 import json
 import os
+import shutil
 import sqlite3
 import subprocess
 import threading
@@ -279,6 +280,48 @@ class HandlerOkTest(BuildCase):
                                                                "patches_version": "v1.2.3", "artifacts": [r["id"] for r in rows]}))
         self.assertFalse((self.data / "work" / str(job.id)).exists())
         self.assertEqual(len(build.detail(job.id)["artifacts"]), 2)
+
+
+class ArtifactSwapTest(BuildCase):
+    """Round-2 review S3: a leftover runner process swaps a validated artifact for a symlink before registration."""
+
+    def swap_after_validation(self, swap):
+        real = build._read_result
+
+        def spy(work):
+            r = real(work)
+            swap(work)
+            return r
+
+        with mock.patch.object(build, "_read_result", spy):
+            return self.run_handler()
+
+    def assert_rejected(self, job, err):
+        self.assertIsNotNone(err)
+        self.assertEqual(self.bj(job)["fail_code"], "internal")
+        self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM artifacts").fetchone()[0], 0)
+        leaked = [p for p in (self.data / "artifacts").rglob("*") if p.is_file() and b"secret" in p.read_bytes()]
+        self.assertEqual(leaked, [])
+
+    def test_file_symlink_rejected(self):
+        secret = self.data / "secret"
+        secret.write_bytes(b"secret")
+
+        def swap(work):
+            (work / "release" / "universal.apk").unlink()
+            (work / "release" / "universal.apk").symlink_to(secret)
+        self.assert_rejected(*self.swap_after_validation(swap)[::2])
+
+    def test_dir_symlink_rejected(self):
+        d = self.data / "elsewhere"
+        d.mkdir()
+        (d / "universal.apk").write_bytes(b"secret")
+        (d / "arm64-v8a.apk").write_bytes(b"secret")
+
+        def swap(work):
+            shutil.rmtree(work / "release")
+            (work / "release").symlink_to(d)
+        self.assert_rejected(*self.swap_after_validation(swap)[::2])
 
 
 class RetentionTest(BuildCase):

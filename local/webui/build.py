@@ -83,14 +83,15 @@ def _fail(job, item_id, code, detail):
 def _read_result(work):
     """result.json when valid (spec build §3.2: present, ≥1 variant, every file non-empty inside work)."""
     try:
-        r = json.loads((work / "result.json").read_text())
+        with jobs.open_runner_file(work, "result.json") as f:
+            r = json.load(f)
         variants = r["variants"]
         if not variants:
             return None
         for v in variants:
-            f = (work / v["file"]).resolve()
-            if work.resolve() not in f.parents or not f.is_file() or f.stat().st_size == 0:
-                return None
+            with jobs.open_runner_file(work, v["file"]) as f:
+                if os.fstat(f.fileno()).st_size == 0:
+                    return None
         return r
     except (OSError, ValueError, KeyError, TypeError):
         return None
@@ -107,7 +108,9 @@ def _register(job, item_id, inp, work, result):
     with db.tx() as c:
         for v in result["variants"]:
             target = dest / artifact_name(inp["source_id"], inp["key"], v["name"], result["app_version"], inp["upstream_tag"])
-            shutil.move(str(work / v["file"]), target)
+            # copy from the fd validated now, not the path validated earlier (round-2 review S3)
+            with jobs.open_runner_file(work, v["file"]) as src, open(target, "xb") as out:
+                shutil.copyfileobj(src, out, 1 << 20)
             ids.append(c.execute("""INSERT INTO artifacts(job_id, item_id, variant, abi, package, version_name, version_code,
                 patches_version, signer_sha256, path, size, sha256, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                                  (job.id, item_id, v["name"], v["abi"], v.get("package"), v.get("version_name"),
@@ -160,7 +163,11 @@ def handler(job, log):
             if m.fail_code:
                 _fail(job, item_id, m.fail_code, m.fail_detail or "")
             _fail(job, item_id, "internal", m.last_err or f"runner exited {rc} without result.json")
-        _register(job, item_id, inp, work, result)
+        try:
+            _register(job, item_id, inp, work, result)
+        except OSError as e:
+            shutil.rmtree(db.DATA / "artifacts" / str(item_id) / str(job.id), ignore_errors=True)
+            _fail(job, item_id, "internal", f"artifact rejected: {e}")
     finally:
         shutil.rmtree(work, ignore_errors=True)
         with _steps_lock:
