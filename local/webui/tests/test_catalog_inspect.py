@@ -203,6 +203,21 @@ class InspectRowTest(PatchesCase):
         self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM bundle_info").fetchone()[0], 0)
         self.assertTrue(any(l.startswith("[!] inspect failed for") for l in log.lines))
 
+    def test_inspect_rejects_symlinked_output(self):
+        """Round-2 S3: a runner output that is a symlink (here to a secret) is not read."""
+        self.add_cli()
+        with db.tx() as c:
+            c.execute("DELETE FROM bundle_info")
+        secret = self.data / "secret.txt"
+        secret.write_text((FIX / "list-patches.txt").read_text())
+        script = self.data / "inspect-link.sh"
+        script.write_text(f'ln -s {secret} "$3/list-patches.txt"\ncp {FIX}/options.json "$3/"\n')
+        log = FakeLog()
+        with mock.patch.object(upstream, "INSPECT", str(script)):
+            upstream.inspect_row(2, "v1", log)
+        self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM bundle_info").fetchone()[0], 0)
+        self.assertTrue(any(l.startswith("[!] inspect failed for") for l in log.lines), log.lines)
+
     def test_inspect_runs_isolated(self):
         """Spec L779: the inspector runs bundle code as RV_RUNNER_UID with DATA paths in the runner view.
         T_PY runs as root, so setpriv can switch uid here."""

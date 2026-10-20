@@ -8,7 +8,6 @@ import tempfile
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
-from pathlib import Path
 
 from webui import catalog, db, events, jobs, server, settings
 
@@ -291,8 +290,14 @@ def inspect_row(upstream_id, tag, log):
             if rc != 0:
                 log.line(f"[!] inspect failed for {pkg}: {rc}")
                 continue
-            lp = Path(out, "list-patches.txt").read_text(errors="replace")
-            oj = Path(out, "options.json").read_text(errors="replace")
+            try:  # runner-written files: no symlink, one link (round-2 S3)
+                with jobs.open_runner_file(out, "list-patches.txt") as f:
+                    lp = f.read().decode("utf-8", "replace")
+                with jobs.open_runner_file(out, "options.json") as f:
+                    oj = f.read().decode("utf-8", "replace")
+            except OSError as e:
+                log.line(f"[!] inspect failed for {pkg}: {e}")
+                continue
         patches = merge_bundle(lp, oj, pkg)
         with db.tx() as c:
             c.execute("INSERT OR REPLACE INTO bundle_info(upstream_id, tag, package, patches) VALUES (?, ?, ?, ?)",
