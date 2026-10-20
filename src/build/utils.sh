@@ -298,10 +298,10 @@ get_apk() {
 
 		if [[ -n "$dpi" ]]; then
 			local dpi_filtered fb_dpi
-			dpi_filtered=$(echo "$filtered_rows" | grep -iF "$dpi")
+			dpi_filtered=$(echo "$filtered_rows" | grep -iF -- "$dpi")
 			if [[ -z "$dpi_filtered" ]]; then
 				for fb_dpi in "${dpi_fallback[@]}"; do
-					dpi_filtered=$(echo "$filtered_rows" | grep -iF "$fb_dpi")
+					dpi_filtered=$(echo "$filtered_rows" | grep -iF -- "$fb_dpi")
 					[[ -n "$dpi_filtered" ]] && { yellow_log "[!] DPI fallback: $dpi -> $fb_dpi"; break; }
 				done
 			fi
