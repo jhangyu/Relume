@@ -40,6 +40,18 @@ class DeviceRoutesTest(helpers.DataTestCase):
         self.assertEqual(cm.exception.status, 400)
         self.assertEqual(cm.exception.message, 'PAIR_FAILED: Failed: Unable to start pairing client.')
 
+    def test_pair_timeouts(self):
+        def run(fail_on):
+            def fake(args, **kw):
+                if args[0] == fail_on or args[-1] == fail_on:
+                    raise devices.AdbTimeout(' '.join(args))
+                return 0, {'pair': 'Successfully paired\n', 'connect': 'connected to x\n'}.get(args[0], '')
+            with mock.patch.object(devices, 'adb', side_effect=fake), self.assertRaises(HttpError) as cm:
+                devices.pair(req(body=dict(PAIR_BODY)))
+            return cm.exception.status, cm.exception.message
+        self.assertEqual(run('pair'), (400, 'PAIR_FAILED: timeout'))
+        self.assertEqual(run('getprop'), (409, 'DEVICE_OFFLINE'))
+
     def test_pair_port_from_mdns(self):
         self.browse.return_value = DISC
         self.pair_ok_rules()

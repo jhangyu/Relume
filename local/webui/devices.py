@@ -312,7 +312,10 @@ def pair(req):
         if found_port is None:
             raise HttpError(400, 'connect_port required: not discovered')
         connect_port = found_port
-    out = adb(['pair', f'{host}:{pair_port}', code], timeout=30)[1]
+    try:
+        out = adb(['pair', f'{host}:{pair_port}', code], timeout=30)[1]
+    except AdbTimeout:
+        raise HttpError(400, 'PAIR_FAILED: timeout')
     if 'Successfully paired' not in out:
         raise HttpError(400, 'PAIR_FAILED: ' + _last(out))
     addr = f'{host}:{connect_port}'
@@ -321,7 +324,10 @@ def pair(req):
         raise HttpError(409, 'UNAUTHORIZED')
     if 'connected to' not in out:
         raise HttpError(409, 'DEVICE_OFFLINE')
-    props = parse_getprop(adb(['shell', 'getprop'], serial=addr, timeout=20)[1])
+    try:
+        props = parse_getprop(adb(['shell', 'getprop'], serial=addr, timeout=20)[1])
+    except AdbTimeout:
+        raise HttpError(409, 'DEVICE_OFFLINE')
     serial = props.get('ro.serialno') or props.get('ro.boot.serialno')
     if not serial:
         raise HttpError(409, 'DEVICE_OFFLINE')
