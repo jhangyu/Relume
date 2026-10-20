@@ -108,8 +108,9 @@ services:
         target: /run/secrets
         tmpfs:
           mode: 0o700
+      # optional token file; unset = /dev/null (not a regular file = no file token; enter it on the Settings page)
       - type: bind
-        source: ${RV_GITHUB_TOKEN_FILE:-./data/github_token}
+        source: ${RV_GITHUB_TOKEN_FILE:-/dev/null}
         target: /run/secrets/github_token
         read_only: true
         bind:

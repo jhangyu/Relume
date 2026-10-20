@@ -1,0 +1,105 @@
+# Patchbay as a Portainer stack (Stacks > Add stack > Web editor: paste this file). Same services and isolation as
+# local/docker-compose.yml, but no host preparation: data lives in named volumes, the code is in the images, and
+# the GitHub token is entered on the Settings page.
+#
+# Environment variables (Portainer "Environment variables" form):
+#   RV_IMAGE         required: the image prefix you pushed below, e.g. ghcr.io/<you>/patchbay
+#   RV_NETWORK_MODE  host (default; Linux hosts, mDNS phone discovery) or bridge (Docker Desktop on macOS/Windows:
+#                    host networking is not available there; add phones by IP:port)
+#   RV_WEB_PORT      published web port in bridge mode (default 47000; host mode always uses 47000)
+#   RV_UID, RV_GID   server uid:gid in the container (default 0:0; named volumes need no host ownership, keep 0)
+#   TZ               default UTC
+#
+# One-time image publish (on a machine with the repo checkout, logged in with `docker login ghcr.io`):
+#   docker compose -f local/docker-compose.yml build app cfbypass
+#   docker build -f local/Dockerfile.portainer --target app -t ghcr.io/<you>/patchbay-app:latest .
+#   docker build -f local/Dockerfile.portainer --target browser -t ghcr.io/<you>/patchbay-browser:latest .
+#   docker push ghcr.io/<you>/patchbay-app:latest && docker push ghcr.io/<you>/patchbay-browser:latest
+# The images have the build machine's CPU architecture (an Apple-silicon Mac builds arm64). For an amd64 host,
+# build on an amd64 machine or use `docker buildx build --platform linux/amd64 --push`. GHCR packages are private by
+# default: either make them public or add ghcr.io credentials under Portainer > Registries.
+# Repeat the publish after every code update, then use "Pull and redeploy" on the stack.
+services:
+  netns:
+    image: busybox:1.38.0-musl
+    command: ["tail", "-f", "/dev/null"]
+    network_mode: ${RV_NETWORK_MODE:-host}
+    ports: ["${RV_WEB_PORT:-47000}:47000"]
+    restart: unless-stopped
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    network_mode: service:netns
+    depends_on: [netns]
+    environment:
+      HOST: "127.0.0.1"
+      PORT: "47191"
+    restart: unless-stopped
+  cfbypass:
+    image: ${RV_IMAGE:?set RV_IMAGE to your image prefix, e.g. ghcr.io/you/patchbay}-browser:latest
+    command: ["/app/docker-entrypoint.sh", "--host", "127.0.0.1", "--port", "47800"]
+    shm_size: 2g
+    network_mode: service:netns
+    depends_on: [netns]
+    restart: unless-stopped
+  apkmsolver:
+    image: ${RV_IMAGE:?set RV_IMAGE to your image prefix, e.g. ghcr.io/you/patchbay}-browser:latest
+    entrypoint: ["sh", "/solver/xrun.sh"]
+    command: ["/app/venv/bin/python3", "-u", "/solver/solver.py", "47900"]
+    shm_size: 2g
+    network_mode: service:netns
+    depends_on: [netns, cfbypass]
+    restart: unless-stopped
+  app:
+    image: ${RV_IMAGE:?set RV_IMAGE to your image prefix, e.g. ghcr.io/you/patchbay}-app:latest
+    network_mode: service:netns
+    depends_on: [netns, flaresolverr, cfbypass, apkmsolver]
+    init: true  # reaps orphaned grandchildren of killed jobs (PID 1 is python3 -m webui)
+    # Spec L779, as in local/docker-compose.yml: build children run as RV_RUNNER_UID without capabilities; the
+    # server starts as root only so setpriv can drop it to RV_UID:RV_GID with setuid/setgid/kill/dac_override.
+    user: "0:0"
+    command: ["setpriv", "--reuid=${RV_UID:-0}", "--regid=${RV_GID:-0}", "--clear-groups",
+              "--inh-caps=+setuid,+setgid,+kill,+dac_override", "--ambient-caps=+setuid,+setgid,+kill,+dac_override",
+              "python3", "-m", "webui"]
+    environment:
+      HOME: /private/data/home
+      RV_DATA: /private/data
+      RV_RUNNER_UID: "10001"
+      RV_RUNNER_DATA: /data
+      ADB_SERVER_SOCKET: localfilesystem:/private/adb.sock
+      TZ: ${TZ:-UTC}
+      RV_NETWORK_MODE: ${RV_NETWORK_MODE:-host}
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONPATH: /repo/local
+      FLARESOLVERR_URL: http://127.0.0.1:47191
+      CFBYPASS_URL: http://127.0.0.1:47800
+      APKM_SOLVER_URL: http://127.0.0.1:47900
+    volumes:
+      # Root-only 0700 tmpfs: what the runner uid must not reach (database, HOME with the adb key, adb socket)
+      - type: tmpfs
+        target: /private
+        tmpfs:
+          mode: 0o700
+      - type: tmpfs
+        target: /run/secrets
+        tmpfs:
+          mode: 0o700
+      - data:/private/data
+      # work, apk-cache and upstream are their own volumes so the runner can see just these at /data (RV_RUNNER_DATA)
+      - work:/private/data/work
+      - apk-cache:/private/data/apk-cache
+      - upstream:/private/data/upstream
+      - work:/data/work
+      - apk-cache:/data/apk-cache
+      - upstream:/data/upstream:ro
+    working_dir: /repo
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:47000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+volumes:
+  data:
+  work:
+  apk-cache:
+  upstream:
