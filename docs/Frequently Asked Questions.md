@@ -20,34 +20,17 @@ You should [fork](https://github.com/FiorenMas/Revanced-And-Revanced-Extended-No
 Click "I understand my workflows, go ahead and enable them"
 ![Click "I understand my workflows, go ahead and enable them"](../docs/image/FAQ/patching-app-2.png)
 
-Follow these steps to run the workflow for Manual Patch apps!
-![](../docs/image/FAQ/patching-app-3.png)
+Open the "Build" workflow, click "Run workflow", enter a source id (for example `morphe`) or `all` in `source`, and tick `force` to build even when nothing changed. The workflow also runs every day at 09:00 UTC and builds only the sources whose patches changed.
 
 And then go to Readme click download your patched apps!
 
 ---
 
-### Q: I want to use custom patches for patching my apps. How can I do it?
+### Q: How do I change patches, patch options or the app version?
 
-You should open the folder `Revanced-And-Revanced-Extended-Non-Root/src/patches/`. It contains a lot of folders that are named after the apps you’re patching. Each folder has two files: exclude-patches and include-patches. Edit these files with the patches you like, putting one patch per line, following the patches list here:
+Patch selection, patch options and version pins live in the web UI ("Patchbay", `local/`): open an app, then use the Patches, Options and Version tabs. To make GitHub Actions build with the same settings, export the catalog and commit it:
 
-* For Revanced: https://github.com/revanced/revanced-patches
-* For Revanced Extended: https://github.com/inotia00/revanced-patches/tree/revanced-extended
-* For Revanced Extended Android 6 & 7: https://github.com/kitadai31/revanced-patches-android6-7/tree/revanced-extended
-
----
-
-### Q: I want to use a custom file options.json. How can I do it?
-
-You should open the folder [Revanced-And-Revanced-Extended-Non-Root/src/options/](../src/options). It contains files revanced-extended.json, anddea.json... edit those file the same as you would options.json
-
-Revanced alias no longer use options.json anymore use directly `Revanced-And-Revanced-Extended-Non-Root/src/patches/` instead.
-
-The options separate with patches name with `|`
-
-Example Youtube apps include patches:
-
-`Custom branding|-OappName="YouTube ReVanced" -OiconPath=ReVanced*Logo`
+`docker compose -f local/docker-compose.yml exec app python3 -m webui export-seed > local/webui/catalog-seed.json`
 
 ---
 
