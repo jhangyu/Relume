@@ -43,6 +43,32 @@ class StaticRulesTest(unittest.TestCase):
             self.assertIn('id="toast"', t, f.name)
 
 
+class PageIdsTest(unittest.TestCase):
+    def test_every_id_a_page_script_looks_up_exists_in_its_html(self):
+        for page in ('item', 'builds'):
+            js = (STATIC / f'{page}.js').read_text()
+            markup = (STATIC / f'{page}.html').read_text()
+            ids = set(re.findall(r"\$\$?\('#([\w-]+)", js)) | set(re.findall(r"getElementById\('([\w-]+)'", js))
+            self.assertTrue(ids, page)
+            for i in sorted(ids):
+                self.assertIn(f'id="{i}"', markup, f'{page}: #{i}')
+
+    def test_item_page_has_no_mockup_leftovers(self):
+        for name in ('item.html', 'item.js'):
+            t = (STATIC / name).read_text()
+            self.assertNotRegex(t, r'patchName|src/options|shared by every item', name)
+        self.assertNotRegex((STATIC / 'builds.html').read_text(), r'Patch 4 / 41|patch update 1\.10\.0')
+
+    def test_item_js_keeps_colour_picker_and_version_labels(self):
+        t = (STATIC / 'item.js').read_text()
+        for needle in ('type="color"', 'colorInput', 'not in patch list', 'sigbypass'):
+            self.assertIn(needle, t)
+        self.assertGreaterEqual(t.count('/api/apps/'), 2)
+        b = (STATIC / 'builds.js').read_text()
+        self.assertIn('logStream', b)
+        self.assertIn('::step::', b)
+
+
 class StaticServeTest(DataTestCase):
     def test_every_page_and_asset(self):
         base = serve(self)
