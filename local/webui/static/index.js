@@ -321,38 +321,92 @@ document.addEventListener('click', async e => {
 });
 
 // ---- Add app and New source (spec L1102, L1218, xposed L1568) ----
-async function fillSources(selectId) {
-  const { sources } = await api('GET', '/api/sources');
-  $('#a-src').innerHTML = html`${sources.map(s => html`<option value="${s.id}">${s.name} · ${s.engine}</option>`)}<option value="__new">New source…</option>`;
-  if (selectId) $('#a-src').value = selectId;
+let sourcesCache = [];
+const KS_DEFAULT = { morphe: 'morphe.keystore', lspatch: 'lspatch-signing.p12', npatch: 'fiorenmas.ks' };
+
+function syncEngine(engine) {
+  const mod = engine !== 'morphe';
+  $('[data-repo-label]').textContent = mod ? 'Module repo' : 'Patches repo';
+  $('#s-re').required = mod;
+  $('#s-re-h').textContent = mod ? 'Required: must match exactly one asset of the module release.' : 'Optional for Morphe (default \\.mpp$).';
 }
 
-async function newSource() {
+// src = null creates a source, otherwise the form is prefilled and sends PUT.
+async function sourceDialog(src) {
   const { upstreams } = await api('GET', '/api/upstreams');
   $('#s-cli').innerHTML = html`${upstreams.filter(u => u.kind === 'cli').map(u => html`<option value="${u.id}">${u.repo} · ${u.channel === 'tag' ? u.tag : u.channel}</option>`)}`;
+  $('#ds-t').textContent = src ? `Edit source ${src.id}` : 'New source';
+  $('#s-id').value = src ? src.id : '';
+  $('#s-id').disabled = !!src;
+  $('#s-name').value = src ? src.name : '';
+  $('#s-engine').value = src ? src.engine : 'morphe';
+  $('#s-engine').disabled = !!src;   // the engine decides the upstream kind and the item rules: not editable
+  $('#s-repo').value = src ? src.repo : '';
+  $('#s-ch').value = src ? src.channel : 'stable';
+  $('#s-tag-f').hidden = $('#s-ch').value !== 'tag';
+  $('#s-tag').value = (src && src.tag) || '';
+  $('#s-re').value = (src && src.asset_regex) || '';
+  $('#s-ks').value = src ? src.keystore : KS_DEFAULT.morphe;
+  if (src) $('#s-cli').value = src.cli_upstream_id;
+  syncEngine($('#s-engine').value);
   if (await ask($('#dlg-src')) !== 'ok') return null;
   const engine = $('#s-engine').value, ch = $('#s-ch').value;
   const body = {
-    id: $('#s-id').value.trim(), name: $('#s-name').value.trim(), engine,
+    name: $('#s-name').value.trim(), engine,
     repo: $('#s-repo').value.trim(), channel: ch, keystore: $('#s-ks').value.trim(),
     cli_upstream_id: Number($('#s-cli').value),
   };
   if (ch === 'tag') body.tag = $('#s-tag').value.trim();
   if ($('#s-re').value.trim()) body.asset_regex = $('#s-re').value.trim();
+  if (src) {
+    await act('PUT', `/api/sources/${src.id}`, body, 'Source saved');
+    return src.id;
+  }
+  body.id = $('#s-id').value.trim();
   const r = await act('POST', '/api/sources', body, 'Source created');
   return r.id;
 }
 $('#s-ch').addEventListener('change', e => { $('#s-tag-f').hidden = e.target.value !== 'tag'; });
 $('#s-engine').addEventListener('change', e => {
-  const mod = e.target.value !== 'morphe';
-  $('[data-repo-label]').textContent = mod ? 'Module repo' : 'Patches repo';
-  $('#s-re').required = mod;
-  $('#s-re-h').textContent = mod ? 'Required: must match exactly one asset of the module release.' : 'Optional for Morphe (default \\.mpp$).';
-  $('#s-ks').value = e.target.value === 'npatch' ? 'fiorenmas.ks' : mod ? 'lspatch-signing.p12' : 'morphe.keystore';
+  syncEngine(e.target.value);
+  $('#s-ks').value = KS_DEFAULT[e.target.value];
 });
+
+// Module settings (engine_options) apply only to LSPatch/NPatch sources.
+function syncModule() {
+  const s = sourcesCache.find(x => x.id === $('#a-src').value);
+  const mod = !!s && s.engine !== 'morphe';
+  $('#a-mod').hidden = !mod;
+  $('#a-src-edit').disabled = $('#a-src-del').disabled = !s;
+  if (!mod) return;
+  const max = s.engine === 'npatch' ? 4 : 3;
+  $('#a-sig').innerHTML = html`${Array.from({ length: max + 1 }, (_, n) => html`<option value="${n}">${n}</option>`)}`;
+}
+
+async function fillSources(selectId) {
+  const { sources } = await api('GET', '/api/sources');
+  sourcesCache = sources;
+  $('#a-src').innerHTML = html`${sources.map(s => html`<option value="${s.id}">${s.name} · ${s.engine}</option>`)}<option value="__new">New source…</option>`;
+  if (selectId) $('#a-src').value = selectId;
+  syncModule();
+}
+
 $('#a-src').addEventListener('change', async e => {
-  if (e.target.value !== '__new') return;
-  try { await fillSources(await newSource()); } catch (_) { await fillSources(); }
+  if (e.target.value === '__new') {
+    try { await fillSources(await sourceDialog(null)); } catch (_) { await fillSources(); }
+  }
+  syncModule();
+});
+$('#a-src-edit').addEventListener('click', async () => {
+  const src = sourcesCache.find(x => x.id === $('#a-src').value);
+  if (!src) return;
+  try { await fillSources(await sourceDialog(src)); } catch (_) { await fillSources(src.id); }
+});
+$('#a-src-del').addEventListener('click', async () => {
+  const src = sourcesCache.find(x => x.id === $('#a-src').value);
+  if (!src || !confirm(`Delete source "${src.name}"?`)) return;
+  try { await act('DELETE', `/api/sources/${src.id}`, {}, 'Source deleted'); } catch (_) { /* 409 text shown */ }
+  await fillSources();
 });
 $('#add').addEventListener('click', async () => {
   try {
@@ -362,6 +416,7 @@ $('#add').addEventListener('click', async () => {
     const body = { source_id: $('#a-src').value, package: $('#a-pkg').value.trim(),
       group_id: $('#a-grp').value ? Number($('#a-grp').value) : null };
     if ($('#a-name').value.trim()) body.display_name = $('#a-name').value.trim();
+    if (!$('#a-mod').hidden) body.engine_options = { sigbypass: Number($('#a-sig').value), injectdex: $('#a-dex').checked };
     await act('POST', '/api/items', body, 'Added; the icon appears after the next fetch');
     await load();
   } catch (_) { /* shown */ }

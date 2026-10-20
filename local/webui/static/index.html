@@ -37,7 +37,8 @@ a.badge{text-decoration:none}
 <div class="card-f"><button class="btn btn-outline" value="cancel" formnovalidate>Cancel</button><button class="btn" value="ok">Save</button></div></form></dialog>
 <dialog id="dlg-add" aria-labelledby="da-t"><form method="dialog" class="card stack" style="min-width:360px">
 <div class="card-h"><h2 id="da-t">Add app</h2><p class="sm muted">An item is one patch source × one app.</p></div>
-<div class="card-c stack"><div class="field"><label class="lbl" for="a-src">Patch source</label><select class="input" id="a-src"></select></div>
+<div class="card-c stack"><div class="field"><label class="lbl" for="a-src">Patch source</label><select class="input" id="a-src"></select><div class="row" style="margin-top:.375rem"><button class="btn btn-outline btn-sm" type="button" id="a-src-edit">Edit source…</button><button class="btn btn-outline btn-sm" type="button" id="a-src-del">Delete source</button></div></div>
+<div class="field" id="a-mod" hidden><label class="lbl" for="a-sig">Signature bypass level</label><select class="input" id="a-sig"></select><label class="row sm" style="margin-top:.375rem"><input type="checkbox" class="cb" id="a-dex"> Inject dex</label><p class="hint">Module settings (LSPatch/NPatch). Changeable later in the item's Module tab.</p></div>
 <div class="field"><label class="lbl" for="a-pkg">Package</label><input class="input mono" id="a-pkg" required pattern="[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+" placeholder="com.google.android.youtube"></div>
 <div class="field"><label class="lbl" for="a-grp">Group</label><select class="input" id="a-grp"></select></div>
 <div class="field"><label class="lbl" for="a-name">Display name (optional)</label><input class="input" id="a-name" maxlength="80"></div></div>

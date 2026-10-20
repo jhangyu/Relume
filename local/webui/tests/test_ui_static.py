@@ -32,6 +32,12 @@ class StaticRulesTest(unittest.TestCase):
             self.assertNotRegex(t, r'href="(apps|app-detail|build-log|index)\.html', f.name)
             self.assertNotIn('data-toast=', t, f.name)
 
+    def test_index_source_controls(self):
+        js = (STATIC / 'index.js').read_text()
+        for needle in ("'PUT', `/api/sources/", "'DELETE', `/api/sources/", 'engine_options', 'sigbypass', 'injectdex'):
+            self.assertIn(needle, js, needle)
+        self.assertIn('id="a-src-edit"', (STATIC / 'index.html').read_text())
+
     def test_pages_have_nav_and_logout(self):
         for f in sorted(STATIC.glob('*.html')):
             t = f.read_text()
