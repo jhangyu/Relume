@@ -216,6 +216,18 @@ class PullTest(UpstreamCase):
         self.assertEqual((d / "signer.sha256").read_text().strip(), "ab" * 32)
         self.assertEqual(self.inspected, [])
 
+    def test_dependency_signer_runs_isolated(self):
+        with db.tx() as c:
+            c.execute("INSERT INTO upstream(id, kind, repo, channel, asset_regex) VALUES (9,'dependency','MorpheApp/MicroG-RE','stable','^microg-[0-9.]+\\.apk$')")
+        rel = {"tag_name": "v7.2.1", "draft": False, "assets": [
+            {"name": "microg-7.2.1.apk", "size": 5, "browser_download_url": "https://dl.invalid/microg.apk"}]}
+        self.http({f"{API}/repos/MorpheApp/MicroG-RE/releases/latest": (200, rel, {})})
+        with mock.patch.object(upstream, "APKSIGNER", ["bash", str(FIX / "fake-apksigner.sh")]), \
+                mock.patch.dict(os.environ, {"RV_RUNNER_UID": "10001"}):
+            upstream.pull(9, self.log)
+        self.assertEqual(self.log.runs[0][:2], ["setpriv", "--reuid=10001"])
+        self.assertEqual((self.data / "upstream" / "9" / "v7.2.1" / "signer.sha256").read_text().strip(), "ab" * 32)
+
     def test_module_new_tag_rebuilds_that_source_only(self):
         with db.tx() as c:
             c.execute("INSERT INTO upstream(id, kind, repo, channel) VALUES (6,'module','revenge-mod/revenge-xposed','stable'),(7,'cli','JingMatrix/LSPatch','stable')")

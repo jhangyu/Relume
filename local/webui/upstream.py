@@ -362,7 +362,11 @@ def _write_signer(final, log):
         if m:
             found.append(m.group(1).lower())
 
-    log.run([*APKSIGNER, "verify", "--print-certs", str(apks[0])], cwd=str(final), env=_child_env(), on_line=on_line)
+    # parses an untrusted downloaded APK: isolated runner uid like the inspector (spec L779)
+    with tempfile.TemporaryDirectory() as tmp:
+        os.chmod(tmp, 0o770)
+        log.run(jobs.isolate([*APKSIGNER, "verify", "--print-certs", jobs.runner_path(apks[0])]), cwd=tmp,
+                env=dict(_child_env(), HOME=tmp), on_line=on_line)
     if found:
         (final / "signer.sha256").write_text(found[0] + "\n")
     else:
