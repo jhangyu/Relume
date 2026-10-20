@@ -76,7 +76,8 @@ def set_github_token(token):
 
 
 def check_token_file():
-    if TOKEN_PATH.exists() and not TOKEN_PATH.is_file():
+    # /dev/null = compose default when RV_GITHUB_TOKEN_FILE is unset (the file is optional): no warning
+    if TOKEN_PATH.exists() and not TOKEN_PATH.is_file() and not TOKEN_PATH.samefile(os.devnull):
         print(f'github token path is not a file: {TOKEN_PATH}', flush=True)
 
 

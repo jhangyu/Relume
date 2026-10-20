@@ -109,6 +109,18 @@ class UiTokenTest(SettingsTest):
         for bad in ('has space', 'x' * 256, 5, 'a\nb'):
             self.assertEqual(self.put({'github_token': bad})[0], 400, bad)
 
+    def test_dev_null_default_is_quiet_absent(self):
+        # compose binds /dev/null when RV_GITHUB_TOKEN_FILE is unset: no warning, no token, UI token still used
+        with mock.patch.object(settings, 'TOKEN_PATH', pathlib.Path('/dev/null')):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                settings.check_token_file()
+            self.assertEqual(out.getvalue(), '')
+            self.assertEqual(settings.github_token(), '')
+            self.assertEqual(self.get('?recheck=1')['github']['state'], 'absent')
+            self.put({'github_token': 'ghp_ui0001'})
+            self.assertEqual(settings.github_token(), 'ghp_ui0001')
+
     def test_token_modes_and_runner_denied(self):
         self.put({'github_token': 'ghp_secret1234'})
         f = settings.ui_token_path()
