@@ -221,7 +221,7 @@ def put_group_items_order(req):
 
 KEYSTORE_DIR = REPO_ROOT / "src" / "keystore"
 URL_RE = re.compile(r"^https://[^\s\"'<>]+$")
-ARCH_RE = re.compile(r"^[A-Za-z0-9 ._+-]*$")   # seed has 'arm64-v8a + armeabi-v7a' (icysymmetra.sh:11)
+ARCH_RE = re.compile(r"^([A-Za-z0-9_][A-Za-z0-9 ._+-]*)?$")   # no leading . or - (grep option); seed has 'arm64-v8a + armeabi-v7a' (icysymmetra.sh:11)
 MINVER_RE = re.compile(r"^[A-Za-z0-9 .+-]*$")
 DOWNLOAD_DEFAULT = {"kind": "apkmirror", "type": "apk", "arch": None, "dpi": None, "minver": None, "url": None}
 APP_URL_FIELDS = ("apkmirror_list_url", "apkmirror_example_url", "apkmirror_example_url2", "apkpure_url")
@@ -281,7 +281,82 @@ def validate_variants(variants):
 def _engine_options(v):
     if v is not None and not isinstance(v, dict):
         raise server.HttpError(400, "invalid engine_options")
-    return v  # Xposed rules: P8
+    return v  # engine-specific shape: validate_engine_options (called first by post_item/put_item)
+
+
+# --- Xposed module items (P8, spec xposed 5.1) ---
+_ENGINE_MAX = {'lspatch': 3, 'npatch': 4}
+
+
+def _engine_of_source(source_id):
+    r = db.conn().execute('SELECT engine FROM source WHERE id=?', (source_id,)).fetchone()
+    return r['engine'] if r else None
+
+
+def _engine_of_item(item_id):
+    r = db.conn().execute('SELECT s.engine FROM item i JOIN source s ON s.id = i.source_id WHERE i.id=?',
+                          (item_id,)).fetchone()
+    return r['engine'] if r else None
+
+
+def validate_engine_options(engine, value):
+    if engine not in _ENGINE_MAX:
+        if value is not None:
+            raise server.HttpError(400, 'engine_options must be null for patches items')
+        return None
+    if not isinstance(value, dict) or set(value) != {'sigbypass', 'injectdex'}:
+        raise server.HttpError(400, 'engine_options needs exactly sigbypass and injectdex')
+    sb, inj = value['sigbypass'], value['injectdex']
+    if isinstance(sb, bool) or not isinstance(sb, int) or not 0 <= sb <= _ENGINE_MAX[engine]:
+        raise server.HttpError(400, f'sigbypass must be 0-{_ENGINE_MAX[engine]} for {engine}')
+    if not isinstance(inj, bool):
+        raise server.HttpError(400, 'injectdex must be true or false')
+    return {'sigbypass': sb, 'injectdex': inj}
+
+
+def check_xposed_variants(variants):
+    for v in variants if isinstance(variants, list) else []:
+        if not isinstance(v, dict):
+            continue  # shape errors are answered by P2's variant validation
+        if v.get('exclude_splits') is not None or v.get('strip_libs') is not None:
+            raise server.HttpError(400, 'exclude_splits and strip_libs must be null for module items')
+        if (v.get('download') or {}).get('type') not in ('apk', 'bundle'):
+            raise server.HttpError(400, 'download.type must be apk or bundle for module items')
+
+
+def xposed_item_rules(body, item_id=None):
+    """POST /api/items (item_id None) and PUT /api/items/{id}; normalizes body['engine_options'] in place."""
+    if not isinstance(body, dict):
+        return
+    if body.get('source_id') is not None:
+        engine = _engine_of_source(body['source_id'])
+    else:
+        engine = _engine_of_item(item_id) if item_id is not None else None
+    if engine is None:
+        return  # unknown source or item: P2's own checks answer 400/404
+    if item_id is None or 'engine_options' in body:
+        body['engine_options'] = validate_engine_options(engine, body.get('engine_options'))
+    if engine in _ENGINE_MAX and 'variants' in body:
+        check_xposed_variants(body['variants'])
+
+
+def xposed_source_rules(body, source_id=None):
+    """POST /api/sources (source_id None) and PUT /api/sources/{id}."""
+    if not isinstance(body, dict):
+        return
+    engine = body.get('engine') or (_engine_of_source(source_id) if source_id else 'morphe')
+    if engine != 'morphe' and not body.get('asset_regex') and (source_id is None or 'repo' in body):
+        raise server.HttpError(400, 'asset_regex required for module sources')
+
+
+def require_patches_item(item_id):
+    if _engine_of_item(item_id) in _ENGINE_MAX:
+        raise server.HttpError(409, 'not a patches item')
+
+
+def check_version_mode(item_id, body):
+    if isinstance(body, dict) and body.get('version_mode') == 'auto' and _engine_of_item(item_id) in _ENGINE_MAX:
+        raise server.HttpError(400, 'auto version not available for module items')
 
 
 def _display_name(v):
@@ -344,6 +419,7 @@ def list_sources(req):
 
 
 def post_source(req):
+    xposed_source_rules(req.json)
     b = req.json or {}
     sid = server.validate_slug(b.get("id"), "id")
     f = _source_fields(b)
@@ -357,6 +433,7 @@ def post_source(req):
 
 
 def put_source(req):
+    xposed_source_rules(req.json, req.params["id"])
     sid = req.params["id"]
     _source(sid)
     f = _source_fields(req.json or {})
@@ -418,6 +495,7 @@ def get_item(req):
 
 
 def post_item(req):
+    xposed_item_rules(req.json)
     b = req.json or {}
     src = _source(server.validate_slug(b.get("source_id"), "source_id")) if isinstance(b.get("source_id"), str) else None
     if src is None:
@@ -445,6 +523,7 @@ def post_item(req):
 
 
 def put_item(req):
+    xposed_item_rules(req.json, req.params["id"])
     iid = req.params["id"]
     cur = item_detail(iid)
     b = req.json or {}
@@ -571,6 +650,7 @@ def _bundle(r):
 
 
 def get_patches(req):
+    require_patches_item(req.params["id"])
     r = _item_row(req.params["id"])
     tag, files, bundle = _bundle(r)
     ov = json.loads(r["patch_overrides"])
@@ -608,6 +688,7 @@ def _type_ok(t, v):
 
 
 def put_patches(req):
+    require_patches_item(req.params["id"])
     r = _item_row(req.params["id"])
     _, _, bundle = _bundle(r)
     if bundle is None:
@@ -645,6 +726,7 @@ def put_patches(req):
 
 
 def put_version(req):
+    check_version_mode(req.params["id"], req.json)
     r = _item_row(req.params["id"])
     b = req.json or {}
     mode = b.get("version_mode")
