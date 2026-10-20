@@ -1,0 +1,9 @@
+{
+  "tag_name": "all",
+  "assets": [
+    {"name": "morphe-youtube-universal.apk", "label": "morphe-youtube-universal.apk (19.47.53, patches v1.21.1)"},
+    {"name": "morphe-youtube-arm64-v8a.apk", "label": "morphe-youtube-arm64-v8a.apk (19.47.53, patches v1.21.1)"},
+    {"name": "piko-twitter-universal.apk", "label": "piko-twitter-universal.apk (11.0.0, patches v2.0.0)"},
+    {"name": "youtube-morphe.apk", "label": null}
+  ]
+}

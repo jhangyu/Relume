@@ -1,0 +1,54 @@
+name: Build
+on:
+  schedule:
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+    inputs:
+      source: {description: "source id or all", type: string, default: all}
+      force:  {description: "build even if up to date", type: boolean, default: false}
+permissions:
+  contents: write
+concurrency:
+  group: build
+env:
+  SOURCE: ${{ inputs.source || 'all' }}
+  FORCE: ${{ inputs.force && '--force' || '' }}
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      sources: ${{ steps.plan.outputs.sources }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - id: plan
+        env: {GITHUB_TOKEN: "${{ github.token }}"}
+        run: |
+          printf '%s' "$GITHUB_TOKEN" > "$RUNNER_TEMP/github_token"
+          out=$(docker run --rm -e GITHUB_REPOSITORY -e PYTHONPATH=/repo/local \
+            -v "$PWD:/repo:ro" -v "$RUNNER_TEMP/github_token:/run/secrets/github_token:ro" \
+            -v "$RUNNER_TEMP/data:/data" python:3.12-slim \
+            python3 -m webui ci-plan --source "$SOURCE" ${FORCE:+"$FORCE"})
+          echo "sources=$out" >> "$GITHUB_OUTPUT"
+  build:
+    needs: plan
+    if: needs.plan.outputs.sources != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        source: ${{ fromJSON(needs.plan.outputs.sources) }}
+    env:
+      RV_NETWORK_MODE: host
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - run: echo "RV_GITHUB_TOKEN_FILE=$RUNNER_TEMP/github_token" >> "$GITHUB_ENV"
+      - run: |
+          printf '%s' "$GH_TOKEN" > "$RV_GITHUB_TOKEN_FILE"
+          mkdir -p local/data
+          echo "RV_UID=$(id -u)" >> "$GITHUB_ENV"; echo "RV_GID=$(id -g)" >> "$GITHUB_ENV"
+      - run: docker compose -f local/docker-compose.yml -f local/docker-compose.ci.yml up -d --build
+      - run: docker compose -f local/docker-compose.yml -f local/docker-compose.ci.yml exec -T app python3 -m webui ci-build "${{ matrix.source }}" ${FORCE:+"$FORCE"}
+      - if: ${{ !cancelled() && hashFiles('local/data/release/upload.list') != '' }}
+        working-directory: local/data/release
+        run: xargs -d '\n' -a upload.list gh release upload all --clobber

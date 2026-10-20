@@ -1,0 +1,6 @@
+# CI only (spec ci §3): app stays idle so ci-build runs through `exec`; sidecars start as usual.
+services:
+  app:
+    command: ["sleep", "infinity"]
+    healthcheck:
+      disable: true
