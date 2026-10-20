@@ -125,3 +125,12 @@ class XposedCatalogTest(helpers.DataTestCase):
         st, _ = self.call('POST', '/api/items', {'source_id': 'nexalloy-npatch', 'package': 'com.zhiliaoapp.musically', 'group_id': None,
                                                   'engine_options': {'sigbypass': 4, 'injectdex': True}})
         self.assertEqual(st, 201)
+
+    def test_source_put_delete(self):
+        full = {'name': 'N2', 'engine': 'lspatch', 'repo': 'gnadgnaoh/NexAlloy', 'channel': 'stable',
+                'asset_regex': '^x\\.apk$', 'keystore': 'lspatch-signing.p12', 'cli_upstream_id': 4}
+        st, body = self.call('PUT', '/api/sources/nexalloy-lspatch', full)
+        self.assertEqual(st, 200, body)
+        self.assertEqual((body['id'], body['name'], body['asset_regex']), ('nexalloy-lspatch', 'N2', '^x\\.apk$'))
+        self.assertEqual(self.call('DELETE', '/api/sources/nexalloy-lspatch'), (409, {'error': 'source has items'}))
+        self.assertEqual(self.call('DELETE', '/api/sources/nexalloy-npatch'), (200, {'ok': True}))

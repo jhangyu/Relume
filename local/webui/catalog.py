@@ -373,6 +373,8 @@ def upstream_row(c, kind, repo, channel, tag, asset_regex):
     if r is not None:
         if r["kind"] != kind:
             raise server.HttpError(400, "upstream kind conflict")
+        if asset_regex is not None:  # one regex per shared upstream row: an edit must not be silently dropped
+            c.execute("UPDATE upstream SET asset_regex = ? WHERE id = ?", (asset_regex, r["id"]))
         return r["id"]
     return c.execute("INSERT INTO upstream(kind, repo, channel, tag, asset_regex) VALUES (?, ?, ?, ?, ?)",
                      (kind, repo, channel, tag, asset_regex)).lastrowid
