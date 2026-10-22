@@ -149,6 +149,14 @@ class PureTest(unittest.TestCase):
         self.assertIsNone(projects.parse_apk_info('VersionName="1"\n'))
         self.assertIsNone(projects.parse_apk_info('package="not a package"\n'))
 
+    def test_version_key_tag_prefix(self):
+        k = catalog.version_key
+        self.assertGreater(k("v2.0"), k("v1.9"))
+        self.assertGreater(k("1.10"), k("1.9"))
+        self.assertEqual(k("1.48.0-dev.3"), (1, 48, 0, -1, 3))
+        self.assertEqual(k("20.12.46"), (20, 12, 46))
+        self.assertGreater(k("1.48.0-dev.3"), k("1.48.0-dev.2"))
+
     def test_parse_signer(self):
         text = "Signer #1 certificate DN: CN=x\n  Signer #1 certificate SHA-256 digest: " + "AB" * 32 + "  \n"
         self.assertEqual(projects.parse_signer(text), AB)
@@ -298,6 +306,15 @@ class CrudRouteTest(ProjectCase):
         self.assertEqual(len(self.jobs_of("upstream")), 1)
         self.assertEqual(self.error(projects.put_project, json={"repo": "a/b"}, method="PUT", id=1), (400, "repo cannot change"))
         self.assertEqual(self.error(projects.put_project, json={}, method="PUT", id=99), (404, "project not found"))
+
+    def test_put_unchanged_is_noop(self):
+        with db.tx() as c:
+            add_project(c)
+            c.execute("UPDATE upstream SET downloaded_tag='v1', latest_tag='v1' WHERE id=9")
+        st, p = self.call(projects.put_project, json={"channel": "stable", "asset_regex": r"\.apk$", "display_name": "X"},
+                          method="PUT", id=1)
+        self.assertEqual((st, p["downloaded_tag"], p["label"]), (200, "v1", "X"))
+        self.assertEqual(self.jobs_of("upstream"), [])
 
     def test_put_channel_in_place(self):
         with db.tx() as c:
