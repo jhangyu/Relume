@@ -196,6 +196,13 @@ class PlanTest(helpers.DataTestCase):
         p2 = ota.list_devices(req(method='GET'))[1]['devices'][0]['projects'][1]
         self.assertEqual((p2['update_available'], p2['pending']), (True, True))
 
+    def test_tag_key_orders_v_prefixed_and_multi_digit_tags(self):
+        self.assertGreater(ota.tag_key('v2.0'), ota.tag_key('v1.9'))
+        self.assertGreater(ota.tag_key('1.10'), ota.tag_key('1.9'))
+        self.assertGreater(ota.tag_key('v0.19.0'), ota.tag_key('v0.18.12'))
+        self.assertEqual(ota.tag_key('v7.2.1'), ota.tag_key('7.2.1'))
+        self.assertEqual(ota.tag_key('nightly'), (-1,))
+
     def test_plan_route(self):
         add_catalog_item(1, YT)
         d = add_device()
