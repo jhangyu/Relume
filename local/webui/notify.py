@@ -6,7 +6,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from . import db, events, jobs, projects, server, settings
+from . import db, events, jobs, projects, server, settings, upstream
 from .server import HttpError
 
 EVENTS = ('upstream.new_version', 'build.succeeded', 'build.failed', 'ota.done', 'ota.failed', 'device.offline',
@@ -147,7 +147,7 @@ def send(cfg, text):
     for attempt in range(3):
         wait = None
         try:
-            with urllib.request.urlopen(_request(cfg, text), timeout=10) as r:
+            with upstream.opener.open(_request(cfg, text), timeout=10) as r:
                 return True, r.status, r.read(2000).decode('utf-8', 'replace')
         except urllib.error.HTTPError as e:
             status, detail = e.code, e.read(2000).decode('utf-8', 'replace')

@@ -31,6 +31,8 @@ class Stub:
                 self.end_headers()
                 self.wfile.write(body)
 
+            do_GET = do_POST  # a 302 after POST arrives as GET
+
             def log_message(self, *a):
                 pass
 
@@ -76,6 +78,14 @@ class NotifyTest(helpers.DataTestCase):
         self.assertTrue(notify.send(cfg, 'hi')[0])
         path, headers, body = stub.requests[0]
         self.assertEqual((path, body, headers['Title'], headers['Authorization']), ('/rv', b'hi', 'Relume', 'Bearer tk_secret1'))
+
+    def test_ntfy_cross_host_redirect_drops_authorization(self):
+        b = Stub(self)
+        a = Stub(self, [(302, {'Location': b.url + '/x'}, b'')])
+        cfg = {'type': 'ntfy', 'enabled': True, 'config': {'server_url': a.url, 'topic': 'rv', 'token': 'tk_secret1'}}
+        self.assertEqual(notify.send(cfg, 'hi')[:2], (True, 200))
+        self.assertEqual(b.requests[0][0], '/x')
+        self.assertNotIn('Authorization', b.requests[0][1])
 
     def test_truncate_2000_keeps_link(self):
         add_catalog_item(1, 'com.google.android.youtube')

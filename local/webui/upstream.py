@@ -43,14 +43,14 @@ class _SameOriginRedirect(urllib.request.HTTPRedirectHandler):
         return new
 
 
-_opener = urllib.request.build_opener(_SameOriginRedirect)
+opener = urllib.request.build_opener(_SameOriginRedirect)
 
 
 def http_get(url, headers=None, timeout=30):
     """(status, lower-cased headers, body). HTTP errors are returned; network errors raise OSError."""
     req = urllib.request.Request(url, headers=headers or {})
     try:
-        with _opener.open(req, timeout=timeout) as r:
+        with opener.open(req, timeout=timeout) as r:
             return r.status, {k.lower(): v for k, v in r.headers.items()}, r.read()
     except urllib.error.HTTPError as e:
         return e.code, {k.lower(): v for k, v in e.headers.items()}, e.read()
@@ -326,7 +326,7 @@ def inspect_row(upstream_id, tag, log):
 def http_download(url, dest, timeout=300):
     req = urllib.request.Request(url, headers={"User-Agent": "Relume"})
     n = 0
-    with _opener.open(req, timeout=timeout) as r, open(dest, "wb") as f:
+    with opener.open(req, timeout=timeout) as r, open(dest, "wb") as f:
         while chunk := r.read(1 << 20):
             f.write(chunk)
             n += len(chunk)
