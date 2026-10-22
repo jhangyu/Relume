@@ -121,10 +121,10 @@ Contradictions between the parts and how they were resolved (arch-core is the ti
 | Password minimum | mockup 12, core 10 | 10 | core §8 |
 | Icon fetch timing | catalog: when an app row is created; ci: start-up must make no Play requests | background task from `catalog.start()` | seed import and CI stay offline from Play |
 | Telegram download | build: delete `telegram_dl` (Xposed only) | deleted; secret `TDL_BACKUP` retired | no caller (ci §1, xposed §1) |
-| Network-namespace anchor | core draft: `app` is the anchor | idle `netns` service is the anchor; `app` and the sidecars join it (core §1) | after a crash restart of an anchor `app`, the sidecars keep the old namespace (spec review S6) |
-| Module start-up | core: one `start()` does registration and threads; CLI subcommands run "the normal start-up" | `register()` (no threads, no IO) and `start()` (threads, adb server, Play fetch); CLI calls only `register()` (core §3) | CI makes no Play requests and has no adb (spec review S3) |
-| OTA recovery modes | device: mode and install id on the request; core `enqueue` had no slot | `options.mode` + `options.package` (§0.3) | one job shape for core and device (spec review S2) |
-| Notifier IO | device: sends in the subscriber | subscriber only queues; one notifier thread sends (device §4.4) | subscribers run in the emitting worker thread (spec review S1) |
+| Network-namespace anchor | core draft: `app` is the anchor | idle `netns` service is the anchor; `app` and the sidecars join it (core §1) | after a crash restart of an anchor `app`, the sidecars keep the old namespace |
+| Module start-up | core: one `start()` does registration and threads; CLI subcommands run "the normal start-up" | `register()` (no threads, no IO) and `start()` (threads, adb server, Play fetch); CLI calls only `register()` (core §3) | CI makes no Play requests and has no adb |
+| OTA recovery modes | device: mode and install id on the request; core `enqueue` had no slot | `options.mode` + `options.package` (§0.3) | one job shape for core and device |
+| Notifier IO | device: sends in the subscriber | subscriber only queues; one notifier thread sends (device §4.4) | subscribers run in the emitting worker thread |
 
 ## 0.6 User decisions (2026-10-19, `docs/logs/2026-10-19-webui-contract.md` "Decisions")
 
@@ -186,7 +186,7 @@ All services: `restart: unless-stopped`. `app` has `healthcheck: curl -sf http:/
 Why this shape:
 - Builds run inside `app` as child processes. No Docker socket, no host-path translation. This removes preflight-build §1 blockers 1 and 3 (`docs/logs/2026-10-19-preflight-build.md:22`).
 - `netns` is the network-namespace anchor (today the anchor is `flaresolverr`, `local/docker-compose.yml:17,28,38`). It owns `ports:` and `network_mode`, because a container that joins another container's namespace cannot publish ports. The sidecars and `app` keep reaching each other on `localhost` exactly as today (`local/docker-compose.yml:41-43`).
-- Why not `app` as the anchor: when the restart policy restarts a crashed anchor, containers that joined its namespace keep the old one (spec review S6, Docker 29 / Compose v5), so every build would fail `download_failed` until a manual `up -d`. Verified 2026-10-19 (Docker 29.8.2, Compose v5, scratch project, bridge mode): with an idle busybox anchor, a crash of `app` (`kill 1` inside it; RestartCount 0 → 1) leaves `app` → sidecar and sidecar → `app` loopback connections working, with no restart of the sidecar. Compose docs: `network_mode: service:{name}` "gives the container access to the specified container", and Compose orders start/stop by `network_mode: "service:..."` dependencies (docs.docker.com/compose/how-tos/networking, startup-order, fetched 2026-10-19).
+- Why not `app` as the anchor: when the restart policy restarts a crashed anchor, containers that joined its namespace keep the old one (Docker 29 / Compose v5), so every build would fail `download_failed` until a manual `up -d`. Verified 2026-10-19 (Docker 29.8.2, Compose v5, scratch project, bridge mode): with an idle busybox anchor, a crash of `app` (`kill 1` inside it; RestartCount 0 → 1) leaves `app` → sidecar and sidecar → `app` loopback connections working, with no restart of the sidecar. Compose docs: `network_mode: service:{name}` "gives the container access to the specified container", and Compose orders start/stop by `network_mode: "service:..."` dependencies (docs.docker.com/compose/how-tos/networking, startup-order, fetched 2026-10-19).
 - The only platform difference is one value in `local/.env`:
   - Linux: `RELUME_NETWORK_MODE=host` → the anchor's namespace is the host's; mDNS reaches the LAN; the web port is the host's port 47000.
   - macOS: `RELUME_NETWORK_MODE=bridge` → port 47000 is published; outbound TCP from the container to the phone works; mDNS finds nothing; the manual pairing form is used.
@@ -992,7 +992,10 @@ Event → notifier subscriber → `queue.Queue.put` (returns at once, in the emi
 | `SIGNATURE_MISMATCH` | output contains `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | D6 confirm uninstall + install |
 | `VERSION_DOWNGRADE` | `INSTALL_FAILED_VERSION_DOWNGRADE` (e.g. user pinned an older version) | button "install with downgrade" → `install -r -d` (`-d` allow downgrade) |
 | `INSUFFICIENT_STORAGE` | `INSTALL_FAILED_INSUFFICIENT_STORAGE` | show text |
-| `NO_MATCHING_ABI` | `INSTALL_FAILED_NO_MATCHING_ABIS`, or planner `NO_MATCHING_ARTIFACT` | show phone ABI vs built ABIs |
+| `NO_MATCHING_ABI` | `INSTALL_FAILED_NO_MATCHING_ABIS`, or a followed project's release has no APK for the phone's ABIs and no universal (follow-project spec §5.4) | show phone ABI vs built ABIs |
+| `NO_MATCHING_ARTIFACT` | planner: no succeeded build has an artifact for the phone's first ABI and none is `universal` (§4 step 3) | show phone ABI vs built ABIs |
+| `NOT_DOWNLOADED` | item: the artifact file is gone on both re-resolves before install (retention); project: still no downloaded tag after the pull, its file is gone, or the pull was cancelled | rebuild or pull again; the next OTA retries |
+| `SIGNER_CHANGED` | followed project has `signer_alert` set (follow-project spec §5.3) | review the signer on the Projects page |
 | `USER_REJECTED` | `INSTALL_FAILED_USER_RESTRICTED` / `INSTALL_FAILED_ABORTED` (OEM "install via USB" setting or on-phone prompt) | show text: allow install via adb in phone settings |
 | `TIMEOUT` | install exceeds 15 min | kill that adb invocation, mark failed |
 | `DEPENDENCY_FAILED` | dependency install failed | see dependency's error |
