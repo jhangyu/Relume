@@ -13,7 +13,7 @@ class StartupTest(DataTestCase):
         m.start = lambda: calls.append(name + '.start')
         if name == 'catalog':
             m.seed_import = lambda: calls.append('catalog.seed_import')
-        p = mock.patch.dict(sys.modules, {'webui.' + name: m}); p.start(); self.addCleanup(p.stop)
+        self.enterContext(mock.patch.dict(sys.modules, {'webui.' + name: m}))
         return name
 
     def test_boot_order_no_threads(self):

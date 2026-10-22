@@ -106,13 +106,9 @@ class BuildCase(helpers.DataTestCase):
         (self.up / "morphe-desktop-1.0.0-all.jar").write_bytes(b"c")
         self.cat = FakeCatalog(self.up)
         for attr, val in (("catalog", self.cat), ("RUNNER", str(FIX / "runner-ok.sh"))):
-            p = mock.patch.object(build, attr, val)
-            p.start()
-            self.addCleanup(p.stop)
+            self.enterContext(mock.patch.object(build, attr, val))
         self.events = []
-        p = mock.patch.object(events, "emit", side_effect=lambda t, pl: self.events.append((t, pl)))
-        p.start()
-        self.addCleanup(p.stop)
+        self.enterContext(mock.patch.object(events, "emit", side_effect=lambda t, pl: self.events.append((t, pl))))
         with db.tx() as c:
             add_item(c)
         self.addCleanup(build._steps.clear)

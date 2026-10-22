@@ -69,9 +69,7 @@ class CiPlanTest(helpers.DataTestCase):
         patches = [mock.patch.object(upstream, 'check', side_effect=fake_check),
                    mock.patch.object(ci, 'fetch_release', side_effect=lambda repo, token: release()),
                    mock.patch.dict('os.environ', {'GITHUB_REPOSITORY': 'jhangyu/Relume'})]
-        started = [p.start() for p in patches]
-        for p in patches:
-            self.addCleanup(p.stop)
+        started = [self.enterContext(p) for p in patches]
         self.fetch = started[1]
 
     def main(self, *argv):
@@ -188,9 +186,7 @@ class CiBuildTest(helpers.DataTestCase):
         patches = [mock.patch.object(jobs, 'run_inline', side_effect=fake_run_inline),
                    mock.patch.object(ci, 'fetch_release', side_effect=lambda repo, token: {}),
                    mock.patch.dict('os.environ', {'GITHUB_REPOSITORY': 'o/r'})]
-        started = [p.start() for p in patches]
-        for p in patches:
-            self.addCleanup(p.stop)
+        started = [self.enterContext(p) for p in patches]
         self.fetch = started[1]
 
     def build(self, *argv):

@@ -1,7 +1,10 @@
 """Release check and pull tests (spec catalog §5, §9, §10)."""
 import json
 import os
+import threading
 import unittest
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
 
@@ -89,16 +92,12 @@ class PullTest(CatalogCase):
         super().setUp()
         self.blobs = {"https://dl.invalid/patches-1.47.0.mpp": b"hello", "https://dl.invalid/cli.jar": b"hello",
                       "https://dl.invalid/new.mpp": b"hello!", "https://dl.invalid/microg.apk": b"hello"}
-        p = mock.patch.object(upstream, "http_download", self.fake_dl)
-        p.start()
-        self.addCleanup(p.stop)
+        self.enterContext(mock.patch.object(upstream, "http_download", self.fake_dl))
         self.inspected = []
-        p = mock.patch.object(upstream, "inspect_row", lambda uid, tag, log: self.inspected.append((uid, tag)))
-        p.start()
-        self.addCleanup(p.stop)
+        self.enterContext(mock.patch.object(upstream, "inspect_row", lambda uid, tag, log: self.inspected.append((uid, tag))))
         self.log = FakeLog()
 
-    def fake_dl(self, url, dest, headers=None, timeout=300):
+    def fake_dl(self, url, dest, timeout=300):
         Path(dest).write_bytes(self.blobs[url])
         return len(self.blobs[url])
 
@@ -219,9 +218,7 @@ class CheckOnlyTest(CatalogCase):
         self.inspected = []
         for name, fake in (("http_download", lambda *a, **k: self.fail("downloaded")),
                            ("inspect_row", lambda uid, tag, log: self.inspected.append((uid, tag)))):
-            p = mock.patch.object(upstream, name, fake)
-            p.start()
-            self.addCleanup(p.stop)
+            self.enterContext(mock.patch.object(upstream, name, fake))
 
     def routes(self):
         return self.http({f"{API}/repos/MorpheApp/morphe-patches/releases/latest": (200, fix("release-stable.json"), {})})
@@ -241,6 +238,55 @@ class CheckOnlyTest(CatalogCase):
         self.http({})
         with self.assertRaises(jobs.JobFailed):
             upstream._handler(mock.Mock(id=79, target={"upstream_id": 2}, options={"pull": False}), FakeLog())
+
+
+class RedirectAuthTest(unittest.TestCase):
+    """The GitHub token never follows a redirect to another origin or scheme."""
+
+    def serve(self, location=None):
+        """Local server: answers 302 to `location` (a callable given the server) or 200; records headers per path."""
+        seen = {}
+
+        class H(BaseHTTPRequestHandler):
+            def do_GET(self):
+                seen[self.path] = self.headers.get("Authorization")
+                target = location(srv) if location and self.path == "/a" else None
+                self.send_response(302 if target else 200)
+                if target:
+                    self.send_header("Location", target)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            def log_message(self, *a):
+                pass
+
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        return srv, seen
+
+    def url(self, srv, path):
+        return f"http://127.0.0.1:{srv.server_address[1]}{path}"
+
+    def test_cross_host_redirect_drops_authorization(self):
+        b, b_seen = self.serve()
+        a, _ = self.serve(lambda s: self.url(b, "/x"))
+        status, _, _ = upstream.http_get(self.url(a, "/a"), upstream.gh_headers("SECRET"))
+        self.assertEqual(status, 200)
+        self.assertIn("/x", b_seen)
+        self.assertIsNone(b_seen["/x"])
+
+    def test_same_origin_redirect_keeps_authorization(self):
+        a, seen = self.serve(lambda s: self.url(s, "/y"))
+        status, _, _ = upstream.http_get(self.url(a, "/a"), upstream.gh_headers("SECRET"))
+        self.assertEqual(status, 200)
+        self.assertEqual(seen["/y"], "Bearer SECRET")
+
+    def test_https_to_http_redirect_drops_authorization(self):
+        req = urllib.request.Request("https://api.github.com/a", headers={"Authorization": "Bearer S"})
+        new = upstream._SameOriginRedirect().redirect_request(req, None, 302, "Found", {}, "http://api.github.com/b")
+        self.assertFalse(new.has_header("Authorization"))
 
 
 if __name__ == "__main__":

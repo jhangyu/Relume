@@ -15,9 +15,7 @@ class DeviceRoutesTest(helpers.DataTestCase):
     def setUp(self):
         super().setUp()
         self.fa = FakeAdb(self)
-        p = mock.patch.object(devices, 'browse', return_value={})
-        self.browse = p.start()
-        self.addCleanup(p.stop)
+        self.browse = self.enterContext(mock.patch.object(devices, 'browse', return_value={}))
 
     def pair_ok_rules(self):
         self.fa.rule('pair', out='Successfully paired to 192.168.1.20:41000 [guid=adb-ABC123]\n')

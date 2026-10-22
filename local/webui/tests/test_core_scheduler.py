@@ -42,11 +42,10 @@ class NextRunTest(unittest.TestCase):
 class FireTest(DataTestCase):
     def setUp(self):
         super().setUp()
-        patcher = mock.patch.dict(scheduler.EXPAND, {
+        self.enterContext(mock.patch.dict(scheduler.EXPAND, {
             'build': lambda t: [{'item_id': i} for i in (1, 2, 3)],
             'upstream': lambda t: [],
-            'ota': lambda t: [{'device_id': 1}]})
-        patcher.start(); self.addCleanup(patcher.stop)
+            'ota': lambda t: [{'device_id': 1}]}))
 
     def test_missed_run_fires_once(self):
         sid = scheduler.create('n', 'build', {'all': True}, {'every': 'day', 'at': '04:00'})
@@ -95,8 +94,7 @@ class FireTest(DataTestCase):
 class RoutesTest(DataTestCase):
     def setUp(self):
         super().setUp()
-        patcher = mock.patch.dict(scheduler.EXPAND, {'build': lambda t: [{'item_id': 7}]})
-        patcher.start(); self.addCleanup(patcher.stop)
+        self.enterContext(mock.patch.dict(scheduler.EXPAND, {'build': lambda t: [{'item_id': 7}]}))
         self.base = serve(self)
         self.c = login(self.base)
 

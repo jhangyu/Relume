@@ -446,13 +446,9 @@ class ReleaseTest(ProjectCase):
         with db.tx() as c:
             add_project(c, package=None)
         self.blobs = {}
-        p = mock.patch.object(upstream, "http_download", lambda url, dest, *a, **k: pathlib.Path(dest).write_bytes(self.blobs[url]))
-        p.start()
-        self.addCleanup(p.stop)
+        self.enterContext(mock.patch.object(upstream, "http_download", lambda url, dest, *a, **k: pathlib.Path(dest).write_bytes(self.blobs[url])))
         for name, script in (("APKSIGNER", "fake-apksigner.sh"), ("APKEDITOR", "fake-apkeditor.sh")):
-            p = mock.patch.object(projects, name, ["bash", str(FIX / script)])
-            p.start()
-            self.addCleanup(p.stop)
+            self.enterContext(mock.patch.object(projects, name, ["bash", str(FIX / script)]))
         self.log = FakeLog()
 
     def release(self, tag, files):
