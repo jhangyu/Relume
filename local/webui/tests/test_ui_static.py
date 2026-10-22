@@ -66,10 +66,12 @@ class StaticRulesTest(unittest.TestCase):
 
 class PageIdsTest(unittest.TestCase):
     def test_every_id_a_page_script_looks_up_exists_in_its_html(self):
-        for page in ('item', 'builds', 'projects', 'devices'):
+        pages = [j.stem for j in sorted(STATIC.glob('*.js')) if j.name != 'app.js' and j.with_suffix('.html').exists()]
+        self.assertTrue(pages)
+        for page in pages:
             js = (STATIC / f'{page}.js').read_text()
             markup = (STATIC / f'{page}.html').read_text()
-            ids = set(re.findall(r"\$\$?\('#([\w-]+)", js)) | set(re.findall(r"getElementById\('([\w-]+)'", js))
+            ids = set(re.findall(r"\$\$?\(['\"`]#([\w-]+)", js)) | set(re.findall(r"getElementById\(['\"`]([\w-]+)['\"`]", js))
             self.assertTrue(ids, page)
             for i in sorted(ids):
                 self.assertIn(f'id="{i}"', markup, f'{page}: #{i}')
