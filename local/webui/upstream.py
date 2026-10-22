@@ -32,7 +32,7 @@ class NoMatchingAsset(CheckError):
     pass
 
 
-class _Redirect(urllib.request.HTTPRedirectHandler):
+class _SameOriginRedirect(urllib.request.HTTPRedirectHandler):
     """Drop Authorization when a redirect changes scheme or host:port (the stdlib copies it everywhere)."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -43,7 +43,7 @@ class _Redirect(urllib.request.HTTPRedirectHandler):
         return new
 
 
-_opener = urllib.request.build_opener(_Redirect)
+_opener = urllib.request.build_opener(_SameOriginRedirect)
 
 
 def http_get(url, headers=None, timeout=30):

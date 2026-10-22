@@ -285,7 +285,7 @@ class RedirectAuthTest(unittest.TestCase):
 
     def test_https_to_http_redirect_drops_authorization(self):
         req = urllib.request.Request("https://api.github.com/a", headers={"Authorization": "Bearer S"})
-        new = upstream._Redirect().redirect_request(req, None, 302, "Found", {}, "http://api.github.com/b")
+        new = upstream._SameOriginRedirect().redirect_request(req, None, 302, "Found", {}, "http://api.github.com/b")
         self.assertFalse(new.has_header("Authorization"))
 
 
