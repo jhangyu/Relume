@@ -94,8 +94,8 @@ def format_message(t, p):
         text = (f"Signer changed: {_project_label('p.id', p['project_id'])} {p.get('tag')}. "
                 'Installs are blocked until you trust the new signer.')
         path = '/projects.html'
-    elif t == 'upstream.new_version' and _project_label('p.upstream_id', p['upstream_id']):
-        text, path = f"New version: {_project_label('p.upstream_id', p['upstream_id'])} {p.get('tag')}", '/projects.html'
+    elif t == 'upstream.new_version' and (label := _project_label('p.upstream_id', p['upstream_id'])):
+        text, path = f"New version: {label} {p.get('tag')}", '/projects.html'
     elif t == 'upstream.new_version':
         repo = _one('SELECT repo FROM upstream WHERE id = ?', (p['upstream_id'],), f"upstream {p['upstream_id']}")
         text, path = f"New upstream version: {repo} {p.get('tag')} ({len(p.get('item_ids') or [])} items)", '/'
