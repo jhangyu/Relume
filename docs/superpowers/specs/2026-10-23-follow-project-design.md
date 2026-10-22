@@ -308,7 +308,7 @@ def enqueue_auto_push(project_id: int, notify: bool = True) -> list[int]
 
 `verify_release` (runs on the `.part` dir, before commit):
 1. `apks = sorted(part.glob("*.apk"))`; none → `ValueError("no APK in release")`.
-2. Per APK: `abi = apk_abi(apk)`; then in a fresh temp dir (`chmod 0o770`), with `home=tmp`, `timeout=120`, through `jobs.run_isolated(log, argv, tmp, …, on_line=collect)` (env limited to `jobs.CHILD_ENV`) — the same pattern as `upstream.py:370-374`:
+2. Per APK: `abi = apk_abi(apk)`; then in a fresh temp dir (`chmod 0o770`), with `home=tmp`, `timeout=120`, through `jobs.run_isolated(log, argv, tmp, …, on_line=collect)` (env limited to `jobs.CHILD_ENV`) — the same pattern as the patches-bundle inspect in `upstream.py`:
    - `[*APKSIGNER, "verify", "--print-certs", jobs.runner_path(apk)]` → `parse_signer`; `None` or non-zero rc → `ValueError("signer unreadable: <file>")`.
    - `[*APKEDITOR, "info", "-i", jobs.runner_path(apk), "-package", "-version-code", "-version-name"]` → `parse_apk_info`; `None` or non-zero rc → `ValueError("package unreadable: <file>")`.
    - `jobs.JobFailed("cancelled")` from `log.run` is re-raised; any other `jobs.JobFailed` becomes `ValueError(str(e))`.
@@ -332,7 +332,7 @@ Because `verify` runs inside `_download`'s `try` (§5.2), a `ValueError` deletes
 
 ### 5.1 Add a project
 
-1. UI → `POST /api/projects/assets {repo, channel}`. The server builds the in-memory row `{"kind": "project", "repo", "channel", "tag": None, "asset_regex": r"\.apk$"}` and calls `upstream.fetch(row)` unchanged (`upstream.py:94-119`): token reuse, stable/prerelease selection, 401/403/429/404 mapping.
+1. UI → `POST /api/projects/assets {repo, channel}`. The server builds the in-memory row `{"kind": "project", "repo", "channel", "tag": None, "asset_regex": r"\.apk$"}` and calls `upstream.fetch(row)` unchanged: token reuse, stable/prerelease selection, 401/403/429/404 mapping.
 2. User ticks assets → UI posts again with `selected: [names]`; server returns `asset_regex = derive_regex(selected)` and `matched` per asset. User edits the regex → UI posts `asset_regex`; server re-marks. `matched = bool(re.search(asset_regex, name))`, the same test as `match_assets` (`upstream.py:74-78`). JavaScript never evaluates the regex.
 3. `POST /api/projects` validates, re-fetches the latest release with the final regex (must match ≥ 1 APK asset), creates the upstream row with `catalog.upstream_row(c, "project", repo, channel, None, asset_regex)` (`catalog.py:370-380`), inserts the `project` row and the `device_projects` rows, then enqueues `jobs.enqueue("upstream", {"upstream_id": uid}, "manual", options={"rebuild": False})` (same call as `catalog.py:527`).
 
