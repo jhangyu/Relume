@@ -13,7 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 VERSION = '1.0'
 STARTED_AT = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-MODULES = ('catalog', 'upstream', 'build', 'devices', 'ota', 'notify')
+MODULES = ('catalog', 'upstream', 'projects', 'build', 'devices', 'ota', 'notify')
 CORE = ('auth', 'jobs', 'scheduler', 'settings')
 STATIC = pathlib.Path(__file__).with_name('static')
 MUTATING = {'POST', 'PUT', 'PATCH', 'DELETE'}

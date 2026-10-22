@@ -484,10 +484,10 @@ def item_detail(iid):
         a.apkmirror_versions, a.apkmirror_checked_at FROM item i JOIN app a ON a.package = i.package WHERE i.id = ?""",
                           (iid,)).fetchone()
     deps = [x[0] for x in db.conn().execute(
-        "SELECT dependency_app_id FROM item_dependency WHERE item_id = ? ORDER BY dependency_app_id", (iid,))]
+        "SELECT project_id FROM item_dependency WHERE item_id = ? ORDER BY project_id", (iid,))]
     o = objs[0]
     o.update(version={"mode": r["version_mode"], "pin": r["version_pin"], "allow_nearest": bool(r["allow_nearest"])},
-             variants=json.loads(r["variants"]), engine_options=_j(r["engine_options"]), dependency_app_ids=deps,
+             variants=json.loads(r["variants"]), engine_options=_j(r["engine_options"]), project_ids=deps,
              apkmirror={"versions": _j(r["apkmirror_versions"]), "checked_at": r["apkmirror_checked_at"]})
     return o
 
@@ -549,11 +549,11 @@ def put_item(req):
             raise server.HttpError(400, "invalid enabled")
         sets["enabled"] = int(b["enabled"])
     deps = None
-    if "dependency_app_ids" in b:
-        deps = _int_list(b["dependency_app_ids"], "dependency_app_ids")
-        known = {r[0] for r in db.conn().execute("SELECT id FROM dependency_app")}
+    if "project_ids" in b:
+        deps = _int_list(b["project_ids"], "project_ids")
+        known = {r[0] for r in db.conn().execute("SELECT id FROM project")}
         if not set(deps) <= known:
-            raise server.HttpError(400, "unknown dependency app")
+            raise server.HttpError(400, "unknown project")
     with db.tx() as c:
         if "group_id" in b:
             gid = _group_id(b["group_id"])
@@ -564,7 +564,7 @@ def put_item(req):
             c.execute(f"UPDATE item SET {col} = ? WHERE id = ?", (val, iid))
         if deps is not None:
             c.execute("DELETE FROM item_dependency WHERE item_id = ?", (iid,))
-            c.executemany("INSERT INTO item_dependency(item_id, dependency_app_id) VALUES (?, ?)", [(iid, d) for d in deps])
+            c.executemany("INSERT INTO item_dependency(item_id, project_id) VALUES (?, ?)", [(iid, d) for d in deps])
     return 200, item_detail(iid)
 
 
@@ -580,7 +580,7 @@ def delete_item(req):
     return 200, {"ok": True}
 
 
-# ---- apps and dependency apps ----
+# ---- apps ----
 
 def _app(pkg):
     r = db.conn().execute("SELECT package, display_name, " + ", ".join(APP_URL_FIELDS) +
@@ -601,33 +601,6 @@ def put_app(req):
             if f in b:
                 c.execute(f"UPDATE app SET {f} = ? WHERE package = ?", (_opt(b[f], URL_RE, f), pkg))
     return 200, _app(pkg)
-
-
-def list_dependency_apps(req):
-    rows = db.conn().execute("""SELECT d.id, d.package, d.display_name, d.upstream_id, u.downloaded_tag AS tag
-        FROM dependency_app d JOIN upstream u ON u.id = d.upstream_id ORDER BY d.id""").fetchall()
-    return 200, {"dependency_apps": [dict(r) for r in rows]}
-
-
-def item_dependencies(item_id):
-    from webui import upstream
-    rows = db.conn().execute("""SELECT d.id, d.upstream_id, d.package, d.display_name, u.downloaded_tag
-        FROM item_dependency x JOIN dependency_app d ON d.id = x.dependency_app_id
-        JOIN upstream u ON u.id = d.upstream_id WHERE x.item_id = ? ORDER BY d.id""", (item_id,)).fetchall()
-    out = []
-    for r in rows:
-        tag, path, signer = r["downloaded_tag"], None, None
-        if tag:
-            d = upstream.tag_dir(r["upstream_id"], tag)
-            apks = sorted(d.glob("*.apk"))
-            path = str(apks[0]) if apks else None
-            sf = d / "signer.sha256"
-            signer = (sf.read_text().strip() or None) if sf.is_file() else None
-        if path is None:
-            tag = signer = None
-        out.append({"dependency_app_id": r["id"], "upstream_id": r["upstream_id"], "package": r["package"],
-                    "display_name": r["display_name"], "tag": tag, "path": path, "signer_sha256": signer})
-    return out
 
 
 class UpstreamMissing(Exception):
@@ -778,7 +751,7 @@ def job_input(item_id):
     if not r["cli_tag"]:
         raise UpstreamMissing(f"cli upstream {r['cli_upstream_id']} not downloaded")
     pdir, cdir = upstream.tag_dir(r["upstream_id"], r["up_tag"]), upstream.tag_dir(r["cli_upstream_id"], r["cli_tag"])
-    files = sorted(str(p) for p in pdir.iterdir() if p.is_file() and p.name != "signer.sha256") if pdir.is_dir() else []
+    files = sorted(str(p) for p in pdir.iterdir() if p.is_file()) if pdir.is_dir() else []
     jars = sorted(str(p) for p in cdir.glob("*.jar")) if cdir.is_dir() else []
     if not files or not jars:
         raise UpstreamMissing("downloaded files missing on disk")
@@ -886,10 +859,10 @@ SEED_TABLES = {
     "groups": ("grp", ("id", "name", "color", "position"), "id"),
     "items": ("item", ("id", "source_id", "package", "key", "display_name", "group_id", "position", "enabled",
                        "version_mode", "version_pin", "allow_nearest", "variants", "patch_overrides", "engine_options"), "id"),
-    "dependency_apps": ("dependency_app", ("id", "upstream_id", "package", "display_name"), "id"),
+    "projects": ("project", ("id", "upstream_id", "package", "display_name", "auto_push"), "id"),
 }
 JSON_COLS = {"variants", "patch_overrides", "engine_options"}
-BOOL_COLS = {"enabled", "allow_nearest"}
+BOOL_COLS = {"enabled", "allow_nearest", "auto_push"}
 DAILY_SCHEDULE = ("Daily upstream", "upstream", {"all": True}, {"every": "day", "at": "09:00"}, {"rebuild": True})
 
 
@@ -919,7 +892,7 @@ def seed_import(path=None):
             for row in data.get(key, []):
                 c.execute(f"INSERT INTO {table}({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
                           [_to_db(k, row.get(k)) for k in cols])
-        c.executemany("INSERT INTO item_dependency(item_id, dependency_app_id) VALUES (?, ?)",
+        c.executemany("INSERT INTO item_dependency(item_id, project_id) VALUES (?, ?)",
                       [tuple(x) for x in data.get("item_dependencies", [])])
     name, kind, target, spec, options = DAILY_SCHEDULE
     if not db.conn().execute("SELECT 1 FROM schedules WHERE kind = ? AND name = ?", (kind, name)).fetchone():
@@ -935,7 +908,7 @@ def export_seed():
         out[key] = [{k: _from_db(k, r[k]) for k in cols}
                     for r in c.execute(f"SELECT {', '.join(cols)} FROM {table} ORDER BY {order}")]
     out["item_dependencies"] = [list(r) for r in c.execute(
-        "SELECT item_id, dependency_app_id FROM item_dependency ORDER BY item_id, dependency_app_id")]
+        "SELECT item_id, project_id FROM item_dependency ORDER BY item_id, project_id")]
     return out
 
 
@@ -962,7 +935,6 @@ ROUTES = [
     ("PUT", "/api/items/{id}", put_item),
     ("DELETE", "/api/items/{id}", delete_item),
     ("PUT", "/api/apps/{pkg}", put_app),
-    ("GET", "/api/dependency-apps", list_dependency_apps),
     ("GET", "/api/items/{id}/patches", get_patches),
     ("PUT", "/api/items/{id}/patches", put_patches),
     ("PUT", "/api/items/{id}/version", put_version),

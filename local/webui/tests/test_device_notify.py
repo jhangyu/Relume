@@ -4,7 +4,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest import mock
 
-from webui import events, notify, settings
+from webui import db, events, notify, settings
 from webui.server import HttpError
 from webui.tests import helpers
 from webui.tests.device_helpers import add_catalog_item, add_job, req
@@ -88,6 +88,29 @@ class NotifyTest(helpers.DataTestCase):
         self.assertTrue(text.endswith('\nhttp://nas:47000/builds.html?job=5'))
         self.assertTrue(text.startswith('Build failed: com.google.android.youtube · src: patch_failed: x'))
 
+    def _project(self, display_name):
+        with db.tx() as c:
+            c.execute("INSERT INTO upstream(id, kind, repo, channel) VALUES (23,'project','MorpheApp/MicroG-RE','stable')")
+            c.execute('INSERT INTO project(id, upstream_id, display_name) VALUES (1,23,?)', (display_name,))
+        settings.put('base_url', 'http://nas:47000')
+
+    def test_format_signer_changed(self):
+        self._project('MicroG RE')
+        text = notify.format_message('project.signer_changed', {'project_id': 1, 'upstream_id': 23, 'tag': '7.2.2',
+                                                                'old_sha256': 'ab', 'new_sha256': 'cd', 'job_id': 4})
+        self.assertEqual(text, 'Signer changed: MicroG RE 7.2.2. Installs are blocked until you trust the new signer.'
+                               '\nhttp://nas:47000/projects.html')
+        self.assertIn('project.signer_changed', notify.EVENTS)
+
+    def test_format_project_new_version(self):
+        self._project(None)
+        text = notify.format_message('upstream.new_version', {'upstream_id': 23, 'tag': '7.2.2', 'item_ids': [], 'job_id': None})
+        self.assertEqual(text, 'New version: MicroG-RE 7.2.2\nhttp://nas:47000/projects.html')
+        with db.tx() as c:
+            c.execute("INSERT INTO upstream(id, kind, repo, channel) VALUES (2,'patches','MorpheApp/morphe-patches','stable')")
+        text = notify.format_message('upstream.new_version', {'upstream_id': 2, 'tag': 'v1', 'item_ids': [1], 'job_id': None})
+        self.assertEqual(text, 'New upstream version: MorpheApp/morphe-patches v1 (1 items)\nhttp://nas:47000/')
+
     def test_retry_after_honoured(self):
         stub = Stub(self, [(429, {}, b'{"ok":false,"parameters":{"retry_after":3}}'), (200, {}, b'{"ok":true}')])
         self.addCleanup(setattr, notify, 'TELEGRAM_API', notify.TELEGRAM_API)
@@ -146,9 +169,10 @@ class NotifyTest(helpers.DataTestCase):
         notify.put_notify(req(body={'type': 'telegram', 'enabled': True, 'config': {'chat_id': '44'}}))
         self.assertEqual(settings.get('notify')['config']['bot_token'], '123456:ABCDEFGH1234')
 
-    def test_default_events_exclude_offline(self):
+    def test_default_events_include_signer_changed(self):
         st, got = notify.get_notify(req(method='GET'))
-        self.assertEqual(got['events'], ['upstream.new_version', 'build.succeeded', 'build.failed', 'ota.done', 'ota.failed'])
+        self.assertEqual(got['events'], ['upstream.new_version', 'build.succeeded', 'build.failed', 'ota.done', 'ota.failed',
+                                         'project.signer_changed'])
         notify.put_notify(req(body={'type': 'discord', 'enabled': True, 'config': {'webhook_url': 'https://d.example/x'}}))
         self.assertNotIn('device.offline', settings.get('notify')['events'])
 

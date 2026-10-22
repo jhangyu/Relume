@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from webui import catalog, db, events, jobs, server, settings
 
 API = "https://api.github.com"
-DEFAULT_REGEX = {"patches": r"\.mpp$", "cli": r"^morphe-desktop-.*-all\.jar$", "module": r"\.apk$", "dependency": r"\.apk$"}
+DEFAULT_REGEX = {"patches": r"\.mpp$", "cli": r"^morphe-desktop-.*-all\.jar$", "module": r"\.apk$", "project": r"\.apk$"}
 
 
 class TokenRejected(Exception):
@@ -77,7 +77,7 @@ def match_assets(row, release):
         name = a.get("name", "")
         if name.endswith(".asc") or not rx.search(name):
             continue
-        if row["channel"] == "stable" and "dev" in name:
+        if row["channel"] == "stable" and row["kind"] != "project" and "dev" in name:
             continue
         out.append(a)
     return out
@@ -122,8 +122,8 @@ def _fetch(row):
 def affected_items(upstream_id):
     rows = db.conn().execute("""SELECT i.id FROM item i JOIN source s ON s.id = i.source_id
         WHERE s.upstream_id = ? OR s.cli_upstream_id = ?
-        UNION SELECT x.item_id FROM item_dependency x JOIN dependency_app d ON d.id = x.dependency_app_id
-        WHERE d.upstream_id = ? ORDER BY 1""", (upstream_id, upstream_id, upstream_id)).fetchall()
+        UNION SELECT x.item_id FROM item_dependency x JOIN project p ON p.id = x.project_id
+        WHERE p.upstream_id = ? ORDER BY 1""", (upstream_id, upstream_id, upstream_id)).fetchall()
     return [r[0] for r in rows]
 
 
@@ -305,9 +305,6 @@ def inspect_row(upstream_id, tag, log):
         log.line(f"[+] inspected {pkg}: {len(patches)} patches")
 
 
-APKSIGNER = ["apksigner"]
-
-
 def http_download(url, dest, headers=None, timeout=300):
     req = urllib.request.Request(url, headers=headers or {"User-Agent": "Relume"})
     n = 0
@@ -330,7 +327,7 @@ def _child_env():
     return {k: os.environ[k] for k in ("PATH", "HOME", "LANG", "TZ") if k in os.environ}
 
 
-def _download(row, tag, assets, log):
+def _download(row, tag, assets, log, verify=None):
     final = tag_dir(row["id"], tag)
     part = final.with_name(final.name + ".part")
     shutil.rmtree(part, ignore_errors=True)
@@ -345,6 +342,8 @@ def _download(row, tag, assets, log):
             digest = a.get("digest") or ""
             if digest.startswith("sha256:") and _sha256(dest) != digest[7:]:
                 raise ValueError(f"hash mismatch: {a['name']}")
+        if verify:
+            verify(part)
     except (OSError, ValueError) as e:
         shutil.rmtree(part, ignore_errors=True)
         _set(row["id"], check_error=f"download failed: {e}")
@@ -354,28 +353,6 @@ def _download(row, tag, assets, log):
     _set(row["id"], downloaded_tag=tag)
     log.line(f"[+] {row['repo']} {tag} downloaded")
     return final
-
-
-def _write_signer(final, log):
-    apks = sorted(final.glob("*.apk"))
-    if not apks:
-        return
-    found = []
-
-    def on_line(text):
-        m = re.match(r"Signer #1 certificate SHA-256 digest: ([0-9a-fA-F]+)$", text.strip())
-        if m:
-            found.append(m.group(1).lower())
-
-    # parses an untrusted downloaded APK: isolated runner uid like the inspector (spec L779)
-    with tempfile.TemporaryDirectory() as tmp:
-        os.chmod(tmp, 0o770)
-        log.run(jobs.isolate([*APKSIGNER, "verify", "--print-certs", jobs.runner_path(apks[0])]), cwd=tmp,
-                env=dict(_child_env(), HOME=tmp), on_line=on_line)
-    if found:
-        (final / "signer.sha256").write_text(found[0] + "\n")
-    else:
-        log.line(f"[!] no signer digest for {apks[0].name}")
 
 
 def _prune(upstream_id):
@@ -416,9 +393,13 @@ def _fetch_row(upstream_id, log, job_id=None):
         raise jobs.JobFailed(row["check_error"])
     if row["latest_tag"] == row["downloaded_tag"] and tag_dir(upstream_id, row["downloaded_tag"]).is_dir():
         return False
-    final = _download(row, row["latest_tag"], assets, log)
-    if row["kind"] == "dependency":
-        _write_signer(final, log)
+    verify = None
+    if row["kind"] == "project":
+        from webui import projects  # projects imports upstream at module level
+        verify = lambda part: projects.verify_release(upstream_id, part, log)  # noqa: E731
+    _download(row, row["latest_tag"], assets, log, verify)
+    if verify:
+        projects.after_download(upstream_id, row["latest_tag"], log, job_id)
     _prune(upstream_id)
     return True
 

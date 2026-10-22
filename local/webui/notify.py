@@ -1,4 +1,5 @@
 """Notifier (spec device 4.4, 6): subscribers only queue; one thread sends to the one configured channel."""
+import importlib
 import json
 import queue
 import threading
@@ -9,7 +10,8 @@ import urllib.request
 from . import db, events, jobs, settings
 from .server import HttpError
 
-EVENTS = ('upstream.new_version', 'build.succeeded', 'build.failed', 'ota.done', 'ota.failed', 'device.offline')
+EVENTS = ('upstream.new_version', 'build.succeeded', 'build.failed', 'ota.done', 'ota.failed', 'device.offline',
+          'project.signer_changed')
 DEFAULT_EVENTS = tuple(e for e in EVENTS if e != 'device.offline')
 TELEGRAM_API = 'https://api.telegram.org'
 CONFIG_KEYS = {'telegram': {'bot_token': True, 'chat_id': True}, 'discord': {'webhook_url': True},
@@ -71,6 +73,13 @@ def _label(item_id):
                 (item_id,), f'item {item_id}')
 
 
+def _project_label(col, value):
+    """Label of the project whose col ('p.id' or 'p.upstream_id', fixed by the callers) equals value; None if none."""
+    r = db.conn().execute(f'SELECT p.display_name, u.repo FROM project p JOIN upstream u ON u.id = p.upstream_id '
+                          f'WHERE {col} = ?', (value,)).fetchone()
+    return importlib.import_module('webui.projects').label(r) if r else None
+
+
 def _device(device_id):
     return _one('SELECT name FROM devices WHERE id = ?', (device_id,), f'device {device_id}')
 
@@ -82,6 +91,12 @@ def format_message(t, p):
     elif t == 'build.failed':
         text = f"Build failed: {_label(p['item_id'])}: {p.get('fail_code')}: {p.get('fail_detail')}"
         path = f"/builds.html?job={p['job_id']}"
+    elif t == 'project.signer_changed':
+        text = (f"Signer changed: {_project_label('p.id', p['project_id'])} {p.get('tag')}. "
+                'Installs are blocked until you trust the new signer.')
+        path = '/projects.html'
+    elif t == 'upstream.new_version' and _project_label('p.upstream_id', p['upstream_id']):
+        text, path = f"New version: {_project_label('p.upstream_id', p['upstream_id'])} {p.get('tag')}", '/projects.html'
     elif t == 'upstream.new_version':
         repo = _one('SELECT repo FROM upstream WHERE id = ?', (p['upstream_id'],), f"upstream {p['upstream_id']}")
         text, path = f"New upstream version: {repo} {p.get('tag')} ({len(p.get('item_ids') or [])} items)", '/'

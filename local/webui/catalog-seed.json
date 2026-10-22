@@ -329,14 +329,6 @@
       "package": "tv.twitch.android.app"
     }
   ],
-  "dependency_apps": [
-    {
-      "display_name": "MicroG RE",
-      "id": 1,
-      "package": "app.revanced.android.gms",
-      "upstream_id": 23
-    }
-  ],
   "groups": [
     {
       "color": null,
@@ -3119,6 +3111,15 @@
       "version_pin": null
     }
   ],
+  "projects": [
+    {
+      "auto_push": false,
+      "display_name": "MicroG RE",
+      "id": 1,
+      "package": "app.revanced.android.gms",
+      "upstream_id": 23
+    }
+  ],
   "sources": [
     {
       "cli_upstream_id": 1,
@@ -3462,7 +3463,7 @@
       "asset_regex": "^microg-[0-9.]+\\.apk$",
       "channel": "stable",
       "id": 23,
-      "kind": "dependency",
+      "kind": "project",
       "repo": "MorpheApp/MicroG-RE",
       "tag": null
     }

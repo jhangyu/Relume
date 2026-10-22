@@ -19,7 +19,7 @@ class SchemaTest(helpers.DataTestCase):
     def test_tables(self):
         names = {r[0] for r in db.conn().execute("SELECT name FROM sqlite_master WHERE type='table'")}
         self.assertLessEqual({"upstream", "source", "app", "grp", "item", "bundle_info",
-                              "dependency_app", "item_dependency"}, names)
+                              "project", "item_dependency", "device_projects"}, names)
 
     def test_upstream_unique_with_null_tag(self):
         with db.tx() as c:
@@ -30,13 +30,13 @@ class SchemaTest(helpers.DataTestCase):
 
     def test_group_delete_and_item_cascade(self):
         with db.tx() as c:
-            c.execute("INSERT INTO upstream(id, kind, repo, channel) VALUES (1,'cli','c/c','stable'),(2,'patches','p/p','stable'),(3,'dependency','m/m','stable')")
+            c.execute("INSERT INTO upstream(id, kind, repo, channel) VALUES (1,'cli','c/c','stable'),(2,'patches','p/p','stable'),(3,'project','m/m','stable')")
             c.execute("INSERT INTO source(id, name, upstream_id, cli_upstream_id) VALUES ('s','S',2,1)")
             c.execute("INSERT INTO app(package) VALUES ('com.a.b')")
             c.execute("INSERT INTO grp(id, name, position) VALUES (1,'G',0)")
             c.execute("INSERT INTO item(id, source_id, package, key, group_id, position, variants) VALUES (1,'s','com.a.b','b',1,0,'[]')")
-            c.execute("INSERT INTO dependency_app(id, upstream_id, package, display_name) VALUES (1,3,'x.y','X')")
-            c.execute("INSERT INTO item_dependency(item_id, dependency_app_id) VALUES (1,1)")
+            c.execute("INSERT INTO project(id, upstream_id, package, display_name) VALUES (1,3,'x.y','X')")
+            c.execute("INSERT INTO item_dependency(item_id, project_id) VALUES (1,1)")
             c.execute("DELETE FROM grp WHERE id=1")
         self.assertIsNone(db.conn().execute("SELECT group_id FROM item WHERE id=1").fetchone()[0])
         with db.tx() as c:
@@ -164,8 +164,8 @@ class CrudTest(CatalogCase):
         self.assertEqual(self.status_of(catalog.delete_item, method="DELETE", id=1), 409)
         del self.build.active[1]
         with db.tx() as c:
-            c.execute("INSERT INTO upstream(id, kind, repo, channel) VALUES (9,'dependency','MorpheApp/MicroG-RE','stable')")
-            c.execute("INSERT INTO dependency_app(id, upstream_id, package, display_name) VALUES (1,9,'app.revanced.android.gms','MicroG RE')")
+            c.execute("INSERT INTO upstream(id, kind, repo, channel) VALUES (9,'project','MorpheApp/MicroG-RE','stable')")
+            c.execute("INSERT INTO project(id, upstream_id, package, display_name) VALUES (1,9,'app.revanced.android.gms','MicroG RE')")
             c.execute("INSERT INTO item_dependency VALUES (1,1)")
         self.assertEqual(self.call(catalog.delete_item, method="DELETE", id=1)[0], 200)
         self.assertEqual(self.build.forgotten, [1])
@@ -185,22 +185,20 @@ class CrudTest(CatalogCase):
                 catalog.validate_variants(bad)
         catalog.validate_variants([dict(base, download=dict(base["download"], arch="arm64-v8a + armeabi-v7a"))])
 
-    def test_item_dependencies(self):
+    def test_item_project_ids(self):
         with db.tx() as c:
-            c.execute("INSERT INTO upstream(id, kind, repo, channel) VALUES (9,'dependency','MorpheApp/MicroG-RE','stable')")
-            c.execute("INSERT INTO dependency_app(id, upstream_id, package, display_name) VALUES (1,9,'app.revanced.android.gms','MicroG RE')")
-        self.call(catalog.put_item, json={"dependency_app_ids": [1]}, method="PUT", id=1)
-        self.assertEqual(catalog.item_dependencies(1), [{"dependency_app_id": 1, "upstream_id": 9, "package": "app.revanced.android.gms",
-                                                         "display_name": "MicroG RE", "tag": None, "path": None, "signer_sha256": None}])
-        d = self.data / "upstream" / "9" / "v7.2.1"
-        d.mkdir(parents=True)
-        (d / "microg-7.2.1.apk").write_bytes(b"apk")
-        (d / "signer.sha256").write_text("ab" * 32 + "\n")
-        with db.tx() as c:
-            c.execute("UPDATE upstream SET downloaded_tag='v7.2.1' WHERE id=9")
-        dep = catalog.item_dependencies(1)[0]
-        self.assertEqual((dep["tag"], dep["path"], dep["signer_sha256"]), ("v7.2.1", str(d / "microg-7.2.1.apk"), "ab" * 32))
-        self.assertEqual(self.status_of(catalog.put_item, json={"dependency_app_ids": [5]}, method="PUT", id=1), 400)
+            c.execute("INSERT INTO upstream(id, kind, repo, channel) VALUES (9,'project','MorpheApp/MicroG-RE','stable')")
+            c.execute("INSERT INTO project(id, upstream_id, package, display_name) VALUES (1,9,'app.revanced.android.gms','MicroG RE')")
+        self.assertEqual(self.call(catalog.get_item, method="GET", id=1)[1]["project_ids"], [])
+        st, it = self.call(catalog.put_item, json={"project_ids": [1]}, method="PUT", id=1)
+        self.assertEqual((st, it["project_ids"]), (200, [1]))
+        self.assertEqual(self.call(catalog.get_item, method="GET", id=1)[1]["project_ids"], [1])
+        with self.assertRaises(server.HttpError) as cm:
+            self.call(catalog.put_item, json={"project_ids": [5]}, method="PUT", id=1)
+        self.assertEqual((cm.exception.status, cm.exception.message), (400, "unknown project"))
+        self.assertEqual(self.status_of(catalog.put_item, json={"project_ids": "1"}, method="PUT", id=1), 400)
+        self.call(catalog.put_item, json={"project_ids": []}, method="PUT", id=1)
+        self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM item_dependency").fetchone()[0], 0)
 
     def test_put_app(self):
         st, a = self.call(catalog.put_app, json={"display_name": "Reddit", "apkpure_url": None}, method="PUT", pkg="com.reddit.frontpage")

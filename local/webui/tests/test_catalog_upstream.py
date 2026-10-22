@@ -202,31 +202,19 @@ class PullTest(UpstreamCase):
         self.assertIn("[+] up to date", self.log.lines)
         self.assertEqual(len(self.inspected), 1)
 
-    def test_dependency_pull_writes_signer(self):
-        with db.tx() as c:
-            c.execute("INSERT INTO upstream(id, kind, repo, channel, asset_regex) VALUES (9,'dependency','MorpheApp/MicroG-RE','stable','^microg-[0-9.]+\\.apk$')")
-        rel = {"tag_name": "v7.2.1", "draft": False, "assets": [
-            {"name": "microg-7.2.1.apk", "size": 5, "browser_download_url": "https://dl.invalid/microg.apk"},
-            {"name": "microg-7.2.1-noicon.apk", "size": 5, "browser_download_url": "https://dl.invalid/x.apk"}]}
-        self.http({f"{API}/repos/MorpheApp/MicroG-RE/releases/latest": (200, rel, {})})
-        with mock.patch.object(upstream, "APKSIGNER", ["bash", str(FIX / "fake-apksigner.sh")]):
-            upstream.pull(9, self.log)
-        d = self.data / "upstream" / "9" / "v7.2.1"
-        self.assertEqual(sorted(p.name for p in d.iterdir()), ["microg-7.2.1.apk", "signer.sha256"])
-        self.assertEqual((d / "signer.sha256").read_text().strip(), "ab" * 32)
-        self.assertEqual(self.inspected, [])
+    def test_stable_dev_filter_skips_project_rows(self):
+        rel = {"assets": [{"name": "app-dev-release.apk"}, {"name": "app-release.apk"}]}
+        row = {"kind": "project", "channel": "stable", "asset_regex": None}
+        self.assertEqual([a["name"] for a in upstream.match_assets(row, rel)], ["app-dev-release.apk", "app-release.apk"])
+        self.assertEqual([a["name"] for a in upstream.match_assets(dict(row, kind="module"), rel)], ["app-release.apk"])
 
-    def test_dependency_signer_runs_isolated(self):
+    def test_affected_items_through_projects(self):
         with db.tx() as c:
-            c.execute("INSERT INTO upstream(id, kind, repo, channel, asset_regex) VALUES (9,'dependency','MorpheApp/MicroG-RE','stable','^microg-[0-9.]+\\.apk$')")
-        rel = {"tag_name": "v7.2.1", "draft": False, "assets": [
-            {"name": "microg-7.2.1.apk", "size": 5, "browser_download_url": "https://dl.invalid/microg.apk"}]}
-        self.http({f"{API}/repos/MorpheApp/MicroG-RE/releases/latest": (200, rel, {})})
-        with mock.patch.object(upstream, "APKSIGNER", ["bash", str(FIX / "fake-apksigner.sh")]), \
-                mock.patch.dict(os.environ, {"RELUME_RUNNER_UID": "10001"}):
-            upstream.pull(9, self.log)
-        self.assertEqual(self.log.runs[0][:2], ["setpriv", "--reuid=10001"])
-        self.assertEqual((self.data / "upstream" / "9" / "v7.2.1" / "signer.sha256").read_text().strip(), "ab" * 32)
+            c.execute("INSERT INTO upstream(id, kind, repo, channel) VALUES (9,'project','MorpheApp/MicroG-RE','stable')")
+            c.execute("INSERT INTO project(id, upstream_id, package) VALUES (1,9,'app.revanced.android.gms')")
+            c.execute("INSERT INTO item_dependency(item_id, project_id) VALUES (3,1),(1,1)")
+        self.assertEqual(upstream.affected_items(9), [1, 3])
+        self.assertEqual(upstream.affected_items(2), [1, 2])
 
     def test_module_new_tag_rebuilds_that_source_only(self):
         with db.tx() as c:
