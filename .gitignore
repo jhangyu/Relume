@@ -4,3 +4,5 @@ src/keystore/github_token
 local/.env
 local/data/
 .claude/tmp/
+__pycache__/
+local/.env.bak*

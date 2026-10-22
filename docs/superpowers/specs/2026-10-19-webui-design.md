@@ -5,7 +5,7 @@ This file merges seven parts: Core (topology, web stack, auth, persistence, API,
 
 ## 0.1 Summary
 
-One Docker Compose file, five containers. The existing builder container becomes `app`: it serves a stdlib-only Python web UI on port 47000, keeps all state in SQLite plus files under `local/data/`, and runs builds, upstream pulls and `adb` installs as child processes. `app` and the three anti-Cloudflare sidecars share the network namespace of an idle anchor container `netns`; the sidecars listen on loopback only. Linux uses host networking (phone discovery by mDNS); macOS uses bridge networking (manual phone IP and port). The only platform difference is `RV_NETWORK_MODE` in `local/.env` (core §1). The org scripts, `src/options`, `src/patches`, `apps.json` and `local/build.sh` are replaced by catalog rows and one generic build runner (catalog §8, build §7). GitHub Actions builds stay and run the same server modules headless (ci §2). Xposed module apps (LSPatch/NPatch) are a second item type on the same runner (xposed §2). The frontend is the user-chosen "Workbench" mockup ported to static files (ui §1).
+One Docker Compose file, five containers. The existing builder container becomes `app`: it serves a stdlib-only Python web UI on port 47000, keeps all state in SQLite plus files under `local/data/`, and runs builds, upstream pulls and `adb` installs as child processes. `app` and the three anti-Cloudflare sidecars share the network namespace of an idle anchor container `netns`; the sidecars listen on loopback only. Linux uses host networking (phone discovery by mDNS); macOS uses bridge networking (manual phone IP and port). The only platform difference is `RELUME_NETWORK_MODE` in `local/.env` (core §1). The org scripts, `src/options`, `src/patches`, `apps.json` and `local/build.sh` are replaced by catalog rows and one generic build runner (catalog §8, build §7). GitHub Actions builds stay and run the same server modules headless (ci §2). Xposed module apps (LSPatch/NPatch) are a second item type on the same runner (xposed §2). The frontend is the user-chosen "Workbench" mockup ported to static files (ui §1).
 
 ## 0.2 Requirement coverage
 
@@ -175,7 +175,7 @@ Other parts design against §1–§7. arch-core is the tie-breaker for shared in
 
 | service | image | network | role |
 |---|---|---|---|
-| `netns` | `busybox:1.38.0-musl`, `command: ["tail","-f","/dev/null"]` | `network_mode: ${RV_NETWORK_MODE:?set RV_NETWORK_MODE in local/.env}`; `ports: ["${RV_WEB_PORT:-47000}:47000"]` | network-namespace anchor only; runs no code that can crash |
+| `netns` | `busybox:1.38.0-musl`, `command: ["tail","-f","/dev/null"]` | `network_mode: ${RELUME_NETWORK_MODE:?set RELUME_NETWORK_MODE in local/.env}`; `ports: ["${RELUME_WEB_PORT:-47000}:47000"]` | network-namespace anchor only; runs no code that can crash |
 | `app` | `local/Dockerfile` (today's builder, `ubuntu:24.04`) + `adb` (device D2) + pup and APKEditor baked in (build §2.1) + `tzdata`; `CMD ["python3","-m","webui"]` | `network_mode: service:netns` | web UI, API, scheduler, job workers; runs builds and `adb` as child processes |
 | `flaresolverr` | as today | `network_mode: service:netns`; env `HOST=127.0.0.1`, `PORT=47191` | page fetch |
 | `cfbypass` | as today | `network_mode: service:netns`; `command: [..., "--host","127.0.0.1","--port","47800"]` | page fetch fallback |
@@ -188,8 +188,8 @@ Why this shape:
 - `netns` is the network-namespace anchor (today the anchor is `flaresolverr`, `local/docker-compose.yml:17,28,38`). It owns `ports:` and `network_mode`, because a container that joins another container's namespace cannot publish ports. The sidecars and `app` keep reaching each other on `localhost` exactly as today (`local/docker-compose.yml:41-43`).
 - Why not `app` as the anchor: when the restart policy restarts a crashed anchor, containers that joined its namespace keep the old one (spec review S6, Docker 29 / Compose v5), so every build would fail `download_failed` until a manual `up -d`. Verified 2026-10-19 (Docker 29.8.2, Compose v5, scratch project, bridge mode): with an idle busybox anchor, a crash of `app` (`kill 1` inside it; RestartCount 0 → 1) leaves `app` → sidecar and sidecar → `app` loopback connections working, with no restart of the sidecar. Compose docs: `network_mode: service:{name}` "gives the container access to the specified container", and Compose orders start/stop by `network_mode: "service:..."` dependencies (docs.docker.com/compose/how-tos/networking, startup-order, fetched 2026-10-19).
 - The only platform difference is one value in `local/.env`:
-  - Linux: `RV_NETWORK_MODE=host` → the anchor's namespace is the host's; mDNS reaches the LAN; the web port is the host's port 47000.
-  - macOS: `RV_NETWORK_MODE=bridge` → port 47000 is published; outbound TCP from the container to the phone works; mDNS finds nothing; the manual pairing form is used.
+  - Linux: `RELUME_NETWORK_MODE=host` → the anchor's namespace is the host's; mDNS reaches the LAN; the web port is the host's port 47000.
+  - macOS: `RELUME_NETWORK_MODE=bridge` → port 47000 is published; outbound TCP from the container to the phone works; mDNS finds nothing; the manual pairing form is used.
   - Same code on both. Discovery runs on both and simply returns no devices on macOS.
 - Proof (run 2026-10-19, Docker 29.8.2, Compose v5.5.0, scratch project): a service with `network_mode: host` plus `ports:` starts and Compose prints `Published ports are discarded when using host network mode`; with `bridge` the port is published (`0.0.0.0:47999->8080/tcp`); a second service with `network_mode: service:<first service>` starts in both modes. `${VAR:?msg}` makes Compose stop with an error if the variable is not set, so a wrong platform default cannot happen silently.
 - Sidecars bind `127.0.0.1` because in Linux host mode they would otherwise be open on the LAN (FlareSolverr is an open browser proxy). Verified bind knobs: FlareSolverr reads `HOST` (`/app/flaresolverr.py:94` in `ghcr.io/flaresolverr/flaresolverr:latest`); cfbypass `server.py:11` has `--host` (default `0.0.0.0`) and its `/app/docker-entrypoint.sh` forwards args (`exec python3 server.py "$@"`); `local/solver/solver.py:79` binds `0.0.0.0` today and changes to `127.0.0.1` (owner: build).
@@ -197,20 +197,20 @@ Why this shape:
 
 Mounts on `app`:
 - `..:/repo:ro` — repo code incl. `local/webui/`, `src/build/*`, keystores. Read-only: nothing writes into the checkout.
-- `${RV_DATA_DIR:-./data}:/data` (default `local/data/`, gitignored) — every write: DB, job logs, work dirs, artifacts, caches, adb keys. A host directory (not a named volume) so the user can back it up and reach artifacts on a NAS share. Long-syntax bind with `bind: {create_host_path: false}` (as for the token file): Docker would otherwise create a missing host dir owned by root, and a non-root `app` (`RV_UID`) could not write it. The user creates the directory (§12 step 1); the server creates `/data/home`, `/data/logs` and the other subdirectories at start.
+- `${RELUME_DATA_DIR:-./data}:/data` (default `local/data/`, gitignored) — every write: DB, job logs, work dirs, artifacts, caches, adb keys. A host directory (not a named volume) so the user can back it up and reach artifacts on a NAS share. Long-syntax bind with `bind: {create_host_path: false}` (as for the token file): Docker would otherwise create a missing host dir owned by root, and a non-root `app` (`RELUME_UID`) could not write it. The user creates the directory (§12 step 1); the server creates `/data/home`, `/data/logs` and the other subdirectories at start.
 - GitHub token file bind, unchanged (`local/docker-compose.yml:46-52`).
 
-Process user: `user: "${RV_UID:-0}:${RV_GID:-0}"`, env `HOME=/data/home`. Linux sets its own uid/gid in `local/.env` so `local/data/` is owned by the host user (preflight-build §7 ownership blocker, `docs/logs/2026-10-19-preflight-build.md:85`). macOS leaves the default; Docker Desktop maps ownership.
+Process user: `user: "${RELUME_UID:-0}:${RELUME_GID:-0}"`, env `HOME=/data/home`. Linux sets its own uid/gid in `local/.env` so `local/data/` is owned by the host user (preflight-build §7 ownership blocker, `docs/logs/2026-10-19-preflight-build.md:85`). macOS leaves the default; Docker Desktop maps ownership.
 
-Other env on `app`: `TZ=${TZ:-UTC}` (schedules use local wall time), `RV_NETWORK_MODE` (shown on the Devices page, ui §2), `PYTHONDONTWRITEBYTECODE=1` (repo is read-only), `PYTHONPATH=/repo/local`, the three sidecar ports as today.
+Other env on `app`: `TZ=${TZ:-UTC}` (schedules use local wall time), `RELUME_NETWORK_MODE` (shown on the Devices page, ui §2), `PYTHONDONTWRITEBYTECODE=1` (repo is read-only), `PYTHONPATH=/repo/local`, the three sidecar ports as today.
 
 CI only: `local/docker-compose.ci.yml` overrides `app` with `command: ["sleep","infinity"]` and a disabled healthcheck (ci §3). The `app` image builds on arm64 and amd64 (GitHub runners, build §2.1).
 
-`local/.env.example` (tracked) lists `RV_NETWORK_MODE`, `RV_WEB_PORT`, `RV_DATA_DIR`, `RV_UID`, `RV_GID`, `TZ`, `RV_GITHUB_TOKEN_FILE`. `local/.env` and `local/data/` are added to `.gitignore`.
+`local/.env.example` (tracked) lists `RELUME_NETWORK_MODE`, `RELUME_WEB_PORT`, `RELUME_DATA_DIR`, `RELUME_UID`, `RELUME_GID`, `TZ`, `RELUME_GITHUB_TOKEN_FILE`. `local/.env` and `local/data/` are added to `.gitignore`.
 
 ### 2. Web stack
 
-- Backend: Python 3.12 standard library only. Verified in `rv-local-builder`: Python `3.12.3`, `hashlib.scrypt` present. Modules: `http.server.ThreadingHTTPServer`, `sqlite3`, `hashlib`, `secrets`, `hmac`, `threading`, `subprocess`, `urllib.request`, `json`, `zoneinfo`. No pip packages for the server.
+- Backend: Python 3.12 standard library only. Verified in `relume-builder`: Python `3.12.3`, `hashlib.scrypt` present. Modules: `http.server.ThreadingHTTPServer`, `sqlite3`, `hashlib`, `secrets`, `hmac`, `threading`, `subprocess`, `urllib.request`, `json`, `zoneinfo`. No pip packages for the server.
 - Frontend: static HTML/CSS/vanilla JS (ES modules) in `local/webui/static/`, ported from the user-chosen mockup `docs/superpowers/mockups/final/` (files and mapping: ui §1, §2). No npm, no bundler. Drag-reorder uses the native HTML Drag and Drop API.
 - Live log: Server-Sent Events (`EventSource`).
 - Code changes need only `docker compose restart app` (code is on the read-only bind mount); `--build` is needed only when the Dockerfile changes.
@@ -329,7 +329,7 @@ Behaviour:
 - First start: if `admin_password_hash` is missing, the server creates a random 20-character password, stores its hash, and prints it once to stdout: `docker compose -f local/docker-compose.yml logs app | grep 'admin password'`.
 - Reset: `docker compose -f local/docker-compose.yml exec app python3 -m webui reset-password` prints a new password and deletes all sessions.
 - Hash: `hashlib.scrypt(n=2**14, r=8, p=1)`, 16-byte random salt, compare with `hmac.compare_digest`.
-- Session: `secrets.token_urlsafe(32)` in cookie `rv_session` (`HttpOnly`, `SameSite=Strict`, `Path=/`). Login body `remember` ("Keep me signed in", default true in the form): true → cookie `Max-Age=2592000` and server-side `expires_at` = now + 30 days; false → cookie without `Max-Age`/`Expires` (ends when the browser closes) and server-side `expires_at` = now + 12 h. Password change deletes all sessions except the current one.
+- Session: `secrets.token_urlsafe(32)` in cookie `relume_session` (`HttpOnly`, `SameSite=Strict`, `Path=/`). Login body `remember` ("Keep me signed in", default true in the form): true → cookie `Max-Age=2592000` and server-side `expires_at` = now + 30 days; false → cookie without `Max-Age`/`Expires` (ends when the browser closes) and server-side `expires_at` = now + 12 h. Password change deletes all sessions except the current one.
 - Every `/api/*` route except `POST /api/auth/login` and `GET /api/health` needs a valid session → else 401. Pages under `/` redirect to `/login.html` without a session.
 - CSRF: `SameSite=Strict`, mutating methods require `Content-Type: application/json`, and if an `Origin` header is present its host must equal the `Host` header.
 - Brute force: after 5 failed logins within 5 minutes, login answers 429 for 5 minutes (in-memory counter). Wrong password → 401 `{"error":"wrong password","attempts_left":N}`; locked → 429 `{"error":"locked","retry_after":S}` (login page text, ui §2).
@@ -341,7 +341,7 @@ All JSON. Owners define the routes under their prefixes in their parts.
 
 | owner | prefix | routes |
 |---|---|---|
-| core | `/api/health` | `GET` → `{"ok":true, "app":"Patchbay", "version":"1.0", "started_at":"<ISO time>"}` (no auth); `version` is the constant `VERSION` in `server.py`, `started_at` the process start time. The login page shows it as the server summary (ui §2 Login). It carries only these four fields: never item, app or device names, counts, IPs, host or network details, arch, tokens or paths. |
+| core | `/api/health` | `GET` → `{"ok":true, "app":"Relume", "version":"1.0", "started_at":"<ISO time>"}` (no auth); `version` is the constant `VERSION` in `server.py`, `started_at` the process start time. The login page shows it as the server summary (ui §2 Login). It carries only these four fields: never item, app or device names, counts, IPs, host or network details, arch, tokens or paths. |
 | core | `/api/auth` | `POST /login {password, remember?}` (core §7), `POST /logout`, `POST /password {old,new}` (new ≥ 10 chars) → `{"signed_out":N}` (other sessions deleted) |
 | core | `/api/jobs` | `GET ?kind=&status=&item_id=&device_id=&before_id=&limit=` (newest first, max 100); `GET /{id}`; `POST /{id}/cancel`; `GET /{id}/log` (SSE) |
 | core | `/api/schedules` | `GET` (each row adds `next_runs` = next 5 run times, and `last_counts` = `{status: n}` of the jobs of that schedule created at or after `last_run_at`), `POST`, `PUT /{id}`, `DELETE /{id}`, `POST /preview {spec}` → next 5 run times; `POST /{id}/run` → run now |
@@ -366,7 +366,7 @@ Log SSE: `GET /api/jobs/{id}/log`. Each event carries a chunk of log lines; `id:
 
 | failure | behaviour |
 |---|---|
-| `RV_NETWORK_MODE` unset | Compose refuses to start with the message from `${RV_NETWORK_MODE:?...}` |
+| `RELUME_NETWORK_MODE` unset | Compose refuses to start with the message from `${RELUME_NETWORK_MODE:?...}` |
 | port 47000 or a sidecar port busy (Linux host mode) | the process fails to bind and exits; `restart: unless-stopped` retries; healthcheck stays unhealthy; `docker compose logs app` shows the bind error |
 | DB locked | `busy_timeout` 5 s; then 503 `{"error":"database busy"}` |
 | handler exception | 500, traceback in server log, server keeps running |
@@ -379,21 +379,21 @@ Log SSE: `GET /api/jobs/{id}/log`. Each event carries a chunk of log lines; `id:
 
 - `python3 -m unittest discover -s /repo/local/webui/tests` inside `app` (stdlib `unittest`, temporary DB under `/tmp`, no network).
 - Core tests: router pattern matching and int params; auth hash verify, session expiry, 401 without cookie, 415 on non-JSON mutating request, Origin mismatch → 403, 429 after 5 failures; `remember` true → `Max-Age` cookie and 30-day expiry, false → no `Max-Age` and 12 h expiry; `GET /api/health` without a session returns exactly the four documented keys; `register()` of every module starts no thread (thread count unchanged); migration order and `user_version`; job enqueue dedup (scheduled and manual build of one item → one job; `force_reinstall` OTA not merged into `normal`; unknown option keys dropped), serial order per kind, parallel across kinds, cancel kills the child process group (child `sleep` process is gone), restart recovery; history cleanup skips RESTRICT rows; scheduler next-run for day/week/hours including a DST change in `Europe/Berlin`; missed-run single catch-up; SSE resume from `Last-Event-ID` and `end` event.
-- Compose checks: `RV_NETWORK_MODE=host docker compose -f local/docker-compose.yml config` and the same with `bridge` both exit 0; with the variable unset it exits non-zero.
+- Compose checks: `RELUME_NETWORK_MODE=host docker compose -f local/docker-compose.yml config` and the same with `bridge` both exit 0; with the variable unset it exits non-zero.
 - `run_inline` and the CI compose override check: ci §8.
 - Smoke on each platform (user-run): `up -d --build`, read the password from logs, `curl` login, `GET /api/jobs` → 200; `docker compose exec app curl -sf localhost:47191` → FlareSolverr answers; from another LAN machine on Linux host mode `curl <host>:47191` fails (sidecar not exposed).
 
 ### 12. Deployment
 
 Linux arm64 host / NAS:
-1. `cp local/.env.example local/.env`; set `RV_NETWORK_MODE=host`, `RV_UID=$(id -u)`, `RV_GID=$(id -g)`, `TZ`. As the same user, `mkdir -p local/data` (or the `RV_DATA_DIR` path); Compose does not create it (§1 mounts), so it is owned by that user.
+1. `cp local/.env.example local/.env`; set `RELUME_NETWORK_MODE=host`, `RELUME_UID=$(id -u)`, `RELUME_GID=$(id -g)`, `TZ`. As the same user, `mkdir -p local/data` (or the `RELUME_DATA_DIR` path); Compose does not create it (§1 mounts), so it is owned by that user.
 2. Put the GitHub token in the token file (as today, `local/build.sh:9-11` behaviour moves to the server start check; build part owns it).
 3. `docker compose -f local/docker-compose.yml up -d --build`.
 4. Read the admin password from `logs app`; open `http://<host>:47000`.
 5. Host firewall must allow inbound TCP 47000, and outbound UDP multicast to 224.0.0.251:5353 with its unicast replies (device discovery, device part D3).
 
 macOS (Docker Desktop, Apple silicon):
-1. Same (including `mkdir -p local/data`), with `RV_NETWORK_MODE=bridge`; leave `RV_UID`/`RV_GID` unset.
+1. Same (including `mkdir -p local/data`), with `RELUME_NETWORK_MODE=bridge`; leave `RELUME_UID`/`RELUME_GID` unset.
 2. The repo must be under a Docker Desktop shared path (default includes `/Users`).
 3. Open `http://localhost:47000` (or the Mac's LAN IP). Pair phones with the manual form.
 
@@ -1079,9 +1079,9 @@ Rendering rules: lists are rebuilt from JSON with template strings; every server
 | "Initial password comes from the server's environment" | core §7 (random password printed to the log) | text changed to the core §7 log command |
 | "Wrong password. 4 attempts left before a 5-minute lockout" | core §7 brute-force counter | **add** 401 body `{"error":"wrong password","attempts_left":N}`, 429 body `{"error":"locked","retry_after":S}` (core §7) |
 | "Keep me signed in (30 days)" checkbox | core §7 `remember` | **restored** (§0.6 R2): checked by default; sends `remember` with the login; unchecked = browser-session cookie, 12 h server limit |
-| Forgot-password hint | core §7 `reset-password` CLI | covered; text uses the core §7 command (the mockup's `docker compose exec web patchbay …` is sample) |
+| Forgot-password hint | core §7 `reset-password` CLI | covered; text uses the core §7 command (the mockup's `docker compose exec web relume …` is sample) |
 | Server summary (host, arch, item count, devices) | `GET /api/health` (core §8, no auth) | **restored** (§0.6 R5) with non-sensitive data only: host = `location.host` (client, the address the user typed), "Server up" + app name, version and "up since" from `GET /api/health`; health error → "Server unreachable". Not shown before sign-in: item, app or device names, item/device counts, IPs or network details, arch, tokens, paths. |
-| Footer "Patchbay v1.0" | — | static text in `login.html` |
+| Footer "Relume v1.0" | — | static text in `login.html` |
 
 #### App list (`apps.html`)
 
@@ -1319,15 +1319,15 @@ jobs:
       matrix:
         source: ${{ fromJSON(needs.plan.outputs.sources) }}
     env:
-      RV_NETWORK_MODE: host
+      RELUME_NETWORK_MODE: host
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7.0.1
-      - run: echo "RV_GITHUB_TOKEN_FILE=$RUNNER_TEMP/github_token" >> "$GITHUB_ENV"
+      - run: echo "RELUME_GITHUB_TOKEN_FILE=$RUNNER_TEMP/github_token" >> "$GITHUB_ENV"
       - run: |
-          printf '%s' "$GH_TOKEN" > "$RV_GITHUB_TOKEN_FILE"
+          printf '%s' "$GH_TOKEN" > "$RELUME_GITHUB_TOKEN_FILE"
           mkdir -p local/data
-          echo "RV_UID=$(id -u)" >> "$GITHUB_ENV"; echo "RV_GID=$(id -g)" >> "$GITHUB_ENV"
+          echo "RELUME_UID=$(id -u)" >> "$GITHUB_ENV"; echo "RELUME_GID=$(id -g)" >> "$GITHUB_ENV"
       - run: docker compose -f local/docker-compose.yml -f local/docker-compose.ci.yml up -d --build
       - run: docker compose -f local/docker-compose.yml -f local/docker-compose.ci.yml exec -T app python3 -m webui ci-build "${{ matrix.source }}" $FORCE
       - if: ${{ !cancelled() && hashFiles('local/data/release/upload.list') != '' }}
@@ -1336,14 +1336,14 @@ jobs:
 ```
 
 Notes:
-- `RV_GITHUB_TOKEN_FILE` is set through `$GITHUB_ENV` in a step, not in `jobs.build.env`: the `runner` context is not available in `jobs.<job_id>.env` (allowed there: `github, needs, strategy, matrix, vars, secrets, inputs`; `runner` is allowed in `steps.run`/`steps.env`; docs.github.com/en/actions/reference/workflows-and-actions/contexts, context availability table, fetched 2026-10-19). A `$GITHUB_ENV` value is visible from the next step on, so the file is written in the following step.
+- `RELUME_GITHUB_TOKEN_FILE` is set through `$GITHUB_ENV` in a step, not in `jobs.build.env`: the `runner` context is not available in `jobs.<job_id>.env` (allowed there: `github, needs, strategy, matrix, vars, secrets, inputs`; `runner` is allowed in `steps.run`/`steps.env`; docs.github.com/en/actions/reference/workflows-and-actions/contexts, context availability table, fetched 2026-10-19). A `$GITHUB_ENV` value is visible from the next step on, so the file is written in the following step.
 - `actions/checkout@v7.0.1` = latest release (`gh api repos/actions/checkout/releases/latest`, 2026-10-19). Runner image `ubuntu-24.04` ships Docker Compose 2.38.2 and GitHub CLI 2.102.0 (actions/runner-images `Ubuntu2404-Readme.md`, 2026-10-19).
 - Matrix from a job output with `fromJSON(needs.<job>.outputs.<name>)`, `fail-fast`, `max-parallel`: docs.github.com "Running variations of jobs in a workflow" (fetched 2026-10-19). The `if` guards the empty list.
 - Matrix unit = **source**, items of one source run serially in one runner (one exit IP per source, as build §5.1 asks for one host). Sources run in parallel on separate runners, as today's per-org jobs do (`ci.yml:107-242`). `max-parallel` is not set (today has none).
 - `concurrency: group: build` without `cancel-in-progress`: a second run waits; a newer pending run replaces an older pending one (workflow-syntax docs: "any existing `pending` job or workflow in the same concurrency group will be canceled"). Prevents two runs uploading the same asset.
 - `gh release upload <tag> <files>... --clobber`, label by appending `#<label>` to the file argument (cli.github.com/manual/gh_release_upload, fetched 2026-10-19). `xargs -d '\n'` keeps each line (label has spaces) as one argument.
 - `permissions: contents: write` covers release upload ("allows the action to create a release", workflow-syntax docs) and replaces `write-all`.
-- Linux runner → `RV_NETWORK_MODE=host`, the same value as a Linux NAS (core §1). No CI-specific compose values besides the override file.
+- Linux runner → `RELUME_NETWORK_MODE=host`, the same value as a Linux NAS (core §1). No CI-specific compose values besides the override file.
 
 ### 6. Data flow
 
@@ -1377,7 +1377,7 @@ cron 09:00 / dispatch(source, force)
 - `local/webui/tests/test_ci.py` (stdlib `unittest`, no network): `label`/`label_tag` round-trip; plan decision table from fixture release JSON + fixture upstream state: asset missing → build, label tag differs → build, all labels equal → skip, upstream `check_error` → skip, `--force` → build, `--source` filter.
 - Core test for `run_inline`: same status/reason as the worker for return / `JobFailed` / other exception; worker and `run_inline` both call `_execute`.
 - Catalog test: seed import → `export-seed` → JSON equal to the seed file (keys sorted).
-- Compose check: `RV_NETWORK_MODE=host docker compose -f local/docker-compose.yml -f local/docker-compose.ci.yml config` exits 0 and shows `command: [sleep, infinity]` for `app`.
+- Compose check: `RELUME_NETWORK_MODE=host docker compose -f local/docker-compose.yml -f local/docker-compose.ci.yml config` exits 0 and shows `command: [sleep, infinity]` for `app`.
 - End-to-end (user-run, long): push the branch, `workflow_dispatch` with `source=hushfacebook` (one item); expect asset `hushfacebook-<key>-<variant>.apk` on release `all` with a label carrying the patches tag; rerun without `force` → `plan` outputs `[]`, `build` skipped.
 
 ### 9. Deletions and one-time steps

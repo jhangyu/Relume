@@ -12,7 +12,7 @@ fail() { echo "FAIL $1: $2"; fails=$((fails + 1)); }
 new_env() {
 	T=$(mktemp -d)
 	export SHIM_LOG=$T/shim.log SHIM_SERVE=$T/serve SHIM_FIXTURES=$FIX
-	export PATH="$FIX/bin:$PATH" RV_APKEDITOR=$T/APKEditor.jar RV_APK_CACHE=$T/cache
+	export PATH="$FIX/bin:$PATH" RELUME_APKEDITOR=$T/APKEditor.jar RELUME_APK_CACHE=$T/cache
 	unset SHIM_PATCH_FAIL SHIM_EMPTY SHIM_LIST_PATCHES
 	mkdir -p "$SHIM_SERVE" "$T/work" "$T/up" "$T/cache" "$T/m"
 	printf '<manifest/>' > "$T/m/AndroidManifest.xml"
@@ -20,7 +20,7 @@ new_env() {
 	(cd "$T/m" && zip -q "$SHIM_SERVE/input.apk" AndroidManifest.xml classes.dex)
 	: > "$T/up/patches-1.0.0.mpp"
 	: > "$T/up/morphe-desktop-1.0.0-all.jar"
-	: > "$RV_APKEDITOR"
+	: > "$RELUME_APKEDITOR"
 }
 
 # make_job <jq filter>: fixture job.json with paths rewritten, plus options.json
@@ -45,7 +45,7 @@ out=$(source "$REPO/src/build/utils.sh" && apk_signer "$SHIM_SERVE/input.apk")
 if grep -qE '^[0-9a-f]{64}$' <<<"$out"; then pass apk_signer_capture; else fail apk_signer_capture "$out"; fi
 
 out=$(cd "$T/work" && mkdir -p release && source "$REPO/src/build/utils.sh" &&
-	engine=morphe cli_jar=$T/up/morphe-desktop-1.0.0-all.jar keystore=morphe.keystore RV_REPO=$REPO &&
+	engine=morphe cli_jar=$T/up/morphe-desktop-1.0.0-all.jar keystore=morphe.keystore RELUME_REPO=$REPO &&
 	patches_files=("$T/up/patches-1.0.0.mpp") &&
 	patch_variant "$SHIM_SERVE/input.apk" release/x.apk arm64-v8a && echo OK)
 log=$(cat "$SHIM_LOG")

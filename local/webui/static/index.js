@@ -1,7 +1,7 @@
 import { $, $$, act, api, ask, every, fmt, html, iconTile, itemStatus, shell, STATUS, toast } from '/static/app.js';
 
 export const state = { catalog: null, upstreams: [], filter: { s: 'all', q: '' }, dragging: false };
-const openIds = () => new Set(JSON.parse(localStorage.getItem('rv-open') || '[]'));
+const openIds = () => new Set(JSON.parse(localStorage.getItem('relume-open') || '[]'));
 const allItems = () => [...state.catalog.groups.flatMap(g => g.items), ...state.catalog.ungrouped];
 const groupsWithUngrouped = () => [...state.catalog.groups,
   { id: 0, name: 'Ungrouped', color: null, items: state.catalog.ungrouped }];
@@ -172,7 +172,7 @@ document.addEventListener('toggle', e => {
   if (!g) return;
   const ids = openIds();
   if (g.open) ids.add(Number(g.dataset.group)); else ids.delete(Number(g.dataset.group));
-  localStorage.setItem('rv-open', JSON.stringify([...ids]));
+  localStorage.setItem('relume-open', JSON.stringify([...ids]));
 }, true);
 
 $$('[data-f]').forEach(b => b.addEventListener('click', () => { state.filter.s = b.dataset.f; applyFilter(); }));

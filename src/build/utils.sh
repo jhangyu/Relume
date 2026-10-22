@@ -4,7 +4,7 @@
 # shellcheck disable=SC2034,SC2154  # globals are shared with the runner
 
 pup=pup
-APKEditor=${RV_APKEDITOR:-/opt/APKEditor.jar}
+APKEditor=${RELUME_APKEDITOR:-/opt/APKEditor.jar}
 user_agent='Mozilla/5.0 (Android 16; Mobile; rv:146.0) Gecko/146.0 Firefox/146.0'
 LAST_ERR=""
 FAIL_CODE=""
@@ -501,14 +501,14 @@ get_apkpure() {
 
 #################################################
 
-# patch_variant <input_apk> <out_apk> <strip_abi or "">; globals: engine cli_jar patches_files keystore RV_REPO
+# patch_variant <input_apk> <out_apk> <strip_abi or "">; globals: engine cli_jar patches_files keystore RELUME_REPO
 patch_variant() {
 	local in=$1 out=$2 strip=${3:-}
 	case "$engine" in
 	morphe)
 		local args=(-jar "$cli_jar" patch) f
 		for f in "${patches_files[@]}"; do args+=(-p "$f"); done
-		args+=(--options-file options.json "--keystore=$RV_REPO/src/keystore/$keystore" --force --continue-on-error)
+		args+=(--options-file options.json "--keystore=$RELUME_REPO/src/keystore/$keystore" --force --continue-on-error)
 		[[ -n "$strip" ]] && args+=(--striplibs "$strip")
 		args+=("--out=$out" "$in")
 		java "${args[@]}" || { red_log "[-] Patch failed: $out"; return 1; }
@@ -532,7 +532,7 @@ patch_variant() {
 		odir="${out%.apk}.d"
 		rm -rf "$odir"
 		mkdir -p "$odir"
-		cmd=(java -jar "$cli_jar" "$in" -k "$RV_REPO/src/keystore/$keystore" "${ks[0]}" "${ks[1]}" "${ks[2]}"
+		cmd=(java -jar "$cli_jar" "$in" -k "$RELUME_REPO/src/keystore/$keystore" "${ks[0]}" "${ks[1]}" "${ks[2]}"
 			-l "$engine_sigbypass")
 		[ "$engine_injectdex" = "true" ] && cmd+=(--injectdex)
 		for a in "${patches_files[@]}"; do

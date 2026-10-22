@@ -7,7 +7,7 @@ from contextlib import contextmanager
 
 SCHEMA_DIR = pathlib.Path(__file__).with_name('schema')
 SUBDIRS = ('home', 'logs', 'work', 'artifacts', 'apk-cache', 'upstream', 'icons')
-DATA = pathlib.Path(os.environ.get('RV_DATA', '/data'))
+DATA = pathlib.Path(os.environ.get('RELUME_DATA', '/data'))
 _local = threading.local()
 _gen = 0
 
@@ -19,7 +19,7 @@ def utcnow():
 def init(data_dir=None):
     """Set DATA, create its subdirectories, drop cached connections."""
     global DATA, _gen
-    DATA = pathlib.Path(data_dir or os.environ.get('RV_DATA', '/data'))
+    DATA = pathlib.Path(data_dir or os.environ.get('RELUME_DATA', '/data'))
     for d in SUBDIRS:
         (DATA / d).mkdir(parents=True, exist_ok=True)
     _gen += 1

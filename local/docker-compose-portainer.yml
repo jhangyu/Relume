@@ -1,20 +1,20 @@
-# Patchbay as a Portainer stack (Stacks > Add stack > Web editor: paste this file). Same services and isolation as
+# Relume as a Portainer stack (Stacks > Add stack > Web editor: paste this file). Same services and isolation as
 # local/docker-compose.yml, but no host preparation: data lives in named volumes, the code is in the images, and
 # the GitHub token is entered on the Settings page.
 #
 # Environment variables (Portainer "Environment variables" form):
-#   RV_IMAGE         required: the image prefix you pushed below, e.g. ghcr.io/<you>/patchbay
-#   RV_NETWORK_MODE  host (default; Linux hosts, mDNS phone discovery) or bridge (Docker Desktop on macOS/Windows:
+#   RELUME_IMAGE         required: the image prefix you pushed below, e.g. ghcr.io/<you>/relume
+#   RELUME_NETWORK_MODE  host (default; Linux hosts, mDNS phone discovery) or bridge (Docker Desktop on macOS/Windows:
 #                    host networking is not available there; add phones by IP:port)
-#   RV_WEB_PORT      published web port in bridge mode (default 47000; host mode always uses 47000)
-#   RV_UID, RV_GID   server uid:gid in the container (default 0:0; named volumes need no host ownership, keep 0)
+#   RELUME_WEB_PORT      published web port in bridge mode (default 47000; host mode always uses 47000)
+#   RELUME_UID, RELUME_GID   server uid:gid in the container (default 0:0; named volumes need no host ownership, keep 0)
 #   TZ               default UTC
 #
 # One-time image publish (on a machine with the repo checkout, logged in with `docker login ghcr.io`):
 #   docker compose -f local/docker-compose.yml build app cfbypass
-#   docker build -f local/Dockerfile.portainer --target app -t ghcr.io/<you>/patchbay-app:latest .
-#   docker build -f local/Dockerfile.portainer --target browser -t ghcr.io/<you>/patchbay-browser:latest .
-#   docker push ghcr.io/<you>/patchbay-app:latest && docker push ghcr.io/<you>/patchbay-browser:latest
+#   docker build -f local/Dockerfile.portainer --target app -t ghcr.io/<you>/relume-app:latest .
+#   docker build -f local/Dockerfile.portainer --target browser -t ghcr.io/<you>/relume-browser:latest .
+#   docker push ghcr.io/<you>/relume-app:latest && docker push ghcr.io/<you>/relume-browser:latest
 # The images have the build machine's CPU architecture (an Apple-silicon Mac builds arm64). For an amd64 host,
 # build on an amd64 machine or use `docker buildx build --platform linux/amd64 --push`. GHCR packages are private by
 # default: either make them public or add ghcr.io credentials under Portainer > Registries.
@@ -23,8 +23,8 @@ services:
   netns:
     image: busybox:1.38.0-musl
     command: ["tail", "-f", "/dev/null"]
-    network_mode: ${RV_NETWORK_MODE:-host}
-    ports: ["${RV_WEB_PORT:-47000}:47000"]
+    network_mode: ${RELUME_NETWORK_MODE:-host}
+    ports: ["${RELUME_WEB_PORT:-47000}:47000"]
     restart: unless-stopped
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest
@@ -35,14 +35,14 @@ services:
       PORT: "47191"
     restart: unless-stopped
   cfbypass:
-    image: ${RV_IMAGE:?set RV_IMAGE to your image prefix, e.g. ghcr.io/you/patchbay}-browser:latest
+    image: ${RELUME_IMAGE:?set RELUME_IMAGE to your image prefix, e.g. ghcr.io/you/relume}-browser:latest
     command: ["/app/docker-entrypoint.sh", "--host", "127.0.0.1", "--port", "47800"]
     shm_size: 2g
     network_mode: service:netns
     depends_on: [netns]
     restart: unless-stopped
   apkmsolver:
-    image: ${RV_IMAGE:?set RV_IMAGE to your image prefix, e.g. ghcr.io/you/patchbay}-browser:latest
+    image: ${RELUME_IMAGE:?set RELUME_IMAGE to your image prefix, e.g. ghcr.io/you/relume}-browser:latest
     entrypoint: ["sh", "/solver/xrun.sh"]
     command: ["/app/venv/bin/python3", "-u", "/solver/solver.py", "47900"]
     shm_size: 2g
@@ -50,24 +50,24 @@ services:
     depends_on: [netns, cfbypass]
     restart: unless-stopped
   app:
-    image: ${RV_IMAGE:?set RV_IMAGE to your image prefix, e.g. ghcr.io/you/patchbay}-app:latest
+    image: ${RELUME_IMAGE:?set RELUME_IMAGE to your image prefix, e.g. ghcr.io/you/relume}-app:latest
     network_mode: service:netns
     depends_on: [netns, flaresolverr, cfbypass, apkmsolver]
     init: true  # reaps orphaned grandchildren of killed jobs (PID 1 is python3 -m webui)
-    # Spec L779, as in local/docker-compose.yml: build children run as RV_RUNNER_UID without capabilities; the
-    # server starts as root only so setpriv can drop it to RV_UID:RV_GID with setuid/setgid/kill/dac_override.
+    # Spec L779, as in local/docker-compose.yml: build children run as RELUME_RUNNER_UID without capabilities; the
+    # server starts as root only so setpriv can drop it to RELUME_UID:RELUME_GID with setuid/setgid/kill/dac_override.
     user: "0:0"
-    command: ["setpriv", "--reuid=${RV_UID:-0}", "--regid=${RV_GID:-0}", "--clear-groups",
+    command: ["setpriv", "--reuid=${RELUME_UID:-0}", "--regid=${RELUME_GID:-0}", "--clear-groups",
               "--inh-caps=+setuid,+setgid,+kill,+dac_override", "--ambient-caps=+setuid,+setgid,+kill,+dac_override",
               "python3", "-m", "webui"]
     environment:
       HOME: /private/data/home
-      RV_DATA: /private/data
-      RV_RUNNER_UID: "10001"
-      RV_RUNNER_DATA: /data
+      RELUME_DATA: /private/data
+      RELUME_RUNNER_UID: "10001"
+      RELUME_RUNNER_DATA: /data
       ADB_SERVER_SOCKET: localfilesystem:/private/adb.sock
       TZ: ${TZ:-UTC}
-      RV_NETWORK_MODE: ${RV_NETWORK_MODE:-host}
+      RELUME_NETWORK_MODE: ${RELUME_NETWORK_MODE:-host}
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONPATH: /repo/local
       FLARESOLVERR_URL: http://127.0.0.1:47191
@@ -84,7 +84,7 @@ services:
         tmpfs:
           mode: 0o700
       - data:/private/data
-      # work, apk-cache and upstream are their own volumes so the runner can see just these at /data (RV_RUNNER_DATA)
+      # work, apk-cache and upstream are their own volumes so the runner can see just these at /data (RELUME_RUNNER_DATA)
       - work:/private/data/work
       - apk-cache:/private/data/apk-cache
       - upstream:/private/data/upstream

@@ -30,7 +30,7 @@ class SettingsTest(DataTestCase):
         self.assertEqual(st, 200)
         d = json.loads(body)
         self.assertEqual(sorted(d), ['app', 'ok', 'started_at', 'version'])
-        self.assertEqual((d['ok'], d['app'], d['version']), (True, 'Patchbay', '1.0'))
+        self.assertEqual((d['ok'], d['app'], d['version']), (True, 'Relume', '1.0'))
 
     def test_defaults_and_put(self):
         s = self.get()
@@ -117,7 +117,7 @@ class UiTokenTest(SettingsTest):
         return out.getvalue()
 
     def test_dev_null_default_points_to_settings_page(self):
-        # compose binds /dev/null when RV_GITHUB_TOKEN_FILE is unset: no file warning, a Settings-page hint instead
+        # compose binds /dev/null when RELUME_GITHUB_TOKEN_FILE is unset: no file warning, a Settings-page hint instead
         with mock.patch.object(settings, 'TOKEN_PATH', pathlib.Path('/dev/null')):
             self.assertEqual(self.check_output(), 'no GitHub token set: enter one on the Settings page\n')
             self.assertEqual(settings.github_token(), '')

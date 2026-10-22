@@ -38,15 +38,15 @@ jobs:
       matrix:
         source: ${{ fromJSON(needs.plan.outputs.sources) }}
     env:
-      RV_NETWORK_MODE: host
+      RELUME_NETWORK_MODE: host
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7.0.1
-      - run: echo "RV_GITHUB_TOKEN_FILE=$RUNNER_TEMP/github_token" >> "$GITHUB_ENV"
+      - run: echo "RELUME_GITHUB_TOKEN_FILE=$RUNNER_TEMP/github_token" >> "$GITHUB_ENV"
       - run: |
-          printf '%s' "$GH_TOKEN" > "$RV_GITHUB_TOKEN_FILE"
+          printf '%s' "$GH_TOKEN" > "$RELUME_GITHUB_TOKEN_FILE"
           mkdir -p local/data/work local/data/apk-cache local/data/upstream
-          echo "RV_UID=$(id -u)" >> "$GITHUB_ENV"; echo "RV_GID=$(id -g)" >> "$GITHUB_ENV"
+          echo "RELUME_UID=$(id -u)" >> "$GITHUB_ENV"; echo "RELUME_GID=$(id -g)" >> "$GITHUB_ENV"
       - run: docker compose -f local/docker-compose.yml -f local/docker-compose.ci.yml up -d --build
       - run: docker compose -f local/docker-compose.yml -f local/docker-compose.ci.yml exec -T app python3 -m webui ci-build "${{ matrix.source }}" ${FORCE:+"$FORCE"}
       - if: ${{ !cancelled() && hashFiles('local/data/release/upload.list') != '' }}

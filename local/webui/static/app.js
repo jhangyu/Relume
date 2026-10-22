@@ -130,7 +130,7 @@ document.addEventListener('error', e => {
 const root = document.documentElement;
 export function toggleTheme() {
   root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark';
-  try { localStorage.setItem('rv-theme', root.dataset.theme); } catch (_) { /* private mode */ }
+  try { localStorage.setItem('relume-theme', root.dataset.theme); } catch (_) { /* private mode */ }
 }
 
 async function logout() {

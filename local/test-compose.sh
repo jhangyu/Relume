@@ -8,13 +8,13 @@ pass() { echo "PASS $1"; }
 fail() { echo "FAIL $1: $2"; fails=$((fails + 1)); }
 
 for m in host bridge; do
-	if RV_NETWORK_MODE=$m docker compose --env-file /dev/null -f "$f" config > /dev/null 2>&1; then pass "compose_$m"; else fail "compose_$m" "config failed"; fi
+	if RELUME_NETWORK_MODE=$m docker compose --env-file /dev/null -f "$f" config > /dev/null 2>&1; then pass "compose_$m"; else fail "compose_$m" "config failed"; fi
 done
-if env -u RV_NETWORK_MODE docker compose --env-file /dev/null -f "$f" config > /dev/null 2>&1; then
-	fail compose_unset "config passed without RV_NETWORK_MODE"
+if env -u RELUME_NETWORK_MODE docker compose --env-file /dev/null -f "$f" config > /dev/null 2>&1; then
+	fail compose_unset "config passed without RELUME_NETWORK_MODE"
 else pass compose_unset; fi
 
-j=$(RV_NETWORK_MODE=bridge docker compose --env-file /dev/null -f "$f" config --format json 2>/dev/null) || j='{}'
+j=$(RELUME_NETWORK_MODE=bridge docker compose --env-file /dev/null -f "$f" config --format json 2>/dev/null) || j='{}'
 before=$fails
 check() { jq -e "$1" <<<"$j" > /dev/null || fail compose_shape "$1"; }
 check '.services | keys == ["apkmsolver","app","cfbypass","flaresolverr","netns"]'
@@ -31,7 +31,7 @@ check '.services.app.environment.FLARESOLVERR_URL == "http://127.0.0.1:47191"'
 check '.services.app.environment.CFBYPASS_URL == "http://127.0.0.1:47800"'
 check '.services.app.environment.APKM_SOLVER_URL == "http://127.0.0.1:47900"'
 check '[.services[] | .restart] | all(. == "unless-stopped")'
-for name in RV_GITHUB_TOKEN_FILE RV_UID RV_GID RV_DATA_DIR RV_NETWORK_MODE RV_WEB_PORT; do
+for name in RELUME_GITHUB_TOKEN_FILE RELUME_UID RELUME_GID RELUME_DATA_DIR RELUME_NETWORK_MODE RELUME_WEB_PORT; do
 	grep -q "$name" "$f" || fail compose_shape "missing env name $name"
 done
 [ "$fails" -eq "$before" ] && pass compose_shape

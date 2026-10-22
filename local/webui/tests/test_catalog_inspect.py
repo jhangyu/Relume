@@ -219,7 +219,7 @@ class InspectRowTest(PatchesCase):
         self.assertTrue(any(l.startswith("[!] inspect failed for") for l in log.lines), log.lines)
 
     def test_inspect_runs_isolated(self):
-        """Spec L779: the inspector runs bundle code as RV_RUNNER_UID with DATA paths in the runner view.
+        """Spec L779: the inspector runs bundle code as RELUME_RUNNER_UID with DATA paths in the runner view.
         T_PY runs as root, so setpriv can switch uid here."""
         self.add_cli()
         with db.tx() as c:
@@ -236,7 +236,7 @@ class InspectRowTest(PatchesCase):
                           f'cp {FIX}/list-patches.txt {FIX}/options.json "$3/"\n')
         log = FakeLog()
         with mock.patch.object(upstream, "INSPECT", str(script)), \
-                mock.patch.dict(os.environ, {"RV_RUNNER_UID": "10001", "RV_RUNNER_DATA": str(view)}):
+                mock.patch.dict(os.environ, {"RELUME_RUNNER_UID": "10001", "RELUME_RUNNER_DATA": str(view)}):
             upstream.inspect_row(2, "v1", log)
         self.assertEqual(log.runs[0][:2], ["setpriv", "--reuid=10001"])
         for want in ("UID 10001", f"CLI {view}/upstream/1/v1.18.1/morphe-desktop-1.18.1-all.jar",

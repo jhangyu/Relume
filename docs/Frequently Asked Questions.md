@@ -14,7 +14,7 @@ The issue might be that your Android OS is preventing MicroG (GMS Core) from run
 
 ### Q: How do I use this repository for patching my own app?
 
-You should [fork](https://github.com/FiorenMas/Revanced-And-Revanced-Extended-Non-Root/fork) the repository, and then go to the `Action` tab
+Push the repository to your own GitHub account, and then go to the `Action` tab
 ![Click Action](../docs/image/FAQ/patching-app-1.png)
 
 Click "I understand my workflows, go ahead and enable them"
@@ -22,13 +22,13 @@ Click "I understand my workflows, go ahead and enable them"
 
 Open the "Build" workflow, click "Run workflow", enter a source id (for example `morphe`) or `all` in `source`, and tick `force` to build even when nothing changed. The workflow also runs every day at 09:00 UTC and builds only the sources whose patches changed.
 
-And then go to Readme click download your patched apps!
+Then download your patched apps from the release tagged `all` in your repository.
 
 ---
 
 ### Q: How do I change patches, patch options or the app version?
 
-Patch selection, patch options and version pins live in the web UI ("Patchbay", `local/`): open an app, then use the Patches, Options and Version tabs. To make GitHub Actions build with the same settings, export the catalog and commit it:
+Patch selection, patch options and version pins live in the web UI ("Relume", `local/`): open an app, then use the Patches, Options and Version tabs. To make GitHub Actions build with the same settings, export the catalog and commit it:
 
 `docker compose -f local/docker-compose.yml exec app python3 -m webui export-seed > local/webui/catalog-seed.json`
 

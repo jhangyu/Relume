@@ -212,7 +212,7 @@ const chan = up => (up.channel === 'tag' ? (up.downloaded_tag || 'tag') : up.cha
 
 function renderHeader() {
   const it = S.item, up = it.upstream || {};
-  document.title = `${it.label} · Patchbay`;
+  document.title = `${it.label} · Relume`;
   $('h1').textContent = it.label;
   const newer = up.latest_tag && up.latest_tag !== up.downloaded_tag;
   const built = it.last_success ? `built ${it.last_success.app_version} with ${it.last_success.patches_version}` : 'not built yet';

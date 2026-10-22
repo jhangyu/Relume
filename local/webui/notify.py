@@ -105,7 +105,7 @@ def _request(cfg, text):
     if t == 'discord':
         return urllib.request.Request(c['webhook_url'], method='POST', data=json.dumps({'content': text}).encode(),
                                       headers={'Content-Type': 'application/json'})
-    headers = {'Title': 'Patchbay'}
+    headers = {'Title': 'Relume'}
     if c.get('token'):
         headers['Authorization'] = f"Bearer {c['token']}"
     body = text.encode()[:4096].decode('utf-8', 'ignore').encode()
@@ -212,7 +212,7 @@ def test_notify(req):
     cur = settings.get('notify')
     if not cur or not cur.get('type'):
         raise HttpError(400, 'no channel configured')
-    ok, status, detail = send(cur, 'Patchbay test message')
+    ok, status, detail = send(cur, 'Relume test message')
     cur['last_test'] = {'at': db.utcnow(), 'ok': ok, 'detail': '' if ok else f'{status}: {detail[:500]}'}
     settings.put('notify', cur)
     return 200, {'ok': ok, 'status': status, 'detail': detail[:500]}

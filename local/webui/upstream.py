@@ -42,7 +42,7 @@ def tag_dir(upstream_id, tag):
 
 
 def _gh_headers():
-    h = {"Accept": "application/vnd.github+json", "User-Agent": "Patchbay"}
+    h = {"Accept": "application/vnd.github+json", "User-Agent": "Relume"}
     token = settings.github_token()
     if token:
         h["Authorization"] = "Bearer " + token
@@ -309,7 +309,7 @@ APKSIGNER = ["apksigner"]
 
 
 def http_download(url, dest, headers=None, timeout=300):
-    req = urllib.request.Request(url, headers=headers or {"User-Agent": "Patchbay"})
+    req = urllib.request.Request(url, headers=headers or {"User-Agent": "Relume"})
     n = 0
     with urllib.request.urlopen(req, timeout=timeout) as r, open(dest, "wb") as f:
         while chunk := r.read(1 << 20):

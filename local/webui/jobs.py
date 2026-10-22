@@ -73,9 +73,9 @@ def _kill_group(p):
 
 
 def isolate(argv):
-    """argv for third-party code (patch bundles, CLIs; spec L779): runs as RV_RUNNER_UID, same gid, no supplementary
+    """argv for third-party code (patch bundles, CLIs; spec L779): runs as RELUME_RUNNER_UID, same gid, no supplementary
     groups, no capabilities, no new privileges. Unset (tests, bare image) = the server's own uid."""
-    uid = os.environ.get('RV_RUNNER_UID')
+    uid = os.environ.get('RELUME_RUNNER_UID')
     if not uid:
         return list(argv)
     return ['setpriv', f'--reuid={uid}', f'--regid={os.getgid()}', '--clear-groups',
@@ -84,8 +84,8 @@ def isolate(argv):
 
 def runner_path(p):
     """Path under db.DATA as the isolated runner sees it: compose mounts work, apk-cache and upstream at
-    RV_RUNNER_DATA because DATA itself sits in a directory the runner uid cannot enter."""
-    root = os.environ.get('RV_RUNNER_DATA')
+    RELUME_RUNNER_DATA because DATA itself sits in a directory the runner uid cannot enter."""
+    root = os.environ.get('RELUME_RUNNER_DATA')
     return os.path.join(root, os.path.relpath(p, db.DATA)) if root else str(p)
 
 

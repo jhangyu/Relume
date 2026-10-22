@@ -36,7 +36,7 @@ def runner_env():
     """X10: no GITHUB_TOKEN, the runner executes third-party patch code (spec L779). HOME is set per job to its
     work dir: the server's HOME holds the adb key."""
     env = {k: os.environ[k] for k in ENV_KEYS if k in os.environ}
-    env["RV_APK_CACHE"] = jobs.runner_path(db.DATA / "apk-cache")
+    env["RELUME_APK_CACHE"] = jobs.runner_path(db.DATA / "apk-cache")
     return env
 
 

@@ -22,7 +22,7 @@ class StartupTest(DataTestCase):
         before = threading.active_count()
         # patch.dict restores sys.modules afterwards; popping webui.ci makes the check
         # independent of whether an earlier test (test_ci) already imported it
-        with mock.patch.dict('os.environ', {'RV_DATA': str(self.data)}), mock.patch.dict(sys.modules):
+        with mock.patch.dict('os.environ', {'RELUME_DATA': str(self.data)}), mock.patch.dict(sys.modules):
             sys.modules.pop('webui.ci', None)
             cli.boot(names=names)
             ci_imported = 'webui.ci' in sys.modules
@@ -34,7 +34,7 @@ class StartupTest(DataTestCase):
         calls = []
         names = [self.fake('devices', calls)]
         out = io.StringIO()
-        with mock.patch.dict('os.environ', {'RV_DATA': str(self.data)}), contextlib.redirect_stdout(out), \
+        with mock.patch.dict('os.environ', {'RELUME_DATA': str(self.data)}), contextlib.redirect_stdout(out), \
                 mock.patch.object(cli.jobs, 'start', lambda: calls.append('jobs.start')), \
                 mock.patch.object(cli.jobs, 'recover', lambda: calls.append('jobs.recover')), \
                 mock.patch.object(cli.scheduler, 'start', lambda: calls.append('scheduler.start')):
@@ -45,7 +45,7 @@ class StartupTest(DataTestCase):
     def test_reset_password(self):
         db.conn().execute("INSERT INTO sessions VALUES ('t','2999-01-01T00:00:00Z')")
         out = io.StringIO()
-        with mock.patch.object(server, 'MODULES', ()), mock.patch.dict('os.environ', {'RV_DATA': str(self.data)}), \
+        with mock.patch.object(server, 'MODULES', ()), mock.patch.dict('os.environ', {'RELUME_DATA': str(self.data)}), \
                 contextlib.redirect_stdout(out):
             self.assertEqual(cli.main(['reset-password']), 0)
         self.assertRegex(out.getvalue(), r'admin password: \S{20}\n')
@@ -61,7 +61,7 @@ class StartupTest(DataTestCase):
 class EmptyVolumeTest(DataTestCase):
     def test_boot_creates_dirs_with_modes(self):
         fresh = self.data / 'vol'          # does not exist: an empty, unprepared data volume
-        with mock.patch.dict('os.environ', {'RV_DATA': str(fresh)}):
+        with mock.patch.dict('os.environ', {'RELUME_DATA': str(fresh)}):
             cli.boot(names=[])
         for d in db.SUBDIRS + ('secrets',):
             self.assertTrue((fresh / d).is_dir(), d)
@@ -78,7 +78,7 @@ class EmptyVolumeTest(DataTestCase):
         work = self.data / 'work'
         work.chmod(0o755)
         os.chown(work, 1001, 1001)
-        with mock.patch.dict('os.environ', {'RV_DATA': str(self.data)}):
+        with mock.patch.dict('os.environ', {'RELUME_DATA': str(self.data)}):
             cli.boot(names=[])
         self.assertEqual(work.stat().st_mode & 0o777, 0o755)
         r = subprocess.run(['setpriv', '--reuid=10001', f'--regid={os.getgid()}', '--clear-groups',

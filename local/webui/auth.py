@@ -10,7 +10,7 @@ import time
 from . import db, settings
 from .server import HttpError
 
-COOKIE = 'rv_session'
+COOKIE = 'relume_session'
 PUBLIC = {('POST', '/api/auth/login'), ('GET', '/api/health')}
 MAX_FAILS, WINDOW, LOCK = 5, 300, 300
 REMEMBER, SHORT = 30 * 86400, 12 * 3600

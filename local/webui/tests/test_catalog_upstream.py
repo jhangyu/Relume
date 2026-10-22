@@ -223,7 +223,7 @@ class PullTest(UpstreamCase):
             {"name": "microg-7.2.1.apk", "size": 5, "browser_download_url": "https://dl.invalid/microg.apk"}]}
         self.http({f"{API}/repos/MorpheApp/MicroG-RE/releases/latest": (200, rel, {})})
         with mock.patch.object(upstream, "APKSIGNER", ["bash", str(FIX / "fake-apksigner.sh")]), \
-                mock.patch.dict(os.environ, {"RV_RUNNER_UID": "10001"}):
+                mock.patch.dict(os.environ, {"RELUME_RUNNER_UID": "10001"}):
             upstream.pull(9, self.log)
         self.assertEqual(self.log.runs[0][:2], ["setpriv", "--reuid=10001"])
         self.assertEqual((self.data / "upstream" / "9" / "v7.2.1" / "signer.sha256").read_text().strip(), "ab" * 32)

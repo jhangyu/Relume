@@ -77,7 +77,7 @@ def set_github_token(token):
 
 def check_token_file():
     """Start-up message. Silent when a token is usable (a UI token always wins). /dev/null is the compose default
-    when RV_GITHUB_TOKEN_FILE is unset (the file is optional), so it gets no file warning."""
+    when RELUME_GITHUB_TOKEN_FILE is unset (the file is optional), so it gets no file warning."""
     if github_token():
         return
     if TOKEN_PATH.exists() and not TOKEN_PATH.is_file() and not TOKEN_PATH.samefile(os.devnull):
@@ -86,7 +86,7 @@ def check_token_file():
 
 
 def fetch_rate_limit(token):
-    h = {'Accept': 'application/vnd.github+json', 'User-Agent': 'patchbay'}
+    h = {'Accept': 'application/vnd.github+json', 'User-Agent': 'relume'}
     if token:
         h['Authorization'] = f'Bearer {token}'
     try:
@@ -131,7 +131,7 @@ def server_info():
     u = shutil.disk_usage(d)
     arts = d / 'artifacts'
     return {'arch': platform.machine(), 'tz': os.environ.get('TZ') or 'UTC', 'now': db.utcnow(),
-            'network_mode': os.environ.get('RV_NETWORK_MODE', ''),
+            'network_mode': os.environ.get('RELUME_NETWORK_MODE', ''),
             'disk': {'total': u.total, 'free': u.free, 'artifacts': _size(arts), 'apk_cache': _size(d / 'apk-cache'),
                      'upstream': _size(d / 'upstream'), 'logs': _size(d / 'logs'),
                      'artifacts_count': sum(1 for _ in arts.rglob('*.apk')) if arts.exists() else 0}}
@@ -145,7 +145,7 @@ def _payload(recheck=False):
 
 def health(req):
     from .server import STARTED_AT, VERSION
-    return 200, {'ok': True, 'app': 'Patchbay', 'version': VERSION, 'started_at': STARTED_AT}
+    return 200, {'ok': True, 'app': 'Relume', 'version': VERSION, 'started_at': STARTED_AT}
 
 
 def get_route(req):

@@ -48,7 +48,7 @@ class CiPlanTest(helpers.DataTestCase):
                 c.execute('UPDATE upstream SET check_error=? WHERE id=?', (self.check_errors.get(uid), uid))
         patches = [mock.patch.object(upstream, 'check', side_effect=fake_check),
                    mock.patch.object(ci, 'fetch_release', side_effect=lambda repo, token: release()),
-                   mock.patch.dict('os.environ', {'GITHUB_REPOSITORY': 'FiorenMas/Revanced-And-Revanced-Extended-Non-Root'})]
+                   mock.patch.dict('os.environ', {'GITHUB_REPOSITORY': 'jhangyu/Relume'})]
         started = [p.start() for p in patches]
         for p in patches:
             self.addCleanup(p.stop)

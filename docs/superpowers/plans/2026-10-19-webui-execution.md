@@ -1,4 +1,4 @@
-# Patchbay Web UI — Execution Plan (2 rounds)
+# Relume Web UI — Execution Plan (2 rounds)
 
 Plan: `docs/superpowers/plans/2026-10-19-webui.md` (packages P1–P11, task steps, Plan-fixed names, coverage). Spec: `docs/superpowers/specs/2026-10-19-webui-design.md`. Contract: `docs/logs/2026-10-19-webui-contract.md`.
 
@@ -14,7 +14,7 @@ Plan: `docs/superpowers/plans/2026-10-19-webui.md` (packages P1–P11, task step
 - Report (SendMessage to `lead`, fallback `main`): conclusions with `file:line`; changed files; each acceptance item pass/fail with the command and its exit code or output line; open items; last line `READY_FOR_SIGNOFF` or `BLOCKED`. Over 30 lines → write `docs/logs/2026-10-19-<member>-report.md` and send the path. Do not mark tasks completed.
 - Context limit: at the hand-off threshold write `docs/logs/2026-10-19-baton-<member>.md` (package, finished tasks with commit hashes, next task and step, failures so far) and report `READY_FOR_HANDOFF`.
 
-Test commands (from the plan): `T_PY <pattern>`, `T_SH <script>`, `T_JS <file>` = `node --check <file>`, `T_COMPOSE <mode>`. The test image is `rv-local-builder:latest` until the user builds the new `app` image.
+Test commands (from the plan): `T_PY <pattern>`, `T_SH <script>`, `T_JS <file>` = `node --check <file>`, `T_COMPOSE <mode>`. The test image is `relume-builder:latest` until the user builds the new `app` image.
 
 ## 2. Round 1 — 6 implementers + 1 test runner + 1 reviewer
 
@@ -44,11 +44,11 @@ Trigger: all six members report `READY_FOR_SIGNOFF`. Writers broadcast `SETTLED`
 |---|---|---|
 | G1 | `T_PY 'test_*.py'` | exit 0, `OK` line (first run with every real module) |
 | G2 | `T_SH src/build/test-build-item.sh` | exit 0 |
-| G3 | `T_COMPOSE host` and `T_COMPOSE bridge`; same command with `RV_NETWORK_MODE` unset | `RC=0`, `RC=0`, non-zero |
+| G3 | `T_COMPOSE host` and `T_COMPOSE bridge`; same command with `RELUME_NETWORK_MODE` unset | `RC=0`, `RC=0`, non-zero |
 | G4 | `for f in local/webui/static/*.js; do node --check "$f" \|\| echo FAIL $f; done` | no `FAIL` |
-| G5 | `mkdir -p .claude/tmp/smoke-r1 && docker run --rm -v "$PWD:/repo:ro" -v "$PWD/.claude/tmp/smoke-r1:/data" -e PYTHONPATH=/repo/local -e PYTHONDONTWRITEBYTECODE=1 rv-local-builder sh -c 'timeout 20 python3 -m webui & curl -sf --retry 15 --retry-connrefused --retry-delay 1 localhost:47000/api/health' \| python3 -c 'import json,sys;assert sorted(json.load(sys.stdin))==["app","ok","started_at","version"];print("SMOKE OK")'` (fresh data dir each run) | prints `SMOKE OK` (real start-up incl. seed import, every `register()` and `start()`) |
-| G6 | `docker run --rm -v "$PWD:/repo:ro" -e PYTHONPATH=/repo/local -e PYTHONDONTWRITEBYTECODE=1 -e RV_DATA=/tmp/d rv-local-builder python3 -c "import threading,webui.__main__ as m;b=threading.active_count();m.boot();assert threading.active_count()==b;print('REGISTER OK')"` | prints `REGISTER OK` |
-| G7 | `grep -n 'RV_GITHUB_TOKEN_FILE\|RV_UID\|RV_DATA_DIR' local/docker-compose.yml \| wc -l` | ≥ 3 (P7 depends on these names) |
+| G5 | `mkdir -p .claude/tmp/smoke-r1 && docker run --rm -v "$PWD:/repo:ro" -v "$PWD/.claude/tmp/smoke-r1:/data" -e PYTHONPATH=/repo/local -e PYTHONDONTWRITEBYTECODE=1 relume-builder sh -c 'timeout 20 python3 -m webui & curl -sf --retry 15 --retry-connrefused --retry-delay 1 localhost:47000/api/health' \| python3 -c 'import json,sys;assert sorted(json.load(sys.stdin))==["app","ok","started_at","version"];print("SMOKE OK")'` (fresh data dir each run) | prints `SMOKE OK` (real start-up incl. seed import, every `register()` and `start()`) |
+| G6 | `docker run --rm -v "$PWD:/repo:ro" -e PYTHONPATH=/repo/local -e PYTHONDONTWRITEBYTECODE=1 -e RELUME_DATA=/tmp/d relume-builder python3 -c "import threading,webui.__main__ as m;b=threading.active_count();m.boot();assert threading.active_count()==b;print('REGISTER OK')"` | prints `REGISTER OK` |
+| G7 | `grep -n 'RELUME_GITHUB_TOKEN_FILE\|RELUME_UID\|RELUME_DATA_DIR' local/docker-compose.yml \| wc -l` | ≥ 3 (P7 depends on these names) |
 | G8 | `git grep -n 'shell=True' -- local/webui` | no output |
 
 Fix loop: a failing gate line goes back to the owning member (lead names the member from the failing test file); at most 2 fix rounds, then the lead reports the failure trail to the user.
@@ -103,7 +103,7 @@ Order inside round 2: impl-ci, impl-xposed, impl-pages-a, impl-pages-b start at 
 | H1 | `T_PY 'test_*.py'` | exit 0 |
 | H2 | `T_SH src/build/test-build-item.sh` | exit 0 (incl. LSPatch/NPatch cases) |
 | H3 | `for f in local/webui/static/*.js; do node --check "$f" \|\| echo FAIL $f; done` | no `FAIL` |
-| H4 | `RV_NETWORK_MODE=host docker compose -f local/docker-compose.yml -f local/docker-compose.ci.yml config \| grep -A2 'command:'` | shows `sleep` and `infinity` under `app` |
+| H4 | `RELUME_NETWORK_MODE=host docker compose -f local/docker-compose.yml -f local/docker-compose.ci.yml config \| grep -A2 'command:'` | shows `sleep` and `infinity` under `app` |
 | H5 | `actionlint .github/workflows/build.yml` | exit 0 |
 | H6 | P11 dangling-reference command from the plan | no output |
 | H7 | G5 smoke (fresh data dir) | `SMOKE OK` |

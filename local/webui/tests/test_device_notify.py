@@ -77,7 +77,7 @@ class NotifyTest(helpers.DataTestCase):
         cfg = {'type': 'ntfy', 'enabled': True, 'config': {'server_url': stub.url, 'topic': 'rv', 'token': 'tk_secret1'}}
         self.assertTrue(notify.send(cfg, 'hi')[0])
         path, headers, body = stub.requests[0]
-        self.assertEqual((path, body, headers['Title'], headers['Authorization']), ('/rv', b'hi', 'Patchbay', 'Bearer tk_secret1'))
+        self.assertEqual((path, body, headers['Title'], headers['Authorization']), ('/rv', b'hi', 'Relume', 'Bearer tk_secret1'))
 
     def test_truncate_2000_keeps_link(self):
         add_catalog_item(1, 'com.google.android.youtube')

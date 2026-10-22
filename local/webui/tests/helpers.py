@@ -11,7 +11,7 @@ from webui import auth, db, events, jobs, server
 
 
 class DataTestCase(unittest.TestCase):
-    """Fresh RV_DATA dir + all schema files for every test."""
+    """Fresh RELUME_DATA dir + all schema files for every test."""
     schema_dir = None
 
     def setUp(self):

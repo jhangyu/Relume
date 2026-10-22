@@ -1,12 +1,12 @@
-# One compose file for macOS (RV_NETWORK_MODE=bridge) and Linux (host). Spec core §1.
+# One compose file for macOS (RELUME_NETWORK_MODE=bridge) and Linux (host). Spec core §1.
 # netns holds the network namespace; app and the three sidecars join it and reach each other on 127.0.0.1.
-name: rv-local
+name: relume
 services:
   netns:
     image: busybox:1.38.0-musl
     command: ["tail", "-f", "/dev/null"]
-    network_mode: ${RV_NETWORK_MODE:?set RV_NETWORK_MODE in local/.env}
-    ports: ["${RV_WEB_PORT:-47000}:47000"]
+    network_mode: ${RELUME_NETWORK_MODE:?set RELUME_NETWORK_MODE in local/.env}
+    ports: ["${RELUME_WEB_PORT:-47000}:47000"]
     restart: unless-stopped
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest
@@ -20,7 +20,7 @@ services:
     build:
       # pinned upstream commit; its Dockerfile is multi-arch (ubuntu:rolling + CloakBrowser linux-arm64)
       context: https://github.com/sarperavci/CloudflareBypassForScraping.git#0f628b9ccbea9ab69ca61bc1c896c2ef766a0f06
-    image: rv-local-cfbypass:0f628b9
+    image: relume-cfbypass:0f628b9
     # upstream has CMD (no ENTRYPOINT); the entrypoint forwards args to server.py
     command: ["/app/docker-entrypoint.sh", "--host", "127.0.0.1", "--port", "47800"]
     shm_size: 2g
@@ -31,7 +31,7 @@ services:
     # headed CloakBrowser Turnstile solver for APKMirror downloads; same image as cfbypass, own entrypoint starts Xvfb
     build:
       context: https://github.com/sarperavci/CloudflareBypassForScraping.git#0f628b9ccbea9ab69ca61bc1c896c2ef766a0f06
-    image: rv-local-cfbypass:0f628b9
+    image: relume-cfbypass:0f628b9
     entrypoint: ["sh", "/solver/xrun.sh"]
     command: ["/app/venv/bin/python3", "-u", "/solver/solver.py", "47900"]
     shm_size: 2g
@@ -45,26 +45,26 @@ services:
     build:
       context: ..
       dockerfile: local/Dockerfile
-    image: rv-local-app
+    image: relume-app
     network_mode: service:netns
     depends_on: [netns, flaresolverr, cfbypass, apkmsolver]
     init: true  # reaps orphaned grandchildren of killed jobs (PID 1 is python3 -m webui)
     # Spec L779: patch code must not read the token, adb key, adb server or database. Build children run as
-    # RV_RUNNER_UID (jobs.isolate). The container starts as root only so setpriv can drop the server to RV_UID:RV_GID
+    # RELUME_RUNNER_UID (jobs.isolate). The container starts as root only so setpriv can drop the server to RELUME_UID:RELUME_GID
     # while keeping the capabilities it needs for that: setuid/setgid (switch uid), kill (cancel), dac_override
     # (enter /private, clean up runner files).
     user: "0:0"
-    command: ["setpriv", "--reuid=${RV_UID:-0}", "--regid=${RV_GID:-0}", "--clear-groups",
+    command: ["setpriv", "--reuid=${RELUME_UID:-0}", "--regid=${RELUME_GID:-0}", "--clear-groups",
               "--inh-caps=+setuid,+setgid,+kill,+dac_override", "--ambient-caps=+setuid,+setgid,+kill,+dac_override",
               "python3", "-m", "webui"]
     environment:
       HOME: /private/data/home
-      RV_DATA: /private/data
-      RV_RUNNER_UID: "10001"
-      RV_RUNNER_DATA: /data
+      RELUME_DATA: /private/data
+      RELUME_RUNNER_UID: "10001"
+      RELUME_RUNNER_DATA: /data
       ADB_SERVER_SOCKET: localfilesystem:/private/adb.sock
       TZ: ${TZ:-UTC}
-      RV_NETWORK_MODE: ${RV_NETWORK_MODE}
+      RELUME_NETWORK_MODE: ${RELUME_NETWORK_MODE}
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONPATH: /repo/local
       FLARESOLVERR_URL: http://127.0.0.1:47191
@@ -83,23 +83,23 @@ services:
           mode: 0o700
       # create_host_path: false: a missing dir would be created root-owned; the user creates it (.env.example)
       - type: bind
-        source: ${RV_DATA_DIR:-./data}
+        source: ${RELUME_DATA_DIR:-./data}
         target: /private/data
         bind:
           create_host_path: false
-      # the runner's view of DATA (RV_RUNNER_DATA): only these three subdirectories
+      # the runner's view of DATA (RELUME_RUNNER_DATA): only these three subdirectories
       - type: bind
-        source: ${RV_DATA_DIR:-./data}/work
+        source: ${RELUME_DATA_DIR:-./data}/work
         target: /data/work
         bind:
           create_host_path: false
       - type: bind
-        source: ${RV_DATA_DIR:-./data}/apk-cache
+        source: ${RELUME_DATA_DIR:-./data}/apk-cache
         target: /data/apk-cache
         bind:
           create_host_path: false
       - type: bind
-        source: ${RV_DATA_DIR:-./data}/upstream
+        source: ${RELUME_DATA_DIR:-./data}/upstream
         target: /data/upstream
         read_only: true
         bind:
@@ -110,7 +110,7 @@ services:
           mode: 0o700
       # optional token file; unset = /dev/null (not a regular file = no file token; enter it on the Settings page)
       - type: bind
-        source: ${RV_GITHUB_TOKEN_FILE:-/dev/null}
+        source: ${RELUME_GITHUB_TOKEN_FILE:-/dev/null}
         target: /run/secrets/github_token
         read_only: true
         bind:

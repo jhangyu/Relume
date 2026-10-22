@@ -65,7 +65,7 @@ def main(argv=None):
         return 2
     mods = boot(start=True)
     srv = server.make_server(mods, '0.0.0.0', 47000)
-    print('Patchbay listening on :47000', flush=True)
+    print('Relume listening on :47000', flush=True)
     srv.serve_forever()
     return 0
 

@@ -184,7 +184,7 @@ class HandlerFailTest(BuildCase):
         with mock.patch.dict(os.environ, {"GITHUB_TOKEN": "secret", "FLARESOLVERR_URL": "http://127.0.0.1:47191"}):
             job, log, err = self.run_handler("runner-env.sh")
         keys = set(next(l for l in log.lines if l.startswith("ENVKEYS ")).split()[1:])
-        allowed = {"PATH", "HOME", "TZ", "LANG", "FLARESOLVERR_URL", "CFBYPASS_URL", "APKM_SOLVER_URL", "RV_APK_CACHE",
+        allowed = {"PATH", "HOME", "TZ", "LANG", "FLARESOLVERR_URL", "CFBYPASS_URL", "APKM_SOLVER_URL", "RELUME_APK_CACHE",
                    "PWD", "SHLVL", "_", "OLDPWD"}  # the last four are set by bash itself
         self.assertLessEqual(keys, allowed)
         self.assertNotIn("GITHUB_TOKEN", keys)
@@ -235,7 +235,7 @@ class HandlerFailTest(BuildCase):
 
 
 class IsolationTest(BuildCase):
-    """Spec L779: patch code runs as RV_RUNNER_UID, sees DATA through RV_RUNNER_DATA (compose: /data), keeps no caps.
+    """Spec L779: patch code runs as RELUME_RUNNER_UID, sees DATA through RELUME_RUNNER_DATA (compose: /data), keeps no caps.
     T_PY runs as root, so setpriv can switch uid here."""
 
     def test_runner_uid_paths_and_secret(self):
@@ -247,10 +247,10 @@ class IsolationTest(BuildCase):
         secret.chmod(0o600)
         script = self.data / "runner-id.sh"
         script.write_text(f'echo "UID $(id -u)"; echo "HOME $HOME"; echo "WORK $(jq -r .work_dir "$1")"\n'
-                          f'echo "CLI $(jq -r .cli_jar "$1")"; echo "CACHE $RV_APK_CACHE"; grep CapEff /proc/self/status\n'
+                          f'echo "CLI $(jq -r .cli_jar "$1")"; echo "CACHE $RELUME_APK_CACHE"; grep CapEff /proc/self/status\n'
                           f'cat {secret} 2>/dev/null && echo LEAK || echo DENIED; touch out && echo WROTE\n')
         build.RUNNER = str(script)
-        with mock.patch.dict(os.environ, {"RV_RUNNER_UID": "10001", "RV_RUNNER_DATA": str(view)}):
+        with mock.patch.dict(os.environ, {"RELUME_RUNNER_UID": "10001", "RELUME_RUNNER_DATA": str(view)}):
             job, log, err = self.run_handler()
         work = f"{view}/work/{job.id}"
         self.assertEqual(log.argv[:2], ["setpriv", "--reuid=10001"])

@@ -1,11 +1,11 @@
 # Self-contained images for local/docker-compose-portainer.yml: the local images with the code baked in instead of
 # bind-mounted (a Portainer stack has no repo checkout). Build from the repo root after
 # `docker compose -f local/docker-compose.yml build app cfbypass`; commands in docker-compose-portainer.yml.
-FROM rv-local-app AS app
+FROM relume-app AS app
 COPY local/webui /repo/local/webui
 COPY src/build /repo/src/build
 COPY src/keystore /repo/src/keystore
 
 # cfbypass and apkmsolver both run this one: the upstream browser image plus the APKMirror solver
-FROM rv-local-cfbypass:0f628b9 AS browser
+FROM relume-cfbypass:0f628b9 AS browser
 COPY local/solver /solver

@@ -4,7 +4,7 @@
 # stdout markers: ::step::<name>[::i/n]  ::version::<v>  ::apkm_versions::<csv>  ::fail::<code>::<detail>
 # shellcheck disable=SC2034  # globals are read by utils.sh
 set -o pipefail
-RV_REPO=$(cd "$(dirname "$0")/../.." && pwd)
+RELUME_REPO=$(cd "$(dirname "$0")/../.." && pwd)
 
 fail() {
 	echo "::fail::$1::$2"
@@ -13,7 +13,7 @@ fail() {
 
 job=$(realpath -e "${1:-/nonexistent}" 2>/dev/null) || fail internal "job.json missing: ${1:-}"
 # shellcheck source=src/build/utils.sh
-source "$RV_REPO/src/build/utils.sh"
+source "$RELUME_REPO/src/build/utils.sh"
 
 j() { jq -r "$1 // empty" "$job"; }
 
@@ -90,12 +90,12 @@ fetch_input() {
 	minver=$(jq -r '.minver // empty' <<<"$d")
 	url=$(jq -r '.url // empty' <<<"$d")
 	[[ $type == bundle_extract ]] && ext=apkm
-	local spec_key cache_dir="${RV_APK_CACHE:-}/$package" use_cache=0
+	local spec_key cache_dir="${RELUME_APK_CACHE:-}/$package" use_cache=0
 	spec_key=$(printf -- '-%s-%s-%s' "$type" "${arch:-any}" "${dpi:-any}" | tr -c 'A-Za-z0-9._-' '_')
 	local vkey cache_file
 	vkey=$(printf '%s' "$version" | tr -c 'A-Za-z0-9._-' '_')
 	cache_file="$cache_dir/$vkey$spec_key.$ext"
-	[[ -n "${RV_APK_CACHE:-}" && -n "$version" && $allow_near -eq 0 ]] && use_cache=1
+	[[ -n "${RELUME_APK_CACHE:-}" && -n "$version" && $allow_near -eq 0 ]] && use_cache=1
 	if [[ $use_cache -eq 1 && -s "$cache_file" ]]; then
 		green_log "[+] Input from cache: $(basename "$cache_file")"
 		cp "$cache_file" "download/$name.$ext" || fail internal "cannot copy from cache"

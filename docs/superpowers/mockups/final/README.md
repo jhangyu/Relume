@@ -1,4 +1,4 @@
-# Patchbay — "Workbench" (designer-styling)
+# Relume — "Workbench" (designer-styling)
 
 **Direction:** a calm admin console in the shadcn/ui + Radix style: neutral zinc surfaces, one emerald accent, and status colour only where it carries meaning. The CSS is hand-written to Tailwind token discipline (4px spacing scale, HSL CSS variables, radius tokens). Mockups work offline. Light and dark themes come from one token set; the default follows the system and the sun button toggles it (saved in localStorage).
 
