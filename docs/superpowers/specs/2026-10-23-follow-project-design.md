@@ -2,7 +2,7 @@
 
 Inputs: requirements `docs/logs/2026-10-23-follow-project-brief.md`; architecture B `docs/logs/2026-10-23-follow-project-arch-b.md` (base); architecture A `docs/logs/2026-10-23-follow-project-arch-a.md` (two parts only: APK facts read with APKEditor `info`, ABI read from `lib/<abi>/` zip entries); user decisions listed in §0.2; mockup `docs/superpowers/mockups/follow-project/option-a.html`.
 
-Paths without a directory prefix are relative to `local/webui/`. Every statement about current code cites `file` and a symbol (function, table, key) at commit `4cc414a`.
+Paths without a directory prefix are relative to `local/webui/`. Every statement about current code cites `file` and a symbol (function, table, key) at commit `4cc414a`. Three symbols were renamed after `4cc414a`, and this spec uses the new names: `upstream.gh_headers` (was `_gh_headers`), `upstream.fetch` (was `_fetch`), `catalog.display_name` (was `_display_name`).
 
 ---
 
