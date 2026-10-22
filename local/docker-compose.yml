@@ -49,7 +49,7 @@ services:
     network_mode: service:netns
     depends_on: [netns, flaresolverr, cfbypass, apkmsolver]
     init: true  # reaps orphaned grandchildren of killed jobs (PID 1 is python3 -m webui)
-    # Spec L779: patch code must not read the token, adb key, adb server or database. Build children run as
+    # Spec build §4 step 4: patch code must not read the token, adb key, adb server or database. Build children run as
     # RELUME_RUNNER_UID (jobs.isolate). The container starts as root only so setpriv can drop the server to RELUME_UID:RELUME_GID
     # while keeping the capabilities it needs for that: setuid/setgid (switch uid), kill (cancel), dac_override
     # (enter /private, clean up runner files).
