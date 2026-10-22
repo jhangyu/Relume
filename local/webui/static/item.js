@@ -1,10 +1,10 @@
-import { $, $$, act, api, ask, fmt, html, iconTile, shell, toast } from '/static/app.js';
+import { $, $$, act, api, ask, fillDownloads, fmt, html, iconTile, JOB_BADGE, shell, toast } from '/static/app.js';
 
 const ID = Number(new URLSearchParams(location.search).get('id'));
 const COLOR = /^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/;
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const clone = v => JSON.parse(JSON.stringify(v));
-export const S = { item: null, patches: null, saved: {}, edit: {}, version: null, vEdit: null };
+const S = { item: null, patches: null, saved: {}, edit: {}, version: null, vEdit: null };
 
 function overridesFrom(p) {
   const out = {};
@@ -44,9 +44,9 @@ function setValue(x, op, v) {
   if (Object.keys(o).length) S.edit[x.name] = o; else delete S.edit[x.name];
 }
 
-export const dirty = () => !same(S.edit, S.saved) || !same(S.vEdit, S.version);
+const dirty = () => !same(S.edit, S.saved) || !same(S.vEdit, S.version);
 
-export function refreshSaveBar() {
+function refreshSaveBar() {
   let n = 0;
   if (S.patches) {
     for (const x of S.patches.patches) {
@@ -234,7 +234,7 @@ async function renderInstalled() {
     : html`<span class="sm muted">Not assigned to any device</span>`}`;
 }
 
-export async function save(rebuild) {
+async function save(rebuild) {
   try {
     if (!same(S.edit, S.saved)) await api('PUT', `/api/items/${ID}/patches`, { overrides: S.edit });
     if (!same(S.vEdit, S.version)) await api('PUT', `/api/items/${ID}/version`, S.vEdit);
@@ -246,7 +246,7 @@ export async function save(rebuild) {
   }
 }
 
-export async function load() {
+async function load() {
   S.item = await api('GET', `/api/items/${ID}`);
   S.version = { version_mode: S.item.version.mode, version_pin: S.item.version.pin, allow_nearest: S.item.version.allow_nearest };
   S.vEdit = clone(S.version);
@@ -289,26 +289,18 @@ $('#b-pull').addEventListener('click', () => act('POST', `/api/upstreams/${S.ite
 $('#b-dl').addEventListener('toggle', async e => {
   if (!e.target.open) return;
   const menu = e.target.querySelector('.menu');
-  try {
-    const { artifacts } = await api('GET', `/api/items/${ID}/artifacts`);
-    const newest = artifacts.length ? artifacts[0].job_id : null;
-    const rows = artifacts.filter(a => a.job_id === newest);
-    menu.innerHTML = html`${rows.length ? rows.map(a => html`<a role="menuitem" href="/api/artifacts/${a.id}/download" download>${a.variant} · ${a.abi} · ${fmt.bytes(a.size)}</a>`) : html`<span class="xs muted" style="padding:.5rem">No artifact</span>`}`;
-  } catch (err) {
-    menu.textContent = err.message;
-  }
+  await fillDownloads(menu, ID);
 });
 $('#b-menu .menu').addEventListener('click', () => { $('#b-menu').open = false; });
 window.addEventListener('beforeunload', e => { if (dirty()) e.preventDefault(); });
 
 // ---- Version, History, Module tabs and dialogs ----
-const verKey = v => String(v).split(/[^0-9]+/).filter(Boolean).map(Number);
+// Exact port of catalog.version_key (catalog.py): one leading v/V dropped, digit parts are ints else -1, trailing 0.
+const verKey = v => [...String(v).replace(/^[vV]/, '').split(/[.\-+_]/).map(p => (/^[0-9]+$/.test(p) ? Number(p) : -1)), 0];
 const newer = (a, b) => {
   const x = verKey(a), y = verKey(b);
-  for (let i = 0; i < Math.max(x.length, y.length); i++) {
-    if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
-  }
-  return false;
+  for (let i = 0; i < Math.min(x.length, y.length); i++) if (x[i] !== y[i]) return x[i] > y[i];
+  return x.length > y.length;
 };
 let builtOk = new Set();
 
@@ -358,7 +350,7 @@ async function renderHistory() {
   builtOk = ok;
   $('#keep').textContent = `Keeping the last ${settings.artifact_retention} successful builds (Settings → Artifacts).`;
   $('#allb').href = `/builds.html?item=${ID}`;
-  const badge = j => html`<span class="badge ${{ success: 'b-ok', failed: 'b-err', running: 'b-info', queued: 'b-mute', cancelled: 'b-mute' }[j.status]}">${j.status}</span>`;
+  const badge = j => html`<span class="badge ${JOB_BADGE[j.status][0]}">${j.status}</span>`;
   $('#hist tbody').innerHTML = html`${jobs.map(j => {
     const d = j.detail || {}, arts = d.artifacts || [];
     return html`<tr ${j.status === 'failed' ? html`data-href="/builds.html?job=${j.id}" style="cursor:pointer"` : ''}><td class="mono"><a href="/builds.html?job=${j.id}">#${j.id}</a></td><td>${fmt.abs(j.started_at || j.created_at)}</td><td class="hide-m mono">${d.app_version || '—'}</td><td class="hide-m mono">${d.patches_version || '—'}</td><td>${badge(j)}${j.status === 'failed' ? html`<div class="xs danger">${j.reason || ''}</div>` : ''}</td><td class="hide-m">${fmt.duration(j.started_at, j.finished_at)}</td><td>${arts.length ? html`<a class="btn btn-ghost btn-sm" href="/api/artifacts/${arts[0].id}/download" download>${arts.length > 1 ? `Download (${arts.length})` : 'Download'}</a>` : ''}</td></tr>`;

@@ -1,8 +1,8 @@
-import { $, $$, act, api, ask, every, fmt, html, iconTile, itemStatus, shell, STATUS, toast } from '/static/app.js';
+import { $, $$, act, api, ask, catalogItems, every, fillDownloads, fmt, html, iconTile, itemStatus, shell, STATUS, toast } from '/static/app.js';
 
-export const state = { catalog: null, upstreams: [], filter: { s: 'all', q: '' }, dragging: false };
+const state = { catalog: null, upstreams: [], filter: { s: 'all', q: '' }, dragging: false };
 const openIds = () => new Set(JSON.parse(localStorage.getItem('relume-open') || '[]'));
-const allItems = () => [...state.catalog.groups.flatMap(g => g.items), ...state.catalog.ungrouped];
+const allItems = () => catalogItems(state.catalog);
 const groupsWithUngrouped = () => [...state.catalog.groups,
   { id: 0, name: 'Ungrouped', color: null, items: state.catalog.ungrouped }];
 
@@ -81,7 +81,7 @@ function renderBanner() {
   b.querySelector('span').textContent = `Upstream check problems: ${shown}${bad.length > 3 ? `; and ${bad.length - 3} more` : ''}`;
 }
 
-export function applyFilter() {
+function applyFilter() {
   const { s, q } = state.filter;
   let n = 0;
   $$('[data-item]').forEach(el => {
@@ -99,7 +99,7 @@ export function applyFilter() {
   $('#nores').hidden = n > 0;
 }
 
-export function render() {
+function render() {
   const open = openIds();
   $('#groups').innerHTML = html`${groupsWithUngrouped().map(g => groupCard(g, open.has(g.id)))}`;
   renderTallies(allItems());
@@ -107,7 +107,7 @@ export function render() {
   applyFilter();
 }
 
-export async function load() {
+async function load() {
   const [catalog, ups] = await Promise.all([api('GET', '/api/catalog'), api('GET', '/api/upstreams')]);
   state.catalog = catalog;
   state.upstreams = ups.upstreams;
@@ -134,15 +134,6 @@ async function otaGroup(g) {
   toast(n ? `OTA queued on ${n} device${n === 1 ? '' : 's'}` : 'No device has items of this group assigned');
 }
 
-async function fillDownloads(menu, it) {
-  const { artifacts } = await api('GET', `/api/items/${it.id}/artifacts`);
-  const newest = artifacts.length ? artifacts[0].job_id : null;
-  const rows = artifacts.filter(a => a.job_id === newest);
-  menu.innerHTML = html`${rows.length
-    ? rows.map(a => html`<a role="menuitem" href="/api/artifacts/${a.id}/download" download>${a.variant} · ${a.abi} · ${fmt.bytes(a.size)}</a>`)
-    : html`<span class="xs muted" style="padding:.5rem">No artifact</span>`}`;
-}
-
 document.addEventListener('click', async e => {
   const el = e.target.closest('[data-act]');
   if (!el) return;
@@ -151,7 +142,7 @@ document.addEventListener('click', async e => {
   const a = el.dataset.act;
   if (a === 'grename' || a === 'gdelete') return;   // handled by the dialog code below
   if (a === 'selall') { e.stopPropagation(); $$('[data-item]', card).forEach(r => r.classList.toggle('selected', el.checked)); return; }
-  if (a === 'dl') { if (!it.last_success) { e.preventDefault(); return; } fillDownloads(el.nextElementSibling, it).catch(() => {}); return; }
+  if (a === 'dl') { if (!it.last_success) { e.preventDefault(); return; } fillDownloads(el.nextElementSibling, it.id).catch(() => {}); return; }
   e.preventDefault();
   try {
     if (a === 'pull') await act('POST', `/api/upstreams/${it.upstream.id}/pull`, { rebuild: true }, `Update queued: ${it.source_name}`);
@@ -189,7 +180,7 @@ every(5000, () => {
   load().catch(() => {});
 });
 
-// ---- reorder (port of mockup apps.html:320-347) ----
+// ---- reorder (spec ui §3 drag-and-drop) ----
 let dragEl = null, fromList = null;
 const listGroupId = list => Number(list.closest('[data-group]').dataset.group);
 

@@ -1,6 +1,6 @@
-// Shared helpers for every page (spec ui §1). Ported from mockup apps.html:158-171.
+// Shared helpers for every page (spec ui §1).
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-export const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ESC[c]);
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ESC[c]);
 
 class Safe { constructor(s) { this.s = s; } toString() { return this.s; } }
 const part = v => (v instanceof Safe ? v.s : Array.isArray(v) ? v.map(part).join('')
@@ -128,7 +128,7 @@ document.addEventListener('error', e => {
 }, true);
 
 const root = document.documentElement;
-export function toggleTheme() {
+function toggleTheme() {
   root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark';
   try { localStorage.setItem('relume-theme', root.dataset.theme); } catch (_) { /* private mode */ }
 }
@@ -173,6 +173,12 @@ export function tabs(scope = document) {
 }
 
 export function shell() {
+  $('.side').innerHTML = html`
+<div class="brand"><span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 12l-8.5 8.5a2.1 2.1 0 0 1-3-3L12 9"/><path d="M17.6 15L22 10.6 13.4 2 9 6.4z"/></svg></span>Relume <span class="src" style="margin-left:auto">LAN</span></div>
+<nav class="nav stack-sm" style="gap:2px"><a href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg>App list</a><a href="/projects.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>Followed projects</a><a href="/builds.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17l6-6-6-6M12 19h8"/></svg>Builds</a><a href="/schedules.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Schedules</a><a href="/devices.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg>Devices</a><a href="/settings.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>Settings</a></nav>
+<div class="xs muted stack-sm" style="margin-top:auto;padding:0 .5rem .75rem;gap:.25rem" data-shell-status aria-label="Server status"></div><div class="foot" style="margin-top:0"><div class="row" style="flex-wrap:nowrap"><span class="ico ico-sm" style="background:#52525b;width:28px;height:28px">AD</span><div><div class="sm" style="font-weight:500">Admin</div><div class="xs muted" data-host></div></div></div>
+<button class="btn btn-ghost btn-icon btn-sm" type="button" data-logout aria-label="Sign out" title="Sign out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></button></div>
+`;
   const here = location.pathname === '/index.html' ? '/' : location.pathname;
   $$('.side .nav a').forEach(a => {
     if (a.getAttribute('href') === here) a.setAttribute('aria-current', 'page');
@@ -193,4 +199,21 @@ export function shell() {
   };
   load().catch(() => {});
   every(15000, () => load().catch(() => {}));
+}
+
+export const catalogItems = cat => [...cat.groups.flatMap(g => g.items), ...cat.ungrouped];
+
+export const JOB_BADGE = { success: ['b-ok', 'Success'], failed: ['b-err', 'Failed'], running: ['b-info', 'Running'], queued: ['b-mute', 'Waiting'], cancelled: ['b-mute', 'Cancelled'] };
+
+export async function fillDownloads(menu, itemId) {
+  try {
+    const { artifacts } = await api('GET', `/api/items/${itemId}/artifacts`);
+    const newest = artifacts.length ? artifacts[0].job_id : null;
+    const rows = artifacts.filter(a => a.job_id === newest);
+    menu.innerHTML = html`${rows.length
+      ? rows.map(a => html`<a role="menuitem" href="/api/artifacts/${a.id}/download" download>${a.variant} · ${a.abi} · ${fmt.bytes(a.size)}</a>`)
+      : html`<span class="xs muted" style="padding:.5rem">No artifact</span>`}`;
+  } catch (err) {
+    menu.textContent = err.message;
+  }
 }
