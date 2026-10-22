@@ -391,11 +391,16 @@ def _fetch_row(upstream_id, log, job_id=None):
         raise jobs.JobFailed(str(e))
     if assets is None:
         raise jobs.JobFailed(row["check_error"])
+    if row["kind"] == "project":
+        from webui import projects  # projects imports upstream at module level
     if row["latest_tag"] == row["downloaded_tag"] and tag_dir(upstream_id, row["downloaded_tag"]).is_dir():
+        # a crash after the tag commit leaves no pin: pin it now, before a later release is pinned instead
+        if row["kind"] == "project" and db.conn().execute(
+                "SELECT 1 FROM project WHERE upstream_id = ? AND signer_sha256 IS NULL", (upstream_id,)).fetchone():
+            projects.after_download(upstream_id, row["downloaded_tag"], log, job_id)
         return False
     verify = None
     if row["kind"] == "project":
-        from webui import projects  # projects imports upstream at module level
         verify = lambda part: projects.verify_release(upstream_id, part, log)  # noqa: E731
     _download(row, row["latest_tag"], assets, log, verify)
     if verify:

@@ -514,6 +514,15 @@ class ReleaseTest(ProjectCase):
         self.assertEqual(projects.project_info(1, ["arm64-v8a"])["file"], "microg-7.2.1-arm64.apk")
         self.assertEqual([e for e in self.emitted if e[0] == "project.signer_changed"], [])
 
+    def test_up_to_date_pull_pins_missing_signer(self):
+        self.pull("v1", {"microg-1.apk": ()})
+        with db.tx() as c:  # the job stopped between the tag commit and after_download
+            c.execute("UPDATE project SET signer_sha256 = NULL, signer_since = NULL WHERE id = 1")
+        self.pull("v1", {"microg-1.apk": ()})
+        p = self.project()
+        self.assertEqual((p["signer_sha256"], p["signer_since"], p["signer_alert"]), (AB, "v1", None))
+        self.assertEqual([e for e in self.emitted if e[0] == "project.signer_changed"], [])
+
     def test_package_filled_on_first_download(self):
         self.assertIsNone(self.project()["package"])
         self.pull("v1", {"microg-1.apk": ()})
