@@ -151,11 +151,11 @@ class PureTest(unittest.TestCase):
 
     def test_version_key_tag_prefix(self):
         k = catalog.version_key
-        self.assertGreater(k("v2.0"), k("v1.9"))
-        self.assertGreater(k("1.10"), k("1.9"))
-        self.assertEqual(k("1.48.0-dev.3"), (1, 48, 0, -1, 3))
-        self.assertEqual(k("20.12.46"), (20, 12, 46))
-        self.assertGreater(k("1.48.0-dev.3"), k("1.48.0-dev.2"))
+        for newer, older in (("v2.0", "v1.9"), ("1.10", "1.9"), ("1.48.0", "1.48.0-dev.3"), ("v1.0", "v1.0-rc1"),
+                             ("1.48.0.1", "1.48.0"), ("1.48.0-dev.3", "1.48.0-dev.2"), ("20.12.46", "20.12.4")):
+            self.assertGreater(k(newer), k(older), (newer, older))
+        self.assertEqual(k("v7.2.1"), k("7.2.1"))
+        self.assertEqual(k("1.48.0-dev.3"), (1, 48, 0, -1, 3, 0))
 
     def test_parse_signer(self):
         text = "Signer #1 certificate DN: CN=x\n  Signer #1 certificate SHA-256 digest: " + "AB" * 32 + "  \n"

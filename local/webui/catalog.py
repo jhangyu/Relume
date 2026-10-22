@@ -27,9 +27,11 @@ def now_iso():
 
 
 def version_key(v):
-    """Sort key for version strings ('20.12.46', '1.48.0-dev.3', 'v2.0'): each part is its first digit run
-    ('v1' -> 1); a part without digits ('dev') is -1 and sorts first."""
-    return tuple(int(m.group()) if (m := re.search(r"\d+", p)) else -1 for p in re.split(r"[.\-+_]", v))
+    """Sort key for version strings and tags ('20.12.46', '1.48.0-dev.3', 'v2.0'): one leading v/V is dropped; a part
+    of digits is its int, any other part is -1; a trailing 0 makes a release outrank its prerelease ('1.48.0' >
+    '1.48.0-dev.3', 'v1.0' > 'v1.0-rc1')."""
+    v = v[1:] if v[:1] in ("v", "V") else v
+    return tuple(int(p) if p.isdigit() else -1 for p in re.split(r"[.\-+_]", v)) + (0,)
 
 
 def _build():
