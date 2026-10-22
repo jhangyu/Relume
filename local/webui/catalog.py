@@ -399,7 +399,7 @@ def _source_fields(b):
     if not (KEYSTORE_DIR / ks).is_file():
         raise server.HttpError(400, "keystore not found")
     cli = b.get("cli_upstream_id")
-    r = db.conn().execute("SELECT kind FROM upstream WHERE id = ?", (cli,)).fetchone() if isinstance(cli, int) else None
+    r = db.conn().execute("SELECT kind FROM upstream WHERE id = ?", (cli,)).fetchone() if server.is_int(cli) else None
     if r is None or r["kind"] != "cli":
         raise server.HttpError(400, "invalid cli_upstream_id")
     return {"name": _name(b.get("name")), "engine": engine, "repo": server.validate_repo(b.get("repo"), "repo"),
@@ -452,7 +452,7 @@ def delete_source(req):
 def _group_id(v):
     if v is None or v == 0:
         return None
-    if not isinstance(v, int) or isinstance(v, bool):
+    if not server.is_int(v):
         raise server.HttpError(400, "invalid group_id")
     _group(v)
     return v

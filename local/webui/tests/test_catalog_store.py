@@ -121,7 +121,7 @@ class CrudTest(CatalogCase):
         self.assertEqual(self.status_of(catalog.post_source, json=self.SRC), 409)
 
     def test_source_validation(self):
-        for bad in ({"repo": "nope"}, {"keystore": "missing.ks"}, {"cli_upstream_id": 2},
+        for bad in ({"repo": "nope"}, {"keystore": "missing.ks"}, {"cli_upstream_id": 2}, {"cli_upstream_id": True},
                     {"channel": "tag"}, {"asset_regex": "("}, {"engine": "other"}):
             self.assertEqual(self.status_of(catalog.post_source, json=dict(self.SRC, **bad)), 400, bad)
 

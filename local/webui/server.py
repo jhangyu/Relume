@@ -101,7 +101,7 @@ def validate_host(v, field='host'):
 
 
 def validate_port(v, field='port'):
-    if isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= 65535:
+    if not is_int(v) or not 1 <= v <= 65535:
         raise HttpError(400, f'invalid {field}')
     return v
 
