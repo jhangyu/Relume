@@ -400,9 +400,9 @@ $('#m-app').addEventListener('click', async () => {
 const ABIS = ['universal', 'arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'];
 $('#m-item').addEventListener('click', async () => {
   const it = S.item;
-  let groups, dependency_apps;
+  let groups, projects;
   try {
-    [{ groups }, { dependency_apps }] = await Promise.all([api('GET', '/api/groups'), api('GET', '/api/dependency-apps')]);
+    [{ groups }, { projects }] = await Promise.all([api('GET', '/api/groups'), api('GET', '/api/projects')]);
   } catch (e) {
     return toast(e.message, 'error');
   }
@@ -422,14 +422,14 @@ $('#m-item').addEventListener('click', async () => {
     if (!has) variants.push({ ...clone(variants[0]), name: a, abi: a, strip_libs: a === 'universal' || it.engine !== 'morphe' ? null : a });
     chips();
   };
-  $('#i-deps').innerHTML = html`${dependency_apps.map(d => html`<label class="row sm"><input type="checkbox" class="cb" value="${d.id}" ${it.dependency_app_ids.includes(d.id) ? html`checked` : ''}> ${d.display_name} <span class="xs muted mono">${d.package}</span></label>`)}`;
+  $('#i-deps').innerHTML = html`${projects.map(p => html`<label class="row sm"><input type="checkbox" class="cb" value="${p.id}" ${it.project_ids.includes(p.id) ? html`checked` : ''}> ${p.label} <span class="xs muted mono">${p.package || p.repo}</span></label>`)}`;
   if (await ask($('#dlg-item')) !== 'ok') return;
   const body = {
     enabled: $('#i-en').checked,
     display_name: $('#i-name').value.trim() || null,
     group_id: $('#i-grp').value ? Number($('#i-grp').value) : null,
     variants,
-    dependency_app_ids: $$('#i-deps input:checked').map(i => Number(i.value)),
+    project_ids: $$('#i-deps input:checked').map(i => Number(i.value)),
   };
   act('PUT', `/api/items/${ID}`, body, 'Item saved').then(load).catch(() => {});
 });

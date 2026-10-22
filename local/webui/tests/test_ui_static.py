@@ -4,7 +4,7 @@ from webui.tests.helpers import DataTestCase, serve, http, login
 
 STATIC = pathlib.Path(server.__file__).with_name('static')
 UNSAFE = re.compile(r'(?:innerHTML|outerHTML)\s*=(?!\s*(?:html`|\'\'|""|``))|insertAdjacentHTML\([^,]+,(?!\s*html`)')
-NAV = ('href="/"', 'href="/builds.html"', 'href="/schedules.html"', 'href="/devices.html"', 'href="/settings.html"')
+NAV = ('href="/"', 'href="/projects.html"', 'href="/builds.html"', 'href="/schedules.html"', 'href="/devices.html"', 'href="/settings.html"')
 
 
 def violations(text):
@@ -48,10 +48,25 @@ class StaticRulesTest(unittest.TestCase):
             self.assertIn('data-logout', t, f.name)
             self.assertIn('id="toast"', t, f.name)
 
+    def test_projects_page_uses_project_api(self):
+        js = (STATIC / 'projects.js').read_text()
+        for needle in ("'/api/projects'", '/api/projects/assets', '/signer/accept', '/install', '/api/upstreams/', "'/api/devices'", 'kind=ota'):
+            self.assertIn(needle, js, needle)
+
+    def test_settings_lists_signer_event(self):
+        self.assertIn('value="project.signer_changed"', (STATIC / 'settings.html').read_text())
+        self.assertIn('project.signer_changed', (STATIC / 'settings.js').read_text())
+
+    def test_no_dependency_app_leftovers(self):
+        for f in sorted(STATIC.iterdir()):
+            t = f.read_text()
+            for needle in ('dependency-apps', 'dependency_app', 'd.dependencies'):
+                self.assertNotIn(needle, t, f'{f.name} {needle}')
+
 
 class PageIdsTest(unittest.TestCase):
     def test_every_id_a_page_script_looks_up_exists_in_its_html(self):
-        for page in ('item', 'builds'):
+        for page in ('item', 'builds', 'projects', 'devices'):
             js = (STATIC / f'{page}.js').read_text()
             markup = (STATIC / f'{page}.html').read_text()
             ids = set(re.findall(r"\$\$?\('#([\w-]+)", js)) | set(re.findall(r"getElementById\('([\w-]+)'", js))

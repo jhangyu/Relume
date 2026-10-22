@@ -20,7 +20,7 @@ async function loadNotify() {
   showChannel(type);
   for (const [k, sel] of Object.entries(FIELDS[type])) $(sel).value = (n.config && n.config[k]) || '';
   $('#n-en').checked = !!n.enabled;
-  const ev = new Set(n.type ? n.events : ['upstream.new_version', 'build.succeeded', 'build.failed', 'ota.done', 'ota.failed']);
+  const ev = new Set(n.type ? n.events : ['upstream.new_version', 'build.succeeded', 'build.failed', 'ota.done', 'ota.failed', 'project.signer_changed']);
   $$('[name=ev]').forEach(c => { c.checked = c.value === 'ota' ? ev.has('ota.done') || ev.has('ota.failed') : ev.has(c.value); });
   $('#n-last').textContent = n.last_test ? `Last test: ${fmt.abs(n.last_test.at)} · ${n.last_test.ok ? 'delivered' : `failed (${n.last_test.detail})`}` : 'Last test: never';
 }

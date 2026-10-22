@@ -1,6 +1,6 @@
 import { $, $$, act, api, every, fmt, html, shell, toast } from '/static/app.js';
 
-const D = { devices: [], items: new Map(), last: new Map() };
+const D = { devices: [], items: new Map(), projects: [], last: new Map() };
 const label = id => (D.items.get(id) || {}).label || `item ${id}`;
 const otpValue = g => $$('input', g).map(i => i.value).join('');
 
@@ -20,13 +20,13 @@ function wireOtp(g) {
 }
 
 function card(d) {
-  const pending = d.assignments.filter(a => a.pending).length;
+  const pending = d.assignments.filter(a => a.pending).length + d.projects.filter(x => x.pending).length;
   const last = D.last.get(d.id);
   return html`<section class="card" data-dev="${d.id}"><div class="card-h"><div class="row between"><div class="row"><span class="dot ${d.online ? 'on' : 'off'}" aria-hidden="true"></span><h2 contenteditable="true" spellcheck="false" data-rename title="Click to rename">${d.name}</h2><span class="xs muted">${d.model} · Android ${d.android_release}</span></div>
 <label class="row sm"><span class="switch"><input type="checkbox" data-oab ${d.ota_after_build ? html`checked` : ''}><span></span></span>Install after build</label></div>
 <p class="xs muted mono">${d.host}:${d.connect_port} · ${(d.abi_list || '').split(',')[0]} · last seen ${fmt.rel(d.last_seen_at)}</p>${d.online ? '' : html`<div class="alert warn"><span>Turn on Wireless debugging on the phone, then Reconnect.</span></div>`}</div>
 <div class="card-c stack-sm"><ul class="alist">${d.assignments.map(a => html`<li><span>${a.pending ? '' : '✓'}</span><span>${label(a.item_id)} <span class="xs muted mono">${a.installed ? a.installed.version_name : 'not installed'}${a.available ? ` → ${a.available.version_name}` : ''}</span></span><span class="xs ${a.pending ? 'newer' : 'muted'}">${a.pending ? 'pending' : 'current'}</span></li>`)}</ul>
-${d.dependencies.length ? html`<ul class="alist">${d.dependencies.map(x => html`<li><span></span><span>${x.display_name} <span class="xs muted mono">${x.installed_tag || 'not installed'} → ${x.available_tag || '—'}</span><span class="xs muted"> · required by ${x.required_by.map(label).join(', ')} · installs first</span></span><span></span></li>`)}</ul>` : ''}
+${d.projects.length ? html`<ul class="alist">${d.projects.map(x => html`<li><span>${x.pending ? '' : '✓'}</span><span>${x.display_name} <span class="xs muted mono">${x.installed_tag || 'not installed'} → ${x.available_tag || '—'}</span><span class="xs muted"> · ${x.assigned ? 'assigned' : html`required by ${x.required_by.map(label).join(', ')} · installs first`}</span>${x.signer_alert ? html` <a class="badge b-err" href="/projects.html">Blocked: signer changed</a>` : ''}</span><span class="xs ${x.pending ? 'newer' : 'muted'}">${x.pending ? 'pending' : 'current'}</span></li>`)}</ul>` : ''}
 <p class="xs muted">Last OTA: ${last ? html`${last.detail ? last.detail.outcome || last.status : last.status} · ${fmt.rel(last.finished_at || last.created_at)}` : 'none'}</p></div>
 <div class="card-f"><button class="btn" type="button" data-ota ${d.online ? '' : html`disabled title="Device offline: turn on Wireless debugging, then Reconnect"`}>OTA now · ${pending} pending</button><button class="btn btn-outline" type="button" data-reconnect>Reconnect</button><button class="btn btn-ghost" type="button" data-assign>Edit apps…</button><button class="btn btn-ghost danger" type="button" data-unpair style="margin-left:auto">Unpair</button></div></section>`;
 }
@@ -60,7 +60,7 @@ async function loadHistory() {
     const ok = installs.filter(i => i.result !== 'failed').length;
     const name = (D.devices.find(x => x.id === j.target.device_id) || {}).name || `device ${j.target.device_id}`;
     const outcome = d.outcome === 'skipped_offline' ? 'Skipped · offline' : d.outcome || j.status;
-    return html`<tr><td>${fmt.abs(j.created_at)}</td><td>${name}</td><td class="sm muted hide-m">${j.trigger}${d.mode && d.mode !== 'normal' ? ` · ${d.mode}` : ''}</td><td class="sm">${installs.map(i => html`<div>${i.package} ${i.version_name || ''} ${i.result === 'installed' ? '✓' : i.result === 'up_to_date' ? '· already current, skipped' : html`<span style="color:hsl(var(--destructive))">✗ ${i.error_code}</span>`}${i.error_code === 'SIGNATURE_MISMATCH' ? html` <button class="btn btn-ghost btn-sm danger" type="button" data-force="${j.id}" data-install="${i.id}" data-pkg="${i.package}">Uninstall &amp; retry</button>` : ''}${i.error_code === 'VERSION_DOWNGRADE' ? html` <button class="btn btn-ghost btn-sm" type="button" data-down="${j.id}" data-install="${i.id}">Install with downgrade</button>` : ''}</div>`)}</td><td class="mono">${ok} / ${installs.length}</td><td><span class="badge ${j.status === 'success' ? 'b-ok' : j.status === 'failed' ? 'b-err' : 'b-mute'}">${outcome}</span></td></tr>`;
+    return html`<tr><td>${fmt.abs(j.created_at)}</td><td>${name}</td><td class="sm muted hide-m">${j.trigger}${d.mode && d.mode !== 'normal' ? ` · ${d.mode}` : ''}</td><td class="sm">${installs.map(i => html`<div>${i.package} ${i.version_name || i.upstream_tag || ''} ${i.result === 'installed' ? '✓' : i.result === 'up_to_date' ? '· already current, skipped' : html`<span style="color:hsl(var(--destructive))">✗ ${i.error_code}</span>`}${i.error_code === 'SIGNATURE_MISMATCH' ? html` <button class="btn btn-ghost btn-sm danger" type="button" data-force="${j.id}" data-install="${i.id}" data-pkg="${i.package}">Uninstall &amp; retry</button>` : ''}${i.error_code === 'VERSION_DOWNGRADE' ? html` <button class="btn btn-ghost btn-sm" type="button" data-down="${j.id}" data-install="${i.id}">Install with downgrade</button>` : ''}</div>`)}</td><td class="mono">${ok} / ${installs.length}</td><td><span class="badge ${j.status === 'success' ? 'b-ok' : j.status === 'failed' ? 'b-err' : 'b-mute'}">${outcome}</span></td></tr>`;
   })}`;
 }
 
@@ -91,12 +91,14 @@ async function reconnect(d) {
 
 function editAssignments(d) {
   const mine = new Set(d.assignments.map(a => a.item_id));
-  $('#as-list').innerHTML = html`${[...D.items.values()].map(it => html`<label class="row sm"><input type="checkbox" class="cb" value="${it.id}" ${mine.has(it.id) ? html`checked` : ''}> ${it.label} <span class="xs muted mono">${it.package}</span></label>`)}`;
+  const mineP = new Set(d.projects.filter(x => x.assigned).map(x => x.project_id));
+  $('#as-items').innerHTML = html`${[...D.items.values()].map(it => html`<label class="row sm"><input type="checkbox" class="cb" value="${it.id}" ${mine.has(it.id) ? html`checked` : ''}> ${it.label} <span class="xs muted mono">${it.package}</span></label>`)}`;
+  $('#as-projects').innerHTML = html`<span class="lbl" style="margin-top:.5rem">Followed projects</span>${D.projects.length ? D.projects.map(p => html`<label class="row sm"><input type="checkbox" class="cb" value="${p.id}" ${mineP.has(p.id) ? html`checked` : ''}> ${p.label} <span class="xs muted mono">${p.package || p.repo}</span></label>`) : html`<p class="xs muted">No followed projects.</p>`}`;
   const dlg = $('#dlg-assign');
   dlg.showModal();
   dlg.addEventListener('close', () => {
     if (dlg.returnValue !== 'ok') return;
-    act('PUT', `/api/devices/${d.id}/assignments`, { item_ids: $$('#as-list input:checked').map(i => Number(i.value)) }, 'Apps saved').then(loadDevices).catch(() => {});
+    act('PUT', `/api/devices/${d.id}/assignments`, { item_ids: $$('#as-items input:checked').map(i => Number(i.value)), project_ids: $$('#as-projects input:checked').map(i => Number(i.value)) }, 'Apps saved').then(loadDevices).catch(() => {});
   }, { once: true });
 }
 
@@ -120,7 +122,10 @@ document.addEventListener('click', async e => {
   try {
     if (t('[data-pair]')) return pairDialog(t('[data-pair]'));
     if (d && t('[data-reconnect]')) return reconnect(d);
-    if (d && t('[data-assign]')) return editAssignments(d);
+    if (d && t('[data-assign]')) {
+      D.projects = (await act('GET', '/api/projects')).projects;
+      return editAssignments(d);
+    }
     if (d && t('[data-ota]')) await act('POST', `/api/devices/${d.id}/ota`, {}, `OTA queued on ${d.name}`);
     else if (d && t('[data-unpair]')) {
       if (!confirm(`Remove ${d.name}? On the phone, also tap Forget under Wireless debugging.`)) return;

@@ -16,7 +16,7 @@ function sentence(spec) {
 }
 
 function targetText(kind, t) {
-  if (t.all) return kind === 'upstream' ? 'All sources' : kind === 'build' ? 'All items' : 'All devices';
+  if (t.all) return kind === 'upstream' ? 'All sources and projects' : kind === 'build' ? 'All items' : 'All devices';
   if (t.source_ids) return t.source_ids.join(', ');
   if (t.group_ids) return t.group_ids.map(id => (id === 0 ? 'Ungrouped' : (R.groups.find(g => g.id === id) || {}).name || `group ${id}`)).join(', ');
   if (t.item_ids) return `${t.item_ids.length} picked items`;
@@ -52,7 +52,7 @@ function chip(name, value, label, checked) {
 
 function renderTargets(t) {
   const has = (k, v) => !!(t && t[k] && t[k].includes(v));
-  $('#tg-upstream').innerHTML = html`${chip('tu', 'all', `All sources (${R.sources.length})`, !t || t.all)}${R.sources.map(s => chip('tu', s.id, s.id, has('source_ids', s.id)))}`;
+  $('#tg-upstream').innerHTML = html`${chip('tu', 'all', `All sources and projects (${R.sources.length})`, !t || t.all)}${R.sources.map(s => chip('tu', s.id, s.id, has('source_ids', s.id)))}`;
   $('#tg-build').innerHTML = html`${chip('tb', 'all', `All items (${R.items.length})`, !t || t.all)}${R.groups.map(g => chip('tb', `g${g.id}`, g.name, has('group_ids', g.id)))}${chip('tb', 'g0', 'Ungrouped', has('group_ids', 0))}<button class="btn btn-ghost btn-sm" type="button" id="pick">Pick items…${t && t.item_ids ? ` (${t.item_ids.length})` : ''}</button>`;
   $('#tg-ota').innerHTML = html`${chip('to', 'all', 'All devices', !t || t.all)}${R.devices.map(d => chip('to', d.id, d.name, has('device_ids', d.id)))}`;
   R.pickItems = t && t.item_ids ? [...t.item_ids] : null;
