@@ -86,7 +86,7 @@ All routes need the admin session except the two marked "no auth". Mutating requ
 | `POST /api/items/{id}/build`, `POST /api/builds` | build | rebuild one item / many |
 | `GET /api/items/{id}/artifacts`, `GET /api/artifacts/{id}/download` | build | artifacts, download |
 | `GET /api/groups/{id}/download` (id `0` = Ungrouped) | build | ZIP of the newest successful artifacts of the group's items (build §3.4) |
-| `GET /api/devices`, `GET /api/devices/discovered`, `POST /api/devices/pair`, `POST /api/devices/{id}/connect`, `PATCH/DELETE /api/devices/{id}`, `PUT /api/devices/{id}/assignments`, `GET /api/devices/{id}/plan`, `POST /api/devices/{id}/ota` | device | phones, pairing, assignment, OTA |
+| `GET /api/devices`, `GET /api/devices/discovered`, `POST /api/devices/pair`, `POST /api/devices/{id}/connect`, `PATCH/DELETE /api/devices/{id}`, `PUT /api/devices/{id}/assignments`, `POST /api/devices/{id}/ota` | device | phones, pairing, assignment, OTA |
 | `POST /api/ota/{job_id}/force-reinstall`, `POST /api/ota/{job_id}/downgrade` | device | confirmed recovery installs |
 | `GET/PUT /api/notify`, `POST /api/notify/test` | device | notification channel |
 | `GET /`, `GET /<page>.html`, `GET /static/*` | core | frontend files (ui §1; `login.html` and its assets no auth) |
@@ -930,7 +930,6 @@ Secrets (`bot_token`, `webhook_url`, ntfy `token`) are write-only through the AP
 | `PATCH /api/devices/{id}` | name, ota_after_build |
 | `PUT /api/devices/{id}/assignments` `{item_ids:[]}` | replace assignment set; 400 when two items share a package (§3.1) |
 | `DELETE /api/devices/{id}` | `adb disconnect host:port`, delete row (assignments CASCADE; OTA history keeps `device_id`, §0.3). A queued OTA job for the device then fails with reason `device removed`. Cannot revoke trust on the phone; UI tells user to tap "Forget" in Wireless debugging. |
-| `GET /api/devices/{id}/plan` | dry-run of OTA planner: what would be installed and why |
 | `POST /api/devices/{id}/ota` `{item_ids?}` | one-click OTA (all assignments, or the listed ones — e.g. the per-item install button) → core job id (`kind='ota'`, target `{"device_id":N}` or `{"device_id":N,"item_ids":[…]}`, options `{}` = mode `normal`) |
 | `POST /api/ota/{job_id}/force-reinstall` `{install_id}` | after D6 confirmation: reads the `ota_installs` row (must belong to `job_id`), enqueues an OTA job with target `{"device_id":<row device>}` and options `{"mode":"force_reinstall","package":<row package>}`; the handler runs `adb uninstall <pkg>` then installs only that package |
 | `POST /api/ota/{job_id}/downgrade` `{install_id}` | same lookup; options `{"mode":"downgrade","package":<row package>}`; the handler installs only that package with `install -r -d` |

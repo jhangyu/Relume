@@ -438,7 +438,6 @@ Project object `P`:
 | `PUT /api/devices/{id}/assignments` | devices.py | `{item_ids: [int], project_ids?: [int]}` | `{device}` | 400 `item_ids must be a list of integers` / `project_ids must be a list of integers` / `unknown item N` / `unknown project N` / `two apps with package P` |
 | `POST /api/devices/{id}/ota` | ota.py | `{item_ids?, project_ids?}` (each a non-empty int list when present) | `{job_id}` | adds 400 `project_ids must be a non-empty list of integers`, 400 `project not assigned to this device` |
 | `GET /api/devices` | ota.py | — | each device: existing fields + `assignments` (unchanged, `ota.py:103-108`) + `projects: [DP]`; `dependencies` removed | — |
-| `GET /api/devices/{id}/plan` | ota.py | — | `{online, steps}`; project steps as §5.4 | unchanged |
 | `GET /api/items/{id}`, `PUT /api/items/{id}` | catalog.py | `project_ids: [int]` replaces `dependency_app_ids` (`catalog.py:486-490`, `catalog.py:552-567`) | item detail with `project_ids` | 400 `invalid project_ids`, 400 `unknown project` |
 | `GET /api/jobs?kind=ota` | jobs.py (exists) | — | `detail.installs[].kind` is `item`\|`project`; `detail.project_ids` added | — |
 
@@ -577,7 +576,7 @@ No file appears in two packages. No package touches `jobs.py`, `scheduler.py`, `
 Files (only these):
 - `local/webui/schema/005_follow.sql` (new), `local/webui/projects.py` (new), `local/webui/upstream.py`, `local/webui/catalog.py`, `local/webui/catalog-seed.json`, `local/webui/notify.py`, `local/webui/server.py` (only `MODULES` at `server.py:16`: add `'projects'` after `'upstream'`)
 - `local/webui/tests/test_projects.py` (new), `local/webui/tests/test_catalog_store.py`, `local/webui/tests/test_catalog_seed.py`, `local/webui/tests/test_catalog_upstream.py`, `local/webui/tests/test_device_notify.py`, `local/webui/tests/catalog_rows.py`, `local/webui/tests/fixtures/catalog/fake-apkeditor.sh` (new), `local/webui/tests/fixtures/catalog/fake-apksigner.sh`
-- `docs/superpowers/specs/2026-10-19-webui-design.md` (replace the dependency-app rows — spec lines 21, 40, 80, 85, 102, 444, 464-465, 474, 542, 569, 576, 877, 916, 951, 1179, 1217, 1442 — with the new shapes or a pointer to this file)
+- `docs/superpowers/specs/2026-10-19-webui-design.md` (replace the dependency-app rows — with the new shapes or a pointer to this file)
 
 Delivers: §3 (migration, seed), §4 (all of `projects.py`), §5.1–5.3, §5.6, §6 routes owned by `projects.py`, catalog `project_ids`, deletions in §12 for its files, §7.
 
