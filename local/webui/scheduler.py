@@ -1,5 +1,4 @@
 import datetime as dt
-import importlib
 import json
 import os
 import re
@@ -7,7 +6,7 @@ import threading
 import traceback
 from zoneinfo import ZoneInfo
 
-from . import db, jobs
+from . import build, catalog, db, devices, jobs
 from .server import HttpError, validate_slug
 
 UTC = dt.timezone.utc
@@ -18,13 +17,11 @@ OPTION_KEYS = {
     'ota': {'retries': int, 'notify': bool},
 }
 TARGET_KEYS = {'upstream': ('source_ids',), 'build': ('group_ids', 'item_ids'), 'ota': ('device_ids',)}
-_mod = lambda n: importlib.import_module('webui.' + n)
 EXPAND = {
-    'upstream': lambda t: [{'upstream_id': i} for i in _mod('catalog').resolve_upstreams(t)],
-    'build': lambda t: [{'item_id': i} for i in _mod('catalog').resolve_items(t)],
-    'ota': lambda t: [{'device_id': i} for i in _mod('devices').resolve_devices(t)],
+    'upstream': lambda t: [{'upstream_id': i} for i in catalog.resolve_upstreams(t)],
+    'build': lambda t: [{'item_id': i} for i in catalog.resolve_items(t)],
+    'ota': lambda t: [{'device_id': i} for i in devices.resolve_devices(t)],
 }
-NEEDS_BUILD = [lambda item_id: _mod('build').needs_build(item_id)]
 _wake = threading.Event()
 
 
@@ -156,7 +153,7 @@ def fire(row, now):
     kind, opts = row['kind'], json.loads(row['options'])
     targets = EXPAND[kind](json.loads(row['target']))
     if kind == 'build' and opts.get('only_changed'):
-        targets = [t for t in targets if NEEDS_BUILD[0](t['item_id'])]
+        targets = [t for t in targets if build.needs_build(t['item_id'])]
     if not targets:
         print(f"schedule {row['id']} ({row['name']}): target expands to nothing", flush=True)
     job_opts = {k: v for k, v in opts.items() if k != 'only_changed'}

@@ -10,7 +10,7 @@ import sys
 import urllib.error
 import urllib.request
 
-from . import db, jobs, settings
+from . import catalog, db, jobs, settings, upstream
 
 GITHUB_API = 'https://api.github.com'
 _TAG = re.compile(r', patches (\S+)\)$')
@@ -94,7 +94,6 @@ def stale_items(source_id, assets, latest_tag, force):
 
 
 def plan(source='all', force=False):
-    from . import upstream
     rows = _sources(source)
     uids = sorted({r['upstream_id'] for r in rows})
     for uid in uids:
@@ -122,7 +121,7 @@ def _publish(source_id, item_id, job_id, rel):
         for a in c.execute('SELECT variant, path FROM artifacts WHERE job_id=? ORDER BY id', (job_id,)):
             name = asset_name(source_id, key, a['variant'])
             src = pathlib.Path(a['path'])
-            try:  # no symlink swapped in by a lingering runner child (round-2 review S3)
+            try:  # no symlink swapped in by a lingering runner child
                 with jobs.open_runner_file(src.parent, src.name) as fin, open(rel / name, 'wb') as out:
                     shutil.copyfileobj(fin, out, 1 << 20)
             except OSError as e:
@@ -174,7 +173,6 @@ def main(argv):
     sub.add_parser('export-seed')
     args = p.parse_args(argv)
     if args.cmd == 'export-seed':
-        from . import catalog
         sys.stdout.write(catalog.seed_text())
         return 0
     try:

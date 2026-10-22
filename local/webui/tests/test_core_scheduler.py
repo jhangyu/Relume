@@ -1,7 +1,7 @@
 import contextlib, datetime as dt, io, json, os, unittest
 from unittest import mock
 from zoneinfo import ZoneInfo
-from webui import db, jobs, scheduler
+from webui import build, db, jobs, scheduler
 from webui.tests.helpers import DataTestCase, serve, http, login
 
 U = dt.timezone.utc
@@ -60,7 +60,7 @@ class FireTest(DataTestCase):
 
     def test_only_changed(self):
         sid = scheduler.create('n', 'build', {'all': True}, {'every': 'day', 'at': '04:00'}, {'only_changed': True})
-        with mock.patch.object(scheduler, 'NEEDS_BUILD', [lambda i: i == 2]):
+        with mock.patch.object(build, 'needs_build', lambda i: i == 2):
             scheduler.fire(db.conn().execute('SELECT * FROM schedules WHERE id=?', (sid,)).fetchone(), T('2026-10-19T12:00:00Z'))
         rows = [json.loads(r[0]) for r in db.conn().execute('SELECT target FROM jobs')]
         self.assertEqual(rows, [{'item_id': 2}])

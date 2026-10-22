@@ -1,5 +1,4 @@
 """Notifier (spec device 4.4, 6): subscribers only queue; one thread sends to the one configured channel."""
-import importlib
 import json
 import queue
 import threading
@@ -7,7 +6,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from . import db, events, jobs, settings
+from . import db, events, jobs, projects, settings
 from .server import HttpError
 
 EVENTS = ('upstream.new_version', 'build.succeeded', 'build.failed', 'ota.done', 'ota.failed', 'device.offline',
@@ -77,7 +76,7 @@ def _project_label(col, value):
     """Label of the project whose col ('p.id' or 'p.upstream_id', fixed by the callers) equals value; None if none."""
     r = db.conn().execute(f'SELECT p.display_name, u.repo FROM project p JOIN upstream u ON u.id = p.upstream_id '
                           f'WHERE {col} = ?', (value,)).fetchone()
-    return importlib.import_module('webui.projects').label(r) if r else None
+    return projects.label(r) if r else None
 
 
 def _device(device_id):

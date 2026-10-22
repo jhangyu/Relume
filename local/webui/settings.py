@@ -1,5 +1,4 @@
 import datetime
-import importlib
 import json
 import os
 import pathlib
@@ -11,7 +10,7 @@ import time
 import urllib.error
 import urllib.request
 
-from . import db
+from . import build, db, server
 
 TOKEN_PATH = pathlib.Path('/run/secrets/github_token')
 RATE_URL = 'https://api.github.com/rate_limit'
@@ -144,8 +143,7 @@ def _payload(recheck=False):
 
 
 def health(req):
-    from .server import STARTED_AT, VERSION
-    return 200, {'ok': True, 'app': 'Relume', 'version': VERSION, 'started_at': STARTED_AT}
+    return 200, {'ok': True, 'app': 'Relume', 'version': server.VERSION, 'started_at': server.STARTED_AT}
 
 
 def get_route(req):
@@ -153,17 +151,16 @@ def get_route(req):
 
 
 def put_route(req):
-    from .server import HttpError
     b = req.json
     if not isinstance(b, dict) or set(b) - {'job_history_count', 'base_url', 'artifact_retention', 'github_token'}:
-        raise HttpError(400, 'unknown setting')
+        raise server.HttpError(400, 'unknown setting')
     if 'github_token' in b and not (isinstance(b['github_token'], str) and TOKEN_RE.match(b['github_token'])):
-        raise HttpError(400, 'invalid github_token')
+        raise server.HttpError(400, 'invalid github_token')
     for k, (lo, hi) in LIMITS.items():
         if k in b and (isinstance(b[k], bool) or not isinstance(b[k], int) or not lo <= b[k] <= hi):
-            raise HttpError(400, f'invalid {k}')
+            raise server.HttpError(400, f'invalid {k}')
     if 'base_url' in b and not (b['base_url'] == '' or (isinstance(b['base_url'], str) and re.match(r'^https?://\S+$', b['base_url']))):
-        raise HttpError(400, 'invalid base_url')
+        raise server.HttpError(400, 'invalid base_url')
     old_keep = get('artifact_retention', 3)
     for k, v in b.items():
         if k == 'github_token':
@@ -171,7 +168,7 @@ def put_route(req):
         else:
             put(k, v.rstrip('/') if k == 'base_url' else v)
     if 'artifact_retention' in b and b['artifact_retention'] != old_keep:
-        importlib.import_module('webui.build').run_retention()
+        build.run_retention()
     return 200, _payload()
 
 

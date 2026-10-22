@@ -1,6 +1,6 @@
 from unittest import mock
 
-from webui import db, events, jobs, ota
+from webui import build, db, events, jobs, ota, projects
 from webui.server import HttpError
 from webui.tests import helpers
 from webui.tests.device_helpers import (FakeAdb, FakeLog, add_catalog_item, add_device, add_job, add_project, assign,
@@ -35,11 +35,11 @@ class OtaJobTest(helpers.DataTestCase):
         assign(self.d, 1, 2)
         self.arts = {1: art(1, 6, str(self.yt)), 2: art(2, 7, str(self.ytm))}
         self.deps = {1: [1]}
-        for name, fn in (('_latest_artifact', lambda i, abi: self.arts.get(i)),
-                         ('_item_projects', lambda i: self.deps.get(i, [])),
-                         ('_assigned_projects', lambda d: list(self.assigned)),
-                         ('_project_info', lambda pid, abis: self.infos.get(pid))):
-            p = mock.patch.object(ota, name, side_effect=fn)
+        for mod, name, fn in ((build, 'latest_artifact', lambda i, abi: self.arts.get(i)),
+                              (projects, 'item_projects', lambda i: self.deps.get(i, [])),
+                              (projects, 'assigned_projects', lambda d: list(self.assigned)),
+                              (projects, 'project_info', lambda pid, abis: self.infos.get(pid))):
+            p = mock.patch.object(mod, name, side_effect=fn)
             p.start()
             self.addCleanup(p.stop)
         for name, value in (('RETRY_WAIT', 0), ('INSTALL_TIMEOUT', 900)):
@@ -175,7 +175,7 @@ class OtaJobTest(helpers.DataTestCase):
         self.deps = {}
         seq = [art(1, 6, str(self.yt)), art(1, 6, str(db.DATA / 'gone.apk')), art(1, 6, str(self.yt))]
         self.arts = {}
-        with mock.patch.object(ota, '_latest_artifact', side_effect=seq) as la:
+        with mock.patch.object(build, 'latest_artifact', side_effect=seq) as la:
             self.online()
             self.fa.rule('install', out='Success\n')
             jid, err = self.run_job(target={'device_id': self.d, 'item_ids': [1]})
