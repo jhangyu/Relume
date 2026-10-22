@@ -247,8 +247,12 @@ def after_download(upstream_id, tag, log, job_id):
 
 def enqueue_auto_push(project_id, notify=True):
     return [jobs.enqueue("ota", {"device_id": d, "project_ids": [project_id]}, "upstream", options={"notify": notify})
-            for (d,) in db.conn().execute(
-                "SELECT device_id FROM device_projects WHERE project_id = ? ORDER BY device_id", (project_id,)).fetchall()]
+            for d in project_devices(project_id)]
+
+
+def project_devices(project_id):
+    return [x[0] for x in db.conn().execute(
+        "SELECT device_id FROM device_projects WHERE project_id = ? ORDER BY device_id", (project_id,))]
 
 
 # ---- routes (§6) ----
@@ -284,8 +288,7 @@ def _obj(project_id):
             "disk_bytes": sum(f.stat().st_size for f in base.rglob("*") if f.is_file()) if base.is_dir() else 0,
             "item_ids": [x[0] for x in c.execute(
                 "SELECT item_id FROM item_dependency WHERE project_id = ? ORDER BY item_id", (r["id"],))],
-            "device_ids": [x[0] for x in c.execute(
-                "SELECT device_id FROM device_projects WHERE project_id = ? ORDER BY device_id", (r["id"],))]}
+            "device_ids": project_devices(r["id"])}
 
 
 def _channel(v):
