@@ -39,13 +39,15 @@ class StaticRulesTest(unittest.TestCase):
         self.assertIn('id="a-src-edit"', (STATIC / 'index.html').read_text())
 
     def test_pages_have_nav_and_logout(self):
+        js = (STATIC / 'app.js').read_text()
+        for n in NAV:
+            self.assertIn(n, js, f'app.js {n}')
+        self.assertIn('data-logout', js)
         for f in sorted(STATIC.glob('*.html')):
-            t = f.read_text()
             if f.name == 'login.html':
                 continue
-            for n in NAV:
-                self.assertIn(n, t, f'{f.name} {n}')
-            self.assertIn('data-logout', t, f.name)
+            t = f.read_text()
+            self.assertIn('<aside class="side" aria-label="Primary"></aside>', t, f.name)
             self.assertIn('id="toast"', t, f.name)
 
     def test_projects_page_uses_project_api(self):
@@ -66,10 +68,12 @@ class StaticRulesTest(unittest.TestCase):
 
 class PageIdsTest(unittest.TestCase):
     def test_every_id_a_page_script_looks_up_exists_in_its_html(self):
-        for page in ('item', 'builds', 'projects', 'devices'):
+        pages = [j.stem for j in sorted(STATIC.glob('*.js')) if j.name != 'app.js' and j.with_suffix('.html').exists()]
+        self.assertTrue(pages)
+        for page in pages:
             js = (STATIC / f'{page}.js').read_text()
             markup = (STATIC / f'{page}.html').read_text()
-            ids = set(re.findall(r"\$\$?\('#([\w-]+)", js)) | set(re.findall(r"getElementById\('([\w-]+)'", js))
+            ids = set(re.findall(r"\$\$?\(['\"`]#([\w-]+)", js)) | set(re.findall(r"getElementById\(['\"`]([\w-]+)['\"`]", js))
             self.assertTrue(ids, page)
             for i in sorted(ids):
                 self.assertIn(f'id="{i}"', markup, f'{page}: #{i}')

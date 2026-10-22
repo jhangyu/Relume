@@ -145,7 +145,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(500, {'error': 'internal error'})
 
     def _api(self, method, url):
-        from . import auth
+        from . import auth  # lazy: auth imports HttpError from this module
         found = None
         path_known = False
         for m, rx, pattern, fn in self.server.routes:
@@ -168,32 +168,36 @@ class Handler(BaseHTTPRequestHandler):
             origin = self.headers.get('Origin')
             if origin and urllib.parse.urlsplit(origin).netloc != self.headers.get('Host'):
                 raise HttpError(403, 'origin mismatch')
-            cl = self.headers.get('Content-Length') or '0'
-            if not (cl.isascii() and cl.isdigit()):  # also rejects '-1': rfile.read(-1) would read until the client closes
-                self.close_connection = True
-                raise HttpError(400, 'invalid content-length')
-            n = int(cl)
-            if n > MAX_BODY:
-                self.close_connection = True
-                if n <= MAX_DRAIN:  # let the client finish sending, else it may see a broken pipe, not the 413
-                    while n > 0:
-                        got = self.rfile.read(min(n, 1 << 16))
-                        if not got:
-                            break
-                        n -= len(got)
-                raise HttpError(413, 'body too large')
-            raw = self.rfile.read(n) if n else b''
-            try:
-                req.json = json.loads(raw) if raw else {}
-            except ValueError:
-                raise HttpError(400, 'invalid json')
-            if not isinstance(req.json, dict):  # every API body is an object (ui-api-shapes)
-                raise HttpError(400, 'body must be a JSON object')
+            req.json = self._read_json_body()
         if (method, pattern) not in auth.PUBLIC:
             req.session = auth.session_token(self.headers.get('Cookie'))
             if not req.session:
                 raise HttpError(401, 'login required')
         return fn(req)
+
+    def _read_json_body(self):
+        cl = self.headers.get('Content-Length') or '0'
+        if not (cl.isascii() and cl.isdigit()):  # also rejects '-1': rfile.read(-1) would read until the client closes
+            self.close_connection = True
+            raise HttpError(400, 'invalid content-length')
+        n = int(cl)
+        if n > MAX_BODY:
+            self.close_connection = True
+            if n <= MAX_DRAIN:  # let the client finish sending, else it may see a broken pipe, not the 413
+                while n > 0:
+                    got = self.rfile.read(min(n, 1 << 16))
+                    if not got:
+                        break
+                    n -= len(got)
+            raise HttpError(413, 'body too large')
+        raw = self.rfile.read(n) if n else b''
+        try:
+            body = json.loads(raw) if raw else {}
+        except ValueError:
+            raise HttpError(400, 'invalid json')
+        if not isinstance(body, dict):  # every API body is an object
+            raise HttpError(400, 'body must be a JSON object')
+        return body
 
     def _json(self, status, obj, headers=None):
         body = json.dumps(obj).encode()
@@ -244,7 +248,7 @@ class Handler(BaseHTTPRequestHandler):
         raise TypeError(f'bad handler result {type(res).__name__}')
 
     def _static(self, path):
-        from . import auth
+        from . import auth  # lazy: auth imports HttpError from this module
         if path == '/':
             name, public = 'index.html', False
         elif ASSET.match(path):

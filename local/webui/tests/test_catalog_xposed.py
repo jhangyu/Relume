@@ -61,6 +61,18 @@ class XposedCatalogTest(helpers.DataTestCase):
                                                      'group_id': None, 'variants': [XV], 'engine_options': eo})
             self.assertEqual(st, 400, eo)
 
+    def test_engine_options_non_dict_rejected_for_every_engine(self):
+        for sid, pkg in (('morphe', 'com.google.android.youtube'), ('nexalloy-lspatch', 'com.zhiliaoapp.musically'),
+                         ('nexalloy-npatch', 'com.zhiliaoapp.musically')):
+            for eo in ('x', 5, [1]):
+                st, _ = self.call('POST', '/api/items', {'source_id': sid, 'package': pkg, 'group_id': None,
+                                                         'variants': [XV], 'engine_options': eo})
+                self.assertEqual(st, 400, (sid, eo))
+        for iid in (1, 2):
+            for eo in ('x', 5, [1]):
+                st, _ = self.call('PUT', f'/api/items/{iid}', {'engine_options': eo})
+                self.assertEqual(st, 400, (iid, eo))
+
     def test_strip_libs_rejected(self):
         st, body = self.call('PUT', '/api/items/1', {'variants': [dict(XV, strip_libs='arm64-v8a')]})
         self.assertEqual((st, body), (400, {'error': 'exclude_splits and strip_libs must be null for module items'}))

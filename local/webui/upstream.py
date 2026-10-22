@@ -23,7 +23,11 @@ class RateLimited(Exception):
     pass
 
 
-class _CheckError(Exception):
+class CheckError(Exception):
+    pass
+
+
+class NoMatchingAsset(CheckError):
     pass
 
 
@@ -91,11 +95,11 @@ def _release_url(row):
     return f"{API}/repos/{row['repo']}/releases/tags/{row['tag']}"
 
 
-def _fetch(row):
+def fetch(row):
     try:
         status, headers, body = http_get(_release_url(row), _gh_headers())
     except OSError as e:
-        raise _CheckError(("network error: " + str(e).splitlines()[0]) if str(e) else "network error")
+        raise CheckError(("network error: " + str(e).splitlines()[0]) if str(e) else "network error")
     if status == 401:
         raise TokenRejected("token rejected")
     if status in (403, 429):
@@ -105,17 +109,17 @@ def _fetch(row):
                               datetime.fromtimestamp(int(reset), timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
         raise RateLimited("rate limited")
     if status == 404:
-        raise _CheckError("not found")
+        raise CheckError("not found")
     if status != 200:
-        raise _CheckError(f"http {status}")
+        raise CheckError(f"http {status}")
     rel = select_release(row["channel"], json.loads(body))
     if rel is None:
-        raise _CheckError("no release")
+        raise CheckError("no release")
     assets = match_assets(row, rel)
     if not assets:
-        raise _CheckError("no matching asset")
+        raise NoMatchingAsset("no matching asset")
     if row["kind"] == "module" and len(assets) != 1:
-        raise _CheckError(f"ambiguous module asset ({len(assets)} matches)")
+        raise CheckError(f"ambiguous module asset ({len(assets)} matches)")
     return rel, assets
 
 
@@ -133,11 +137,11 @@ def _check(upstream_id, job_id=None):
     row = _row(upstream_id)
     now = catalog.now_iso()
     try:
-        rel, assets = _fetch(row)
+        rel, assets = fetch(row)
     except (TokenRejected, RateLimited) as e:
         _set(upstream_id, checked_at=now, check_error=str(e))
         raise
-    except _CheckError as e:
+    except CheckError as e:
         _set(upstream_id, checked_at=now, check_error=str(e))
         return _row(upstream_id), None
     tag = rel["tag_name"]
@@ -278,11 +282,11 @@ def inspect_row(upstream_id, tag, log):
         return
     for pkg in _packages(upstream_id):
         with tempfile.TemporaryDirectory() as out:
-            # third-party CLI and patch bundle code: isolated runner uid (spec L779), same gid writes into out
+            # third-party CLI and patch bundle code: isolated runner uid, same gid writes into out
             os.chmod(out, 0o770)
             argv = ["bash", INSPECT, jobs.runner_path(jars[0]), pkg, out, *(jobs.runner_path(f) for f in files)]
             try:
-                rc = log.run(jobs.isolate(argv), cwd=out, env=dict(_child_env(), HOME=out), timeout=120)
+                rc = jobs.run_isolated(log, argv, out, timeout=120)
             except jobs.JobFailed as e:
                 if str(e) == "cancelled":
                     raise
@@ -290,7 +294,7 @@ def inspect_row(upstream_id, tag, log):
             if rc != 0:
                 log.line(f"[!] inspect failed for {pkg}: {rc}")
                 continue
-            try:  # runner-written files: no symlink, one link (round-2 S3)
+            try:  # runner-written files: no symlink, one link
                 with jobs.open_runner_file(out, "list-patches.txt") as f:
                     lp = f.read().decode("utf-8", "replace")
                 with jobs.open_runner_file(out, "options.json") as f:
@@ -321,10 +325,6 @@ def _sha256(path):
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
-
-
-def _child_env():
-    return {k: os.environ[k] for k in ("PATH", "HOME", "LANG", "TZ") if k in os.environ}
 
 
 def _download(row, tag, assets, log, verify=None):
@@ -435,7 +435,7 @@ def pull(upstream_id, log, rebuild=False, job_id=None):
 
 
 def check_only(upstream_id, log, job_id=None):
-    """Scheduled job with options.pull false: check (5.1) without download or inspect (spec L324)."""
+    """Scheduled job with options.pull false: check without download or inspect."""
     try:
         row = check(upstream_id, job_id)
     except KeyError:

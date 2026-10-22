@@ -1,35 +1,10 @@
 """OTA part: planner, read model, OTA job handler, recovery routes, after-build OTA (spec device 3-4,
 spec follow-project 5.4)."""
-import importlib
 import json
 import os
 
-from . import db, devices, events, jobs
+from . import build, catalog, db, devices, events, jobs, projects
 from .server import HttpError
-
-
-def _projects():
-    return importlib.import_module('webui.projects')
-
-
-def _item_projects(item_id):
-    return _projects().item_projects(item_id)
-
-
-def _assigned_projects(device_id):
-    return _projects().assigned_projects(device_id)
-
-
-def _project_info(project_id, abis):
-    return _projects().project_info(project_id, abis)
-
-
-def _version_key(v):
-    return importlib.import_module('webui.catalog').version_key(v)
-
-
-def _latest_artifact(item_id, abi):
-    return importlib.import_module('webui.build').latest_artifact(item_id, abi)
 
 
 def abis_of(dev):
@@ -48,7 +23,8 @@ def assigned_items(device_id, item_ids=None):
         'ORDER BY grp.position IS NULL, grp.position, item.position, item.id', (device_id,)).fetchall()
     items = [dict(r) for r in rows]
     if item_ids is not None:
-        items = [i for i in items if i['item_id'] in set(item_ids)]
+        wanted = set(item_ids)
+        items = [i for i in items if i['item_id'] in wanted]
     return items
 
 
@@ -135,14 +111,14 @@ def _plan_for(dev, item_ids, project_ids, present):
 
     def pinfo(pid):
         if pid not in info:
-            info[pid] = _project_info(pid, abis)
+            info[pid] = projects.project_info(pid, abis)
         return info[pid]
-    arts = {i['item_id']: _latest_artifact(i['item_id'], first_abi(dev)) for i in items}
-    deps = {i['item_id']: [p for p in map(pinfo, _item_projects(i['item_id'])) if p] for i in items}
-    direct = [pid for pid in _assigned_projects(dev['id']) if project_ids is None or pid in project_ids]
-    projects = [p for p in map(pinfo, direct) if p]
-    steps = plan(items, arts, deps, projects, item_inst, proj_inst, present)
-    return {'items': items, 'arts': arts, 'deps': deps, 'projects': projects, 'item_inst': item_inst,
+    arts = {i['item_id']: build.latest_artifact(i['item_id'], first_abi(dev)) for i in items}
+    deps = {i['item_id']: [p for p in map(pinfo, projects.item_projects(i['item_id'])) if p] for i in items}
+    direct = [pid for pid in projects.assigned_projects(dev['id']) if project_ids is None or pid in project_ids]
+    direct_info = [p for p in map(pinfo, direct) if p]
+    steps = plan(items, arts, deps, direct_info, item_inst, proj_inst, present)
+    return {'items': items, 'arts': arts, 'deps': deps, 'projects': direct_info, 'item_inst': item_inst,
             'proj_inst': proj_inst, 'steps': steps}
 
 
@@ -168,7 +144,7 @@ def _device_view(dev, states):
                 'project_id': pid, 'display_name': p['display_name'], 'package': p['package'], 'assigned': False,
                 'required_by': [], 'installed_tag': have, 'available_tag': avail, 'available_file': p['file'],
                 'available_abi': p['abi'],
-                'update_available': bool(have and avail and _version_key(avail) > _version_key(have)),
+                'update_available': bool(have and avail and catalog.version_key(avail) > catalog.version_key(have)),
                 'pending': ('project', pid) in pending, 'signer_alert': p['signer_alert']}
         return pmap[pid]
     for p in v['projects']:
@@ -195,18 +171,8 @@ def _present(dev, cancel_event=None, log=None):
     return devices.parse_packages(out) if rc == 0 else None
 
 
-def plan_route(req):
-    dev = devices.get(req.params['id'])
-    if dev is None:
-        raise HttpError(404, 'device not found')
-    online = devices.online_states().get(devices.address(dev)) == 'device'
-    steps = _plan_for(dev, None, None, _present(dev) if online else None)['steps']
-    return 200, {'online': online, 'steps': steps}
-
-
 ROUTES = [
     ('GET', '/api/devices', list_devices),
-    ('GET', '/api/devices/{id}/plan', plan_route),
 ]
 
 RETRY_WAIT = 60
@@ -240,7 +206,7 @@ def _record(job, device_id, step, result, error_code=None, error_text=None, a=No
 
 
 def _install(job, dev, path, package, log):
-    """-> (error_code or None, output). Mode force_reinstall uninstalls first (D6, manual only)."""
+    """-> (error_code or None, output). Mode force_reinstall uninstalls first (manual only)."""
     serial, mode = devices.address(dev), job.options.get('mode', 'normal')
     try:
         if mode == 'force_reinstall':
@@ -278,7 +244,7 @@ def _run_project(job, dev, step, abis, log, failed):
         return fail('NOT_DOWNLOADED', 'cancelled')
     # re-resolve right before install, once more if the file is gone (retention may prune it), like _run_item
     for _ in range(2):
-        p = _project_info(step['ref_id'], abis)
+        p = projects.project_info(step['ref_id'], abis)
         if p is None or p['tag'] is None:
             code = 'NOT_DOWNLOADED'
         elif p['signer_alert']:
@@ -303,19 +269,19 @@ def _run_item(job, dev, step, abi, log, failed):
     if failed.intersection(step['needs']):
         return _record(job, dev['id'], step, 'failed', 'DEPENDENCY_FAILED', 'dependency install failed', step['artifact'])
     if step['action'] == 'error':
-        return _record(job, dev['id'], step, 'failed', 'NO_MATCHING_ABI', 'NO_MATCHING_ARTIFACT')
+        return _record(job, dev['id'], step, 'failed', 'NO_MATCHING_ARTIFACT', 'NO_MATCHING_ARTIFACT')
     if step['action'] == 'up_to_date':
         return _record(job, dev['id'], step, 'up_to_date', a=step['artifact'])
     # ponytail: re-resolve right before install, once more if the file is gone; no fd pinning. A file deleted
     # by retention between this check and adb's open fails ADB_ERROR and the next OTA retries.
     a = None
     for _ in range(2):
-        a = _latest_artifact(step['ref_id'], abi)
+        a = build.latest_artifact(step['ref_id'], abi)
         if a and os.path.exists(a['path']):
             break
         a = None
     if a is None:
-        return _record(job, dev['id'], step, 'failed', 'NO_MATCHING_ABI', 'artifact file missing')
+        return _record(job, dev['id'], step, 'failed', 'NOT_DOWNLOADED', 'artifact file missing')
     code, out = _install(job, dev, a['path'], step['package'], log)
     if code:
         return _record(job, dev['id'], step, 'failed', code, out, a)
@@ -327,12 +293,12 @@ def _recovery_steps(dev, package, abis):
     items = assigned_items(dev['id'])
     for i in items:
         if i['package'] == package:
-            a = _latest_artifact(i['item_id'], first_abi(dev))
+            a = build.latest_artifact(i['item_id'], first_abi(dev))
             return [{'kind': 'item', 'ref_id': i['item_id'], 'package': package, 'artifact': a, 'needs': [],
                      'action': 'install' if a else 'error', 'reason': 'recovery' if a else 'NO_MATCHING_ARTIFACT'}]
-    pids = _assigned_projects(dev['id']) + [pid for i in items for pid in _item_projects(i['item_id'])]
+    pids = projects.assigned_projects(dev['id']) + [pid for i in items for pid in projects.item_projects(i['item_id'])]
     for pid in dict.fromkeys(pids):
-        p = _project_info(pid, abis)
+        p = projects.project_info(pid, abis)
         if p and p['package'] == package:
             return [_project_step(p, 'install', 'recovery') if p['path'] else
                     _project_step(p, 'error', 'NO_MATCHING_ABI')]
@@ -420,7 +386,7 @@ def ota_now(req):
         raise HttpError(404, 'device not found')
     body, target = req.json or {}, {'device_id': dev['id']}
     for key, what, have in (('item_ids', 'item', lambda: {i['item_id'] for i in assigned_items(dev['id'])}),
-                            ('project_ids', 'project', lambda: set(_assigned_projects(dev['id'])))):
+                            ('project_ids', 'project', lambda: set(projects.assigned_projects(dev['id'])))):
         ids = body.get(key)
         if ids is None:
             continue
@@ -435,7 +401,7 @@ def ota_now(req):
 def install_project(req):
     """POST /api/projects/{id}/install: one manual OTA job per phone, scoped to this project."""
     pid = req.params['id']
-    p = _project_info(pid, [])
+    p = projects.project_info(pid, [])
     if p is None:
         raise HttpError(404, 'project not found')
     if p['signer_alert']:

@@ -1,6 +1,6 @@
 import contextlib, io, json, os, pathlib, subprocess, sys, tempfile, types
 from unittest import mock
-from webui import settings
+from webui import build, settings
 from webui.tests.helpers import DataTestCase, serve, http, login
 
 
@@ -8,9 +8,8 @@ class SettingsTest(DataTestCase):
     def setUp(self):
         super().setUp()
         self.calls = []
-        build = types.ModuleType('webui.build')
-        build.run_retention = lambda item_id=None: self.calls.append(item_id)
-        p = mock.patch.dict(sys.modules, {'webui.build': build}); p.start(); self.addCleanup(p.stop)
+        p = mock.patch.object(build, 'run_retention', lambda item_id=None: self.calls.append(item_id))
+        p.start(); self.addCleanup(p.stop)
         tok = self.data / 'token'
         tok.write_text('ghp_abcdefgh1234\n')
         p2 = mock.patch.object(settings, 'TOKEN_PATH', tok); p2.start(); self.addCleanup(p2.stop)

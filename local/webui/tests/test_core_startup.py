@@ -1,4 +1,4 @@
-import contextlib, io, os, subprocess, sys, threading, types
+import contextlib, io, os, pathlib, subprocess, sys, threading, types, unittest
 from unittest import mock
 from webui import db, server
 from webui.tests.helpers import DataTestCase
@@ -84,3 +84,16 @@ class EmptyVolumeTest(DataTestCase):
         r = subprocess.run(['setpriv', '--reuid=10001', f'--regid={os.getgid()}', '--clear-groups',
                             'sh', '-c', f'cd {work} && echo ENTER'], capture_output=True, text=True)
         self.assertEqual(r.stdout.strip(), 'ENTER')
+
+
+class ImportCycleTest(unittest.TestCase):
+    def test_each_module_imports_in_a_fresh_interpreter(self):
+        """A circular named import only fails for some import orders, so import every module first in its own process."""
+        pkg = pathlib.Path(__file__).resolve().parent.parent
+        for f in sorted(pkg.glob('*.py')):
+            if f.stem == '__init__':
+                continue
+            with self.subTest(module=f.stem):
+                r = subprocess.run([sys.executable, '-c', f'import webui.{f.stem}'], cwd=pkg.parent,
+                                   capture_output=True, text=True)
+                self.assertEqual(r.returncode, 0, r.stderr)

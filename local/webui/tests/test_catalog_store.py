@@ -12,10 +12,7 @@ from webui.tests.catalog_rows import CatalogCase
 PLAY = (Path(__file__).parent / "fixtures" / "catalog" / "play-youtube.html").read_bytes()
 
 
-class SchemaTest(helpers.DataTestCase):
-    def setUp(self):
-        super().setUp()
-
+class CatalogSchemaTest(helpers.DataTestCase):
     def test_tables(self):
         names = {r[0] for r in db.conn().execute("SELECT name FROM sqlite_master WHERE type='table'")}
         self.assertLessEqual({"upstream", "source", "app", "grp", "item", "bundle_info",

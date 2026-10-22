@@ -1,5 +1,4 @@
 """Device part: adb runner, mDNS browser, device manager and routes (spec device §2-§5)."""
-import importlib
 import os
 import re
 import signal
@@ -9,7 +8,7 @@ import subprocess
 import threading
 import time
 
-from . import db
+from . import db, projects
 from .server import HttpError, validate_host, validate_port
 
 ERROR_CODES = {
@@ -191,7 +190,7 @@ def _udp_socket():
 
 
 def browse(timeout=None):
-    """One D3 query; {} when nothing answers or the network refuses (macOS bridge, spec D4)."""
+    """One mDNS query; {} when nothing answers or the network refuses (macOS bridge)."""
     global DISCOVERED
     timeout = DISCOVERY_TIMEOUT if timeout is None else timeout
     records = []
@@ -394,10 +393,6 @@ def delete_device(req):
     return 200, {'deleted': dev['id']}
 
 
-def _check_assignment(item_ids, project_ids):
-    importlib.import_module('webui.projects').check_assignment(item_ids, project_ids)
-
-
 def put_assignments(req):
     """Items replace device_assignments; project_ids, when present, replace device_projects (spec follow-project 5.5)."""
     dev = _dev_or_404(req.params['id'])
@@ -410,7 +405,7 @@ def put_assignments(req):
     keep = pids is None
     pids = [r[0] for r in db.conn().execute('SELECT project_id FROM device_projects WHERE device_id=? ORDER BY project_id',
                                              (dev['id'],))] if keep else list(dict.fromkeys(pids))
-    _check_assignment(ids, pids)
+    projects.check_assignment(ids, pids)
     with db.tx() as c:
         c.execute('DELETE FROM device_assignments WHERE device_id=?', (dev['id'],))
         c.executemany('INSERT INTO device_assignments(device_id,item_id) VALUES (?,?)', [(dev['id'], i) for i in ids])

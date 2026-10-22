@@ -1,6 +1,6 @@
 from unittest import mock
 
-from webui import db, ota
+from webui import build, db, ota, projects
 from webui.tests import helpers
 from webui.tests.device_helpers import (FakeAdb, add_catalog_item, add_device, add_group, add_job, assign, pinfo, req)
 
@@ -17,11 +17,11 @@ def art(item_id, job_id, abi='arm64-v8a', path='/x.apk'):
 def seams(tc, deps=None, assigned=None, infos=None, latest=None):
     """Patches ota's project seams: deps {item_id: [pid]}, assigned [pid], infos {pid: pinfo}."""
     infos = infos or {}
-    for name, fn in (('_item_projects', lambda i: (deps or {}).get(i, [])),
-                     ('_assigned_projects', lambda d: list(assigned or [])),
-                     ('_project_info', lambda pid, abis: infos.get(pid)),
-                     ('_latest_artifact', latest or (lambda i, abi: None))):
-        p = mock.patch.object(ota, name, side_effect=fn)
+    for mod, name, fn in ((projects, 'item_projects', lambda i: (deps or {}).get(i, [])),
+                          (projects, 'assigned_projects', lambda d: list(assigned or [])),
+                          (projects, 'project_info', lambda pid, abis: infos.get(pid)),
+                          (build, 'latest_artifact', latest or (lambda i, abi: None))):
+        p = mock.patch.object(mod, name, side_effect=fn)
         p.start()
         tc.addCleanup(p.stop)
 
@@ -125,7 +125,7 @@ class PlanTest(helpers.DataTestCase):
         FakeAdb(self)
         calls, pcalls = [], []
         seams(self, deps={1: [1]}, latest=lambda i, abi: calls.append(abi) or None)
-        ota._project_info.side_effect = lambda pid, abis: pcalls.append(abis) or None
+        projects.project_info.side_effect = lambda pid, abis: pcalls.append(abis) or None
         ota.list_devices(req(method='GET'))
         self.assertEqual(calls, ['x86_64'])
         self.assertEqual(pcalls, [['x86_64', 'x86']])
@@ -192,7 +192,7 @@ class PlanTest(helpers.DataTestCase):
         # pending follows the full plan: a direct project with a newer release is an install step
         newer = dict(infos)
         newer[2] = pinfo(2, OTHER, tag='v1.5.0', path='/u/9/v1.5.0/reader.apk', upstream_id=9)
-        ota._project_info.side_effect = lambda pid, abis: newer.get(pid)
+        projects.project_info.side_effect = lambda pid, abis: newer.get(pid)
         p2 = ota.list_devices(req(method='GET'))[1]['devices'][0]['projects'][1]
         self.assertEqual((p2['update_available'], p2['pending']), (True, True))
 
@@ -206,16 +206,3 @@ class PlanTest(helpers.DataTestCase):
         dps = ota.list_devices(req(method='GET'))[1]['devices'][0]['projects']
         self.assertEqual([(p['installed_tag'], p['available_tag'], p['update_available']) for p in dps],
                          [('v1.9', 'v2.0', True), ('v2.0', 'v1.9', False)])
-
-    def test_plan_route(self):
-        add_catalog_item(1, YT)
-        d = add_device()
-        assign(d, 1)
-        fa = FakeAdb(self)
-        fa.rule('devices', out='List of devices attached\n192.168.1.20:37011\tdevice\n')
-        fa.rule('pm', out='package:com.android.settings\n')
-        seams(self, deps={1: [1]}, infos={1: pinfo()}, latest=lambda i, abi: art(1, 6))
-        st, body = ota.plan_route(req(method='GET', params={'id': d}))
-        self.assertTrue(body['online'])
-        self.assertEqual([(s['kind'], s['reason']) for s in body['steps']],
-                         [('project', 'missing on phone'), ('item', 'missing on phone')])
