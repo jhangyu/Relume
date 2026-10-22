@@ -7,7 +7,7 @@ import traceback
 from zoneinfo import ZoneInfo
 
 from . import build, catalog, db, devices, jobs
-from .server import HttpError, validate_slug
+from .server import HttpError, is_int, validate_slug
 
 UTC = dt.timezone.utc
 AT = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
@@ -23,14 +23,6 @@ EXPAND = {
     'ota': lambda t: [{'device_id': i} for i in devices.resolve_devices(t)],
 }
 _wake = threading.Event()
-
-
-def _iso(d):
-    return d.astimezone(UTC).strftime('%Y-%m-%dT%H:%M:%SZ') if d else None
-
-
-def _parse(s):
-    return dt.datetime.strptime(s, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=UTC) if s else None
 
 
 def _tz():
@@ -77,9 +69,9 @@ def _check_spec(spec):
         or (spec.get('every') == 'week' and set(spec) == {'every', 'days', 'at'} and isinstance(spec['at'], str)
             and AT.match(spec['at']) and isinstance(spec['days'], list) and spec['days']
             and len(set(spec['days'])) == len(spec['days'])
-            and all(isinstance(d, int) and not isinstance(d, bool) and 0 <= d <= 6 for d in spec['days']))
-        or (spec.get('every') == 'hours' and set(spec) == {'every', 'hours'} and isinstance(spec['hours'], int)
-            and not isinstance(spec['hours'], bool) and 1 <= spec['hours'] <= 168))
+            and all(is_int(d) and 0 <= d <= 6 for d in spec['days']))
+        or (spec.get('every') == 'hours' and set(spec) == {'every', 'hours'} and is_int(spec['hours'])
+            and 1 <= spec['hours'] <= 168))
     if not ok:
         raise HttpError(400, 'invalid spec')
     return spec
@@ -96,7 +88,7 @@ def _check_target(kind, t):
     for v in ids:
         if key == 'source_ids':
             validate_slug(v, 'source id')
-        elif isinstance(v, bool) or not isinstance(v, int) or v < (0 if key == 'group_ids' else 1):
+        elif not is_int(v) or v < (0 if key == 'group_ids' else 1):
             raise HttpError(400, 'invalid target')
     return t
 
@@ -140,7 +132,7 @@ def _now():
 def create(name, kind, target, spec, options=None, enabled=True):
     v = _validate({'name': name, 'kind': kind, 'target': target, 'spec': spec,
                    'options': options or {}, 'enabled': enabled})
-    nxt = _iso(next_run(v['spec'], _now())) if v['enabled'] else None
+    nxt = db.iso(next_run(v['spec'], _now())) if v['enabled'] else None
     with db.tx() as c:
         sid = c.execute('INSERT INTO schedules(name,kind,target,spec,options,enabled,next_run_at) VALUES (?,?,?,?,?,?,?)',
                         (v['name'], kind, jobs.canon(v['target']), jobs.canon(v['spec']),
@@ -160,14 +152,14 @@ def fire(row, now):
     ids = [jobs.enqueue(kind, t, 'schedule', row['id'], job_opts) for t in targets]
     with db.tx() as c:
         c.execute('UPDATE schedules SET last_run_at=?, next_run_at=? WHERE id=?',
-                  (_iso(now), _iso(next_run(json.loads(row['spec']), now, last_run=now)), row['id']))
+                  (db.iso(now), db.iso(next_run(json.loads(row['spec']), now, last_run=now)), row['id']))
     return ids
 
 
 def tick(now=None):
     now = now or _now()
     for row in db.conn().execute('SELECT * FROM schedules WHERE enabled=1 AND next_run_at IS NOT NULL '
-                                 'AND next_run_at <= ? ORDER BY id', (_iso(now),)).fetchall():
+                                 'AND next_run_at <= ? ORDER BY id', (db.iso(now),)).fetchall():
         try:
             fire(row, now)
         except Exception:
@@ -204,7 +196,7 @@ def _to_json(r, now):
     for k in ('target', 'spec', 'options'):
         d[k] = json.loads(d[k])
     d['enabled'] = bool(d['enabled'])
-    d['next_runs'] = [_iso(x) for x in next_runs(d['spec'], now, 5, _parse(d['last_run_at']))] if d['enabled'] else []
+    d['next_runs'] = [db.iso(x) for x in next_runs(d['spec'], now, 5, db.parse_iso(d['last_run_at']))] if d['enabled'] else []
     d['last_counts'] = {s: n for s, n in db.conn().execute(
         'SELECT status, count(*) FROM jobs WHERE schedule_id=? AND created_at >= ? GROUP BY status',
         (d['id'], d['last_run_at']))} if d['last_run_at'] else {}
@@ -227,7 +219,7 @@ def update_route(req):
     cur = {k: json.loads(r[k]) for k in ('target', 'spec', 'options')}
     cur.update(name=r['name'], kind=r['kind'], enabled=bool(r['enabled']))
     v = _validate(req.json, cur)
-    nxt = _iso(next_run(v['spec'], _now(), _parse(r['last_run_at']))) if v['enabled'] else None
+    nxt = db.iso(next_run(v['spec'], _now(), db.parse_iso(r['last_run_at']))) if v['enabled'] else None
     with db.tx() as c:
         c.execute('UPDATE schedules SET name=?, target=?, spec=?, options=?, enabled=?, next_run_at=? WHERE id=?',
                   (v['name'], jobs.canon(v['target']), jobs.canon(v['spec']), jobs.canon(v['options']),
@@ -244,7 +236,7 @@ def delete_route(req):
 
 
 def preview_route(req):
-    return 200, {'runs': [_iso(x) for x in next_runs(_check_spec(req.json.get('spec')), _now())]}
+    return 200, {'runs': [db.iso(x) for x in next_runs(_check_spec(req.json.get('spec')), _now())]}
 
 
 def run_route(req):

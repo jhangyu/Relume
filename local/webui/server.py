@@ -1,4 +1,3 @@
-import datetime
 import importlib
 import ipaddress
 import json
@@ -14,7 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from . import db
 
 VERSION = '1.0'
-STARTED_AT = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+STARTED_AT = db.utcnow()
 MODULES = ('catalog', 'upstream', 'projects', 'build', 'devices', 'ota', 'notify')
 CORE = ('auth', 'jobs', 'scheduler', 'settings')
 STATIC = pathlib.Path(__file__).with_name('static')

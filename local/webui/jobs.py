@@ -10,7 +10,8 @@ import threading
 import time
 import traceback
 
-from . import db
+from . import db, settings
+from .server import HttpError, SSEResponse
 
 OPTION_DEFAULTS = {
     'upstream': {'pull': True, 'rebuild': False, 'notify': True},
@@ -312,7 +313,6 @@ def recover():
 
 
 def _cleanup(kind):
-    from . import settings
     keep = int(settings.get('job_history_count', 500))
     old = [r[0] for r in db.conn().execute(
         "SELECT id FROM jobs WHERE kind=? AND status NOT IN ('queued','running') "
@@ -373,7 +373,6 @@ def log_stream(job_id, offset=0):
 
 
 def _int(q, key):
-    from .server import HttpError
     try:
         return int(q[key])
     except ValueError:
@@ -399,7 +398,6 @@ def list_route(req):
 
 
 def _row_or_404(job_id):
-    from .server import HttpError
     r = db.conn().execute('SELECT * FROM jobs WHERE id=?', (job_id,)).fetchone()
     if r is None:
         raise HttpError(404, 'job not found')
@@ -411,7 +409,6 @@ def get_route(req):
 
 
 def cancel_route(req):
-    from .server import HttpError
     _row_or_404(req.params['id'])
     res = cancel(req.params['id'])
     if res is None:
@@ -420,7 +417,6 @@ def cancel_route(req):
 
 
 def log_route(req):
-    from .server import SSEResponse
     _row_or_404(req.params['id'])
     try:
         offset = max(0, int(req.headers.get('Last-Event-ID') or 0))

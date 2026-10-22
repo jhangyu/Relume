@@ -70,7 +70,7 @@ class EmptyVolumeTest(DataTestCase):
         self.assertTrue((fresh / 'webui.db').is_file())
 
     def test_foreign_owned_dir_keeps_mode(self):
-        """CI case (review B1): ci-build runs as root, the workflow made data/work as the host user (uid 1001,
+        """CI case: ci-build runs as root, the workflow made data/work as the host user (uid 1001,
         mode 0755). boot must not tighten it, or the runner (uid 10001, gid 0) cannot enter it."""
         if os.geteuid() != 0:
             self.skipTest('chown and setpriv need root (T_PY runs as root)')
