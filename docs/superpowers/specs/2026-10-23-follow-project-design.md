@@ -632,7 +632,7 @@ Tests (exact names; all must pass):
 - `PageIdsTest.test_every_id_a_page_script_looks_up_exists_in_its_html` page list (`tests/test_ui_static.py:54`) becomes `('item', 'builds', 'projects', 'devices')`.
 - `StaticRulesTest.test_projects_page_uses_project_api` (new): `projects.js` contains `'/api/projects'`, `/api/projects/assets`, `/signer/accept`, `/install`, `/api/upstreams/`, `'/api/devices'`, `kind=ota`.
 - `StaticRulesTest.test_settings_lists_signer_event` (new): `settings.html` contains `value="project.signer_changed"`; `settings.js` contains `project.signer_changed`.
-- `StaticRulesTest.test_no_dependency_app_leftovers` (new): no file in `static/` contains `dependency-apps`, `dependency_app`, or `d.dependencies`.
+- `StaticRulesTest.test_no_dead_dependency_model_leftovers` (new): no file in `static/` contains `dependency-apps`, `dependency_app`, or `d.dependencies`.
 - `StaticServeTest.test_every_page_and_asset` passes with the new page.
 - Criterion 0.5-4 (`node --check`) passes.
 

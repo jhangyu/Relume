@@ -57,7 +57,7 @@ class StaticRulesTest(unittest.TestCase):
         self.assertIn('value="project.signer_changed"', (STATIC / 'settings.html').read_text())
         self.assertIn('project.signer_changed', (STATIC / 'settings.js').read_text())
 
-    def test_no_dependency_app_leftovers(self):
+    def test_no_dead_dependency_model_leftovers(self):
         for f in sorted(STATIC.iterdir()):
             t = f.read_text()
             for needle in ('depend' + 'ency-apps', 'depend' + 'ency_app', 'd.' + 'dependencies'):  # split so the dead-model grep skips this line
