@@ -993,7 +993,7 @@ Event → notifier subscriber → `queue.Queue.put` (returns at once, in the emi
 | `VERSION_DOWNGRADE` | `INSTALL_FAILED_VERSION_DOWNGRADE` (e.g. user pinned an older version) | button "install with downgrade" → `install -r -d` (`-d` allow downgrade) |
 | `INSUFFICIENT_STORAGE` | `INSTALL_FAILED_INSUFFICIENT_STORAGE` | show text |
 | `NO_MATCHING_ABI` | `INSTALL_FAILED_NO_MATCHING_ABIS`, or a followed project's release has no APK for the phone's ABIs and no universal (follow-project spec §5.4) | show phone ABI vs built ABIs |
-| `NO_MATCHING_ARTIFACT` | planner: no succeeded build has an artifact for the phone's first ABI and none is `universal` (§4 step 3) | show phone ABI vs built ABIs |
+| `NO_MATCHING_ARTIFACT` | planner: no succeeded build has an artifact for the phone's first ABI and none is `universal` (§4.3 step 3) | show phone ABI vs built ABIs |
 | `NOT_DOWNLOADED` | item: the artifact file is gone on both re-resolves before install (retention); project: still no downloaded tag after the pull, its file is gone, or the pull was cancelled | rebuild or pull again; the next OTA retries |
 | `SIGNER_CHANGED` | followed project has `signer_alert` set (follow-project spec §5.3) | review the signer on the Projects page |
 | `USER_REJECTED` | `INSTALL_FAILED_USER_RESTRICTED` / `INSTALL_FAILED_ABORTED` (OEM "install via USB" setting or on-phone prompt) | show text: allow install via adb in phone settings |
