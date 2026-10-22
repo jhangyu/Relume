@@ -185,7 +185,7 @@ Relume builds on [FiorenMas/Revanced-And-Revanced-Extended-Non-Root](https://git
 </details>
 
 <details>
-  <summary>docbt</summary>
+  <summary>rushiranpise</summary>
 
 [Patches](https://github.com/rushiranpise/morphe-patches) - [GPL-3.0](https://github.com/rushiranpise/morphe-patches/blob/main/LICENSE)
 

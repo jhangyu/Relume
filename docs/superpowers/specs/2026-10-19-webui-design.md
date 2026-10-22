@@ -1,6 +1,6 @@
 # Web UI for the local build — Design
 
-Date: 2026-10-19. Requirements: `docs/logs/2026-10-19-webui-contract.md`. Facts: `docs/logs/2026-10-19-preflight-{build,patches,runtime}.md`.
+Date: 2026-10-19. Requirements: `docs/logs/2026-10-19-webui-contract.md`. Facts: `docs/logs/2026-10-19-preflight-{build,patches,runtime}.md`. Line cites `utils.sh:NNN` refer to upstream commit 9fd15dc, not the current tree.
 This file merges seven parts: Core (topology, web stack, auth, persistence, API, scheduler), Catalog (sources, apps, items, patches, upstream), Build (build orchestration), Device (wireless ADB, OTA, notifications), UI (Part 5: mockup ↔ spec mapping, frontend files), CI (Part 6: GitHub Actions builds), Xposed (Part 7: LSPatch/NPatch module items). A reference "core §N", "catalog §N", "build §N", "device §N", "ui §N", "ci §N", "xposed §N" means section N of that part below. User decisions: §0.6.
 
 ## 0.1 Summary
@@ -422,7 +422,7 @@ Today the catalog is spread over five places (all citations verified in code):
 | Patch options | `src/options/<org>.json`, passed as `--options-file` (`utils.sh:765`) | Shared by all apps of an org and by stable/beta orgs |
 | Version pin | Shell `version="…"` before `get_apk` (`hoo-dles.sh:14,38`, `rushiranpise.sh:24`, `Piko-Newx.sh:12`); `near_version=1` (`hoo-dles.sh:26`) | Pinning means editing a script |
 | APKMirror/APKPure lookup | `src/build/helper/apps.json` (`utils.sh:289-295,562`) | Fine, but a second registry keyed by package |
-| Display name, icon | Nowhere (README headers only, e.g. `README.md:140`) | Must be new fields |
+| Display name, icon | Nowhere (README headers only, e.g. the README MicroG RE note) | Must be new fields |
 
 The new model replaces all of these with database rows plus a file cache. Old files are deleted after the one-time seed (§8).
 
@@ -471,7 +471,7 @@ Rules:
 - **Several sources may share one upstream row** (dedup by `UNIQUE(repo, channel, tag)`), so one GitHub request serves them.
 - **CLI upstream per source** (`source.cli_upstream_id`): all Morphe sources share one row (`kind='cli'`, `MorpheApp/morphe-desktop`, stable; every script downloads it the same way today, `morphe.sh:7` and 15 others); LSPatch and NPatch have their own rows (xposed §4.1).
 - **Item type = `source.engine`**: `morphe` = patches item; `lspatch`/`npatch` = Xposed module item (xposed §4). `revanced-cli v4.6.0` downloaded by `BiliRoamingM.sh:6` and `Dropped-Patches-Revanced.sh:10` is never run by `patch()` (`utils.sh:765` always runs `morphe-desktop-*.jar`), so it is not modelled.
-- **Followed projects** (MicroG RE, `README.md:24,134`): replaced the dependency-app model; see `docs/superpowers/specs/2026-10-23-follow-project-design.md`. Seed: project 1 MicroG RE (`MorpheApp/MicroG-RE`, stable, asset_regex `^microg-[0-9.]+\.apk$`) linked through `item_dependency` to YouTube, YouTube Music, Google Photos (`README.md:24`) and Solid Explorer hoo-dles (`README.md:954`) items.
+- **Followed projects** (MicroG RE, per the README MicroG RE note): replaced the dependency-app model; see `docs/superpowers/specs/2026-10-23-follow-project-design.md`. Seed: project 1 MicroG RE (`MorpheApp/MicroG-RE`, stable, asset_regex `^microg-[0-9.]+\.apk$`) linked through `item_dependency` to YouTube, YouTube Music, Google Photos and Solid Explorer hoo-dles items.
 - `item.key` is the artifact name stem used today (first arg of `patch`, e.g. `youtube`, `youtube-music-arm64-v8a`; `morphe.sh:14,55`). arch-build uses it for artifact naming.
 - `item.enabled = false` excludes the item from "build all" and schedules but keeps its settings.
 - `app.apkmirror_versions`: non-beta versions listed on the first page of the app's APKMirror list page, written only by `catalog.set_apkmirror_versions(package, versions)` from the build handler (build §3.2, §4 step 5d), which also sets `apkmirror_checked_at`. The catalog never fetches APKMirror itself (§3.3). `job_input` sets `apkmirror.versions_due` = true when `apkmirror_checked_at` is null or older than 24 h (§5.3).
@@ -874,7 +874,7 @@ Facts cited from `docs/logs/2026-10-19-preflight-runtime.md` (= RT) and `docs/lo
 | D5 | adb host key dir `/data/home/.android` (`adbkey`, `adbkey.pub`): the `app` container sets `HOME=/data/home` (core §1), so adb's default `$HOME/.android` is on the persistent data dir. | The key is the host identity the phone trusts after pairing (RT §5 [B] "known to the host from pairing"); losing it = re-pair every phone. |
 | D6 | Signature mismatch is detected from the install result, not by a pre-check. On `INSTALL_FAILED_UPDATE_INCOMPATIBLE` the job stops and the UI offers "Uninstall and install (app data is lost)" requiring explicit confirmation. Never automatic, never in scheduled runs. | `pm install` already verifies the signer; a pre-check duplicates it. Uninstall destroys data (RT §5). |
 | D7 | "Needs update" = the newest successful artifact's `build_job_id` differs from the `build_job_id` of the last successful install of that item on that device, **or** the package is missing on the phone. Version code is not the trigger. | A new patches release rebuilds the same app version (same versionCode); comparing versionCode would never ship patch updates. `adb install -r` reinstalls same version. |
-| D8 | Dependency projects (MicroG RE) are installed **before** the item that needs them; the rule, ordering and signer blocking are in `docs/superpowers/specs/2026-10-23-follow-project-design.md` §5.4. | PP §10: YouTube, YouTube Music, Google Photos, Solid Explorer (hoo-dles) need MicroG RE (README.md:24,954). |
+| D8 | Dependency projects (MicroG RE) are installed **before** the item that needs them; the rule, ordering and signer blocking are in `docs/superpowers/specs/2026-10-23-follow-project-design.md` §5.4. | PP §10: YouTube, YouTube Music, Google Photos, Solid Explorer (hoo-dles) need MicroG RE. |
 | D9 | Notifications: one channel, type `telegram` / `discord` / `ntfy`, with per-event toggles. Plain HTTPS POST from the web server, no SDKs. | Requirement 4b says "to one of" the three. Each is one HTTP request (§6). |
 
 ### 2. Components and responsibilities
@@ -1039,7 +1039,7 @@ None. Uninstall-on-signature-mismatch is manual-only with a data-loss warning.
 
 # Part 5 — UI: mockup ↔ spec mapping and frontend structure
 
-Owner: integrator. Input: `docs/superpowers/mockups/final/` (user-chosen "Workbench" series, 7 screens + index; feature lists in `MERGE-NOTES-1.md`, `MERGE-NOTES-2.md`).
+Owner: integrator. Input: `docs/superpowers/mockups/final/` (user-chosen "Workbench" series, 7 screens + index).
 Rule: every mockup element maps to a spec section, or it is added to the spec minimally ("add", the section named is where it now lives), or it is dropped with a reason ("drop"). "client" = pure browser logic over data an existing route already returns; no server change.
 Section references: core/catalog/build/device §N = Part 1–4 of `2026-10-19-webui-design.md`.
 

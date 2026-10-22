@@ -62,7 +62,7 @@ Commands use the test command of §1. `T_MOD <modules>` = the §1 module form.
 
 ## 1. Test command (verified)
 
-- Definition: `T_PY <pattern>` = `docker run --rm --network none -v "$PWD:/repo:ro" -e PYTHONPATH=/repo/local -e PYTHONDONTWRITEBYTECODE=1 relume-builder python3 -m unittest discover -s /repo/local/webui/tests -t /repo/local -p '<pattern>'` (`docs/superpowers/plans/2026-10-19-webui.md:45`). Used as gate G1/H1 (`docs/logs/2026-10-19-gate-r1.md:5`, `docs/logs/2026-10-19-gate-r2.md:5`).
+- Definition: `T_PY <pattern>` = `docker run --rm --network none -v "$PWD:/repo:ro" -e PYTHONPATH=/repo/local -e PYTHONDONTWRITEBYTECODE=1 relume-builder python3 -m unittest discover -s /repo/local/webui/tests -t /repo/local -p '<pattern>'`. Used as gate G1/H1 (`docs/logs/2026-10-19-gate-r1.md:5`, `docs/logs/2026-10-19-gate-r2.md:5`).
 - Image: the `relume-builder` image does not exist on this machine today (`docker images` lists `relume-app:latest` and `relume-cfbypass`). The command is run with image **`relume-app`**, built from `local/Dockerfile` (python3 at `local/Dockerfile:6`). Verified 2026-10-23 at `4cc414a`: `T_PY 'test_*.py'` with `relume-app` → `Ran 293 tests in 53.902s`, `OK`, RC 0.
 - Module form (verified the same day, `Ran 17 tests … OK` for two modules): `T_MOD <m…>` = `docker run --rm --network none -v "$PWD:/repo:ro" -w /repo/local -e PYTHONPATH=/repo/local -e PYTHONDONTWRITEBYTECODE=1 relume-app python3 -m unittest <m…>` with modules like `webui.tests.test_projects`. A single test: `webui.tests.test_projects.MigrationTest.test_v4_database_migrates`.
 - Run from the repo root, foreground. Tests that need `setpriv` only pass in Linux, so always use the container.
@@ -577,7 +577,7 @@ No file appears in two packages. No package touches `jobs.py`, `scheduler.py`, `
 Files (only these):
 - `local/webui/schema/005_follow.sql` (new), `local/webui/projects.py` (new), `local/webui/upstream.py`, `local/webui/catalog.py`, `local/webui/catalog-seed.json`, `local/webui/notify.py`, `local/webui/server.py` (only `MODULES` at `server.py:16`: add `'projects'` after `'upstream'`)
 - `local/webui/tests/test_projects.py` (new), `local/webui/tests/test_catalog_store.py`, `local/webui/tests/test_catalog_seed.py`, `local/webui/tests/test_catalog_upstream.py`, `local/webui/tests/test_device_notify.py`, `local/webui/tests/catalog_rows.py`, `local/webui/tests/fixtures/catalog/fake-apkeditor.sh` (new), `local/webui/tests/fixtures/catalog/fake-apksigner.sh`
-- `docs/superpowers/specs/2026-10-19-webui-design.md`, `docs/superpowers/plans/parts/ui-api-shapes.md` (replace the dependency-app rows — spec lines 21, 40, 80, 85, 102, 444, 464-465, 474, 542, 569, 576, 877, 916, 951, 1179, 1217, 1442; ui-api-shapes lines 8, 14, 21, 29, 32 — with the new shapes or a pointer to this file)
+- `docs/superpowers/specs/2026-10-19-webui-design.md` (replace the dependency-app rows — spec lines 21, 40, 80, 85, 102, 444, 464-465, 474, 542, 569, 576, 877, 916, 951, 1179, 1217, 1442 — with the new shapes or a pointer to this file)
 
 Delivers: §3 (migration, seed), §4 (all of `projects.py`), §5.1–5.3, §5.6, §6 routes owned by `projects.py`, catalog `project_ids`, deletions in §12 for its files, §7.
 
@@ -666,7 +666,7 @@ Run from the repo root. The stack is compose project `relume`; the live DB is `l
 
 ## 13. Spec author notes for the lead (contradictions and deviations)
 
-1. Test image: `relume-builder` (plan `docs/superpowers/plans/2026-10-19-webui.md:45`) is absent on this machine; §1 uses `relume-app` (verified 293 tests OK at `4cc414a`).
+1. Test image: `relume-builder` is absent on this machine; §1 uses `relume-app` (verified 293 tests OK at `4cc414a`).
 2. Mockup add-dialog ABI column, Flavor column, "Tick all freenet" and per-phone preview are dropped: ABI comes from `lib/` entries after download (user decision 8).
 3. Unfollow while items use the project returns 409 (mockup), not B's cascade.
 4. Live DB has 0 paired devices, so the migration's direct MicroG assignment adds 0 rows there (still specified and tested).
