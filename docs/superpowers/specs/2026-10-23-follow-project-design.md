@@ -576,7 +576,7 @@ No file appears in two packages. No package touches `jobs.py`, `scheduler.py`, `
 Files (only these):
 - `local/webui/schema/005_follow.sql` (new), `local/webui/projects.py` (new), `local/webui/upstream.py`, `local/webui/catalog.py`, `local/webui/catalog-seed.json`, `local/webui/notify.py`, `local/webui/server.py` (only `MODULES` at `server.py:16`: add `'projects'` after `'upstream'`)
 - `local/webui/tests/test_projects.py` (new), `local/webui/tests/test_catalog_store.py`, `local/webui/tests/test_catalog_seed.py`, `local/webui/tests/test_catalog_upstream.py`, `local/webui/tests/test_device_notify.py`, `local/webui/tests/catalog_rows.py`, `local/webui/tests/fixtures/catalog/fake-apkeditor.sh` (new), `local/webui/tests/fixtures/catalog/fake-apksigner.sh`
-- `docs/superpowers/specs/2026-10-19-webui-design.md` (replace the dependency-app rows — with the new shapes or a pointer to this file)
+- `docs/superpowers/specs/2026-10-19-webui-design.md` (replace the dependency-app rows with the new shapes or a pointer to this file)
 
 Delivers: §3 (migration, seed), §4 (all of `projects.py`), §5.1–5.3, §5.6, §6 routes owned by `projects.py`, catalog `project_ids`, deletions in §12 for its files, §7.
 
