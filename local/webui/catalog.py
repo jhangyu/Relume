@@ -500,7 +500,7 @@ def item_detail(iid):
 
 
 def list_items(req):
-    return 200, {"items": item_objects()}  # list responses are wrapped (ui-api-shapes.md)
+    return 200, {"items": item_objects()}  # list responses are wrapped
 
 
 def get_item(req):
