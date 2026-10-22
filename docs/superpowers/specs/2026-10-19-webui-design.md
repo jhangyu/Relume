@@ -185,20 +185,20 @@ All services: `restart: unless-stopped`. `app` has `healthcheck: curl -sf http:/
 
 Why this shape:
 - Builds run inside `app` as child processes. No Docker socket, no host-path translation. This removes preflight-build §1 blockers 1 and 3 (`docs/logs/2026-10-19-preflight-build.md:22`).
-- `netns` is the network-namespace anchor (today the anchor is `flaresolverr`, `local/docker-compose.yml` `network_mode: service:netns` of the sidecars). It owns `ports:` and `network_mode`, because a container that joins another container's namespace cannot publish ports. The sidecars and `app` keep reaching each other on `localhost` exactly as today (`local/docker-compose.yml` `network_mode: service:netns`).
+- `netns` is the network-namespace anchor (today the anchor is `flaresolverr`, `local/docker-compose.yml` at 9fd15dc, `network_mode: service:flaresolverr`). It owns `ports:` and `network_mode`, because a container that joins another container's namespace cannot publish ports. The sidecars and `app` keep reaching each other on `localhost` exactly as today (`local/docker-compose.yml` at 9fd15dc, `builder` env `FLARESOLVERR_PORT`, `CFBYPASS_PORT`, `APKM_SOLVER_PORT`).
 - Why not `app` as the anchor: when the restart policy restarts a crashed anchor, containers that joined its namespace keep the old one (Docker 29 / Compose v5), so every build would fail `download_failed` until a manual `up -d`. Verified 2026-10-19 (Docker 29.8.2, Compose v5, scratch project, bridge mode): with an idle busybox anchor, a crash of `app` (`kill 1` inside it; RestartCount 0 → 1) leaves `app` → sidecar and sidecar → `app` loopback connections working, with no restart of the sidecar. Compose docs: `network_mode: service:{name}` "gives the container access to the specified container", and Compose orders start/stop by `network_mode: "service:..."` dependencies (docs.docker.com/compose/how-tos/networking, startup-order, fetched 2026-10-19).
 - The only platform difference is one value in `local/.env`:
   - Linux: `RELUME_NETWORK_MODE=host` → the anchor's namespace is the host's; mDNS reaches the LAN; the web port is the host's port 47000.
   - macOS: `RELUME_NETWORK_MODE=bridge` → port 47000 is published; outbound TCP from the container to the phone works; mDNS finds nothing; the manual pairing form is used.
   - Same code on both. Discovery runs on both and simply returns no devices on macOS.
 - Proof (run 2026-10-19, Docker 29.8.2, Compose v5.5.0, scratch project): a service with `network_mode: host` plus `ports:` starts and Compose prints `Published ports are discarded when using host network mode`; with `bridge` the port is published (`0.0.0.0:47999->8080/tcp`); a second service with `network_mode: service:<first service>` starts in both modes. `${VAR:?msg}` makes Compose stop with an error if the variable is not set, so a wrong platform default cannot happen silently.
-- Sidecars bind `127.0.0.1` because in Linux host mode they would otherwise be open on the LAN (FlareSolverr is an open browser proxy). Verified bind knobs: FlareSolverr reads `HOST` (`/app/flaresolverr.py:94` in `ghcr.io/flaresolverr/flaresolverr:latest`); cfbypass `server.py` has `--host` (default `0.0.0.0`) and its `/app/docker-entrypoint.sh` forwards args (`exec python3 server.py "$@"`); `local/solver/solver.py` (the `ThreadingHTTPServer` bind) binds `0.0.0.0` today and changes to `127.0.0.1` (owner: build).
+- Sidecars bind `127.0.0.1` because in Linux host mode they would otherwise be open on the LAN (FlareSolverr is an open browser proxy). Verified bind knobs: FlareSolverr reads `HOST` (`/app/flaresolverr.py` in `ghcr.io/flaresolverr/flaresolverr:latest`); cfbypass `server.py` has `--host` (default `0.0.0.0`) and its `/app/docker-entrypoint.sh` forwards args (`exec python3 server.py "$@"`); `local/solver/solver.py` (the `ThreadingHTTPServer` bind) binds `0.0.0.0` today and changes to `127.0.0.1` (owner: build).
 - Host ports used in Linux host mode: 47000, 47191, 47800, 47900, and adb's 5037 (loopback). They must be free on the host.
 
 Mounts on `app`:
 - `..:/repo:ro` — repo code incl. `local/webui/`, `src/build/*`, keystores. Read-only: nothing writes into the checkout.
 - `${RELUME_DATA_DIR:-./data}:/data` (default `local/data/`, gitignored) — every write: DB, job logs, work dirs, artifacts, caches, adb keys. A host directory (not a named volume) so the user can back it up and reach artifacts on a NAS share. Long-syntax bind with `bind: {create_host_path: false}` (as for the token file): Docker would otherwise create a missing host dir owned by root, and a non-root `app` (`RELUME_UID`) could not write it. The user creates the directory (§12 step 1); the server creates `/data/home`, `/data/logs` and the other subdirectories at start.
-- GitHub token file bind, unchanged (`local/docker-compose.yml` service `app` token bind).
+- GitHub token file bind, unchanged (`local/docker-compose.yml` at 9fd15dc, `builder` volume `github_token`).
 
 Process user: `user: "${RELUME_UID:-0}:${RELUME_GID:-0}"`, env `HOME=/data/home`. Linux sets its own uid/gid in `local/.env` so `local/data/` is owned by the host user (preflight-build §7 ownership blocker, `docs/logs/2026-10-19-preflight-build.md:85`). macOS leaves the default; Docker Desktop maps ownership.
 
@@ -397,7 +397,7 @@ macOS (Docker Desktop, Apple silicon):
 2. The repo must be under a Docker Desktop shared path (default includes `/Users`).
 3. Open `http://localhost:47000` (or the Mac's LAN IP). Pair phones with the manual form.
 
-Both: memory headroom for two browser containers (`shm_size: 2g` each, `local/docker-compose.yml` `shm_size`).
+Both: memory headroom for two browser containers (`shm_size: 2g` each, `local/docker-compose.yml` at 9fd15dc, `shm_size` of `cfbypass` and `apkmsolver`).
 
 ### 13. User decisions (core)
 
@@ -529,7 +529,7 @@ For each upstream row (deduplicated):
 - One upstream is checked by the plain function `upstream.check(upstream_id)`, used by the route, the pull job and `ci-plan` (ci §4.1).
 - Module rows (`kind='module'`) must match exactly one asset, else `check_error="ambiguous module asset (<n> matches)"` (xposed §9).
 - Asset filter: `asset_regex` on `assets[].name`, defaults: patches `\.mpp$`, cli `^morphe-desktop-.*-all\.jar$` (seen: `local/work/morphe-1/morphe-desktop-1.18.1-all.jar`), always skip `\.asc$`; for `stable` also skip names containing `dev` (`utils.sh` `dl_gh`).
-- Auth: the existing token file mounted read-only (`local/docker-compose.yml` service `app` token bind); empty file = unauthenticated (60 req/h, `local/build.sh` token-file block). One check of all upstreams ≈ 18 requests (one per distinct repo+channel), within the unauthenticated budget once per hour.
+- Auth: the existing token file mounted read-only (`local/docker-compose.yml` at 9fd15dc, `builder` volume `github_token`); empty file = unauthenticated (60 req/h, `local/build.sh` token-file block). One check of all upstreams ≈ 18 requests (one per distinct repo+channel), within the unauthenticated budget once per hour.
 - Result: `latest_tag`, `latest_published_at`, `checked_at`, `check_error` (null on success). If `latest_tag != downloaded_tag` the source's items show "Update available".
 - Event: when `latest_tag != notified_tag`, emit `upstream.new_version {upstream_id, tag, item_ids, job_id}` once and set `notified_tag` (prevents a notification on every scheduled check). Notification delivery is arch-device's section.
 
@@ -661,7 +661,7 @@ Terms: **item** = one (patch source × app) row of the catalog (owned by catalog
 - Sourcing `utils.sh` has side effects: `mkdir`, pup + APKEditor download, UA scrape (`src/build/utils.sh` top-level code).
 - Patches and CLI are re-downloaded every run (`dl_gh`, `src/build/utils.sh`); `get_patches_key` rewrites `src/patches/*` in place with `sed -i` (`src/build/utils.sh` `get_patches_key`).
 - Version auto-detect works only for `*.mpp` and silently falls back to the newest APK when empty (`src/build/utils.sh` `detect_version`, `get_apk`).
-- Solver endpoints are hard-coded `http://localhost:$PORT` (`src/build/utils.sh` `_fs_get`, `_cfb_get`, `get_apk`), which forces the builder into flaresolverr's network namespace (`local/docker-compose.yml` `network_mode: service:netns` of the sidecars).
+- Solver endpoints are hard-coded `http://localhost:$PORT` (`src/build/utils.sh` `_fs_get`, `_cfb_get`, `get_apk`), which forces the builder into flaresolverr's network namespace (`local/docker-compose.yml` at 9fd15dc, `network_mode: service:flaresolverr`).
 
 ### 2. Components and responsibilities
 
