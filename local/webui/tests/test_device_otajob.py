@@ -39,9 +39,7 @@ class OtaJobTest(helpers.DataTestCase):
                               (projects, 'item_projects', lambda i: self.deps.get(i, [])),
                               (projects, 'assigned_projects', lambda d: list(self.assigned)),
                               (projects, 'project_info', lambda pid, abis: self.infos.get(pid))):
-            p = mock.patch.object(mod, name, side_effect=fn)
-            p.start()
-            self.addCleanup(p.stop)
+            self.enterContext(mock.patch.object(mod, name, side_effect=fn))
         for name, value in (('RETRY_WAIT', 0), ('INSTALL_TIMEOUT', 900)):
             self.addCleanup(setattr, ota, name, getattr(ota, name))
             setattr(ota, name, value)

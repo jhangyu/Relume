@@ -82,24 +82,16 @@ class CatalogCase(helpers.DataTestCase):
     def setUp(self):
         super().setUp()
         self.build = FakeBuild()
-        p = mock.patch.object(catalog, "build", self.build)
-        p.start()
-        self.addCleanup(p.stop)
-        p = mock.patch.object(settings, "github_token", return_value="")
-        p.start()
-        self.addCleanup(p.stop)
+        self.enterContext(mock.patch.object(catalog, "build", self.build))
+        self.enterContext(mock.patch.object(settings, "github_token", return_value=""))
         self.emitted = []
-        p = mock.patch.object(events, "emit", side_effect=lambda t, pl: self.emitted.append((t, pl)))
-        p.start()
-        self.addCleanup(p.stop)
+        self.enterContext(mock.patch.object(events, "emit", side_effect=lambda t, pl: self.emitted.append((t, pl))))
         with db.tx() as c:
             add_basic(c)
 
     def http(self, routes):
         f = FakeHTTP(routes)
-        p = mock.patch.object(upstream, "http_get", f)
-        p.start()
-        self.addCleanup(p.stop)
+        self.enterContext(mock.patch.object(upstream, "http_get", f))
         return f
 
     def call(self, handler, json=None, method="POST", **params):

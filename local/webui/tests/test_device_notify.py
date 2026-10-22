@@ -52,9 +52,7 @@ class NotifyTest(helpers.DataTestCase):
     def setUp(self):
         super().setUp()
         self.pauses = []
-        p = mock.patch.object(notify, '_pause', side_effect=self.pauses.append)
-        p.start()
-        self.addCleanup(p.stop)
+        self.enterContext(mock.patch.object(notify, '_pause', side_effect=self.pauses.append))
 
     def test_telegram_shape(self):
         stub = Stub(self)

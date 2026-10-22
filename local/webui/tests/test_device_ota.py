@@ -21,9 +21,7 @@ def seams(tc, deps=None, assigned=None, infos=None, latest=None):
                           (projects, 'assigned_projects', lambda d: list(assigned or [])),
                           (projects, 'project_info', lambda pid, abis: infos.get(pid)),
                           (build, 'latest_artifact', latest or (lambda i, abi: None))):
-        p = mock.patch.object(mod, name, side_effect=fn)
-        p.start()
-        tc.addCleanup(p.stop)
+        tc.enterContext(mock.patch.object(mod, name, side_effect=fn))
 
 
 def add_install(device_id, kind, ref_id, package, tag=None, build_job_id=None):

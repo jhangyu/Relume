@@ -8,15 +8,13 @@ class SettingsTest(DataTestCase):
     def setUp(self):
         super().setUp()
         self.calls = []
-        p = mock.patch.object(build, 'run_retention', lambda item_id=None: self.calls.append(item_id))
-        p.start(); self.addCleanup(p.stop)
+        self.enterContext(mock.patch.object(build, 'run_retention', lambda item_id=None: self.calls.append(item_id)))
         tok = self.data / 'token'
         tok.write_text('ghp_abcdefgh1234\n')
-        p2 = mock.patch.object(settings, 'TOKEN_PATH', tok); p2.start(); self.addCleanup(p2.stop)
-        self.gh = mock.patch.object(settings, 'fetch_rate_limit', return_value=(
+        self.enterContext(mock.patch.object(settings, 'TOKEN_PATH', tok))
+        self.fetch = self.enterContext(mock.patch.object(settings, 'fetch_rate_limit', return_value=(
             200, {'resources': {'core': {'limit': 5000, 'remaining': 4990, 'reset': 1760000000}}},
-            {'x-oauth-scopes': 'repo', 'github-authentication-token-expiration': '2026-12-01 00:00:00 UTC'}))
-        self.fetch = self.gh.start(); self.addCleanup(self.gh.stop)
+            {'x-oauth-scopes': 'repo', 'github-authentication-token-expiration': '2026-12-01 00:00:00 UTC'})))
         settings._gh_cache.clear()
         self.base = serve(self)
         self.c = login(self.base)
