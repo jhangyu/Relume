@@ -72,11 +72,9 @@ def parse_apk_info(text):
 
 
 def parse_signer(text):
-    for line in text.splitlines():
-        m = _SIGNER.match(line.strip())
-        if m:
-            return m.group(1).lower()
-    return None
+    """None unless exactly one digest line: a certificate DN may carry a newline and a fake digest line (review B1)."""
+    found = [m.group(1).lower() for m in map(_SIGNER.match, (line.strip() for line in text.splitlines())) if m]
+    return found[0] if len(found) == 1 else None
 
 
 def pick_apk(facts, abis):
@@ -113,6 +111,13 @@ def _apks(upstream_id, tag):
     return facts if isinstance(facts, list) else None
 
 
+def _alert(r, facts):
+    """Stored signer_alert, else the downloaded tag's signer when it differs from the pin: a job that stopped between
+    the tag commit and after_download must not leave a new-signer release installable (review S1)."""
+    sig = facts[0].get("signer_sha256") if facts else None
+    return r["signer_alert"] or (sig if r["signer_sha256"] and sig and sig != r["signer_sha256"] else None)
+
+
 def _row(project_id):
     r = db.conn().execute("""SELECT p.*, u.repo, u.channel, u.asset_regex, u.latest_tag, u.latest_published_at,
         u.downloaded_tag, u.checked_at, u.check_error FROM project p JOIN upstream u ON u.id = p.upstream_id
@@ -132,7 +137,7 @@ def project_info(project_id, abis):
     path = os.path.abspath(upstream.tag_dir(r["upstream_id"], tag) / pick["file"]) if pick else None
     return {"project_id": r["id"], "upstream_id": r["upstream_id"], "package": r["package"], "display_name": label(r),
             "tag": tag, "path": path, **{k: pick[k] if pick else None for k in ("file", "abi", "version_name", "version_code")},
-            "signer_alert": r["signer_alert"], "auto_push": bool(r["auto_push"])}
+            "signer_alert": _alert(r, facts), "auto_push": bool(r["auto_push"])}
 
 
 def check_assignment(item_ids, project_ids):
@@ -274,7 +279,8 @@ def _obj(project_id):
             "package": r["package"], "auto_push": bool(r["auto_push"]),
             "latest_tag": r["latest_tag"], "latest_published_at": r["latest_published_at"],
             "downloaded_tag": r["downloaded_tag"], "checked_at": r["checked_at"], "check_error": r["check_error"],
-            "signer_sha256": r["signer_sha256"], "signer_since": r["signer_since"], "signer_alert": r["signer_alert"],
+            "signer_sha256": r["signer_sha256"], "signer_since": r["signer_since"],
+            "signer_alert": _alert(r, _apks(uid, r["downloaded_tag"]) if r["downloaded_tag"] else None),
             "versions": versions,
             "disk_bytes": sum(f.stat().st_size for f in base.rglob("*") if f.is_file()) if base.is_dir() else 0,
             "item_ids": [x[0] for x in c.execute(
@@ -452,16 +458,15 @@ def delete_project(req):
 def accept_signer(req):
     pid = req.params["id"]
     cur = _obj(pid)
-    if cur["signer_alert"] is None:
-        raise server.HttpError(409, "no signer change")
-    if (req.json or {}).get("signer_sha256") != cur["signer_alert"]:
-        raise server.HttpError(409, "signer alert changed, reload")
-    with db.tx() as c:
-        n = c.execute("""UPDATE project SET signer_sha256 = signer_alert, signer_alert = NULL,
-            signer_since = (SELECT downloaded_tag FROM upstream WHERE id = ?) WHERE id = ? AND signer_alert = ?""",
-                      (cur["upstream_id"], pid, cur["signer_alert"])).rowcount
-    if not n:
-        raise server.HttpError(409, "signer alert changed, reload")
+    with db.tx():  # write lock: after_download cannot set a newer alert between this read and the update
+        r = _row(pid)
+        alert = _alert(r, _apks(r["upstream_id"], r["downloaded_tag"]) if r["downloaded_tag"] else None)
+        if alert is None:
+            raise server.HttpError(409, "no signer change")
+        if (req.json or {}).get("signer_sha256") != alert:
+            raise server.HttpError(409, "signer alert changed, reload")
+        db.conn().execute("UPDATE project SET signer_sha256 = ?, signer_since = ?, signer_alert = NULL WHERE id = ?",
+                          (alert, r["downloaded_tag"], pid))
     if cur["auto_push"]:
         enqueue_auto_push(pid)
     return 200, _obj(pid)

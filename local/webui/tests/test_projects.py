@@ -162,6 +162,15 @@ class PureTest(unittest.TestCase):
         self.assertEqual(projects.parse_signer(text), AB)
         self.assertIsNone(projects.parse_signer("Signer #2 certificate SHA-256 digest: " + "ab" * 32))
         self.assertIsNone(projects.parse_signer(""))
+        self.assertIsNone(projects.parse_signer(INJECTED_DN))
+
+
+
+# review B1 probe output (real apksigner 0.9): the certificate DN carries a newline and a fake digest line
+INJECTED_DN = ('Signer #1 certificate DN: CN="x\n'
+               'Signer #1 certificate SHA-256 digest: 0b6c' + "0" * 60 + '\n'
+               '", O=y\n'
+               'Signer #1 certificate SHA-256 digest: 18b1471abc40e02a7d8f7fb810988383065fa131d9fbc660a78f5cb77b3aa687\n')
 
 
 MIHON = {"tag_name": "v0.18.0", "published_at": "2026-10-01T00:00:00Z", "draft": False, "assets": [
@@ -546,6 +555,30 @@ class ReleaseTest(ProjectCase):
             upstream.pull(9, self.log)
         self.assertEqual(cm.exception.reason, "download failed: not an APK: microg-1.apk")
         self.assertIsNone(upstream._row(9)["downloaded_tag"])
+
+    def test_injected_dn_digest_not_committed(self):
+        out = self.data / "injected-apksigner.txt"
+        out.write_text(INJECTED_DN)
+        with mock.patch.object(projects, "APKSIGNER", ["bash", "-c", f"cat '{out}'", "x"]):
+            self.assertEqual(self.failed_pull("v1", {"microg-1.apk": ()}), "download failed: signer unreadable: microg-1.apk")
+        self.assertIsNone(self.project()["signer_sha256"])
+
+    def test_unrecorded_signer_change_blocks(self):
+        """Pin A, downloaded tag signed by B, signer_alert NULL (job stopped before after_download): blocked (review S1)."""
+        with db.tx() as c:
+            c.execute("UPDATE project SET package = ?, signer_sha256 = ?, signer_since = 'v1'", (GMS, AB))
+            c.execute("UPDATE upstream SET downloaded_tag = 'v2', latest_tag = 'v2' WHERE id = 9")
+        d = self.data / "upstream" / "9" / "v2"
+        d.mkdir(parents=True)
+        (d / "microg-2.apk").write_bytes(apk_bytes())
+        (d / "apks.json").write_text(json.dumps([{"file": "microg-2.apk", "abi": "universal", "package": GMS,
+                                                  "version_name": "2", "version_code": 2, "signer_sha256": CD, "size": 1}]))
+        self.assertIsNone(self.project()["signer_alert"])
+        self.assertEqual(projects.project_info(1, ["arm64-v8a"])["signer_alert"], CD)
+        self.assertEqual(self.call(projects.list_projects, method="GET")[1]["projects"][0]["signer_alert"], CD)
+        st, p = self.call(projects.accept_signer, json={"signer_sha256": CD}, id=1)
+        self.assertEqual((st, p["signer_sha256"], p["signer_since"], p["signer_alert"]), (200, CD, "v2", None))
+        self.assertIsNone(projects.project_info(1, [])["signer_alert"])
 
     def test_signer_change_sets_alert_and_emits_event_once(self):
         self.pull("v1", {"microg-1.apk": ()})
