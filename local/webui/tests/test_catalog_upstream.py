@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from webui import db, events, jobs, settings, upstream
+from webui import db, jobs, settings, upstream
 from webui.tests.catalog_rows import CatalogCase, FakeLog
 
 FIX = Path(__file__).parent / "fixtures" / "catalog"
@@ -16,39 +16,7 @@ def fix(name):
     return json.loads((FIX / name).read_text())
 
 
-class FakeHTTP:
-    """url -> (status, body object or bytes, headers)."""
-
-    def __init__(self, routes):
-        self.routes = routes
-        self.calls = []
-
-    def __call__(self, url, headers=None, timeout=30):
-        self.calls.append((url, headers or {}))
-        st, body, hdr = self.routes.get(url, (404, {}, {}))
-        return st, hdr, body if isinstance(body, bytes) else json.dumps(body).encode()
-
-
-class UpstreamCase(CatalogCase):
-    def setUp(self):
-        super().setUp()
-        p = mock.patch.object(settings, "github_token", return_value="")
-        p.start()
-        self.addCleanup(p.stop)
-        self.emitted = []
-        p2 = mock.patch.object(events, "emit", side_effect=lambda t, pl: self.emitted.append((t, pl)))
-        p2.start()
-        self.addCleanup(p2.stop)
-
-    def http(self, routes):
-        f = FakeHTTP(routes)
-        p = mock.patch.object(upstream, "http_get", f)
-        p.start()
-        self.addCleanup(p.stop)
-        return f
-
-
-class CheckTest(UpstreamCase):
+class CheckTest(CatalogCase):
     def test_stable_pick_skips_dev_and_asc(self):
         self.http({f"{API}/repos/MorpheApp/morphe-patches/releases/latest": (200, fix("release-stable.json"), {})})
         row = upstream.check(2)
@@ -116,7 +84,7 @@ CLI_REL = {"tag_name": "v1.18.1", "published_at": "2026-10-01T00:00:00Z", "draft
            "assets": [{"name": "morphe-desktop-1.18.1-all.jar", "size": 5, "browser_download_url": "https://dl.invalid/cli.jar"}]}
 
 
-class PullTest(UpstreamCase):
+class PullTest(CatalogCase):
     def setUp(self):
         super().setUp()
         self.blobs = {"https://dl.invalid/patches-1.47.0.mpp": b"hello", "https://dl.invalid/cli.jar": b"hello",
@@ -243,8 +211,8 @@ class PullTest(UpstreamCase):
 
 
 
-class CheckOnlyTest(UpstreamCase):
-    """Scheduled upstream job with options.pull false = check only (spec L324)."""
+class CheckOnlyTest(CatalogCase):
+    """Scheduled upstream job with options.pull false = check only."""
 
     def setUp(self):
         super().setUp()

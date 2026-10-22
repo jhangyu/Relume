@@ -10,9 +10,8 @@ import unittest
 import zipfile
 from unittest import mock
 
-from webui import catalog, db, events, jobs, projects, server, settings, upstream
+from webui import catalog, db, jobs, projects, server, upstream
 from webui.tests.catalog_rows import CatalogCase, FakeLog
-from webui.tests.test_catalog_upstream import FakeHTTP
 
 API = upstream.API
 FIX = pathlib.Path(__file__).parent / "fixtures" / "catalog"
@@ -141,7 +140,7 @@ class PureTest(unittest.TestCase):
         self.assertIsNone(projects.pick_apk(facts[1:], ["armeabi-v7a"]))
 
     def test_apk_info_captured_fixture(self):
-        text = (catalog.REPO_ROOT / "src" / "build" / "test-fixtures" / "apkeditor-info.txt").read_text()
+        text = (db.REPO_ROOT / "src" / "build" / "test-fixtures" / "apkeditor-info.txt").read_text()
         self.assertEqual(projects.parse_apk_info(text), {"package": "app.morphe.android.youtube",
                                                          "version_code": 1561173354, "version_name": "21.20.405"})
         self.assertEqual(projects.parse_apk_info('package: a.b\r\nVersion-Code: x1\n'),
@@ -166,7 +165,7 @@ class PureTest(unittest.TestCase):
 
 
 
-# review B1 probe output (real apksigner 0.9): the certificate DN carries a newline and a fake digest line
+# probe output (real apksigner 0.9): the certificate DN carries a newline and a fake digest line
 INJECTED_DN = ('Signer #1 certificate DN: CN="x\n'
                'Signer #1 certificate SHA-256 digest: 0b6c' + "0" * 60 + '\n'
                '", O=y\n'
@@ -182,23 +181,6 @@ MIHON_URL = f"{API}/repos/mihonapp/mihon/releases/latest"
 
 
 class ProjectCase(CatalogCase):
-    def setUp(self):
-        super().setUp()
-        p = mock.patch.object(settings, "github_token", return_value="")
-        p.start()
-        self.addCleanup(p.stop)
-        self.emitted = []
-        p = mock.patch.object(events, "emit", side_effect=lambda t, pl: self.emitted.append((t, pl)))
-        p.start()
-        self.addCleanup(p.stop)
-
-    def http(self, routes):
-        f = FakeHTTP(routes)
-        p = mock.patch.object(upstream, "http_get", f)
-        p.start()
-        self.addCleanup(p.stop)
-        return f
-
     def error(self, handler, json=None, method="POST", **params):
         with self.assertRaises(server.HttpError) as cm:
             self.call(handler, json=json, method=method, **params)
@@ -573,7 +555,7 @@ class ReleaseTest(ProjectCase):
         self.assertIsNone(self.project()["signer_sha256"])
 
     def test_unrecorded_signer_change_blocks(self):
-        """Pin A, downloaded tag signed by B, signer_alert NULL (job stopped before after_download): blocked (review S1)."""
+        """Pin A, downloaded tag signed by B, signer_alert NULL (job stopped before after_download): blocked."""
         with db.tx() as c:
             c.execute("UPDATE project SET package = ?, signer_sha256 = ?, signer_since = 'v1'", (GMS, AB))
             c.execute("UPDATE upstream SET downloaded_tag = 'v2', latest_tag = 'v2' WHERE id = 9")

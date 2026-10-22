@@ -8,7 +8,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from webui import catalog, db, events, jobs, server, upstream
+from . import catalog, db, events, jobs, server, upstream
 
 ABI_TOKENS = ("arm64-v8a", "armeabi-v7a", "x86_64", "aarch64", "armeabi", "arm64", "armv7", "x86")
 APKSIGNER = ["apksigner"]
@@ -257,10 +257,15 @@ def project_devices(project_id):
 
 # ---- routes (§6) ----
 
-def _obj(project_id):
+def _get(project_id):
     r = _row(project_id)
     if r is None:
         raise server.HttpError(404, "project not found")
+    return r
+
+
+def _obj(project_id):
+    r = _get(project_id)
     uid = r["upstream_id"]
     base = db.DATA / "upstream" / str(uid)
     cur = upstream.tag_dir(uid, r["downloaded_tag"]).name if r["downloaded_tag"] else None
@@ -314,9 +319,7 @@ def _bool(v, field):
 
 
 def _device_ids(v):
-    if (not isinstance(v, list) or len(set(map(str, v))) != len(v)
-            or not all(isinstance(x, int) and not isinstance(x, bool) for x in v)):
-        raise server.HttpError(400, "invalid device_ids")
+    server.int_list(v, "device_ids")
     for d in v:
         if not db.conn().execute("SELECT 1 FROM devices WHERE id = ?", (d,)).fetchone():
             raise server.HttpError(400, f"unknown device {d}")
@@ -384,7 +387,7 @@ def _exists(repo, channel):
 def post_project(req):
     b = req.json or {}
     repo, channel, rx = server.validate_repo(b.get("repo"), "repo"), _channel(b.get("channel")), _regex(b.get("asset_regex"))
-    dn = catalog._display_name(b.get("display_name"))
+    dn = catalog.display_name(b.get("display_name"))
     auto = _bool(b.get("auto_push", False), "auto_push")
     devs = _device_ids(b.get("device_ids", []))
     if _exists(repo, channel):
@@ -404,14 +407,14 @@ def post_project(req):
 
 def put_project(req):
     pid = req.params["id"]
-    cur = _obj(pid)
+    cur = _get(pid)
     b = req.json or {}
     for fixed in ("repo", "package"):
         if fixed in b and b[fixed] != cur[fixed]:
             raise server.HttpError(400, f"{fixed} cannot change")
     proj, up = {}, {}
     if "display_name" in b:
-        proj["display_name"] = catalog._display_name(b["display_name"])
+        proj["display_name"] = catalog.display_name(b["display_name"])
     if "auto_push" in b:
         proj["auto_push"] = int(_bool(b["auto_push"], "auto_push"))
     if "asset_regex" in b and _regex(b["asset_regex"]) != cur["asset_regex"]:
@@ -436,9 +439,9 @@ def put_project(req):
 
 def delete_project(req):
     pid = req.params["id"]
-    cur = _obj(pid)
+    cur = _get(pid)
     uid = cur["upstream_id"]
-    if cur["item_ids"]:
+    if db.conn().execute("SELECT 1 FROM item_dependency WHERE project_id = ?", (pid,)).fetchone():
         raise server.HttpError(409, "project is a dependency of items")
     if db.conn().execute("SELECT 1 FROM jobs WHERE kind = 'upstream' AND status IN ('queued', 'running') AND target = ?",
                          (jobs.canon({"upstream_id": uid}),)).fetchone():
@@ -452,7 +455,7 @@ def delete_project(req):
 
 def accept_signer(req):
     pid = req.params["id"]
-    cur = _obj(pid)
+    cur = _get(pid)
     with db.tx():  # write lock: after_download cannot set a newer alert between this read and the update
         r = _row(pid)
         alert = _alert(r, _apks(r["upstream_id"], r["downloaded_tag"]) if r["downloaded_tag"] else None)

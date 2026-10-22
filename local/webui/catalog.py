@@ -7,12 +7,10 @@ import traceback
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from webui import db, jobs, server
+from . import build, db, jobs, projects, scheduler, server, upstream
 
 ABIS = ("arm64-v8a", "armeabi-v7a", "x86", "x86_64", "universal")
-REPO_ROOT = Path(__file__).resolve().parents[2]
 COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
-BUILD = None  # test seam; None -> webui.build (imported at call time)
 
 ITEM_SQL = """SELECT i.*, s.name AS source_name, s.engine, a.display_name AS app_name, a.icon_file,
   u.id AS u_id, u.repo AS u_repo, u.channel AS u_channel, u.downloaded_tag AS u_downloaded_tag,
@@ -22,23 +20,12 @@ ITEM_SQL = """SELECT i.*, s.name AS source_name, s.engine, a.display_name AS app
 ORDER_SQL = " ORDER BY g.position IS NULL, g.position, i.position, i.id"
 
 
-def now_iso():
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 def version_key(v):
     """Sort key for version strings and tags ('20.12.46', '1.48.0-dev.3', 'v2.0'): one leading v/V is dropped; a part
     of digits is its int, any other part is -1; a trailing 0 makes a release outrank its prerelease ('1.48.0' >
     '1.48.0-dev.3', 'v1.0' > 'v1.0-rc1')."""
     v = v[1:] if v[:1] in ("v", "V") else v
     return tuple(int(p) if p.isdigit() else -1 for p in re.split(r"[.\-+_]", v)) + (0,)
-
-
-def _build():
-    if BUILD is not None:
-        return BUILD
-    from webui import build
-    return build
 
 
 def _j(text):
@@ -105,7 +92,7 @@ def _item_obj(r, st):
 def item_objects(where_sql="", args=()):
     sql = ITEM_SQL + (" WHERE " + where_sql if where_sql else "") + ORDER_SQL
     rows = db.conn().execute(sql, args).fetchall()
-    status = _build().item_status([r["id"] for r in rows]) if rows else {}
+    status = build.item_status([r["id"] for r in rows]) if rows else {}
     return [_item_obj(r, status.get(r["id"]) or {}) for r in rows]
 
 
@@ -140,13 +127,6 @@ def _name(v, field="name"):
 def _check_color(v):
     if v is not None and not (isinstance(v, str) and COLOR_RE.match(v)):
         raise server.HttpError(400, "invalid color")
-    return v
-
-
-def _int_list(v, field):
-    if (not isinstance(v, list) or len(set(map(str, v))) != len(v)
-            or not all(isinstance(x, int) and not isinstance(x, bool) for x in v)):
-        raise server.HttpError(400, f"invalid {field}")
     return v
 
 
@@ -200,7 +180,7 @@ def delete_group(req):
 
 
 def put_groups_order(req):
-    ids = _int_list((req.json or {}).get("ids"), "ids")
+    ids = server.int_list((req.json or {}).get("ids"), "ids")
     with db.tx() as c:
         if set(ids) != {r[0] for r in c.execute("SELECT id FROM grp")}:
             raise server.HttpError(400, "ids must list every group once")
@@ -213,7 +193,7 @@ def put_group_items_order(req):
     gid = req.params["id"]
     if gid != 0:
         _group(gid)
-    ids = _int_list((req.json or {}).get("item_ids"), "item_ids")
+    ids = server.int_list((req.json or {}).get("item_ids"), "item_ids")
     target = None if gid == 0 else gid
     with db.tx() as c:
         if not set(ids) <= {r[0] for r in c.execute("SELECT id FROM item")}:
@@ -226,9 +206,9 @@ def put_group_items_order(req):
 
 
 
-KEYSTORE_DIR = REPO_ROOT / "src" / "keystore"
+KEYSTORE_DIR = db.REPO_ROOT / "src" / "keystore"
 URL_RE = re.compile(r"^https://[^\s\"'<>]+$")
-ARCH_RE = re.compile(r"^([A-Za-z0-9_][A-Za-z0-9 ._+-]*)?$")   # no leading . or - (grep option); seed has 'arm64-v8a + armeabi-v7a' (icysymmetra.sh:11)
+ARCH_RE = re.compile(r"^([A-Za-z0-9_][A-Za-z0-9 ._+-]*)?$")   # no leading . or - (grep option); seed has 'arm64-v8a + armeabi-v7a' (icysymmetra.sh)
 MINVER_RE = re.compile(r"^[A-Za-z0-9 .+-]*$")
 DOWNLOAD_DEFAULT = {"kind": "apkmirror", "type": "apk", "arch": None, "dpi": None, "minver": None, "url": None}
 APP_URL_FIELDS = ("apkmirror_list_url", "apkmirror_example_url", "apkmirror_example_url2", "apkpure_url")
@@ -314,7 +294,7 @@ def validate_engine_options(engine, value):
     if not isinstance(value, dict) or set(value) != {'sigbypass', 'injectdex'}:
         raise server.HttpError(400, 'engine_options needs exactly sigbypass and injectdex')
     sb, inj = value['sigbypass'], value['injectdex']
-    if isinstance(sb, bool) or not isinstance(sb, int) or not 0 <= sb <= ENGINES[engine]['max_sigbypass']:
+    if not server.is_int(sb) or not 0 <= sb <= ENGINES[engine]['max_sigbypass']:
         raise server.HttpError(400, f'sigbypass must be 0-{ENGINES[engine]['max_sigbypass']} for {engine}')
     if not isinstance(inj, bool):
         raise server.HttpError(400, 'injectdex must be true or false')
@@ -370,7 +350,7 @@ def check_version_mode(item_id, body):
         raise server.HttpError(400, 'auto version not available for module items')
 
 
-def _display_name(v):
+def display_name(v):
     return None if v is None else _name(v, "display_name")
 
 
@@ -490,8 +470,7 @@ def item_detail(iid):
     r = db.conn().execute("""SELECT i.version_mode, i.version_pin, i.allow_nearest, i.variants, i.engine_options,
         a.apkmirror_versions, a.apkmirror_checked_at FROM item i JOIN app a ON a.package = i.package WHERE i.id = ?""",
                           (iid,)).fetchone()
-    deps = [x[0] for x in db.conn().execute(
-        "SELECT project_id FROM item_dependency WHERE item_id = ? ORDER BY project_id", (iid,))]
+    deps = projects.item_projects(iid)
     o = objs[0]
     o.update(version={"mode": r["version_mode"], "pin": r["version_pin"], "allow_nearest": bool(r["allow_nearest"])},
              variants=json.loads(r["variants"]), engine_options=_j(r["engine_options"]), project_ids=deps,
@@ -517,7 +496,7 @@ def post_item(req):
     gid = _group_id(b.get("group_id"))
     variants = validate_variants(b["variants"]) if b.get("variants") is not None else default_variants()
     eo = b.get("engine_options")
-    dn = _display_name(b.get("display_name"))
+    dn = display_name(b.get("display_name"))
     with db.tx() as c:
         if c.execute("SELECT 1 FROM item WHERE source_id = ? AND package = ?", (src["id"], pkg)).fetchone():
             raise server.HttpError(409, "item exists")
@@ -545,7 +524,7 @@ def put_item(req):
             raise server.HttpError(400, f"{fixed} cannot change")
     sets = {}
     if "display_name" in b:
-        sets["display_name"] = _display_name(b["display_name"])
+        sets["display_name"] = display_name(b["display_name"])
     if "variants" in b:
         sets["variants"] = json.dumps(validate_variants(b["variants"]))
     if "engine_options" in b:
@@ -557,7 +536,7 @@ def put_item(req):
         sets["enabled"] = int(b["enabled"])
     deps = None
     if "project_ids" in b:
-        deps = _int_list(b["project_ids"], "project_ids")
+        deps = server.int_list(b["project_ids"], "project_ids")
         known = {r[0] for r in db.conn().execute("SELECT id FROM project")}
         if not set(deps) <= known:
             raise server.HttpError(400, "unknown project")
@@ -578,10 +557,10 @@ def put_item(req):
 def delete_item(req):
     iid = req.params["id"]
     item_detail(iid)
-    st = _build().item_status([iid]).get(iid) or {}
+    st = build.item_status([iid]).get(iid) or {}
     if st.get("active_job"):
         raise server.HttpError(409, "build queued or running")
-    _build().forget_item(iid)
+    build.forget_item(iid)
     with db.tx() as c:
         c.execute("DELETE FROM item WHERE id = ?", (iid,))
     return 200, {"ok": True}
@@ -603,7 +582,7 @@ def put_app(req):
     b = req.json or {}
     with db.tx() as c:
         if "display_name" in b:
-            c.execute("UPDATE app SET display_name = ? WHERE package = ?", (_display_name(b["display_name"]), pkg))
+            c.execute("UPDATE app SET display_name = ? WHERE package = ?", (display_name(b["display_name"]), pkg))
         for f in APP_URL_FIELDS:  # f from the fixed tuple
             if f in b:
                 c.execute(f"UPDATE app SET {f} = ? WHERE package = ?", (_opt(b[f], URL_RE, f), pkg))
@@ -624,7 +603,6 @@ def _item_row(iid):
 
 def _bundle(r):
     """(tag, file names, bundle patches or None) for the item's downloaded patches tag."""
-    from webui import upstream
     tag = db.conn().execute("SELECT downloaded_tag FROM upstream WHERE id = ?", (r["upstream_id"],)).fetchone()[0]
     if not tag:
         return None, [], None
@@ -665,7 +643,7 @@ def _type_ok(t, v):
     if t in ("boolean", "bool"):
         return isinstance(v, bool)
     if t in ("int", "integer", "long"):
-        return isinstance(v, int) and not isinstance(v, bool)
+        return server.is_int(v)
     if t in ("float", "double"):
         return isinstance(v, (int, float)) and not isinstance(v, bool)
     if t == "string":
@@ -739,12 +717,11 @@ def stale_overrides(item_id):
 def _versions_due(checked_at):
     if checked_at is None:
         return True
-    t = datetime.strptime(checked_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    t = db.parse_iso(checked_at)
     return t < datetime.now(timezone.utc) - timedelta(hours=24)
 
 
 def job_input(item_id):
-    from webui import upstream
     r = db.conn().execute("""SELECT i.*, s.engine, s.keystore, s.upstream_id, s.cli_upstream_id,
         a.apkmirror_list_url, a.apkmirror_example_url, a.apkmirror_example_url2, a.apkpure_url, a.apkmirror_checked_at,
         u.downloaded_tag AS up_tag, c.downloaded_tag AS cli_tag
@@ -782,7 +759,7 @@ def job_input(item_id):
 def set_apkmirror_versions(package, versions):
     with db.tx() as c:
         c.execute("UPDATE app SET apkmirror_versions = ?, apkmirror_checked_at = ? WHERE package = ?",
-                  (json.dumps(list(versions)), now_iso(), package))
+                  (json.dumps(list(versions)), db.utcnow(), package))
 
 
 PLAY_URL = "https://play.google.com/store/apps/details?id={}&hl=en"
@@ -793,8 +770,7 @@ _icon_wake = threading.Event()
 
 def fetch_icon(package):
     """Play og:title / og:image (catalog §3.2-3.3). False on any failure (UI shows a letter tile)."""
-    from webui import upstream
-    now = now_iso()
+    now = db.utcnow()
     try:
         st, _, body = upstream.http_get(PLAY_URL.format(package), {"User-Agent": "Mozilla/5.0"}, timeout=20)
         if st != 200:
@@ -903,7 +879,6 @@ def seed_import(path=None):
                       [tuple(x) for x in data.get("item_dependencies", [])])
     name, kind, target, spec, options = DAILY_SCHEDULE
     if not db.conn().execute("SELECT 1 FROM schedules WHERE kind = ? AND name = ?", (kind, name)).fetchone():
-        from webui import scheduler
         scheduler.create(name, kind, target, spec, options)  # computes next_run_at
     return True
 

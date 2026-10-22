@@ -30,7 +30,7 @@ class SeedImportTest(helpers.DataTestCase):
         self.assertEqual(catalog.seed_text(), catalog.SEED_PATH.read_text())
 
 
-REPORT = catalog.REPO_ROOT / "docs" / "logs" / "2026-10-19-seed-report.md"
+REPORT = db.REPO_ROOT / "docs" / "logs" / "2026-10-19-seed-report.md"
 
 
 class CommittedSeedTest(helpers.DataTestCase):

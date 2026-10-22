@@ -6,30 +6,17 @@ import shutil
 import threading
 import time
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
-from webui import db, events, jobs, server, settings
+from . import catalog, db, events, jobs, server, settings
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-RUNNER = str(REPO_ROOT / "src" / "build" / "build-item.sh")
-CATALOG = None  # test seam; None -> webui.catalog (imported at call time)
+RUNNER = str(db.REPO_ROOT / "src" / "build" / "build-item.sh")
 FAIL_CODES = ("upstream_missing", "version_unresolved", "apk_not_listed", "download_failed",
               "merge_failed", "patch_failed", "timeout", "internal")
 SOLVER_ENV = ("FLARESOLVERR_URL", "CFBYPASS_URL", "APKM_SOLVER_URL")  # passed to the isolated runner
 _steps = {}
 _steps_lock = threading.Lock()
-
-
-def _cat():
-    if CATALOG is not None:
-        return CATALOG
-    from webui import catalog
-    return catalog
-
-
-def now_iso():
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class _Markers:
@@ -54,7 +41,7 @@ class _Markers:
         elif text.startswith("::apkm_versions::"):
             versions = [v for v in text[17:].strip().split(",") if v]
             if versions:
-                _cat().set_apkmirror_versions(self.package, versions)
+                catalog.set_apkmirror_versions(self.package, versions)
         elif text.startswith("::fail::"):
             code, _, detail = text[8:].partition("::")
             self.fail_code = code if code in FAIL_CODES else "internal"
@@ -96,7 +83,7 @@ def artifact_name(source_id, key, variant, app_version, upstream_tag):
 def _register(job, item_id, inp, work, result):
     dest = db.DATA / "artifacts" / str(item_id) / str(job.id)
     dest.mkdir(parents=True, exist_ok=True)
-    now, ids = now_iso(), []
+    now, ids = db.utcnow(), []
     with db.tx() as c:
         for v in result["variants"]:
             target = dest / artifact_name(inp["source_id"], inp["key"], v["name"], result["app_version"], inp["upstream_tag"])
@@ -117,14 +104,13 @@ def _register(job, item_id, inp, work, result):
 
 def handler(job, log):
     item_id = job.target["item_id"]
-    cat = _cat()
     work = db.DATA / "work" / str(job.id)
     try:
         try:
-            inp = cat.job_input(item_id)
-        except cat.UpstreamMissing as e:
+            inp = catalog.job_input(item_id)
+        except catalog.UpstreamMissing as e:
             _fail(job, item_id, "upstream_missing", str(e))
-        for name in cat.stale_overrides(item_id):
+        for name in catalog.stale_overrides(item_id):
             log.line(f"[!] stale override dropped: {name}")
         work.mkdir(parents=True, exist_ok=True)
         work.chmod(0o770)  # the isolated runner uid shares the server's gid
@@ -285,7 +271,7 @@ def post_item_build(req):
 
 def post_builds(req):
     ids = (req.json or {}).get("item_ids")
-    if not isinstance(ids, list) or not ids or not all(isinstance(i, int) and not isinstance(i, bool) for i in ids):
+    if not isinstance(ids, list) or not ids or not all(map(server.is_int, ids)):
         raise server.HttpError(400, "invalid item_ids")
     for i in ids:
         _item_exists(i)
@@ -307,7 +293,7 @@ def download_artifact(req):
 
 def group_zip_files(group_id):
     files = []
-    for iid in _cat().resolve_items({"group_ids": [group_id]}):
+    for iid in catalog.resolve_items({"group_ids": [group_id]}):
         jid = _newest_success_job(iid)
         if jid is not None:
             files += [(Path(r[0]), Path(r[0]).name) for r in db.conn().execute("SELECT path FROM artifacts WHERE job_id = ? ORDER BY id", (jid,))]
