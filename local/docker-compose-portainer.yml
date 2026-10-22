@@ -54,7 +54,7 @@ services:
     network_mode: service:netns
     depends_on: [netns, flaresolverr, cfbypass, apkmsolver]
     init: true  # reaps orphaned grandchildren of killed jobs (PID 1 is python3 -m webui)
-    # Spec L779, as in local/docker-compose.yml: build children run as RELUME_RUNNER_UID without capabilities; the
+    # Spec build §4 step 4, as in local/docker-compose.yml: build children run as RELUME_RUNNER_UID without capabilities; the
     # server starts as root only so setpriv can drop it to RELUME_UID:RELUME_GID with setuid/setgid/kill/dac_override.
     user: "0:0"
     command: ["setpriv", "--reuid=${RELUME_UID:-0}", "--regid=${RELUME_GID:-0}", "--clear-groups",

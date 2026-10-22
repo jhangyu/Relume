@@ -311,7 +311,7 @@ document.addEventListener('click', async e => {
   try { await act('DELETE', `/api/groups/${g.id}`, {}, 'Group deleted'); await load(); } catch (_) { /* shown */ }
 });
 
-// ---- Add app and New source (spec L1102, L1218, xposed L1568) ----
+// ---- Add app and New source ----
 let sourcesCache = [];
 const KS_DEFAULT = { morphe: 'morphe.keystore', lspatch: 'lspatch-signing.p12', npatch: 'fiorenmas.ks' };
 
