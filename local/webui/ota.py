@@ -3,7 +3,6 @@ spec follow-project 5.4)."""
 import importlib
 import json
 import os
-import re
 
 from . import db, devices, events, jobs
 from .server import HttpError
@@ -25,9 +24,8 @@ def _project_info(project_id, abis):
     return _projects().project_info(project_id, abis)
 
 
-def tag_key(tag):
-    """Sort key for release tags: each dot part ranks by its first digit run ('v1' -> 1); no digits -> -1."""
-    return tuple(int(m.group()) if m else -1 for m in (re.search(r'\d+', part) for part in tag.split('.')))
+def _version_key(v):
+    return importlib.import_module('webui.catalog').version_key(v)
 
 
 def _latest_artifact(item_id, abi):
@@ -170,7 +168,7 @@ def _device_view(dev, states):
                 'project_id': pid, 'display_name': p['display_name'], 'package': p['package'], 'assigned': False,
                 'required_by': [], 'installed_tag': have, 'available_tag': avail, 'available_file': p['file'],
                 'available_abi': p['abi'],
-                'update_available': bool(have and avail and tag_key(avail) > tag_key(have)),
+                'update_available': bool(have and avail and _version_key(avail) > _version_key(have)),
                 'pending': ('project', pid) in pending, 'signer_alert': p['signer_alert']}
         return pmap[pid]
     for p in v['projects']:

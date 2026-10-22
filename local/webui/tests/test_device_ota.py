@@ -196,12 +196,16 @@ class PlanTest(helpers.DataTestCase):
         p2 = ota.list_devices(req(method='GET'))[1]['devices'][0]['projects'][1]
         self.assertEqual((p2['update_available'], p2['pending']), (True, True))
 
-    def test_tag_key_orders_v_prefixed_and_multi_digit_tags(self):
-        self.assertGreater(ota.tag_key('v2.0'), ota.tag_key('v1.9'))
-        self.assertGreater(ota.tag_key('1.10'), ota.tag_key('1.9'))
-        self.assertGreater(ota.tag_key('v0.19.0'), ota.tag_key('v0.18.12'))
-        self.assertEqual(ota.tag_key('v7.2.1'), ota.tag_key('7.2.1'))
-        self.assertEqual(ota.tag_key('nightly'), (-1,))
+    def test_update_available_with_v_prefixed_tags(self):
+        d = add_device()
+        add_install(d, 'project', 1, GMS, tag='v1.9')
+        add_install(d, 'project', 2, OTHER, tag='v2.0')
+        FakeAdb(self).rule('devices', rc=1, out='error\n')
+        seams(self, assigned=[1, 2], infos={1: pinfo(tag='v2.0', path='/u/23/v2.0/microg.apk'),
+                                            2: pinfo(2, OTHER, tag='v1.9', path='/u/9/v1.9/reader.apk', upstream_id=9)})
+        dps = ota.list_devices(req(method='GET'))[1]['devices'][0]['projects']
+        self.assertEqual([(p['installed_tag'], p['available_tag'], p['update_available']) for p in dps],
+                         [('v1.9', 'v2.0', True), ('v2.0', 'v1.9', False)])
 
     def test_plan_route(self):
         add_catalog_item(1, YT)
