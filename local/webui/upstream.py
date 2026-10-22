@@ -8,6 +8,7 @@ import tempfile
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 
 from . import catalog, db, events, jobs, projects, server, settings
 
@@ -31,11 +32,25 @@ class NoMatchingAsset(CheckError):
     pass
 
 
+class _Redirect(urllib.request.HTTPRedirectHandler):
+    """Drop Authorization when a redirect changes scheme or host:port (the stdlib copies it everywhere)."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        old, nxt = urlsplit(req.full_url), urlsplit(new.full_url)
+        if (old.scheme, old.netloc) != (nxt.scheme, nxt.netloc):
+            new.remove_header("Authorization")
+        return new
+
+
+_opener = urllib.request.build_opener(_Redirect)
+
+
 def http_get(url, headers=None, timeout=30):
     """(status, lower-cased headers, body). HTTP errors are returned; network errors raise OSError."""
     req = urllib.request.Request(url, headers=headers or {})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with _opener.open(req, timeout=timeout) as r:
             return r.status, {k.lower(): v for k, v in r.headers.items()}, r.read()
     except urllib.error.HTTPError as e:
         return e.code, {k.lower(): v for k, v in e.headers.items()}, e.read()
@@ -308,10 +323,10 @@ def inspect_row(upstream_id, tag, log):
         log.line(f"[+] inspected {pkg}: {len(patches)} patches")
 
 
-def http_download(url, dest, headers=None, timeout=300):
-    req = urllib.request.Request(url, headers=headers or {"User-Agent": "Relume"})
+def http_download(url, dest, timeout=300):
+    req = urllib.request.Request(url, headers={"User-Agent": "Relume"})
     n = 0
-    with urllib.request.urlopen(req, timeout=timeout) as r, open(dest, "wb") as f:
+    with _opener.open(req, timeout=timeout) as r, open(dest, "wb") as f:
         while chunk := r.read(1 << 20):
             f.write(chunk)
             n += len(chunk)
