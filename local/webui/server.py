@@ -11,6 +11,8 @@ import traceback
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from . import db
+
 VERSION = '1.0'
 STARTED_AT = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 MODULES = ('catalog', 'upstream', 'projects', 'build', 'devices', 'ota', 'notify')
@@ -57,6 +59,16 @@ class Request:
         self.method, self.path, self.params, self.query, self.headers = method, path, params, query, headers
         self.json = {}
         self.session = None
+
+
+def is_int(v):
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def int_list(v, field):
+    if not (isinstance(v, list) and all(is_int(x) for x in v) and len(set(map(str, v))) == len(v)):
+        raise HttpError(400, f'invalid {field}')
+    return v
 
 
 def validate_slug(v, field='value'):

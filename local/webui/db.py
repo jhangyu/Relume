@@ -8,12 +8,22 @@ from contextlib import contextmanager
 SCHEMA_DIR = pathlib.Path(__file__).with_name('schema')
 SUBDIRS = ('home', 'logs', 'work', 'artifacts', 'apk-cache', 'upstream', 'icons')
 DATA = pathlib.Path(os.environ.get('RELUME_DATA', '/data'))
+FMT = '%Y-%m-%dT%H:%M:%SZ'
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 _local = threading.local()
 _gen = 0
 
 
+def iso(d):
+    return d.astimezone(datetime.timezone.utc).strftime(FMT) if d else None
+
+
+def parse_iso(s):
+    return datetime.datetime.strptime(s, FMT).replace(tzinfo=datetime.timezone.utc) if s else None
+
+
 def utcnow():
-    return datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    return iso(datetime.datetime.now(datetime.timezone.utc))
 
 
 def init(data_dir=None):
