@@ -9,7 +9,7 @@ services:
     ports: ["${RELUME_WEB_PORT:-47000}:47000"]
     restart: unless-stopped
   flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:latest
+    image: ghcr.io/flaresolverr/flaresolverr:v3.5.2
     network_mode: service:netns
     depends_on: [netns]
     environment:

@@ -17,7 +17,7 @@ source "$RELUME_REPO/src/build/utils.sh"
 
 j() { jq -r "$1 // empty" "$job"; }
 
-# Keystore credentials for Xposed engines (spec xposed 5.3; values from utils.sh:811,835 at 9fd15dc, already public).
+# Keystore credentials for Xposed engines (spec xposed 5.3; public credentials of the committed src/keystore files).
 keystore_creds() {
 	case "$1" in
 	lspatch-signing.p12) echo "morphe fiorenmas morphe" ;;

@@ -33,15 +33,12 @@ init_ua() {
 
 #################################################
 
-_req() {
+req() {
 	local cookie_args=()
 	[[ -n "$FS_COOKIES" ]] && cookie_args=(--header "Cookie: $FS_COOKIES")
 	local out="./download/$2"
 	[[ "$2" = "-" ]] && out="-"
 	wget -nv -O "$out" --header="User-Agent: $user_agent" --header="Content-Type: application/octet-stream" --header="Accept-Language: en-US,en;q=0.9" --header="Connection: keep-alive" --header="Upgrade-Insecure-Requests: 1" --header="Cache-Control: max-age=0" --header="Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8" "${cookie_args[@]}" --keep-session-cookies --timeout=30 "$1" || { [[ "$out" != "-" ]] && rm -f "$out"; return 1; }
-}
-req() {
-	_req "$1" "$2"
 }
 
 # Highest compatible version of package $1 across the *.mpp in the work dir.
