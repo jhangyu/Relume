@@ -3,7 +3,7 @@ spec follow-project 5.4)."""
 import json
 import os
 
-from . import build, catalog, db, devices, events, jobs, projects
+from . import build, catalog, db, devices, events, jobs, projects, server
 from .server import HttpError
 
 
@@ -65,7 +65,7 @@ def _project_action(p, prev, has):
     return 'up_to_date', 'same release installed'
 
 
-def plan(items, artifacts, deps_by_item, projects, item_installs, proj_installs, present):
+def plan(items, artifacts, deps_by_item, direct, item_installs, proj_installs, present):
     """Pure planner (spec follow-project 5.4). present=None means 'unknown': every package counts as present."""
     def has(pkg):
         return present is None or pkg in present
@@ -97,7 +97,7 @@ def plan(items, artifacts, deps_by_item, projects, item_installs, proj_installs,
             for d in deps:
                 add(d, True)
         steps.append(dict(step, action=action, reason=reason))
-    for p in projects:
+    for p in direct:
         add(p, False)
     return steps
 
@@ -377,7 +377,7 @@ def on_build_succeeded(payload):
 
 
 def _int_list(v):
-    return isinstance(v, list) and all(isinstance(i, int) and not isinstance(i, bool) for i in v)
+    return isinstance(v, list) and all(map(server.is_int, v))
 
 
 def ota_now(req):
@@ -406,8 +406,7 @@ def install_project(req):
         raise HttpError(404, 'project not found')
     if p['signer_alert']:
         raise HttpError(409, 'signer changed: confirm on the Followed projects page')
-    assigned = [r['device_id'] for r in db.conn().execute(
-        'SELECT device_id FROM device_projects WHERE project_id=? ORDER BY device_id', (pid,))]
+    assigned = projects.project_devices(pid)
     ids = (req.json or {}).get('device_ids')
     if ids is None:
         if not assigned:
@@ -423,7 +422,7 @@ def install_project(req):
 
 def _recovery(req, mode):
     install_id = (req.json or {}).get('install_id')
-    if not isinstance(install_id, int) or isinstance(install_id, bool):
+    if not server.is_int(install_id):
         raise HttpError(400, 'install_id must be an integer')
     r = db.conn().execute('SELECT device_id, package FROM ota_installs WHERE id=? AND job_id=?',
                           (install_id, req.params['job_id'])).fetchone()

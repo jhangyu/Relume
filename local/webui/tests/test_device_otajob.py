@@ -182,6 +182,23 @@ class OtaJobTest(helpers.DataTestCase):
         self.assertEqual(la.call_count, 3)
         self.assertEqual(self.adb_cmds('install'), [['install', '-r', str(self.yt)]])
 
+    def test_item_without_artifact_fails_no_matching_artifact(self):
+        self.deps = {}
+        self.arts = {}
+        self.online()
+        jid, err = self.run_job(target={'device_id': self.d, 'item_ids': [1]})
+        self.assertEqual(err, 'failed')
+        self.assertEqual(self.installs(jid), [('item', YT, 'failed', 'NO_MATCHING_ARTIFACT')])
+
+    def test_item_artifact_file_gone_fails_not_downloaded(self):
+        self.deps = {}
+        self.arts = {1: art(1, 6, str(db.DATA / 'gone.apk'))}
+        self.online()
+        jid, err = self.run_job(target={'device_id': self.d, 'item_ids': [1]})
+        self.assertEqual(err, 'failed')
+        self.assertEqual(self.installs(jid), [('item', YT, 'failed', 'NOT_DOWNLOADED')])
+        self.assertEqual(self.adb_cmds('install'), [])
+
     def test_missing_project_pulled_then_installed(self):
         self.infos[1] = pinfo(tag=None)
         pulled = []

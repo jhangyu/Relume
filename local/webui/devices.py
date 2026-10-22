@@ -8,7 +8,7 @@ import subprocess
 import threading
 import time
 
-from . import db, projects
+from . import db, projects, server
 from .server import HttpError, validate_host, validate_port
 
 ERROR_CODES = {
@@ -399,12 +399,11 @@ def put_assignments(req):
     body = req.json or {}
     ids, pids = body.get('item_ids'), body.get('project_ids')
     for key, v in (('item_ids', ids), ('project_ids', [] if pids is None else pids)):
-        if not isinstance(v, list) or not all(isinstance(i, int) and not isinstance(i, bool) for i in v):
+        if not isinstance(v, list) or not all(map(server.is_int, v)):
             raise HttpError(400, f'{key} must be a list of integers')
     ids = list(dict.fromkeys(ids))
     keep = pids is None
-    pids = [r[0] for r in db.conn().execute('SELECT project_id FROM device_projects WHERE device_id=? ORDER BY project_id',
-                                             (dev['id'],))] if keep else list(dict.fromkeys(pids))
+    pids = projects.assigned_projects(dev['id']) if keep else list(dict.fromkeys(pids))
     projects.check_assignment(ids, pids)
     with db.tx() as c:
         c.execute('DELETE FROM device_assignments WHERE device_id=?', (dev['id'],))

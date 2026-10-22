@@ -6,7 +6,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from . import db, events, jobs, projects, settings
+from . import db, events, jobs, projects, server, settings
 from .server import HttpError
 
 EVENTS = ('upstream.new_version', 'build.succeeded', 'build.failed', 'ota.done', 'ota.failed', 'device.offline',
@@ -201,7 +201,7 @@ def put_notify(req):
         v = given.get(k)
         if k in SECRETS and (v is None or v == _mask_value(old.get(k))):
             v = old.get(k)
-        if k == 'chat_id' and isinstance(v, int) and not isinstance(v, bool):
+        if k == 'chat_id' and server.is_int(v):
             v = str(v)
         if v in (None, ''):
             if required:
