@@ -80,6 +80,33 @@ def assign(device_id, *item_ids):
                       [(device_id, i) for i in item_ids])
 
 
+def add_project(project_id, package, upstream_id=None, repo=None):
+    """Upstream row of kind project plus the project row (schema 005)."""
+    uid = upstream_id or 100 + project_id
+    with db.tx() as c:
+        c.execute("INSERT INTO upstream(id,kind,repo,channel,tag,asset_regex) VALUES (?,'project',?,'stable',NULL,'\\.apk$')",
+                  (uid, repo or f'o/p{project_id}'))
+        c.execute('INSERT INTO project(id,upstream_id,package,display_name) VALUES (?,?,?,?)',
+                  (project_id, uid, package, f'P{project_id}'))
+    return uid
+
+
+def assign_projects(device_id, *project_ids):
+    with db.tx() as c:
+        c.executemany('INSERT INTO device_projects(device_id,project_id) VALUES (?,?)',
+                      [(device_id, p) for p in project_ids])
+
+
+def pinfo(project_id=1, package='app.revanced.android.gms', tag='7.2.1', path='/data/upstream/23/7.2.1/microg.apk',
+          signer_alert=None, upstream_id=23, abi='universal', display_name='MicroG RE'):
+    """A projects.project_info() result (spec follow-project 4.2); tag=None means not downloaded."""
+    picked = tag is not None and path is not None
+    return {'project_id': project_id, 'upstream_id': upstream_id, 'package': package, 'display_name': display_name,
+            'tag': tag, 'path': path if picked else None, 'file': os.path.basename(path) if picked else None,
+            'abi': abi if picked else None, 'version_name': tag if picked else None,
+            'version_code': 255070218 if picked else None, 'signer_alert': signer_alert, 'auto_push': False}
+
+
 class FakeAdb:
     """Points devices.ADB at fixtures/device/fake-adb for one test; restored on cleanup."""
 

@@ -3,7 +3,8 @@ from unittest import mock
 from webui import db, devices
 from webui.server import HttpError
 from webui.tests import helpers
-from webui.tests.device_helpers import (FIXTURES, FakeAdb, add_catalog_item, add_device, add_job, assign, req)
+from webui.tests.device_helpers import (FIXTURES, FakeAdb, add_catalog_item, add_device, add_job, add_project, assign,
+                                        assign_projects, req)
 
 GETPROP = (FIXTURES / 'getprop.txt').read_text()
 PAIR_BODY = {'host': '192.168.1.20', 'pair_port': 41000, 'code': '123456', 'connect_port': 37011}
@@ -156,12 +157,64 @@ class DeviceRoutesTest(helpers.DataTestCase):
         d = add_device()
         with self.assertRaises(HttpError) as cm:
             devices.put_assignments(req(params={'id': d}, body={'item_ids': [1, 2]}))
-        self.assertEqual(cm.exception.message, 'two items with package com.google.android.youtube')
+        self.assertEqual(cm.exception.message, 'two apps with package com.google.android.youtube')
         with self.assertRaises(HttpError):
             devices.put_assignments(req(params={'id': d}, body={'item_ids': [99]}))
         st, body = devices.put_assignments(req(params={'id': d}, body={'item_ids': [1, 3]}))
         self.assertEqual((st, body['device']['id']), (200, d))
         self.assertEqual([r[0] for r in db.conn().execute('SELECT item_id FROM device_assignments ORDER BY item_id')], [1, 3])
+
+    def rows(self, table, d):
+        col = 'item_id' if table == 'device_assignments' else 'project_id'
+        return [r[0] for r in db.conn().execute(f'SELECT {col} FROM {table} WHERE device_id=? ORDER BY {col}', (d,))]
+
+    def test_assignments_with_project_ids(self):
+        add_catalog_item(1, 'com.google.android.youtube')
+        add_project(1, 'app.revanced.android.gms')
+        add_project(2, 'org.example.reader')
+        d = add_device()
+        st, body = devices.put_assignments(req(params={'id': d}, body={'item_ids': [1], 'project_ids': [2, 1, 2]}))
+        self.assertEqual((st, body['device']['id']), (200, d))
+        self.assertEqual((self.rows('device_assignments', d), self.rows('device_projects', d)), ([1], [1, 2]))
+        devices.put_assignments(req(params={'id': d}, body={'item_ids': [], 'project_ids': [2]}))
+        self.assertEqual((self.rows('device_assignments', d), self.rows('device_projects', d)), ([], [2]))
+        for bad in ('x', [1, None], [True]):
+            with self.assertRaises(HttpError) as cm:
+                devices.put_assignments(req(params={'id': d}, body={'item_ids': [], 'project_ids': bad}))
+            self.assertEqual((cm.exception.status, cm.exception.message), (400, 'project_ids must be a list of integers'))
+        self.assertEqual(self.rows('device_projects', d), [2])
+
+    def test_assignments_unknown_project_400(self):
+        add_catalog_item(1, 'com.google.android.youtube')
+        d = add_device()
+        with self.assertRaises(HttpError) as cm:
+            devices.put_assignments(req(params={'id': d}, body={'item_ids': [1], 'project_ids': [7]}))
+        self.assertEqual((cm.exception.status, cm.exception.message), (400, 'unknown project 7'))
+        self.assertEqual(self.rows('device_assignments', d), [])
+
+    def test_assignments_package_conflict_400(self):
+        add_catalog_item(1, 'com.google.android.youtube')
+        add_project(1, 'com.google.android.youtube')
+        d = add_device()
+        assign(d, 1)
+        with self.assertRaises(HttpError) as cm:
+            devices.put_assignments(req(params={'id': d}, body={'item_ids': [1], 'project_ids': [1]}))
+        self.assertEqual((cm.exception.status, cm.exception.message),
+                         (400, 'two apps with package com.google.android.youtube'))
+        # omitted project_ids: the device's current projects still take part in the check
+        devices.put_assignments(req(params={'id': d}, body={'item_ids': [], 'project_ids': [1]}))
+        with self.assertRaises(HttpError):
+            devices.put_assignments(req(params={'id': d}, body={'item_ids': [1]}))
+        self.assertEqual((self.rows('device_assignments', d), self.rows('device_projects', d)), ([], [1]))
+
+    def test_assignments_without_project_ids_keeps_rows(self):
+        add_catalog_item(1, 'com.google.android.youtube')
+        add_catalog_item(2, 'com.reddit.frontpage')
+        add_project(1, 'app.revanced.android.gms')
+        d = add_device()
+        assign_projects(d, 1)
+        devices.put_assignments(req(params={'id': d}, body={'item_ids': [1, 2]}))
+        self.assertEqual((self.rows('device_assignments', d), self.rows('device_projects', d)), ([1, 2], [1]))
 
     def test_resolve_devices(self):
         a, b = add_device(serial='A'), add_device(serial='B')

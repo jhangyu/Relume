@@ -3,7 +3,8 @@ from unittest import mock
 from webui import db, events, jobs, ota
 from webui.server import HttpError
 from webui.tests import helpers
-from webui.tests.device_helpers import (FakeAdb, FakeLog, add_catalog_item, add_device, add_job, assign, job, req)
+from webui.tests.device_helpers import (FakeAdb, FakeLog, add_catalog_item, add_device, add_job, add_project, assign,
+                                        assign_projects, job, pinfo, req)
 
 YT, YTM, GMS = 'com.google.android.youtube', 'com.google.android.apps.youtube.music', 'app.revanced.android.gms'
 ADDR = '192.168.1.20:37011'
@@ -26,16 +27,18 @@ class OtaJobTest(helpers.DataTestCase):
         self.yt, self.ytm, self.gms = (db.DATA / 'yt.apk', db.DATA / 'ytm.apk', db.DATA / 'microg.apk')
         for f in (self.yt, self.ytm, self.gms):
             f.write_bytes(b'apk')
-        self.microg = {'dependency_app_id': 1, 'upstream_id': 7, 'package': GMS, 'display_name': 'MicroG RE',
-                       'tag': 'v7.2.1', 'path': str(self.gms), 'signer_sha256': None}
+        self.infos = {1: pinfo(path=str(self.gms))}
+        self.assigned = []
         add_catalog_item(1, YT)
         add_catalog_item(2, YTM)
         self.d = add_device()
         assign(self.d, 1, 2)
         self.arts = {1: art(1, 6, str(self.yt)), 2: art(2, 7, str(self.ytm))}
-        self.deps = {1: [self.microg]}
+        self.deps = {1: [1]}
         for name, fn in (('_latest_artifact', lambda i, abi: self.arts.get(i)),
-                         ('_item_dependencies', lambda i: self.deps.get(i, []))):
+                         ('_item_projects', lambda i: self.deps.get(i, [])),
+                         ('_assigned_projects', lambda d: list(self.assigned)),
+                         ('_project_info', lambda pid, abis: self.infos.get(pid))):
             p = mock.patch.object(ota, name, side_effect=fn)
             p.start()
             self.addCleanup(p.stop)
@@ -85,7 +88,7 @@ class OtaJobTest(helpers.DataTestCase):
         self.fa.rule('install', out='Success\n')
         jid, err = self.run_job()
         self.assertIsNone(err)
-        self.assertEqual(self.installs(jid), [('dependency', GMS, 'failed', 'INSUFFICIENT_STORAGE'),
+        self.assertEqual(self.installs(jid), [('project', GMS, 'failed', 'INSUFFICIENT_STORAGE'),
                                               ('item', YT, 'failed', 'DEPENDENCY_FAILED'),
                                               ('item', YTM, 'installed', None)])
         self.assertNotIn(['install', '-r', str(self.yt)], self.adb_cmds('install'))
@@ -179,30 +182,151 @@ class OtaJobTest(helpers.DataTestCase):
         self.assertEqual(la.call_count, 3)
         self.assertEqual(self.adb_cmds('install'), [['install', '-r', str(self.yt)]])
 
-    def test_missing_dependency_pulled(self):
-        self.microg['path'] = None
+    def test_missing_project_pulled_then_installed(self):
+        self.infos[1] = pinfo(tag=None)
         pulled = []
 
         def fake_enqueue(kind, target, trigger, schedule_id=None, options=None):
             pulled.append((kind, target, trigger, options))
-            self.microg['path'] = str(self.gms)
+            self.infos[1] = pinfo(tag='7.2.2', path=str(self.gms))
             return add_job(kind='upstream', target=target, options=options, status='success')
         self.online()
         self.fa.rule('install', out='Success\n')
         with mock.patch.object(jobs, 'enqueue', side_effect=fake_enqueue):
             jid, err = self.run_job(target={'device_id': self.d, 'item_ids': [1]})
-        self.assertEqual(pulled, [('upstream', {'upstream_id': 7}, 'manual', {'rebuild': False, 'notify': True})])
+        self.assertEqual(pulled, [('upstream', {'upstream_id': 23}, 'manual', {'rebuild': False, 'notify': True})])
         self.assertEqual(self.adb_cmds('install')[0], ['install', '-r', str(self.gms)])
-        self.assertEqual(self.installs(jid)[0][2], 'installed')
+        self.assertEqual(self.installs(jid)[0], ('project', GMS, 'installed', None))
+        tag = db.conn().execute("SELECT upstream_tag FROM ota_installs WHERE job_id=? AND kind='project'", (jid,))
+        self.assertEqual(tag.fetchone()[0], '7.2.2')
 
-    def test_missing_dependency_still_missing(self):
-        self.microg['path'] = None
+    def test_project_still_missing_not_downloaded(self):
+        self.infos[1] = pinfo(tag=None)
         self.online()
         with mock.patch.object(jobs, 'enqueue', side_effect=lambda *a, **k: add_job(kind='upstream', status='failed')):
             jid, err = self.run_job(target={'device_id': self.d, 'item_ids': [1]})
-        self.assertEqual(self.installs(jid), [('dependency', GMS, 'failed', 'DEPENDENCY_FAILED'),
+        self.assertEqual(self.installs(jid), [('project', GMS, 'failed', 'NOT_DOWNLOADED'),
                                               ('item', YT, 'failed', 'DEPENDENCY_FAILED')])
         self.assertEqual(err, 'failed')
+        # pulled, but the new release changed signer: blocked
+        with mock.patch.object(jobs, 'enqueue', side_effect=lambda *a, **k: self.infos.update(
+                {1: pinfo(path=str(self.gms), signer_alert='cd' * 32)}) or add_job(kind='upstream', status='success')):
+            self.infos[1] = pinfo(tag=None)
+            jid, err = self.run_job(target={'device_id': self.d, 'item_ids': [1]})
+        self.assertEqual(self.installs(jid)[0], ('project', GMS, 'failed', 'SIGNER_CHANGED'))
+        self.assertEqual(self.adb_cmds('install'), [])
+
+    def test_project_install_records_tag_and_version(self):
+        self.deps, self.assigned = {}, [1]
+        self.online(pm=f'package:{GMS}\n')
+        self.fa.rule('install', out='Success\n')
+        jid, err = self.run_job(target={'device_id': self.d, 'project_ids': [1]})
+        self.assertIsNone(err)
+        r = db.conn().execute('SELECT * FROM ota_installs WHERE job_id=?', (jid,)).fetchall()
+        self.assertEqual([(x['kind'], x['ref_id'], x['upstream_tag'], x['package'], x['version_name'], x['version_code'],
+                           x['build_job_id'], x['result']) for x in r],
+                         [('project', 1, '7.2.1', GMS, '7.2.1', 255070218, None, 'installed')])
+        # same tag installed, package present: up to date
+        jid, err = self.run_job(target={'device_id': self.d, 'project_ids': [1]})
+        self.assertEqual(self.installs(jid), [('project', GMS, 'up_to_date', None)])
+
+    def test_signer_blocked_dependency_fails_item(self):
+        self.infos[1] = pinfo(path=str(self.gms), signer_alert='cd' * 32)
+        self.online()
+        self.fa.rule('install', out='Success\n')
+        jid, err = self.run_job()
+        self.assertIsNone(err)
+        self.assertEqual(self.installs(jid), [('project', GMS, 'failed', 'SIGNER_CHANGED'),
+                                              ('item', YT, 'failed', 'DEPENDENCY_FAILED'),
+                                              ('item', YTM, 'installed', None)])
+        self.assertEqual(self.adb_cmds('install'), [['install', '-r', str(self.ytm)]])
+
+    def project_devices(self):
+        add_project(1, GMS, 23)
+        d2 = add_device(serial='SER2', host='192.168.1.21')
+        assign_projects(self.d, 1)
+        assign_projects(d2, 1)
+        return d2
+
+    def test_install_route_default_devices(self):
+        d2 = self.project_devices()
+        st, body = ota.install_project(req(params={'id': 1}))
+        self.assertEqual(st, 200)
+        self.assertEqual([(jobs.get(j)['target'], jobs.get(j)['trigger']) for j in body['job_ids']],
+                         [({'device_id': self.d, 'project_ids': [1]}, 'manual'),
+                          ({'device_id': d2, 'project_ids': [1]}, 'manual')])
+        st, body = ota.install_project(req(params={'id': 1}, body={'device_ids': [d2]}))
+        self.assertEqual([jobs.get(j)['target'] for j in body['job_ids']], [{'device_id': d2, 'project_ids': [1]}])
+
+    def test_install_route_409_on_alert(self):
+        self.project_devices()
+        self.infos[1] = pinfo(path=str(self.gms), signer_alert='cd' * 32)
+        with self.assertRaises(HttpError) as cm:
+            ota.install_project(req(params={'id': 1}))
+        self.assertEqual((cm.exception.status, cm.exception.message),
+                         (409, 'signer changed: confirm on the Followed projects page'))
+        with self.assertRaises(HttpError) as cm:
+            ota.install_project(req(params={'id': 9}))
+        self.assertEqual((cm.exception.status, cm.exception.message), (404, 'project not found'))
+        self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM jobs WHERE kind='ota'").fetchone()[0], 0)
+
+    def test_install_route_unassigned_400(self):
+        add_project(1, GMS, 23)
+        with self.assertRaises(HttpError) as cm:
+            ota.install_project(req(params={'id': 1}))
+        self.assertEqual((cm.exception.status, cm.exception.message), (400, 'project not assigned to any phone'))
+        d3 = add_device(serial='SER3', host='192.168.1.22')
+        assign_projects(self.d, 1)
+        for ids in ([d3], [self.d, d3]):
+            with self.assertRaises(HttpError) as cm:
+                ota.install_project(req(params={'id': 1}, body={'device_ids': ids}))
+            self.assertEqual((cm.exception.status, cm.exception.message), (400, 'device not assigned'))
+        for bad in ([], 'x', [True]):
+            with self.assertRaises(HttpError) as cm:
+                ota.install_project(req(params={'id': 1}, body={'device_ids': bad}))
+            self.assertEqual(cm.exception.status, 400)
+
+    def test_recovery_finds_project_package(self):
+        self.online()
+        self.fa.rule('install', out='Success\n')
+        jid, err = self.run_job(options={'mode': 'force_reinstall', 'package': GMS})
+        self.assertIsNone(err)
+        cmds = [c[2:] for c in self.fa.calls() if len(c) > 2 and c[2] in ('uninstall', 'install')]
+        self.assertEqual(cmds, [['uninstall', GMS], ['install', '-r', str(self.gms)]])
+        self.assertEqual(self.installs(jid), [('project', GMS, 'installed', None)])
+        # directly assigned project, no matching ABI: a failed step, no adb install
+        self.deps, self.assigned = {}, [2]
+        self.infos[2] = pinfo(2, 'org.example.reader', path=None)
+        jid, err = self.run_job(options={'mode': 'downgrade', 'package': 'org.example.reader'})
+        self.assertEqual(self.installs(jid), [('project', 'org.example.reader', 'failed', 'NO_MATCHING_ABI')])
+        self.assertEqual(len(self.adb_cmds('install')), 1)
+
+    def test_ota_now_project_ids(self):
+        self.assigned = [1]
+        st, body = ota.ota_now(req(params={'id': self.d}, body={'project_ids': [1]}))
+        self.assertEqual(jobs.get(body['job_id'])['target'], {'device_id': self.d, 'project_ids': [1]})
+        st, body = ota.ota_now(req(params={'id': self.d}, body={'item_ids': [2], 'project_ids': [1]}))
+        self.assertEqual(jobs.get(body['job_id'])['target'], {'device_id': self.d, 'item_ids': [2], 'project_ids': [1]})
+        for bad, msg in (([5], 'project not assigned to this device'), ([], 'project_ids must be a non-empty list of integers'),
+                         ([True], 'project_ids must be a non-empty list of integers')):
+            with self.assertRaises(HttpError) as cm:
+                ota.ota_now(req(params={'id': self.d}, body={'project_ids': bad}))
+            self.assertEqual((cm.exception.status, cm.exception.message), (400, msg))
+
+    def test_auto_push_target_runs_project_only(self):
+        self.assigned = [1]
+        self.online()
+        self.fa.rule('install', out='Success\n')
+        target = {'device_id': self.d, 'project_ids': [1]}
+        jid, err = self.run_job(target=target, options={'notify': False}, trigger='upstream')
+        self.assertIsNone(err)
+        self.assertEqual(self.adb_cmds('install'), [['install', '-r', str(self.gms)]])
+        self.assertEqual(self.installs(jid), [('project', GMS, 'installed', None)])
+        d = ota.detail(jid)
+        self.assertEqual((d['item_ids'], d['project_ids'], d['outcome']), ([], [1], 'done'))
+        # no scope keys: every assigned item and project
+        jid, err = self.run_job()
+        self.assertIsNone(ota.detail(jid)['project_ids'])
 
     def test_install_signature_mismatch_code(self):
         self.deps = {}

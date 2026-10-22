@@ -1,4 +1,5 @@
 """Device part: adb runner, mDNS browser, device manager and routes (spec device §2-§5)."""
+import importlib
 import os
 import re
 import signal
@@ -393,23 +394,30 @@ def delete_device(req):
     return 200, {'deleted': dev['id']}
 
 
+def _check_assignment(item_ids, project_ids):
+    importlib.import_module('webui.projects').check_assignment(item_ids, project_ids)
+
+
 def put_assignments(req):
+    """Items replace device_assignments; project_ids, when present, replace device_projects (spec follow-project 5.5)."""
     dev = _dev_or_404(req.params['id'])
-    ids = (req.json or {}).get('item_ids')
-    if not isinstance(ids, list) or not all(isinstance(i, int) and not isinstance(i, bool) for i in ids):
-        raise HttpError(400, 'item_ids must be a list of integers')
+    body = req.json or {}
+    ids, pids = body.get('item_ids'), body.get('project_ids')
+    for key, v in (('item_ids', ids), ('project_ids', [] if pids is None else pids)):
+        if not isinstance(v, list) or not all(isinstance(i, int) and not isinstance(i, bool) for i in v):
+            raise HttpError(400, f'{key} must be a list of integers')
     ids = list(dict.fromkeys(ids))
-    seen = {}
-    for i in ids:
-        r = db.conn().execute('SELECT package FROM item WHERE id=?', (i,)).fetchone()
-        if r is None:
-            raise HttpError(400, f'unknown item {i}')
-        if r['package'] in seen:
-            raise HttpError(400, f"two items with package {r['package']}")
-        seen[r['package']] = i
+    keep = pids is None
+    pids = [r[0] for r in db.conn().execute('SELECT project_id FROM device_projects WHERE device_id=? ORDER BY project_id',
+                                             (dev['id'],))] if keep else list(dict.fromkeys(pids))
+    _check_assignment(ids, pids)
     with db.tx() as c:
         c.execute('DELETE FROM device_assignments WHERE device_id=?', (dev['id'],))
         c.executemany('INSERT INTO device_assignments(device_id,item_id) VALUES (?,?)', [(dev['id'], i) for i in ids])
+        if not keep:
+            c.execute('DELETE FROM device_projects WHERE device_id=?', (dev['id'],))
+            c.executemany('INSERT INTO device_projects(device_id,project_id) VALUES (?,?)',
+                          [(dev['id'], p) for p in pids])
     return 200, {'device': device_json(get(dev['id']), online_states())}
 
 
