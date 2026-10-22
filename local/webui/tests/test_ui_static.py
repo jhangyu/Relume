@@ -39,13 +39,15 @@ class StaticRulesTest(unittest.TestCase):
         self.assertIn('id="a-src-edit"', (STATIC / 'index.html').read_text())
 
     def test_pages_have_nav_and_logout(self):
+        js = (STATIC / 'app.js').read_text()
+        for n in NAV:
+            self.assertIn(n, js, f'app.js {n}')
+        self.assertIn('data-logout', js)
         for f in sorted(STATIC.glob('*.html')):
-            t = f.read_text()
             if f.name == 'login.html':
                 continue
-            for n in NAV:
-                self.assertIn(n, t, f'{f.name} {n}')
-            self.assertIn('data-logout', t, f.name)
+            t = f.read_text()
+            self.assertIn('<aside class="side" aria-label="Primary"></aside>', t, f.name)
             self.assertIn('id="toast"', t, f.name)
 
     def test_projects_page_uses_project_api(self):
