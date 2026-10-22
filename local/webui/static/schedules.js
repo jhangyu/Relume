@@ -1,4 +1,4 @@
-import { $, $$, act, api, fmt, html, shell, toast } from '/static/app.js';
+import { $, $$, act, api, ask, catalogItems, fmt, html, shell, toast } from '/static/app.js';
 
 const KIND = { upstream: 'Check', build: 'Rebuild', ota: 'OTA' };
 const DAYS = ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'];
@@ -164,18 +164,16 @@ $('#edc').addEventListener('change', e => {
   preview();
 });
 $('#edc').addEventListener('input', e => { if (e.target.id === 'tm' || e.target.id === 'hh-n') preview(); });
-$('#edc').addEventListener('click', e => {
+$('#edc').addEventListener('click', async e => {
   if (e.target.id !== 'pick') return;
   const dlg = $('#dlg-items');
   $('#pick-list').innerHTML = html`${R.items.map(it => html`<label class="row sm"><input type="checkbox" class="cb" value="${it.id}" ${R.pickItems && R.pickItems.includes(it.id) ? html`checked` : ''}> ${it.label}</label>`)}`;
-  dlg.showModal();
-  dlg.addEventListener('close', () => {
-    if (dlg.returnValue !== 'ok') return;
-    R.pickItems = $$('#pick-list input:checked').map(i => Number(i.value));
-    $$('[name=tb]').forEach(i => { i.checked = false; });
-    e.target.textContent = `Pick items… (${R.pickItems.length})`;
-    preview();
-  }, { once: true });
+  const btn = e.target;
+  if (await ask(dlg) !== 'ok') return;
+  R.pickItems = $$('#pick-list input:checked').map(i => Number(i.value));
+  $$('[name=tb]').forEach(i => { i.checked = false; });
+  btn.textContent = `Pick items… (${R.pickItems.length})`;
+  preview();
 });
 $('#list').addEventListener('click', async e => {
   const run = e.target.closest('[data-run]'), en = e.target.closest('[data-en]'), card = e.target.closest('.sch');
@@ -184,6 +182,11 @@ $('#list').addEventListener('click', async e => {
     if (en) { await act('PUT', `/api/schedules/${en.dataset.en}`, { enabled: en.checked }); return load(); }
     if (card) edit(R.list.find(x => x.id === Number(card.dataset.id)));
   } catch (_) { load(); }
+});
+$('#list').addEventListener('keydown', e => {
+  if ((e.key !== 'Enter' && e.key !== ' ') || !e.target.matches('.sch')) return;
+  e.preventDefault();
+  edit(R.list.find(x => x.id === Number(e.target.dataset.id)));
 });
 $('#save').addEventListener('click', save);
 $('#cancel').addEventListener('click', () => edit(R.cur && R.cur.name ? R.cur : null));
@@ -199,7 +202,7 @@ $('#del').addEventListener('click', async () => {
   const [{ sources }, cat, { devices }] = await Promise.all([api('GET', '/api/sources'), api('GET', '/api/catalog'), api('GET', '/api/devices')]);
   R.sources = sources;
   R.groups = cat.groups;
-  R.items = [...cat.groups.flatMap(g => g.items), ...cat.ungrouped];
+  R.items = catalogItems(cat);
   R.devices = devices;
   await load();
   edit(R.list[0] || null);
