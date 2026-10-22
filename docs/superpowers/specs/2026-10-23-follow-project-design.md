@@ -333,19 +333,19 @@ Because `verify` runs inside `_download`'s `try` (§5.2), a `ValueError` deletes
 ### 5.1 Add a project
 
 1. UI → `POST /api/projects/assets {repo, channel}`. The server builds the in-memory row `{"kind": "project", "repo", "channel", "tag": None, "asset_regex": r"\.apk$"}` and calls `upstream.fetch(row)` unchanged: token reuse, stable/prerelease selection, 401/403/429/404 mapping.
-2. User ticks assets → UI posts again with `selected: [names]`; server returns `asset_regex = derive_regex(selected)` and `matched` per asset. User edits the regex → UI posts `asset_regex`; server re-marks. `matched = bool(re.search(asset_regex, name))`, the same test as `match_assets` (`upstream.py:74-78`). JavaScript never evaluates the regex.
-3. `POST /api/projects` validates, re-fetches the latest release with the final regex (must match ≥ 1 APK asset), creates the upstream row with `catalog.upstream_row(c, "project", repo, channel, None, asset_regex)` (`catalog.py:370-380`), inserts the `project` row and the `device_projects` rows, then enqueues `jobs.enqueue("upstream", {"upstream_id": uid}, "manual", options={"rebuild": False})` (same call as `catalog.py:527`).
+2. User ticks assets → UI posts again with `selected: [names]`; server returns `asset_regex = derive_regex(selected)` and `matched` per asset. User edits the regex → UI posts `asset_regex`; server re-marks. `matched = bool(re.search(asset_regex, name))`, the same test as `match_assets` (`upstream.match_assets`). JavaScript never evaluates the regex.
+3. `POST /api/projects` validates, re-fetches the latest release with the final regex (must match ≥ 1 APK asset), creates the upstream row with `catalog.upstream_row(c, "project", repo, channel, None, asset_regex)` (`catalog.upstream_row`), inserts the `project` row and the `device_projects` rows, then enqueues `jobs.enqueue("upstream", {"upstream_id": uid}, "manual", options={"rebuild": False})` (same call as `catalog.post_item`).
 
 ### 5.2 Check and download
 
-- Scheduled: an `upstream` schedule fires one job per upstream id; `all` includes project rows (`catalog.py:70-71`); `pull:false` only checks (`upstream.py:451-468`). No scheduler change.
-- Manual: existing `POST /api/upstreams/{id}/pull` (`upstream.py:476-481`) with the project's `upstream_id`.
-- New version: `_check` emits `upstream.new_version` (`upstream.py:145-148`). `affected_items` (`upstream.py:122-127`) joins `item_dependency x JOIN project p ON p.id = x.project_id WHERE p.upstream_id = ?`.
+- Scheduled: an `upstream` schedule fires one job per upstream id; `all` includes project rows (`catalog.resolve_upstreams`); `pull:false` only checks (`upstream.check_only`). No scheduler change.
+- Manual: existing `POST /api/upstreams/{id}/pull` (`upstream.post_pull`) with the project's `upstream_id`.
+- New version: `_check` emits `upstream.new_version` (`upstream._check`). `affected_items` joins `item_dependency x JOIN project p ON p.id = x.project_id WHERE p.upstream_id = ?`.
 - `upstream.py` changes (WP-1):
-  - `DEFAULT_REGEX` key `dependency` → `project` (`upstream.py:15`).
-  - `match_assets`: the stable `dev` skip applies only when `row["kind"] != "project"` (`upstream.py:80-81`).
-  - `_download(row, tag, assets, log, verify=None)`: when `verify` is given, call `verify(part)` inside the existing `try`, after the download loop and before leaving it (`upstream.py:338-351`).
-  - `_fetch_row`: for kind `project`, `verify = lambda part: projects.verify_release(upstream_id, part, log)`; after `_download` returns, call `projects.after_download(upstream_id, row["latest_tag"], log, job_id)`, then `_prune`. The `_write_signer` call (`upstream.py:420-421`), `_write_signer` itself (`upstream.py:359-378`) and `APKSIGNER` (`upstream.py:308`) are deleted. `upstream.py` imports `projects` inside the function (avoids an import cycle; `projects.py` imports `upstream` at module level).
+  - `DEFAULT_REGEX` key `dependency` → `project`.
+  - `match_assets`: the stable `dev` skip applies only when `row["kind"] != "project"`.
+  - `_download(row, tag, assets, log, verify=None)`: when `verify` is given, call `verify(part)` inside the existing `try`, after the download loop and before leaving it.
+  - `_fetch_row`: for kind `project`, `verify = lambda part: projects.verify_release(upstream_id, part, log)`; after `_download` returns, call `projects.after_download(upstream_id, row["latest_tag"], log, job_id)`, then `_prune`. The `_write_signer` call in `_fetch_row`, `_write_signer` itself and `APKSIGNER` are deleted. `upstream.py` imports `projects` inside the function (avoids an import cycle; `projects.py` imports `upstream` at module level).
 
 ### 5.3 Signer change
 
@@ -370,42 +370,42 @@ Project step rule `_project_action(p, prev, has)`, first match wins:
 5. `prev is None or prev["upstream_tag"] != p["tag"]` → `('install', 'new release')`
 6. else → `('up_to_date', 'same release installed')`
 
-Ordering and dedupe (the `planned` set exists, `ota.py:54`, `ota.py:71-72`):
+Ordering and dedupe (the `planned` set exists, in `ota.plan`):
 - Items in catalog order as today. An item's `needs` = `[p["project_id"] for p in deps]`.
-- Before an item whose action is `install`, each dependency not yet planned gets a step when its action is not `up_to_date` (today's D8 behaviour, `ota.py:69-83`).
+- Before an item whose action is `install`, each dependency not yet planned gets a step when its action is not `up_to_date` (today's D8 behaviour, in `ota.plan`).
 - After all items, each directly assigned project not yet planned gets a step with any action, `up_to_date` included.
 - Step dict: `{"kind": "project", "ref_id": project_id, "upstream_id", "package", "path", "file", "abi", "tag", "version_name", "version_code", "action", "reason"}`.
 
 Other OTA changes:
-- `abis_of(dev)` returns the full `abi_list` as a list (empty → `["universal"]`); `first_abi` stays for items (`ota.py:18-20`). `project_info` gets `abis_of(dev)`.
-- `last_installs` returns `(items, projects)`; the second dict is keyed by `ref_id` for `kind='project'` rows (`ota.py:35-47`).
-- `_record` (`ota.py:166-174`): project steps write `upstream_tag = step["tag"]`, `version_name`, `version_code` from the step, `package = step["package"] or ""`.
-- `_run_project(job, dev, step, abis, log, failed)` replaces `_run_dependency` (`ota.py:209-220`):
+- `abis_of(dev)` returns the full `abi_list` as a list (empty → `["universal"]`); `first_abi` stays for items. `project_info` gets `abis_of(dev)`.
+- `last_installs` returns `(items, projects)`; the second dict is keyed by `ref_id` for `kind='project'` rows.
+- `_record`: project steps write `upstream_tag = step["tag"]`, `version_name`, `version_code` from the step, `package = step["package"] or ""`.
+- `_run_project(job, dev, step, abis, log, failed)` replaces `_run_dependency`:
   - `action == 'error'` → record `failed`, `error_code = step["reason"]`; add to `failed`.
   - `action == 'up_to_date'` → record `up_to_date`.
-  - `action == 'install'` and `path` is `None` → `_pull_project` (replaces `ota.py:191-206`: enqueue `upstream` for `step["upstream_id"]` with `job.trigger` and `options={'rebuild': False, 'notify': …}`, wait as today, then `project_info(pid, abis)`). Still no tag → `NOT_DOWNLOADED`; `signer_alert` now set → `SIGNER_CHANGED`; no path → `NO_MATCHING_ABI`. Each records `failed` and adds to `failed`.
-  - Before `adb install`, re-resolve `project_info` once more (file may be pruned), like `ota.py:230-239`.
-- `_recovery_steps` (`ota.py:246-259`): assigned items, then directly assigned projects, then dependency projects of assigned items, matched by package; a project match builds the step from `project_info` with action `install` (or `error`, `NO_MATCHING_ABI` when `path` is `None`).
-- Job scope: target `{device_id, item_ids?, project_ids?}`. Neither key → all assigned items and projects (as today, `ota.py:269`). Either key → the listed ids; a missing key means none of that kind. `ota_jobs.project_ids` stores the list (`ota.py:270-272`). `detail()` adds `project_ids` (`ota.py:311-318`).
-- `on_build_succeeded` unchanged (`ota.py:321-326`): `item_ids` only, so dependency projects still install with the item.
-- Scheduled OTA: `ota` schedules expand per device (`scheduler.py:25`); the plan includes projects. No scheduler change.
+  - `action == 'install'` and `path` is `None` → `_pull_project` (replaces `_pull_dependency`: enqueue `upstream` for `step["upstream_id"]` with `job.trigger` and `options={'rebuild': False, 'notify': …}`, wait as today, then `project_info(pid, abis)`). Still no tag → `NOT_DOWNLOADED`; `signer_alert` now set → `SIGNER_CHANGED`; no path → `NO_MATCHING_ABI`. Each records `failed` and adds to `failed`.
+  - Before `adb install`, re-resolve `project_info` once more (file may be pruned), like `_run_item`.
+- `_recovery_steps`: assigned items, then directly assigned projects, then dependency projects of assigned items, matched by package; a project match builds the step from `project_info` with action `install` (or `error`, `NO_MATCHING_ABI` when `path` is `None`).
+- Job scope: target `{device_id, item_ids?, project_ids?}`. Neither key → all assigned items and projects (as today, in `ota.handle`). Either key → the listed ids; a missing key means none of that kind. `ota_jobs.project_ids` stores the list. `detail()` adds `project_ids`.
+- `on_build_succeeded` unchanged: `item_ids` only, so dependency projects still install with the item.
+- Scheduled OTA: `ota` schedules expand per device (`scheduler.EXPAND`); the plan includes projects. No scheduler change.
 
 ### 5.5 Device assignment
 
-`PUT /api/devices/{id}/assignments {item_ids, project_ids?}` (`devices.py:396-413`). Omitted `project_ids` leaves `device_projects` rows untouched. Validation through `projects.check_assignment`. Item and project rows are replaced in one transaction. `POST/PUT /api/projects` with `device_ids` call `check_assignment(<device's item ids>, <device's project ids ∪ {id}>)` per device.
+`PUT /api/devices/{id}/assignments {item_ids, project_ids?}` (`devices.put_assignments`). Omitted `project_ids` leaves `device_projects` rows untouched. Validation through `projects.check_assignment`. Item and project rows are replaced in one transaction. `POST/PUT /api/projects` with `device_ids` call `check_assignment(<device's item ids>, <device's project ids ∪ {id}>)` per device.
 
 ### 5.6 Edit and delete
 
 - `PUT /api/projects/{id}` with a changed `channel`: updates `upstream.channel` in place and sets `latest_tag`, `downloaded_tag`, `notified_tag` to NULL; `sqlite3.IntegrityError` on `upstream_key` → 409 `project exists`. (B moved the project to another upstream row through `upstream_row`, which leaves an orphan row that `all` schedules keep checking, B risk 5; project upstream rows have no other references, so in place is safe.)
-- Changed `asset_regex` or `channel` → `downloaded_tag = NULL`, then enqueue a pull, so the new asset set is fetched even when the tag is unchanged (`upstream.py:417-418` would skip it otherwise).
+- Changed `asset_regex` or `channel` → `downloaded_tag = NULL`, then enqueue a pull, so the new asset set is fetched even when the tag is unchanged (`upstream._fetch_row` would skip it otherwise).
 - Signer pin survives edits.
-- `DELETE /api/projects/{id}`: 409 `project is a dependency of items` while `item_dependency` rows exist (mockup disables Unfollow, §8 row 26); 409 `pull queued or running` while an `upstream` job for that upstream id is `queued`/`running`. Otherwise one transaction deletes `device_projects` (cascade), the `project` row, then the `upstream` row; then `shutil.rmtree(DATA/upstream/<upstream_id>, ignore_errors=True)`. OTA history stays (no FK, `schema/004_device.sql:1`).
+- `DELETE /api/projects/{id}`: 409 `project is a dependency of items` while `item_dependency` rows exist (mockup disables Unfollow, §8 row 26); 409 `pull queued or running` while an `upstream` job for that upstream id is `queued`/`running`. Otherwise one transaction deletes `device_projects` (cascade), the `project` row, then the `upstream` row; then `shutil.rmtree(DATA/upstream/<upstream_id>, ignore_errors=True)`. OTA history stays (no FK, see the header comment of `schema/004_device.sql`).
 
 ---
 
 ## 6. API (frozen shapes)
 
-All mutating bodies are JSON objects (`server.py:186-191`); errors use `{"error": msg}` (`server.py:133-134`). Never answer 401 for GitHub token problems: `api()` would redirect to login (`static/app.js:22-25`).
+All mutating bodies are JSON objects (`server.Handler`); errors use `{"error": msg}` (`server.Handler`). Never answer 401 for GitHub token problems: `api()` would redirect to login (`api` in `static/app.js`).
 
 Project object `P`:
 
@@ -437,8 +437,8 @@ Project object `P`:
 | `POST /api/upstreams/{id}/pull` | upstream.py (exists) | `{rebuild: false}` | `{job_id}` | unchanged |
 | `PUT /api/devices/{id}/assignments` | devices.py | `{item_ids: [int], project_ids?: [int]}` | `{device}` | 400 `item_ids must be a list of integers` / `project_ids must be a list of integers` / `unknown item N` / `unknown project N` / `two apps with package P` |
 | `POST /api/devices/{id}/ota` | ota.py | `{item_ids?, project_ids?}` (each a non-empty int list when present) | `{job_id}` | adds 400 `project_ids must be a non-empty list of integers`, 400 `project not assigned to this device` |
-| `GET /api/devices` | ota.py | — | each device: existing fields + `assignments` (unchanged, `ota.py:103-108`) + `projects: [DP]`; `dependencies` removed | — |
-| `GET /api/items/{id}`, `PUT /api/items/{id}` | catalog.py | `project_ids: [int]` replaces `dependency_app_ids` (`catalog.py:486-490`, `catalog.py:552-567`) | item detail with `project_ids` | 400 `invalid project_ids`, 400 `unknown project` |
+| `GET /api/devices` | ota.py | — | each device: existing fields + `assignments` (unchanged, `ota._device_view`) + `projects: [DP]`; `dependencies` removed | — |
+| `GET /api/items/{id}`, `PUT /api/items/{id}` | catalog.py | `project_ids: [int]` replaces `dependency_app_ids` (`catalog.item_detail`, `catalog.put_item`) | item detail with `project_ids` | 400 `invalid project_ids`, 400 `unknown project` |
 | `GET /api/jobs?kind=ota` | jobs.py (exists) | — | `detail.installs[].kind` is `item`\|`project`; `detail.project_ids` added | — |
 
 `DP` (per device, per project that is assigned or required by an assigned item):
@@ -451,43 +451,43 @@ Project object `P`:
 ```
 
 - `installed_tag` from `last_installs`; `available_*` from `project_info(pid, abis_of(dev))`.
-- `update_available` (user decision 5) = `installed_tag` and `available_tag` both set and `catalog.version_key(available_tag) > catalog.version_key(installed_tag)` (`catalog.py:29-31`).
+- `update_available` (user decision 5) = `installed_tag` and `available_tag` both set and `catalog.version_key(available_tag) > catalog.version_key(installed_tag)` (`catalog.version_key`).
 - `pending` = the full plan (present unknown) has an `install` step for that project.
 
 Validation:
-- `repo` → `server.validate_repo` (`server.py:74-77`). `display_name` → `catalog.display_name` (`catalog.py:366-367`). `asset_regex` → string, ≤ 300 characters, compiles with `re`. `channel` → `stable`|`prerelease` only. `auto_push` → bool. `device_ids` → list of distinct ints, every id in `devices`. `repo` and `package` cannot change through PUT (400 `repo cannot change`).
+- `repo` → `server.validate_repo`. `display_name` → `catalog.display_name`. `asset_regex` → string, ≤ 300 characters, compiles with `re`. `channel` → `stable`|`prerelease` only. `auto_push` → bool. `device_ids` → list of distinct ints, every id in `devices`. `repo` and `package` cannot change through PUT (400 `repo cannot change`).
 
 ---
 
 ## 7. Notifications
 
-- `notify.EVENTS` (`notify.py:12`) gains `project.signer_changed`. `DEFAULT_EVENTS` (`notify.py:13`) therefore includes it (it keeps excluding only `device.offline`).
-- `format_message` (`notify.py:78-96`) gains: `project.signer_changed` → `Signer changed: <label> <tag>. Installs are blocked until you trust the new signer.`, path `/projects.html`; and for `upstream.new_version` when a `project` row has that `upstream_id` → `New version: <label> <tag>`, path `/projects.html` (sources keep today's text).
-- The event carries `job_id`, so a job with `notify: false` suppresses it (`notify.py:53-56`).
-- Settings UI: a checkbox `value="project.signer_changed"` labelled "Project signer changed" in the "Notify on" fieldset (`static/settings.html:26`); the hard-coded default list (`static/settings.js:23`) gains `project.signer_changed`.
-- Saved lists: delivery checks the saved `events` list (`notify.py:51`). A user who saved notification settings before this change does not get the event until they tick it and save (§11 step 5).
+- `notify.EVENTS` gains `project.signer_changed`. `DEFAULT_EVENTS` therefore includes it (it keeps excluding only `device.offline`).
+- `format_message` gains: `project.signer_changed` → `Signer changed: <label> <tag>. Installs are blocked until you trust the new signer.`, path `/projects.html`; and for `upstream.new_version` when a `project` row has that `upstream_id` → `New version: <label> <tag>`, path `/projects.html` (sources keep today's text).
+- The event carries `job_id`, so a job with `notify: false` suppresses it (`notify.deliver`).
+- Settings UI: a checkbox `value="project.signer_changed"` labelled "Project signer changed" in the "Notify on" fieldset (`static/settings.html`); the hard-coded default list (`loadNotify` in `static/settings.js`) gains `project.signer_changed`.
+- Saved lists: delivery checks the saved `events` list (`notify.deliver`). A user who saved notification settings before this change does not get the event until they tick it and save (§11 step 5).
 
 ---
 
 ## 8. Frontend (mockup option A → API mapping)
 
-Rules: existing Workbench shell and components (`static/app.css`); rendering only through the `html` template (`tests/test_ui_static.py:6`); no `data-toast` attributes and no mockup file names (`tests/test_ui_static.py:28-33`); helpers from `static/app.js` (`api`, `act`, `html`, `toast`, `every`, `fmt`, `shell`, `toggleTheme`). Page refresh: `every(15000, …)` while no dialog is open, like `static/devices.js:176`. Data loads: `GET /api/projects`, `GET /api/devices`, `GET /api/items`, `GET /api/schedules`, `GET /api/jobs?kind=upstream&status=running`, `GET /api/jobs?kind=upstream&status=queued`, `GET /api/jobs?kind=ota&limit=100`.
+Rules: existing Workbench shell and components (`static/app.css`); rendering only through the `html` template (`UNSAFE` in `tests/test_ui_static.py`); no `data-toast` attributes and no mockup file names (`StaticRulesTest.test_no_network_refs_or_mockup_names`); helpers from `static/app.js` (`api`, `act`, `html`, `toast`, `every`, `fmt`, `shell`, `toggleTheme`). Page refresh: `every(15000, …)` while no dialog is open, like the refresh in `static/devices.js`. Data loads: `GET /api/projects`, `GET /api/devices`, `GET /api/items`, `GET /api/schedules`, `GET /api/jobs?kind=upstream&status=running`, `GET /api/jobs?kind=upstream&status=queued`, `GET /api/jobs?kind=ota&limit=100`.
 
 Attention rule (used by rows 9, 13, 17): `signer_alert` set, or `check_error` set, or any `DP` of this project with `update_available`.
 
 | # | Mockup element | Source / action |
 |---|---|---|
-| 1 | Nav link "Followed projects", second position (after App list) | `href="/projects.html"` on all 7 pages; `shell()` marks it (`static/app.js:175-180`) |
-| 2 | Sidebar "Worker busy · 1 download / Disk … · arm64" | existing `[data-shell-status]` box (`static/app.js:183-194`) |
-| 3 | Sidebar user + sign out | existing shell markup (`data-logout`, `tests/test_ui_static.py:48`) |
+| 1 | Nav link "Followed projects", second position (after App list) | `href="/projects.html"` on all 7 pages; `shell()` marks it (`static/app.js`) |
+| 2 | Sidebar "Worker busy · 1 download / Disk … · arm64" | existing `[data-shell-status]` box (`shell` in `static/app.js`) |
+| 3 | Sidebar user + sign out | existing shell markup (`data-logout`, `StaticRulesTest` in `tests/test_ui_static.py`) |
 | 4 | Crumb "Home", h1 "Followed projects" | static |
 | 5 | "Check all now" | `POST /api/upstreams/{upstream_id}/pull {rebuild:false}` per project; toast "Checking N projects" |
 | 6 | "Follow project" | opens add dialog (rows 38–50) |
-| 7 | Theme toggle | `toggleTheme()` (`static/app.js:131`) |
+| 7 | Theme toggle | `toggleTheme()` |
 | 8 | "6 projects" | `projects.length` |
 | 9 | "4 need attention" | count by attention rule |
 | 10 | "Last check … · next … via schedule …" | max `P.checked_at`; first enabled `GET /api/schedules` entry with `kind = "upstream"` and `target.all = true` → `next_run_at`, `name`; none → "no schedule checks projects" |
-| 11 | "Disk 412 MB · 2 versions kept each" | sum `P.disk_bytes`; "2 versions kept" static (retention `upstream.py:381-393`) |
+| 11 | "Disk 412 MB · 2 versions kept each" | sum `P.disk_bytes`; "2 versions kept" static (retention `upstream._prune`) |
 | 12 | Filter box | client filter on `label` + `repo` |
 | 13 | All / Needs attention / Dependencies | client: attention rule; `item_ids.length > 0` |
 | 14 | Project cell: icon, name, repo, "pre-release" chip, "dependency" chip | initials of `label`; `label`; `repo`; `channel == "prerelease"`; `item_ids.length > 0` |
@@ -498,7 +498,7 @@ Attention rule (used by rows 9, 13, 17): `signer_alert` set, or `check_error` se
 | 19 | Auto-push switch | `PUT /api/projects/{id} {auto_push}` |
 | 20 | Footnote "↑/↓ moves the selection…" | static |
 | 21 | ↑/↓ row selection | client |
-| 22 | Pane header: icon, name, `github.com/<repo>` | `label`, `repo` (text, no link to an external URL: `tests/test_ui_static.py:31`) |
+| 22 | Pane header: icon, name, `github.com/<repo>` | `label`, `repo` (text, no link to an external URL: `StaticRulesTest` in `tests/test_ui_static.py`) |
 | 23 | Pane chips + channel badge | row 17 chips; `channel` |
 | 24 | "Install to phone" menu: phones, online dot, `abi → file`, offline disabled, blocked text, empty text | devices with `DP.assigned`; `online`; `DP.available_abi → DP.available_file` ("no match" when null); disabled when `!online`; "Blocked: confirm the new signer first." when `signer_alert`; empty text when none; click → `POST /api/projects/{id}/install {device_ids:[d]}` |
 | 25 | "Check now" | `POST /api/upstreams/{upstream_id}/pull {rebuild:false}` |
@@ -534,10 +534,10 @@ Other page changes (not in the mockup):
 
 | File | Change |
 |---|---|
-| `static/devices.js` | Render `d.projects` instead of `d.dependencies` (`static/devices.js:29`): label, `installed_tag → available_tag`, "assigned" or "required by …", pending mark, "Blocked: signer changed" badge linking `/projects.html`. `pending` count (`static/devices.js:23`, shown at `:31`) includes `projects[].pending`. Assignment dialog (`static/devices.js:92-101`) also lists `GET /api/projects` and sends `project_ids`. History shows `i.version_name \|\| i.upstream_tag` (`static/devices.js:63`). |
-| `static/devices.html` | Assignment dialog content split into `#as-items` and `#as-projects` (`static/devices.html:38-40`). |
-| `static/item.js`, `static/item.html` | Dependency picker loads `GET /api/projects` and sends `project_ids` (`static/item.js:403-432`); label "Dependency apps" → "Dependencies" (`static/item.html:70`). |
-| `static/schedules.js` | "All sources" → "All sources and projects" (`static/schedules.js:19`, `:55`). |
+| `static/devices.js` | Render `d.projects` instead of `d.dependencies` (`card` in `static/devices.js`): label, `installed_tag → available_tag`, "assigned" or "required by …", pending mark, "Blocked: signer changed" badge linking `/projects.html`. `pending` count (`card` in `static/devices.js`) includes `projects[].pending`. Assignment dialog (`editAssignments` in `static/devices.js`) also lists `GET /api/projects` and sends `project_ids`. History shows `i.version_name \|\| i.upstream_tag` (`loadHistory` in `static/devices.js`). |
+| `static/devices.html` | Assignment dialog content split into `#as-items` and `#as-projects` (inside `#dlg-assign` of `static/devices.html`). |
+| `static/item.js`, `static/item.html` | Dependency picker loads `GET /api/projects` and sends `project_ids` (the `#m-item` click handler in `static/item.js`); label "Dependency apps" → "Dependencies" (the dependency card in `static/item.html`). |
+| `static/schedules.js` | "All sources" → "All sources and projects" (`targetText` and `renderTargets` in `static/schedules.js`). |
 | `static/settings.html`, `static/settings.js` | §7 checkbox and default list. |
 
 ---
@@ -546,17 +546,17 @@ Other page changes (not in the mockup):
 
 | Situation | Behaviour |
 |---|---|
-| GitHub 401 / 403 / 429 / 404 / no release in `POST /api/projects/assets` or `POST /api/projects` | 502 `token rejected`; 429 `rate limited…`; 400 with the message (`upstream.py:94-116`) |
-| Same failures during a scheduled check | existing: `check_error` set (`upstream.py:137-142`), shown on the row and in the App list banner (`static/index.js:76-81`) |
+| GitHub 401 / 403 / 429 / 404 / no release in `POST /api/projects/assets` or `POST /api/projects` | 502 `token rejected`; 429 `rate limited…`; 400 with the message (`upstream.fetch`) |
+| Same failures during a scheduled check | existing: `check_error` set (`upstream._check`), shown on the row and in the App list banner (`renderBanner` in `static/index.js`) |
 | Regex invalid / matches nothing at create | 400 `invalid asset_regex` / 400 `asset_regex matches no asset` |
-| Later release matches nothing | `check_error` `no matching asset` (`upstream.py:115-116`); row 27 fixes it |
+| Later release matches nothing | `check_error` `no matching asset` (`upstream.fetch`); row 27 fixes it |
 | Unreadable signer or package, mixed signers, mixed packages, package changed, package already followed, not a zip | `verify_release` `ValueError` → nothing committed, `check_error = download failed: …`, job failed; previous tag stays current |
 | Two APKs with the same ABI | log line; `pick_apk` takes the first by file name |
-| Size/digest mismatch | existing (`upstream.py:343-351`) |
+| Size/digest mismatch | existing (`upstream._download`) |
 | Signer differs from pin | not a failure: download commits, `signer_alert` set, `project.signer_changed` emitted once, every install path blocked (§5.3) |
 | No APK for the phone's ABIs and no universal | step `failed`, `NO_MATCHING_ABI` |
 | Not downloaded at OTA time | pull then install; still missing → `NOT_DOWNLOADED` (dependency items → `DEPENDENCY_FAILED`) |
-| Android rejects the update (different signer on the phone) | existing `SIGNATURE_MISMATCH` + "Uninstall & retry" (`devices.py:15`, `ota.py:344-357`) |
+| Android rejects the update (different signer on the phone) | existing `SIGNATURE_MISMATCH` + "Uninstall & retry" (`devices.ERROR_CODES`, `ota._recovery`) |
 
 New error codes for spec device §5: `SIGNER_CHANGED`, `NOT_DOWNLOADED`.
 
@@ -569,12 +569,12 @@ Known limitations (accepted):
 
 ## 10. Work packages (3, disjoint file ownership)
 
-No file appears in two packages. No package touches `jobs.py`, `scheduler.py`, `events.py`, `db.py`, `build.py`, `ci.py`, `auth.py`, `settings.py` (the Python module). WP-1 commits `schema/005_follow.sql` and the `projects.py` §4.2 functions first; WP-2 mocks them through module seams until then (pattern `ota.py:10-15`, `tests/test_device_ota.py:52`). The lead merges WP-1 and WP-2 together (WP-1 deletes `catalog.item_dependencies`, WP-2 deletes its only caller `ota.py:10-11`) and runs the full suite on the combined tree.
+No file appears in two packages. No package touches `jobs.py`, `scheduler.py`, `events.py`, `db.py`, `build.py`, `ci.py`, `auth.py`, `settings.py` (the Python module). WP-1 commits `schema/005_follow.sql` and the `projects.py` §4.2 functions first; WP-2 mocks them through module seams until then (pattern `ota._item_dependencies`, `PlanTest` in `tests/test_device_ota.py`). The lead merges WP-1 and WP-2 together (WP-1 deletes `catalog.item_dependencies`, WP-2 deletes its only caller `ota._item_dependencies`) and runs the full suite on the combined tree.
 
 ### 10.1 WP-1 — Project store and release pipeline
 
 Files (only these):
-- `local/webui/schema/005_follow.sql` (new), `local/webui/projects.py` (new), `local/webui/upstream.py`, `local/webui/catalog.py`, `local/webui/catalog-seed.json`, `local/webui/notify.py`, `local/webui/server.py` (only `MODULES` at `server.py:16`: add `'projects'` after `'upstream'`)
+- `local/webui/schema/005_follow.sql` (new), `local/webui/projects.py` (new), `local/webui/upstream.py`, `local/webui/catalog.py`, `local/webui/catalog-seed.json`, `local/webui/notify.py`, `local/webui/server.py` (only `MODULES`: add `'projects'` after `'upstream'`)
 - `local/webui/tests/test_projects.py` (new), `local/webui/tests/test_catalog_store.py`, `local/webui/tests/test_catalog_seed.py`, `local/webui/tests/test_catalog_upstream.py`, `local/webui/tests/test_device_notify.py`, `local/webui/tests/catalog_rows.py`, `local/webui/tests/fixtures/catalog/fake-apkeditor.sh` (new), `local/webui/tests/fixtures/catalog/fake-apksigner.sh`
 - `docs/superpowers/specs/2026-10-19-webui-design.md` (replace the dependency-app rows with the new shapes or a pointer to this file)
 
@@ -590,11 +590,11 @@ Tests (exact names; all must pass):
 - `test_projects.AssetsRouteTest`: `test_lists_apk_assets_and_derives_regex`, `test_regex_edit_marks_matches`, `test_unknown_selected_asset_400`, `test_invalid_regex_400`, `test_token_rejected_502`, `test_rate_limited_429`.
 - `test_projects.CrudRouteTest`: `test_create_enqueues_pull`, `test_create_with_devices`, `test_duplicate_409`, `test_kind_conflict_400`, `test_regex_matches_nothing_400`, `test_put_regex_resets_download_and_pulls`, `test_put_channel_in_place`, `test_put_devices_package_conflict_400`, `test_delete_removes_rows_and_dir`, `test_delete_with_items_409`, `test_delete_with_active_pull_409`, `test_list_shape`.
 - `test_projects.SignerRouteTest`: `test_accept_matching_digest`, `test_accept_stale_digest_409`, `test_accept_without_alert_409`, `test_accept_enqueues_auto_push`.
-- `test_projects.ReleaseTest`: `test_verify_writes_apks_json_and_pins`, `test_package_filled_on_first_download`, `test_mixed_signers_not_committed`, `test_mixed_packages_not_committed`, `test_package_change_not_committed`, `test_unreadable_info_not_committed`, `test_signer_change_sets_alert_and_emits_event_once`, `test_same_signer_clears_alert`, `test_auto_push_enqueues_for_assigned_devices_only`, `test_no_auto_push_with_alert`, `test_tools_run_isolated` (with `RELUME_RUNNER_UID`, both tool runs start with `setpriv --reuid=…`, like `tests/test_catalog_upstream.py:219-229`), `test_check_assignment_rules`.
-- `test_catalog_upstream.PullTest` (existing class, `tests/test_catalog_upstream.py:119`): `test_stable_dev_filter_skips_project_rows`, `test_affected_items_through_projects`; the two dependency signer tests (`tests/test_catalog_upstream.py:205-229`) are deleted.
-- `test_catalog_store.CrudTest.test_item_project_ids` replaces `test_item_dependencies` (`tests/test_catalog_store.py:188-203`): get/put `project_ids`, `unknown project` 400; table-name and delete-cascade tests use `project` (`tests/test_catalog_store.py:22`, `:33-44`, `:167-172`).
+- `test_projects.ReleaseTest`: `test_verify_writes_apks_json_and_pins`, `test_package_filled_on_first_download`, `test_mixed_signers_not_committed`, `test_mixed_packages_not_committed`, `test_package_change_not_committed`, `test_unreadable_info_not_committed`, `test_signer_change_sets_alert_and_emits_event_once`, `test_same_signer_clears_alert`, `test_auto_push_enqueues_for_assigned_devices_only`, `test_no_auto_push_with_alert`, `test_tools_run_isolated` (with `RELUME_RUNNER_UID`, both tool runs start with `setpriv --reuid=…`, like `PullTest.test_dependency_signer_runs_isolated` in `tests/test_catalog_upstream.py`), `test_check_assignment_rules`.
+- `test_catalog_upstream.PullTest` (existing class, `tests/test_catalog_upstream.py`): `test_stable_dev_filter_skips_project_rows`, `test_affected_items_through_projects`; the two dependency signer tests (`test_dependency_pull_writes_signer` and `test_dependency_signer_runs_isolated`) are deleted.
+- `test_catalog_store.CrudTest.test_item_project_ids` replaces `test_item_dependencies` (`CrudTest` in `tests/test_catalog_store.py`): get/put `project_ids`, `unknown project` 400; table-name and delete-cascade tests use `project` (`SchemaTest` and `CrudTest` in `tests/test_catalog_store.py`).
 - `test_catalog_seed`: round trip passes with the `projects` key.
-- `test_device_notify.NotifyTest`: `test_default_events_include_signer_changed` (replaces the list at `tests/test_device_notify.py:151`), `test_format_signer_changed`, `test_format_project_new_version`.
+- `test_device_notify.NotifyTest`: `test_default_events_include_signer_changed` (replaces the list in `tests/test_device_notify.py`), `test_format_signer_changed`, `test_format_project_new_version`.
 
 Test command: `T_MOD webui.tests.test_projects webui.tests.test_catalog_store webui.tests.test_catalog_seed webui.tests.test_catalog_upstream webui.tests.test_device_notify`, then `T_PY 'test_*.py'`.
 
@@ -609,10 +609,10 @@ Delivers: §5.4, §5.5, `POST /api/projects/{id}/install`, `project_ids` on `POS
 Frozen contracts it consumes: §3.1 tables `project`, `device_projects`, `ota_installs`, `ota_jobs.project_ids`; §4.2 functions; auto-push job target. It provides: §5.4 `plan` signature and step dict; §6 `DP`; install route.
 
 Tests (exact names; all must pass):
-- `test_device_ota.PlanTest` (existing class, `tests/test_device_ota.py:18`; its current tests move to the new signature): `test_dependency_project_before_item`, `test_direct_project_install_and_up_to_date`, `test_project_missing_on_phone`, `test_assigned_and_dependency_planned_once`, `test_signer_alert_error_step`, `test_no_matching_abi_error_step`, `test_not_downloaded_install_without_path`, `test_scope_project_ids_only`.
-- `test_device_ota.PlanTest.test_projects_shape_and_update_available` (replaces the `dependencies` assertion at `tests/test_device_ota.py:87`) (update true when downloaded tag is newer; false when equal; false when installed tag is null).
-- `test_device_otajob.OtaJobTest` (existing class, `tests/test_device_otajob.py:19`): `test_project_install_records_tag_and_version`, `test_signer_blocked_dependency_fails_item`, `test_missing_project_pulled_then_installed`, `test_project_still_missing_not_downloaded`, `test_install_route_default_devices`, `test_install_route_409_on_alert`, `test_install_route_unassigned_400`, `test_recovery_finds_project_package`, `test_ota_now_project_ids`, `test_auto_push_target_runs_project_only`.
-- `test_device_routes.DeviceRoutesTest` (existing class, `tests/test_device_routes.py:13`): `test_assignments_with_project_ids`, `test_assignments_unknown_project_400`, `test_assignments_package_conflict_400`, `test_assignments_without_project_ids_keeps_rows`.
+- `test_device_ota.PlanTest` (existing class, `tests/test_device_ota.py`; its current tests move to the new signature): `test_dependency_project_before_item`, `test_direct_project_install_and_up_to_date`, `test_project_missing_on_phone`, `test_assigned_and_dependency_planned_once`, `test_signer_alert_error_step`, `test_no_matching_abi_error_step`, `test_not_downloaded_install_without_path`, `test_scope_project_ids_only`.
+- `test_device_ota.PlanTest.test_projects_shape_and_update_available` (replaces the `dependencies` assertion in `PlanTest`) (update true when downloaded tag is newer; false when equal; false when installed tag is null).
+- `test_device_otajob.OtaJobTest` (existing class, `tests/test_device_otajob.py`): `test_project_install_records_tag_and_version`, `test_signer_blocked_dependency_fails_item`, `test_missing_project_pulled_then_installed`, `test_project_still_missing_not_downloaded`, `test_install_route_default_devices`, `test_install_route_409_on_alert`, `test_install_route_unassigned_400`, `test_recovery_finds_project_package`, `test_ota_now_project_ids`, `test_auto_push_target_runs_project_only`.
+- `test_device_routes.DeviceRoutesTest` (existing class, `tests/test_device_routes.py`): `test_assignments_with_project_ids`, `test_assignments_unknown_project_400`, `test_assignments_package_conflict_400`, `test_assignments_without_project_ids_keeps_rows`.
 
 Test command: `T_MOD webui.tests.test_device_ota webui.tests.test_device_otajob webui.tests.test_device_routes`, then `T_PY 'test_*.py'` on the merged tree.
 
@@ -627,8 +627,8 @@ Delivers: §8 (all rows), §7 settings UI, nav link on every page.
 Frozen contracts it consumes: §6 (all shapes, including `P`, `DP`, `detail.installs[].kind`), §7 event name.
 
 Tests (exact names; all must pass):
-- `NAV` (`tests/test_ui_static.py:7`) gains `href="/projects.html"`; `StaticRulesTest.test_pages_have_nav_and_logout` passes for all pages including `projects.html`.
-- `PageIdsTest.test_every_id_a_page_script_looks_up_exists_in_its_html` page list (`tests/test_ui_static.py:54`) becomes `('item', 'builds', 'projects', 'devices')`.
+- `NAV` (`tests/test_ui_static.py`) gains `href="/projects.html"`; `StaticRulesTest.test_pages_have_nav_and_logout` passes for all pages including `projects.html`.
+- `PageIdsTest.test_every_id_a_page_script_looks_up_exists_in_its_html` page list (`tests/test_ui_static.py`) becomes `('item', 'builds', 'projects', 'devices')`.
 - `StaticRulesTest.test_projects_page_uses_project_api` (new): `projects.js` contains `'/api/projects'`, `/api/projects/assets`, `/signer/accept`, `/install`, `/api/upstreams/`, `'/api/devices'`, `kind=ota`.
 - `StaticRulesTest.test_settings_lists_signer_event` (new): `settings.html` contains `value="project.signer_changed"`; `settings.js` contains `project.signer_changed`.
 - `StaticRulesTest.test_no_dead_dependency_model_leftovers` (new): no file in `static/` contains `dependency-apps`, `dependency_app`, or `d.dependencies`.
@@ -641,11 +641,11 @@ Test command: `T_MOD webui.tests.test_ui_static`, then the `node --check` loop o
 
 ## 11. Deploy steps (live stack, in order)
 
-Run from the repo root. The stack is compose project `relume`; the live DB is `local/data/webui.db` (WAL mode: `-wal` and `-shm` files exist), mounted at `/private/data` (`local/docker-compose.yml:86-87`, `local/.env:12`).
+Run from the repo root. The stack is compose project `relume`; the live DB is `local/data/webui.db` (WAL mode: `-wal` and `-shm` files exist), mounted at `/private/data` (`local/docker-compose.yml` service `app` volumes, `RELUME_DATA_DIR` in `local/.env`).
 
 1. Stop the web app so nothing writes: `docker compose -p relume -f local/docker-compose.yml stop app`.
 2. Back up the DB with SQLite's online backup (copies WAL content consistently): `python3 -c "import sqlite3; s=sqlite3.connect('local/data/webui.db'); d=sqlite3.connect('local/data/webui.db.bak-2026-10-23'); s.backup(d); d.close(); s.close()"`. Check: `python3 -c "import sqlite3; c=sqlite3.connect('file:local/data/webui.db.bak-2026-10-23?mode=ro', uri=True); print(c.execute('PRAGMA integrity_check').fetchone()[0], c.execute('PRAGMA user_version').fetchone()[0])"` prints `ok 4`.
-3. Start the app with the new code: `docker compose -p relume -f local/docker-compose.yml start app`. Startup runs migration 005 (`__main__.py:28`).
+3. Start the app with the new code: `docker compose -p relume -f local/docker-compose.yml start app`. Startup runs migration 005 (`__main__.boot`).
 4. Check: `PRAGMA user_version` = 5 (read-only query as in step 2 on `local/data/webui.db`); then press "Check now" on MicroG RE (or `POST /api/upstreams/23/pull`) and confirm criterion 0.5-6.
 5. Notifications: users who saved notification settings before this release open Settings → Notifications, tick "Project signer changed", and save (§7).
 6. Rollback: stop the app, `mv local/data/webui.db local/data/webui.db.failed`, remove `local/data/webui.db-wal` and `local/data/webui.db-shm`, `cp local/data/webui.db.bak-2026-10-23 local/data/webui.db`, check out the previous code, start the app.
@@ -655,11 +655,11 @@ Run from the repo root. The stack is compose project `relume`; the live DB is `l
 ## 12. Deleted (no traces)
 
 - Table `dependency_app` (by migration 005), `item_dependency.dependency_app_id`.
-- `catalog.list_dependency_apps` and route `GET /api/dependency-apps` (`catalog.py:606-609`, `catalog.py:965`); `catalog.item_dependencies` (`catalog.py:612-630`); `dependency_app_ids` in item detail/PUT (`catalog.py:486-490`, `catalog.py:552-567`); the `signer.sha256` filter (`catalog.py:781`); section comment "apps and dependency apps" (`catalog.py:583`) becomes "apps".
-- `upstream.DEFAULT_REGEX["dependency"]` (`upstream.py:15`), `upstream.APKSIGNER` (`upstream.py:308`), `upstream._write_signer` (`upstream.py:359-378`) and its call (`upstream.py:420-421`).
-- `ota._item_dependencies` (`ota.py:10-11`), `'dependency'` step kind (`ota.py:81`, `ota.py:256`, `ota.py:301`), `_pull_dependency` / `_run_dependency` (`ota.py:191-220`), `dependencies` in the device view (`ota.py:109-117`).
-- `d.dependencies` rendering (`static/devices.js:29`), the dependency-app picker (`static/item.js:403-432`) and label (`static/item.html:70`).
-- Tests of the removed behaviour (`tests/test_catalog_upstream.py:205-229`, `tests/test_catalog_store.py:188-203`, dependency fixtures `MICROG` in `tests/test_device_ota.py:8-9` and `tests/test_device_otajob.py:29-30` rewritten as project fixtures).
+- `catalog.list_dependency_apps` and route `GET /api/dependency-apps` (`catalog.ROUTES`); `catalog.item_dependencies`; `dependency_app_ids` in item detail/PUT (`catalog.item_detail`, `catalog.put_item`); the `signer.sha256` filter (`catalog.job_input`); section comment "apps and dependency apps" (`catalog.py`) becomes "apps".
+- `upstream.DEFAULT_REGEX["dependency"]`, `upstream.APKSIGNER`, `upstream._write_signer` and its call in `_fetch_row`.
+- `ota._item_dependencies`, `'dependency'` step kind (`ota.plan`, `ota._recovery_steps`, `ota.handle`), `_pull_dependency` / `_run_dependency`, `dependencies` in the device view (`ota._device_view`).
+- `d.dependencies` rendering (`card` in `static/devices.js`), the dependency-app picker (the `#m-item` click handler in `static/item.js`) and label (the dependency card in `static/item.html`).
+- Tests of the removed behaviour (`PullTest` dependency signer tests in `tests/test_catalog_upstream.py`, `CrudTest.test_item_dependencies` in `tests/test_catalog_store.py`, dependency fixtures `MICROG` in `tests/test_device_ota.py` and `self.microg` in `tests/test_device_otajob.py` rewritten as project fixtures).
 
 ---
 
