@@ -14,7 +14,7 @@ from webui import build, db, events, jobs, settings
 from webui.tests import helpers
 
 FIX = Path(__file__).parent / "fixtures" / "build"
-JOB_FIXTURE = json.loads((build.REPO_ROOT / "src" / "build" / "test-fixtures" / "job.json").read_text())
+JOB_FIXTURE = json.loads((db.REPO_ROOT / "src" / "build" / "test-fixtures" / "job.json").read_text())
 YT = "com.google.android.youtube"
 
 
@@ -105,7 +105,7 @@ class BuildCase(helpers.DataTestCase):
         (self.up / "patches-1.0.0.mpp").write_bytes(b"p")
         (self.up / "morphe-desktop-1.0.0-all.jar").write_bytes(b"c")
         self.cat = FakeCatalog(self.up)
-        for attr, val in (("CATALOG", self.cat), ("RUNNER", str(FIX / "runner-ok.sh"))):
+        for attr, val in (("catalog", self.cat), ("RUNNER", str(FIX / "runner-ok.sh"))):
             p = mock.patch.object(build, attr, val)
             p.start()
             self.addCleanup(p.stop)
@@ -283,7 +283,7 @@ class HandlerOkTest(BuildCase):
 
 
 class ArtifactSwapTest(BuildCase):
-    """Round-2 review S3: a leftover runner process swaps a validated artifact for a symlink before registration."""
+    """A leftover runner process swaps a validated artifact for a symlink before registration."""
 
     def swap_after_validation(self, swap):
         real = build._read_result

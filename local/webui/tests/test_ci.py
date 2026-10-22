@@ -2,6 +2,7 @@ import contextlib
 import io
 import json
 import pathlib
+import unittest
 from unittest import mock
 
 from webui import catalog, ci, db, jobs, upstream
@@ -35,6 +36,25 @@ def seed():
 
 def release():
     return ci._assets(json.loads((FIX / 'release-all.json').read_text()))
+
+
+class FetchReleaseTest(unittest.TestCase):
+    def test_token_header_and_status_mapping(self):
+        sent, replies = [], [(200, {}, b'{"assets": [{"name": "a.apk", "label": "L"}]}'), (200, {}, b'{}'),
+                             (404, {}, b''), (500, {}, b'')]
+
+        def fake_get(url, headers=None, timeout=30):
+            sent.append((url, headers))
+            return replies.pop(0)
+        with mock.patch.object(upstream, 'http_get', side_effect=fake_get):
+            self.assertEqual(ci.fetch_release('o/r', 'tok'), {'a.apk': 'L'})
+            self.assertEqual(ci.fetch_release('o/r', ''), {})
+            self.assertEqual(ci.fetch_release('o/r', 'tok'), {})
+            with self.assertRaisesRegex(ci.CiFatal, 'GitHub 500 on release "all" of o/r'):
+                ci.fetch_release('o/r', 'tok')
+        self.assertEqual(sent[0][0], 'https://api.github.com/repos/o/r/releases/tags/all')
+        self.assertEqual(sent[0][1].get('Authorization'), 'Bearer tok')
+        self.assertNotIn('Authorization', sent[1][1])
 
 
 class CiPlanTest(helpers.DataTestCase):

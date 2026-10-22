@@ -1,7 +1,7 @@
 import os
 import sys
 
-from . import auth, db, jobs, scheduler, server, settings
+from . import auth, ci, db, jobs, scheduler, server, settings
 
 USAGE = 'usage: python3 -m webui [serve|reset-password|ci-plan|ci-build|export-seed]'
 
@@ -17,7 +17,7 @@ def prepare_data():
         p = db.DATA / d
         p.mkdir(parents=True, exist_ok=True)
         # only dirs this process owns: a pre-existing host-owned dir keeps its mode, also when we run as root
-        # (CI ci-build: root server, workflow-made data/work 0755; 0770 would lock out the runner, review B1)
+        # (CI ci-build: root server, workflow-made data/work 0755; 0770 would lock out the runner)
         if d in DIR_MODES and p.stat().st_uid == os.getuid():
             p.chmod(DIR_MODES[d])
 
@@ -50,7 +50,6 @@ def main(argv=None):
     cmd = argv[0] if argv else 'serve'
     if cmd in ('ci-plan', 'ci-build', 'export-seed'):
         boot()
-        from . import ci
         return ci.main(argv)
     if cmd == 'reset-password':
         boot()

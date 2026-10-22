@@ -1,9 +1,18 @@
-import pathlib, sqlite3, tempfile, threading, unittest
+import datetime, pathlib, sqlite3, tempfile, threading, unittest
 from webui import db, events
 from webui.tests.helpers import DataTestCase
 
 
 class DbTest(DataTestCase):
+    def test_iso_roundtrip(self):
+        d = datetime.datetime(2026, 10, 23, 1, 2, 3, tzinfo=datetime.timezone.utc)
+        self.assertEqual(db.iso(d), '2026-10-23T01:02:03Z')
+        self.assertEqual(db.parse_iso(db.iso(d)), d)
+        self.assertIsNone(db.iso(None))
+        self.assertIsNone(db.parse_iso(''))
+        plus8 = datetime.timezone(datetime.timedelta(hours=8))
+        self.assertEqual(db.iso(datetime.datetime(2026, 10, 23, 9, 2, 3, tzinfo=plus8)), '2026-10-23T01:02:03Z')
+
     def test_init_creates_subdirs(self):
         for d in db.SUBDIRS:
             self.assertTrue((self.data / d).is_dir(), d)

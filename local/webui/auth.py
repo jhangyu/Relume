@@ -60,7 +60,7 @@ def reset_lockout():
 def create_session(remember):
     token = secrets.token_urlsafe(32)
     life = REMEMBER if remember else SHORT
-    exp = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=life)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    exp = db.iso(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=life))
     with db.tx() as c:
         c.execute('DELETE FROM sessions WHERE expires_at <= ?', (db.utcnow(),))
         c.execute('INSERT INTO sessions(token, expires_at) VALUES (?, ?)', (token, exp))

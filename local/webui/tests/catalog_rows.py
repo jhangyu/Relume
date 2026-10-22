@@ -2,8 +2,9 @@
 import json
 import subprocess
 import unittest
+from unittest import mock
 
-from webui import catalog, db
+from webui import catalog, db, events, settings, upstream
 from webui.tests import helpers
 
 DOWNLOAD = {"kind": "apkmirror", "type": "apk", "arch": None, "dpi": None, "minver": None, "url": None}
@@ -29,7 +30,7 @@ def add_basic(c):
 
 
 class FakeBuild:
-    """Stands in for webui.build (P4) in catalog tests."""
+    """Stands in for webui.build in catalog tests."""
 
     def __init__(self):
         self.active = {}
@@ -40,6 +41,19 @@ class FakeBuild:
 
     def forget_item(self, item_id):
         self.forgotten.append(item_id)
+
+
+class FakeHTTP:
+    """url -> (status, body object or bytes, headers)."""
+
+    def __init__(self, routes):
+        self.routes = routes
+        self.calls = []
+
+    def __call__(self, url, headers=None, timeout=30):
+        self.calls.append((url, headers or {}))
+        st, body, hdr = self.routes.get(url, (404, {}, {}))
+        return st, hdr, body if isinstance(body, bytes) else json.dumps(body).encode()
 
 
 class FakeLog:
@@ -68,10 +82,25 @@ class CatalogCase(helpers.DataTestCase):
     def setUp(self):
         super().setUp()
         self.build = FakeBuild()
-        catalog.BUILD = self.build
-        self.addCleanup(setattr, catalog, "BUILD", None)
+        p = mock.patch.object(catalog, "build", self.build)
+        p.start()
+        self.addCleanup(p.stop)
+        p = mock.patch.object(settings, "github_token", return_value="")
+        p.start()
+        self.addCleanup(p.stop)
+        self.emitted = []
+        p = mock.patch.object(events, "emit", side_effect=lambda t, pl: self.emitted.append((t, pl)))
+        p.start()
+        self.addCleanup(p.stop)
         with db.tx() as c:
             add_basic(c)
+
+    def http(self, routes):
+        f = FakeHTTP(routes)
+        p = mock.patch.object(upstream, "http_get", f)
+        p.start()
+        self.addCleanup(p.stop)
+        return f
 
     def call(self, handler, json=None, method="POST", **params):
         return handler(helpers.fake_request(method, "/test", json=json, params=params))

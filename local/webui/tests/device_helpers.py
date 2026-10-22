@@ -1,4 +1,4 @@
-"""Shared helpers for the device (P5) and ci (P7) tests. Not a test module."""
+"""Shared helpers for the device and ci tests. Not a test module."""
 import json
 import os
 import pathlib

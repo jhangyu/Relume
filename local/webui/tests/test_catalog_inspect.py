@@ -9,10 +9,10 @@ from unittest import mock
 
 from webui import catalog, db, upstream
 from webui.tests.catalog_rows import CatalogCase, FakeLog
-from webui.tests.test_catalog_upstream import API, UpstreamCase, fix
+from webui.tests.test_catalog_upstream import API, fix
 
 FIX = Path(__file__).parent / "fixtures" / "catalog"
-JOB_FIXTURE = json.loads((catalog.REPO_ROOT / "src" / "build" / "test-fixtures" / "job.json").read_text())
+JOB_FIXTURE = json.loads((db.REPO_ROOT / "src" / "build" / "test-fixtures" / "job.json").read_text())
 YT = "com.google.android.youtube"
 TEXT = """Index: 0
 Name: Hide ads
@@ -204,7 +204,7 @@ class InspectRowTest(PatchesCase):
         self.assertTrue(any(l.startswith("[!] inspect failed for") for l in log.lines))
 
     def test_inspect_rejects_symlinked_output(self):
-        """Round-2 S3: a runner output that is a symlink (here to a secret) is not read."""
+        """A runner output that is a symlink (here to a secret) is not read."""
         self.add_cli()
         with db.tx() as c:
             c.execute("DELETE FROM bundle_info")
@@ -248,7 +248,7 @@ class InspectRowTest(PatchesCase):
         self.assertEqual(pk, {YT, "com.reddit.frontpage"})
 
 
-class ReinspectTest(UpstreamCase):
+class ReinspectTest(CatalogCase):
     def test_pull_reinspects_missing_bundle_with_same_tag(self):
         d = self.data / "upstream" / "2" / "v1.47.0"
         d.mkdir(parents=True)

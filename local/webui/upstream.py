@@ -9,7 +9,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
-from webui import catalog, db, events, jobs, server, settings
+from . import catalog, db, events, jobs, projects, server, settings
 
 API = "https://api.github.com"
 DEFAULT_REGEX = {"patches": r"\.mpp$", "cli": r"^morphe-desktop-.*-all\.jar$", "module": r"\.apk$", "project": r"\.apk$"}
@@ -45,9 +45,8 @@ def tag_dir(upstream_id, tag):
     return db.DATA / "upstream" / str(upstream_id) / server.safe_remote(tag)
 
 
-def _gh_headers():
+def gh_headers(token):
     h = {"Accept": "application/vnd.github+json", "User-Agent": "Relume"}
-    token = settings.github_token()
     if token:
         h["Authorization"] = "Bearer " + token
     return h
@@ -97,7 +96,7 @@ def _release_url(row):
 
 def fetch(row):
     try:
-        status, headers, body = http_get(_release_url(row), _gh_headers())
+        status, headers, body = http_get(_release_url(row), gh_headers(settings.github_token()))
     except OSError as e:
         raise CheckError(("network error: " + str(e).splitlines()[0]) if str(e) else "network error")
     if status == 401:
@@ -106,7 +105,7 @@ def fetch(row):
         reset = headers.get("x-ratelimit-reset", "")
         if reset.isdigit():
             raise RateLimited("rate limited until " +
-                              datetime.fromtimestamp(int(reset), timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+                              db.iso(datetime.fromtimestamp(int(reset), timezone.utc)))
         raise RateLimited("rate limited")
     if status == 404:
         raise CheckError("not found")
@@ -135,7 +134,7 @@ def _check(upstream_id, job_id=None):
     """Check one row. Returns (row, assets); assets is None when check_error was set.
     TokenRejected / RateLimited are recorded, then re-raised."""
     row = _row(upstream_id)
-    now = catalog.now_iso()
+    now = db.utcnow()
     try:
         rel, assets = fetch(row)
     except (TokenRejected, RateLimited) as e:
@@ -183,14 +182,14 @@ def post_check(req):
 
 
 
-INSPECT = str(catalog.REPO_ROOT / "src" / "build" / "inspect.sh")
+INSPECT = str(db.REPO_ROOT / "src" / "build" / "inspect.sh")
 LOG_PREFIX_RE = re.compile(r"^(?:INFO|WARNING|SEVERE): ")
 KNOWN_KEYS = {"Index", "Name", "Description", "Enabled", "Options", "Title", "Required", "Key", "Default",
               "Possible values", "Type", "Compatible packages", "Package name", "Compatible versions"}
 
 
 def parse_list_patches(text):
-    """Parse `list-patches --with-packages --with-versions --with-options` text (layout of utils.sh:195-201)."""
+    """Parse `list-patches --with-packages --with-versions --with-options` text (layout of the utils.sh list-patches output)."""
     patches, cur, opt, pkg, mode, sub = [], None, None, None, None, None
     for raw in text.splitlines():
         # the CLI logger can glue its level prefix onto the first block ("INFO: Index: 0", captured fixture)
@@ -391,8 +390,6 @@ def _fetch_row(upstream_id, log, job_id=None):
         raise jobs.JobFailed(str(e))
     if assets is None:
         raise jobs.JobFailed(row["check_error"])
-    if row["kind"] == "project":
-        from webui import projects  # projects imports upstream at module level
     if row["latest_tag"] == row["downloaded_tag"] and tag_dir(upstream_id, row["downloaded_tag"]).is_dir():
         # a crash after the tag commit leaves no pin: pin it now, before a later release is pinned instead
         if row["kind"] == "project" and db.conn().execute(

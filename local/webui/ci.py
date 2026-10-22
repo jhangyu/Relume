@@ -7,17 +7,14 @@ import pathlib
 import re
 import shutil
 import sys
-import urllib.error
-import urllib.request
 
-from . import catalog, db, jobs, settings, upstream
+from . import catalog, db, jobs, server, settings, upstream
 
 GITHUB_API = 'https://api.github.com'
 _TAG = re.compile(r', patches (\S+)\)$')
 _FATAL_CHECK = ('token rejected', 'rate limited')
 _SOURCE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_-]*$')
 _NAME_PART = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.-]*$')  # no '/', no leading '.': safe as a file name part
-_REPO = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
 
 
 class CiFatal(Exception):
@@ -45,24 +42,20 @@ def _assets(release):
 
 
 def fetch_release(repo, token):
-    headers = {'Accept': 'application/vnd.github+json'}
-    if token:
-        headers['Authorization'] = f'Bearer {token}'
-    req = urllib.request.Request(f'{GITHUB_API}/repos/{repo}/releases/tags/all', headers=headers)
     try:
-        with urllib.request.urlopen(req, timeout=30) as r:
-            return _assets(json.load(r))
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            return {}
-        raise CiFatal(f'GitHub {e.code} on release "all" of {repo}')
+        status, _, body = upstream.http_get(f'{GITHUB_API}/repos/{repo}/releases/tags/all', upstream.gh_headers(token))
     except OSError as e:
         raise CiFatal(f'GitHub unreachable: {e}')
+    if status == 404:
+        return {}
+    if status >= 400:
+        raise CiFatal(f'GitHub {status} on release "all" of {repo}')
+    return _assets(json.loads(body))
 
 
 def _repo():
     repo = os.environ.get('GITHUB_REPOSITORY', '')
-    if not _REPO.match(repo):
+    if not server.REPO.match(repo):
         raise CiFatal('GITHUB_REPOSITORY is not set or malformed')
     return repo
 
