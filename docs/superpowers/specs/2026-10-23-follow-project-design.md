@@ -455,7 +455,7 @@ Project object `P`:
 - `pending` = the full plan (present unknown) has an `install` step for that project.
 
 Validation:
-- `repo` → `server.validate_repo` (`server.py:74-77`). `display_name` → `catalog._display_name` (`catalog.py:366-367`). `asset_regex` → string, ≤ 300 characters, compiles with `re`. `channel` → `stable`|`prerelease` only. `auto_push` → bool. `device_ids` → list of distinct ints, every id in `devices`. `repo` and `package` cannot change through PUT (400 `repo cannot change`).
+- `repo` → `server.validate_repo` (`server.py:74-77`). `display_name` → `catalog.display_name` (`catalog.py:366-367`). `asset_regex` → string, ≤ 300 characters, compiles with `re`. `channel` → `stable`|`prerelease` only. `auto_push` → bool. `device_ids` → list of distinct ints, every id in `devices`. `repo` and `package` cannot change through PUT (400 `repo cannot change`).
 
 ---
 
