@@ -15,7 +15,7 @@ class SettingsTest(DataTestCase):
         p2 = mock.patch.object(settings, 'TOKEN_PATH', tok); p2.start(); self.addCleanup(p2.stop)
         self.gh = mock.patch.object(settings, 'fetch_rate_limit', return_value=(
             200, {'resources': {'core': {'limit': 5000, 'remaining': 4990, 'reset': 1760000000}}},
-            {'X-OAuth-Scopes': 'repo', 'github-authentication-token-expiration': '2026-12-01 00:00:00 UTC'}))
+            {'x-oauth-scopes': 'repo', 'github-authentication-token-expiration': '2026-12-01 00:00:00 UTC'}))
         self.fetch = self.gh.start(); self.addCleanup(self.gh.stop)
         settings._gh_cache.clear()
         self.base = serve(self)

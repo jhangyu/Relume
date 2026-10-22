@@ -7,10 +7,8 @@ import re
 import shutil
 import threading
 import time
-import urllib.error
-import urllib.request
 
-from . import build, db, server
+from . import build, db, server, upstream
 
 TOKEN_PATH = pathlib.Path('/run/secrets/github_token')
 RATE_URL = 'https://api.github.com/rate_limit'
@@ -85,14 +83,8 @@ def check_token_file():
 
 
 def fetch_rate_limit(token):
-    h = {'Accept': 'application/vnd.github+json', 'User-Agent': 'relume'}
-    if token:
-        h['Authorization'] = f'Bearer {token}'
-    try:
-        with urllib.request.urlopen(urllib.request.Request(RATE_URL, headers=h), timeout=10) as r:
-            return r.status, json.load(r), r.headers
-    except urllib.error.HTTPError as e:
-        return e.code, {}, e.headers
+    status, headers, body = upstream.http_get(RATE_URL, upstream.gh_headers(token), timeout=10)
+    return status, json.loads(body) if status == 200 else {}, headers
 
 
 def github_status(recheck=False):
@@ -113,9 +105,9 @@ def github_status(recheck=False):
                   else 'unauthenticated' if not token else 'authenticated')
     v['limit'], v['remaining'] = core.get('limit'), core.get('remaining')
     if core.get('reset'):
-        v['reset_at'] = datetime.datetime.fromtimestamp(core['reset'], datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+        v['reset_at'] = db.iso(datetime.datetime.fromtimestamp(core['reset'], datetime.timezone.utc))
     v['expires_at'] = headers.get('github-authentication-token-expiration') if headers else None
-    v['scopes'] = headers.get('X-OAuth-Scopes') if headers else None
+    v['scopes'] = headers.get('x-oauth-scopes') if headers else None
     with _gh_lock:
         _gh_cache.update(v=v, at=time.monotonic())
     return v
@@ -157,7 +149,7 @@ def put_route(req):
     if 'github_token' in b and not (isinstance(b['github_token'], str) and TOKEN_RE.match(b['github_token'])):
         raise server.HttpError(400, 'invalid github_token')
     for k, (lo, hi) in LIMITS.items():
-        if k in b and (isinstance(b[k], bool) or not isinstance(b[k], int) or not lo <= b[k] <= hi):
+        if k in b and (not server.is_int(b[k]) or not lo <= b[k] <= hi):
             raise server.HttpError(400, f'invalid {k}')
     if 'base_url' in b and not (b['base_url'] == '' or (isinstance(b['base_url'], str) and re.match(r'^https?://\S+$', b['base_url']))):
         raise server.HttpError(400, 'invalid base_url')
