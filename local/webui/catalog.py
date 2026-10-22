@@ -160,11 +160,15 @@ def list_groups(req):
     return 200, {"groups": _groups()}
 
 
+def _next_position(c, table_where, args=()):
+    return c.execute(f"SELECT IFNULL(MAX(position), -1) + 1 FROM {table_where}", args).fetchone()[0]
+
+
 def post_group(req):
     b = req.json or {}
     name, color = _name(b.get("name")), _check_color(b.get("color"))
     with db.tx() as c:
-        pos = c.execute("SELECT COALESCE(MAX(position) + 1, 0) FROM grp").fetchone()[0]
+        pos = _next_position(c, "grp")
         gid = c.execute("INSERT INTO grp(name, color, position) VALUES (?, ?, ?)", (name, color, pos)).lastrowid
     return 201, {"id": gid}
 
@@ -185,7 +189,7 @@ def delete_group(req):
     gid = req.params["id"]
     _group(gid)
     with db.tx() as c:
-        start = c.execute("SELECT COALESCE(MAX(position) + 1, 0) FROM item WHERE group_id IS NULL").fetchone()[0]
+        start = _next_position(c, "item WHERE group_id IS NULL")
         moved = [r[0] for r in c.execute("SELECT id FROM item WHERE group_id = ? ORDER BY position, id", (gid,))]
         for n, iid in enumerate(moved):
             c.execute("UPDATE item SET group_id = NULL, position = ? WHERE id = ?", (start + n, iid))
@@ -281,14 +285,14 @@ def validate_variants(variants):
     return out
 
 
-def _engine_options(v):
-    if v is not None and not isinstance(v, dict):
-        raise server.HttpError(400, "invalid engine_options")
-    return v  # engine-specific shape: validate_engine_options (called first by post_item/put_item)
+# --- Xposed module items (2026-10-19-webui-design.md) ---
+ENGINES = {'morphe': {'kind': 'patches'},
+           'lspatch': {'kind': 'module', 'max_sigbypass': 3},
+           'npatch': {'kind': 'module', 'max_sigbypass': 4}}
 
 
-# --- Xposed module items (P8, spec xposed 5.1) ---
-_ENGINE_MAX = {'lspatch': 3, 'npatch': 4}
+def is_module(engine):
+    return ENGINES.get(engine, {}).get('kind') == 'module'
 
 
 def _engine_of_source(source_id):
@@ -303,15 +307,15 @@ def _engine_of_item(item_id):
 
 
 def validate_engine_options(engine, value):
-    if engine not in _ENGINE_MAX:
+    if not is_module(engine):
         if value is not None:
             raise server.HttpError(400, 'engine_options must be null for patches items')
         return None
     if not isinstance(value, dict) or set(value) != {'sigbypass', 'injectdex'}:
         raise server.HttpError(400, 'engine_options needs exactly sigbypass and injectdex')
     sb, inj = value['sigbypass'], value['injectdex']
-    if isinstance(sb, bool) or not isinstance(sb, int) or not 0 <= sb <= _ENGINE_MAX[engine]:
-        raise server.HttpError(400, f'sigbypass must be 0-{_ENGINE_MAX[engine]} for {engine}')
+    if isinstance(sb, bool) or not isinstance(sb, int) or not 0 <= sb <= ENGINES[engine]['max_sigbypass']:
+        raise server.HttpError(400, f'sigbypass must be 0-{ENGINES[engine]['max_sigbypass']} for {engine}')
     if not isinstance(inj, bool):
         raise server.HttpError(400, 'injectdex must be true or false')
     return {'sigbypass': sb, 'injectdex': inj}
@@ -320,7 +324,7 @@ def validate_engine_options(engine, value):
 def check_xposed_variants(variants):
     for v in variants if isinstance(variants, list) else []:
         if not isinstance(v, dict):
-            continue  # shape errors are answered by P2's variant validation
+            continue  # shape errors are answered by the variant validation
         if v.get('exclude_splits') is not None or v.get('strip_libs') is not None:
             raise server.HttpError(400, 'exclude_splits and strip_libs must be null for module items')
         if (v.get('download') or {}).get('type') not in ('apk', 'bundle'):
@@ -336,14 +340,14 @@ def xposed_item_rules(body, item_id=None):
     else:
         engine = _engine_of_item(item_id) if item_id is not None else None
     if engine is None:
-        return  # unknown source or item: P2's own checks answer 400/404
-    if item_id is None and engine in _ENGINE_MAX:  # POST defaults for module items (spec xposed 5.1)
+        return  # unknown source or item: the caller's own checks answer 400/404
+    if item_id is None and is_module(engine):  # POST defaults for module items
         body.setdefault('engine_options', {'sigbypass': 0, 'injectdex': False})
         if body.get('variants') is None:
             body['variants'] = [dict(v, strip_libs=None) for v in default_variants()]
     if item_id is None or 'engine_options' in body:
         body['engine_options'] = validate_engine_options(engine, body.get('engine_options'))
-    if engine in _ENGINE_MAX and 'variants' in body:
+    if is_module(engine) and 'variants' in body:
         check_xposed_variants(body['variants'])
 
 
@@ -356,13 +360,13 @@ def xposed_source_rules(body, source_id=None):
         raise server.HttpError(400, 'asset_regex required for module sources')
 
 
-def require_patches_item(item_id):
-    if _engine_of_item(item_id) in _ENGINE_MAX:
+def reject_module_item(item_id):
+    if is_module(_engine_of_item(item_id)):
         raise server.HttpError(409, 'not a patches item')
 
 
 def check_version_mode(item_id, body):
-    if isinstance(body, dict) and body.get('version_mode') == 'auto' and _engine_of_item(item_id) in _ENGINE_MAX:
+    if isinstance(body, dict) and body.get('version_mode') == 'auto' and is_module(_engine_of_item(item_id)):
         raise server.HttpError(400, 'auto version not available for module items')
 
 
@@ -395,7 +399,7 @@ def _source(sid):
 
 def _source_fields(b):
     engine = b.get("engine", "morphe")
-    if engine not in ("morphe", "lspatch", "npatch"):
+    if engine not in ENGINES:
         raise server.HttpError(400, "invalid engine")
     channel = b.get("channel")
     if channel not in ("stable", "prerelease", "tag"):
@@ -435,7 +439,7 @@ def post_source(req):
     with db.tx() as c:
         if c.execute("SELECT 1 FROM source WHERE id = ?", (sid,)).fetchone():
             raise server.HttpError(409, "source exists")
-        uid = upstream_row(c, "patches" if f["engine"] == "morphe" else "module", f["repo"], f["channel"], f["tag"], f["asset_regex"])
+        uid = upstream_row(c, ENGINES[f["engine"]]["kind"], f["repo"], f["channel"], f["tag"], f["asset_regex"])
         c.execute("INSERT INTO source(id, name, upstream_id, cli_upstream_id, engine, keystore) VALUES (?, ?, ?, ?, ?, ?)",
                   (sid, f["name"], uid, f["cli_upstream_id"], f["engine"], f["keystore"]))
     return 201, {"id": sid}
@@ -447,7 +451,7 @@ def put_source(req):
     _source(sid)
     f = _source_fields(req.json or {})
     with db.tx() as c:
-        uid = upstream_row(c, "patches" if f["engine"] == "morphe" else "module", f["repo"], f["channel"], f["tag"], f["asset_regex"])
+        uid = upstream_row(c, ENGINES[f["engine"]]["kind"], f["repo"], f["channel"], f["tag"], f["asset_regex"])
         c.execute("UPDATE source SET name = ?, upstream_id = ?, cli_upstream_id = ?, engine = ?, keystore = ? WHERE id = ?",
                   (f["name"], uid, f["cli_upstream_id"], f["engine"], f["keystore"], sid))
     return 200, _source(sid)
@@ -512,13 +516,13 @@ def post_item(req):
     pkg = server.validate_package(b.get("package"), "package")
     gid = _group_id(b.get("group_id"))
     variants = validate_variants(b["variants"]) if b.get("variants") is not None else default_variants()
-    eo = _engine_options(b.get("engine_options"))
+    eo = b.get("engine_options")
     dn = _display_name(b.get("display_name"))
     with db.tx() as c:
         if c.execute("SELECT 1 FROM item WHERE source_id = ? AND package = ?", (src["id"], pkg)).fetchone():
             raise server.HttpError(409, "item exists")
         c.execute("INSERT OR IGNORE INTO app(package) VALUES (?)", (pkg,))
-        pos = c.execute("SELECT COALESCE(MAX(position) + 1, 0) FROM item WHERE group_id IS ?", (gid,)).fetchone()[0]
+        pos = _next_position(c, "item WHERE group_id IS ?", (gid,))
         iid = c.execute("""INSERT INTO item(source_id, package, key, display_name, group_id, position, variants, engine_options)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)""", (src["id"], pkg, _default_key(pkg), dn, gid, pos, json.dumps(variants),
                                                  None if eo is None else json.dumps(eo))).lastrowid
@@ -545,7 +549,7 @@ def put_item(req):
     if "variants" in b:
         sets["variants"] = json.dumps(validate_variants(b["variants"]))
     if "engine_options" in b:
-        eo = _engine_options(b["engine_options"])
+        eo = b["engine_options"]
         sets["engine_options"] = None if eo is None else json.dumps(eo)
     if "enabled" in b:
         if not isinstance(b["enabled"], bool):
@@ -562,7 +566,7 @@ def put_item(req):
             gid = _group_id(b["group_id"])
             if gid != cur["group_id"]:
                 sets["group_id"] = gid
-                sets["position"] = c.execute("SELECT COALESCE(MAX(position) + 1, 0) FROM item WHERE group_id IS ?", (gid,)).fetchone()[0]
+                sets["position"] = _next_position(c, "item WHERE group_id IS ?", (gid,))
         for col, val in sets.items():  # col comes from the fixed names above
             c.execute(f"UPDATE item SET {col} = ? WHERE id = ?", (val, iid))
         if deps is not None:
@@ -632,7 +636,7 @@ def _bundle(r):
 
 
 def get_patches(req):
-    require_patches_item(req.params["id"])
+    reject_module_item(req.params["id"])
     r = _item_row(req.params["id"])
     tag, files, bundle = _bundle(r)
     ov = json.loads(r["patch_overrides"])
@@ -670,7 +674,7 @@ def _type_ok(t, v):
 
 
 def put_patches(req):
-    require_patches_item(req.params["id"])
+    reject_module_item(req.params["id"])
     r = _item_row(req.params["id"])
     _, _, bundle = _bundle(r)
     if bundle is None:
@@ -900,7 +904,7 @@ def seed_import(path=None):
     name, kind, target, spec, options = DAILY_SCHEDULE
     if not db.conn().execute("SELECT 1 FROM schedules WHERE kind = ? AND name = ?", (kind, name)).fetchone():
         from webui import scheduler
-        scheduler.create(name, kind, target, spec, options)  # computes next_run_at (P1)
+        scheduler.create(name, kind, target, spec, options)  # computes next_run_at
     return True
 
 
