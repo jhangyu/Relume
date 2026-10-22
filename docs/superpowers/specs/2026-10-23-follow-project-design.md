@@ -2,7 +2,7 @@
 
 Inputs: requirements `docs/logs/2026-10-23-follow-project-brief.md`; architecture B `docs/logs/2026-10-23-follow-project-arch-b.md` (base); architecture A `docs/logs/2026-10-23-follow-project-arch-a.md` (two parts only: APK facts read with APKEditor `info`, ABI read from `lib/<abi>/` zip entries); user decisions listed in §0.2; mockup `docs/superpowers/mockups/follow-project/option-a.html`.
 
-Paths without a directory prefix are relative to `local/webui/`. Every statement about current code cites `file:line` at commit `4cc414a`.
+Paths without a directory prefix are relative to `local/webui/`. Every statement about current code cites `file` and a symbol (function, table, key) at commit `4cc414a`.
 
 ---
 
@@ -39,7 +39,7 @@ The web UI has a "Followed projects" page (mockup option A) where the user follo
 - Non-GitHub sources; building or patching followed APKs.
 - Byte-level download progress (mockup progress bar, §8 row 33).
 - Discarding a quarantined release (mockup "Discard vX", §8 row 31).
-- Per-project check schedules (`project_ids` in schedule targets). `{"all": true}` covers projects (`catalog.py:70-71`, `catalog.py:893`).
+- Per-project check schedules (`project_ids` in schedule targets). `{"all": true}` covers projects (`catalog.resolve_upstreams`, `catalog.DAILY_SCHEDULE`).
 - ABI handling beyond "phone ABI list, then universal".
 - Package conflict detection between a project and an item before the project's first download (§9, known limitation 1).
 
@@ -63,7 +63,7 @@ Commands use the test command of §1. `T_MOD <modules>` = the §1 module form.
 ## 1. Test command (verified)
 
 - Definition: `T_PY <pattern>` = `docker run --rm --network none -v "$PWD:/repo:ro" -e PYTHONPATH=/repo/local -e PYTHONDONTWRITEBYTECODE=1 relume-builder python3 -m unittest discover -s /repo/local/webui/tests -t /repo/local -p '<pattern>'`. Used as gate G1/H1 (`docs/logs/2026-10-19-gate-r1.md:5`, `docs/logs/2026-10-19-gate-r2.md:5`).
-- Image: the `relume-builder` image does not exist on this machine today (`docker images` lists `relume-app:latest` and `relume-cfbypass`). The command is run with image **`relume-app`**, built from `local/Dockerfile` (python3 at `local/Dockerfile:6`). Verified 2026-10-23 at `4cc414a`: `T_PY 'test_*.py'` with `relume-app` → `Ran 293 tests in 53.902s`, `OK`, RC 0.
+- Image: the `relume-builder` image does not exist on this machine today (`docker images` lists `relume-app:latest` and `relume-cfbypass`). The command is run with image **`relume-app`**, built from `local/Dockerfile` (python3 installed in `local/Dockerfile`). Verified 2026-10-23 at `4cc414a`: `T_PY 'test_*.py'` with `relume-app` → `Ran 293 tests in 53.902s`, `OK`, RC 0.
 - Module form (verified the same day, `Ran 17 tests … OK` for two modules): `T_MOD <m…>` = `docker run --rm --network none -v "$PWD:/repo:ro" -w /repo/local -e PYTHONPATH=/repo/local -e PYTHONDONTWRITEBYTECODE=1 relume-app python3 -m unittest <m…>` with modules like `webui.tests.test_projects`. A single test: `webui.tests.test_projects.MigrationTest.test_v4_database_migrates`.
 - Run from the repo root, foreground. Tests that need `setpriv` only pass in Linux, so always use the container.
 
@@ -73,48 +73,48 @@ Commands use the test command of §1. `T_MOD <modules>` = the §1 module form.
 
 | Fact | Where |
 |---|---|
-| `upstream.kind` CHECK `('patches','cli','dependency','module')`; unique key repo+channel+tag | `schema/003_catalog.sql:4`, `:12` |
-| `dependency_app(id, upstream_id, package, display_name)`; `item_dependency(item_id, dependency_app_id)` | `schema/003_catalog.sql:60-69` |
-| `device_assignments` holds items only | `schema/004_device.sql:16-20` |
-| `ota_jobs.item_ids` scopes a job | `schema/004_device.sql:24`, `ota.py:269-272` |
-| `ota_installs.kind` CHECK `('item','dependency')`; dependency `ref_id` = upstream id | `schema/004_device.sql:32-33`, `ota.py:81`, `ota.py:170` |
-| Migrations: numbered files, `executescript`, then `PRAGMA user_version=n` | `db.py:53-61` |
-| Connections: autocommit, `foreign_keys=ON` | `db.py:31-36` |
-| Startup runs `db.migrate()` then `seed_import()` | `__main__.py:28`, `__main__.py:32` |
-| Seed imports only into an empty catalog; keys `dependency_apps`, `item_dependencies` | `catalog.py:912-923`, `catalog.py:889`, `catalog.py:937-938` |
-| Seed upstream 23 `MorpheApp/MicroG-RE`, kind `dependency`, regex `^microg-[0-9.]+\.apk$`; dependency_app 1 → upstream 23 | `catalog-seed.json:3461-3468`, `catalog-seed.json:332-339` |
-| Default schedule "Daily upstream" target `{"all": true}`; `all` = every upstream row | `catalog.py:893`, `catalog.py:68-71` |
-| `upstream_row` reuses a row by repo+channel+tag, 400 "upstream kind conflict" on another kind | `catalog.py:370-380` |
-| Release fetch with token, status mapping, release selection | `upstream.py:44-49`, `upstream.py:66-70`, `upstream.py:94-119` |
-| Stable channel drops assets whose name contains `dev` | `upstream.py:80-81` |
-| `_download` writes `<tag>.part`, checks size/digest, deletes part and fails on `OSError`/`ValueError`, then renames | `upstream.py:333-356` |
-| `_write_signer` runs apksigner isolated on `apks[0]` only, after commit | `upstream.py:359-378`, `upstream.py:420-421` |
-| Keep 2 newest tag dirs | `upstream.py:381-393` |
-| `upstream.new_version` emitted once per new tag | `upstream.py:145-148` |
-| `affected_items` joins `dependency_app` | `upstream.py:122-127` |
-| Isolation helpers `jobs.isolate`, `jobs.runner_path` | `jobs.py:75-89` |
-| APKEditor 1.4.9 at `/opt/APKEditor.jar`; build scripts use `RELUME_APKEDITOR` override | `local/Dockerfile:11`, `src/build/utils.sh:7` |
-| Shell parser of APKEditor `info` output | `src/build/utils.sh:567-575` |
-| Captured fixture: `package="app.morphe.android.youtube"`, `VersionCode="1561173354"`, `VersionName="21.20.405"` | `src/build/test-fixtures/apkeditor-info.txt:1-3` |
+| `upstream.kind` CHECK `('patches','cli','dependency','module')`; unique key repo+channel+tag | `schema/003_catalog.sql` table `upstream`, index `upstream_key` |
+| `dependency_app(id, upstream_id, package, display_name)`; `item_dependency(item_id, dependency_app_id)` | `schema/003_catalog.sql` tables `dependency_app`, `item_dependency` |
+| `device_assignments` holds items only | `schema/004_device.sql` table `device_assignments` |
+| `ota_jobs.item_ids` scopes a job | `schema/004_device.sql` table `ota_jobs`, `ota.handle` |
+| `ota_installs.kind` CHECK `('item','dependency')`; dependency `ref_id` = upstream id | `schema/004_device.sql` table `ota_installs`, `ota.plan`, `ota._record` |
+| Migrations: numbered files, `executescript`, then `PRAGMA user_version=n` | `db.migrate` |
+| Connections: autocommit, `foreign_keys=ON` | `db.conn` |
+| Startup runs `db.migrate()` then `seed_import()` | `__main__.boot` |
+| Seed imports only into an empty catalog; keys `dependency_apps`, `item_dependencies` | `catalog.seed_import`, `catalog.SEED_TABLES`, `catalog.export_seed` |
+| Seed upstream 23 `MorpheApp/MicroG-RE`, kind `dependency`, regex `^microg-[0-9.]+\.apk$`; dependency_app 1 → upstream 23 | `catalog-seed.json` (upstream 23 under `upstreams`, key `dependency_apps`) |
+| Default schedule "Daily upstream" target `{"all": true}`; `all` = every upstream row | `catalog.DAILY_SCHEDULE`, `catalog.resolve_upstreams` |
+| `upstream_row` reuses a row by repo+channel+tag, 400 "upstream kind conflict" on another kind | `catalog.upstream_row` |
+| Release fetch with token, status mapping, release selection | `upstream.gh_headers`, `upstream.select_release`, `upstream.fetch` |
+| Stable channel drops assets whose name contains `dev` | `upstream.match_assets` |
+| `_download` writes `<tag>.part`, checks size/digest, deletes part and fails on `OSError`/`ValueError`, then renames | `upstream._download` |
+| `_write_signer` runs apksigner isolated on `apks[0]` only, after commit | `upstream._write_signer`, `upstream._fetch_row` |
+| Keep 2 newest tag dirs | `upstream._prune` |
+| `upstream.new_version` emitted once per new tag | `upstream._check` |
+| `affected_items` joins `dependency_app` | `upstream.affected_items` |
+| Isolation helpers `jobs.isolate`, `jobs.runner_path` | `jobs.py` |
+| APKEditor 1.4.9 at `/opt/APKEditor.jar`; build scripts use `RELUME_APKEDITOR` override | `local/Dockerfile`, `src/build/utils.sh` variable `APKEditor` |
+| Shell parser of APKEditor `info` output | `src/build/utils.sh` function `apk_info` |
+| Captured fixture: `package="app.morphe.android.youtube"`, `VersionCode="1561173354"`, `VersionName="21.20.405"` | `src/build/test-fixtures/apkeditor-info.txt` (keys `package`, `VersionCode`, `VersionName`) |
 | Real run 2026-10-23 (`relume-app`, `java -jar /opt/APKEditor.jar info -i microg-7.2.1.apk -package -version-code -version-name`) printed the same layout: `package="app.revanced.android.gms"`, `VersionCode="255070218"`, `VersionName="7.2.1"`. The live MicroG APKs contain `lib/arm64-v8a`, `lib/armeabi-v7a`, `lib/x86`, `lib/x86_64` (→ `universal`) | live check, `local/data/upstream/23/7.2.1/` |
-| Planner `plan(items, artifacts, deps_by_item, item_installs, dep_installs, present)`, D8 dependency rule | `ota.py:50-85` |
-| Items use only the first phone ABI | `ota.py:18-20`, `build.py:233-242` |
-| Pull-then-install for a never-downloaded dependency | `ota.py:191-220` |
-| Item failure propagation `DEPENDENCY_FAILED` | `ota.py:223-225` |
-| Device read model `dependencies` | `ota.py:97-117` |
-| Assignment route items only, per-package uniqueness | `devices.py:396-413` |
-| `NO_MATCHING_ABI` error code mapping | `devices.py:18` |
-| Routes sorted by number of `{` placeholders, so fixed segments win over `{id}` | `server.py:278-281` |
-| Path params that are digits become `int` | `server.py:161-162` |
-| `MODULES` list | `server.py:16` |
-| Events run synchronously in the emitting thread | `events.py:6-16` |
-| Notifier: `EVENTS`, `DEFAULT_EVENTS` (all but `device.offline`), saved `events` list filters delivery, job `notify:false` suppresses | `notify.py:12-13`, `notify.py:49-57` |
-| Settings page event checkboxes and hard-coded default list | `static/settings.html:26`, `static/settings.js:23`, `static/settings.js:32` |
-| Job dedupe of identical queued jobs | `jobs.py:188-194` |
-| Jobs list filters `kind`, `status`, target `item_id`/`device_id`; `target` parsed in JSON | `jobs.py:370-385`, `jobs.py:318` |
-| Shell marks current nav link, renders worker/disk status | `static/app.js:175-196` |
-| UI static tests: `NAV`, unsafe-HTML rule, page-id check pages `item`, `builds` | `tests/test_ui_static.py:6-7`, `:54` |
-| Default notify events asserted in a test | `tests/test_device_notify.py:151` |
+| Planner `plan(items, artifacts, deps_by_item, item_installs, dep_installs, present)`, D8 dependency rule | `ota.plan` |
+| Items use only the first phone ABI | `ota.first_abi`, `build.latest_artifact` |
+| Pull-then-install for a never-downloaded dependency | `ota._pull_dependency` |
+| Item failure propagation `DEPENDENCY_FAILED` | `ota._run_item` |
+| Device read model `dependencies` | `ota._device_view` |
+| Assignment route items only, per-package uniqueness | `devices.put_assignments` |
+| `NO_MATCHING_ABI` error code mapping | `devices.ERROR_CODES` |
+| Routes sorted by number of `{` placeholders, so fixed segments win over `{id}` | `server.make_server` |
+| Path params that are digits become `int` | `server.Handler` |
+| `MODULES` list | `server.MODULES` |
+| Events run synchronously in the emitting thread | `events.emit` |
+| Notifier: `EVENTS`, `DEFAULT_EVENTS` (all but `device.offline`), saved `events` list filters delivery, job `notify:false` suppresses | `notify.EVENTS`, `notify.DEFAULT_EVENTS`, `notify.deliver` |
+| Settings page event checkboxes and hard-coded default list | `static/settings.html` ("Notify on" fieldset), `static/settings.js` (`loadNotify`, `saveNotify`) |
+| Job dedupe of identical queued jobs | `jobs.enqueue` |
+| Jobs list filters `kind`, `status`, target `item_id`/`device_id`; `target` parsed in JSON | `jobs.list_route`, `jobs.to_json` |
+| Shell marks current nav link, renders worker/disk status | `static/app.js` `shell` |
+| UI static tests: `NAV`, unsafe-HTML rule, page-id check pages `item`, `builds` | `tests/test_ui_static.py` (`UNSAFE`, `NAV`, `PageIdsTest`) |
+| Default notify events asserted in a test | `tests/test_device_notify.py` `NotifyTest` |
 | Live DB today: `user_version` 4; one `dependency_app` (1 → 23, `app.revanced.android.gms`); 10 `item_dependency` rows; 0 devices; upstream 23 `downloaded_tag` `7.2.2`; 0 dependency `ota_installs` rows | read-only query 2026-10-23 |
 
 ---
@@ -123,7 +123,7 @@ Commands use the test command of §1. `T_MOD <modules>` = the §1 module form.
 
 ### 3.1 Migration `schema/005_follow.sql` (frozen, verbatim)
 
-`003`/`004` are not edited: the live DB is at version 4 and `db.migrate` never re-runs them (`db.py:56-59`). A fresh DB runs 001–005 and ends in the same schema. `executescript` commits any open transaction first, so `PRAGMA foreign_keys=OFF` before `BEGIN` takes effect; with foreign keys on, `DROP TABLE upstream` would cascade into `bundle_info` (`schema/003_catalog.sql:54`).
+`003`/`004` are not edited: the live DB is at version 4 and `db.migrate` never re-runs them (`db.migrate`). A fresh DB runs 001–005 and ends in the same schema. `executescript` commits any open transaction first, so `PRAGMA foreign_keys=OFF` before `BEGIN` takes effect; with foreign keys on, `DROP TABLE upstream` would cascade into `bundle_info` (`schema/003_catalog.sql` table `bundle_info`).
 
 ```sql
 -- Follow project (spec 2026-10-23-follow-project-design §3.1). Owner: projects.
@@ -216,14 +216,14 @@ PRAGMA foreign_keys=ON;
 ```
 
 Notes:
-- MicroG keeps project id 1, so `item_dependency` pairs carry over unchanged (`catalog-seed.json:450-466`).
+- MicroG keeps project id 1, so `item_dependency` pairs carry over unchanged (`catalog-seed.json` key `item_dependencies`).
 - On the live DB the `device_projects` insert adds 0 rows (0 devices paired today, §2). It is still required and tested.
 - `upstream.downloaded_tag` of the MicroG row becomes NULL. The next pull downloads the current release again, verifies it and pins its signer. Until then the planner treats MicroG as "not downloaded" and pulls first (§5.4). Old `signer.sha256` files are ignored and removed by retention.
 - `source.upstream_id`, `source.cli_upstream_id`, `bundle_info.upstream_id`, `project.upstream_id` refer to `upstream` by name and resolve to the rebuilt table.
 
 ### 3.2 Files on disk
 
-Layout unchanged: `DATA/upstream/<upstream_id>/<safe tag>/` (`upstream.py:40-41`), 2 kept (`upstream.py:381-393`). For kind `project` the dir holds the matched APKs plus `apks.json`, written into the `.part` dir before commit (§5.2). `signer.sha256` is no longer written.
+Layout unchanged: `DATA/upstream/<upstream_id>/<safe tag>/` (`upstream.tag_dir`), 2 kept (`upstream._prune`). For kind `project` the dir holds the matched APKs plus `apks.json`, written into the `.part` dir before commit (§5.2). `signer.sha256` is no longer written.
 
 `apks.json` (frozen; list sorted by `file`):
 
@@ -232,14 +232,14 @@ Layout unchanged: `DATA/upstream/<upstream_id>/<safe tag>/` (`upstream.py:40-41`
   "version_name": "7.2.1", "version_code": 255070218, "signer_sha256": "0b6c…43e7", "size": 12345678}]
 ```
 
-`abi` is one of `catalog.ABIS` (`catalog.py:12`). `version_code` is an int or `null`. `signer_sha256` is lowercase hex.
+`abi` is one of `catalog.ABIS` (`catalog.py`). `version_code` is an int or `null`. `signer_sha256` is lowercase hex.
 
 ### 3.3 Seed
 
-- Upstream 23: `"kind": "project"` (was `dependency`, `catalog-seed.json:3465`).
+- Upstream 23: `"kind": "project"` (was `dependency`, `catalog-seed.json`).
 - Key `dependency_apps` is replaced by `"projects": [{"auto_push": false, "display_name": "MicroG RE", "id": 1, "package": "app.revanced.android.gms", "upstream_id": 23}]`.
-- `SEED_TABLES` (`catalog.py:881-890`): the `dependency_apps` entry becomes `"projects": ("project", ("id", "upstream_id", "package", "display_name", "auto_push"), "id")`. `BOOL_COLS` (`catalog.py:892`) gains `auto_push`. Signer columns are runtime state and not seeded.
-- `item_dependencies` keeps its pairs; `seed_import` / `export_seed` use column `project_id` (`catalog.py:922-923`, `catalog.py:937-938`).
+- `SEED_TABLES` (`catalog.py`): the `dependency_apps` entry becomes `"projects": ("project", ("id", "upstream_id", "package", "display_name", "auto_push"), "id")`. `BOOL_COLS` (`catalog.py`) gains `auto_push`. Signer columns are runtime state and not seeded.
+- `item_dependencies` keeps its pairs; `seed_import` / `export_seed` use column `project_id` (`catalog.seed_import`, `catalog.export_seed`).
 - `seed_text()` round trip stays byte-identical to the file (`tests/test_catalog_seed.py`).
 
 ---
@@ -266,13 +266,13 @@ def label(row: dict) -> str                               # display_name, else t
   - `termux-app_v0.118.2+github-debug_x86_64.apk` → matches `…v0.118.3…_x86_64.apk`, not `…_x86.apk`.
   - File names only shape the regex. They never decide the ABI (§0.2 item 8).
 - `apk_abi(path)`: `zipfile.ZipFile(path).namelist()`, central directory only, nothing extracted. ABI dirs = `{n.split("/")[1] for n in names if n.startswith("lib/") and n.count("/") >= 2}`. Exactly one dir and it is in `catalog.ABIS` → that ABI; otherwise `universal`. `zipfile.BadZipFile` or `OSError` → `ValueError("not an APK: <file name>")`.
-- `parse_apk_info(text)`: Python port of `src/build/utils.sh:568-576`. Remove `\r` and `"`. `package` = the first line matching `(?i)^\s*package`; `version_code` = first line matching `(?i)version[-_ ]?code`; `version_name` = first line matching `(?i)version[-_ ]?name`; each value = the text after the first `=` or `:`, stripped. `version_code` → `int` when all digits, else `None`. Returns `None` when `package` is missing or does not match `server.PACKAGE` (`server.py:28`).
-- `parse_signer(text)`: same regex as `upstream.py:366` (`^Signer #1 certificate SHA-256 digest: ([0-9a-fA-F]+)$` per stripped line), lowercased; `None` when absent.
+- `parse_apk_info(text)`: Python port of `src/build/utils.sh` function `apk_info`. Remove `\r` and `"`. `package` = the first line matching `(?i)^\s*package`; `version_code` = first line matching `(?i)version[-_ ]?code`; `version_name` = first line matching `(?i)version[-_ ]?name`; each value = the text after the first `=` or `:`, stripped. `version_code` → `int` when all digits, else `None`. Returns `None` when `package` is missing or does not match `server.PACKAGE`.
+- `parse_signer(text)`: same regex as `upstream._write_signer` (`^Signer #1 certificate SHA-256 digest: ([0-9a-fA-F]+)$` per stripped line), lowercased; `None` when absent.
 - `pick_apk(facts, abis)`: facts sorted by `file`. For each ABI in `abis` (phone order), return the first fact with that `abi`. Then return the first fact with `abi == "universal"`. Else `None`.
 
 ### 4.2 Store functions consumed by WP-2 (frozen)
 
-WP-2 calls these through `importlib.import_module('webui.projects')` at call time, like `ota.py:10-15`.
+WP-2 calls these through `importlib.import_module('webui.projects')` at call time, like `ota._item_dependencies`.
 
 ```python
 def item_projects(item_id: int) -> list[int]                 # item_dependency, ordered by project id
@@ -293,12 +293,12 @@ def check_assignment(item_ids: list[int], project_ids: list[int]) -> None   # ra
 | `signer_alert` | `project.signer_alert` |
 | `auto_push` | `bool` |
 
-`check_assignment(item_ids, project_ids)` raises `HttpError(400, …)` with: `unknown item N`, `unknown project N`, or `two apps with package P` (packages of the items plus the known packages of the projects must be unique). It replaces the loop at `devices.py:402-409`.
+`check_assignment(item_ids, project_ids)` raises `HttpError(400, …)` with: `unknown item N`, `unknown project N`, or `two apps with package P` (packages of the items plus the known packages of the projects must be unique). It replaces the loop at the loop in `devices.put_assignments`.
 
 ### 4.3 Release verification and signer pinning (WP-1 internal, called from `upstream.py`)
 
 ```python
-APKSIGNER = ["apksigner"]                                                     # moved from upstream.py:308
+APKSIGNER = ["apksigner"]                                                     # moved from upstream.APKSIGNER
 APKEDITOR = ["java", "-jar", os.environ.get("RELUME_APKEDITOR", "/opt/APKEditor.jar")]
 
 def verify_release(upstream_id: int, part: Path, log) -> list[dict]          # raises ValueError
@@ -317,14 +317,14 @@ def enqueue_auto_push(project_id: int, notify: bool = True) -> list[int]
 5. Two facts with the same `abi` → one log line `[!] 2 APKs for <abi>: <names>; installs use <first by name>` (not a failure).
 6. Write `part / "apks.json"` (§3.2) and return the facts.
 
-Because `verify` runs inside `_download`'s `try` (§5.2), a `ValueError` deletes the part dir, sets `check_error = "download failed: …"` and fails the job (`upstream.py:348-351`). A bad release never becomes `downloaded_tag`; the previous one stays installable.
+Because `verify` runs inside `_download`'s `try` (§5.2), a `ValueError` deletes the part dir, sets `check_error = "download failed: …"` and fails the job (`upstream._download`). A bad release never becomes `downloaded_tag`; the previous one stays installable.
 
 `after_download(upstream_id, tag, log, job_id)` (after commit, new tag only):
 - Reads `apks.json` of `tag`; `sig` = the common signer, `pkg` = the common package.
 - One `db.tx()`: set `project.package = pkg` when NULL. Then: pin NULL → `signer_sha256 = sig`, `signer_since = tag`, `signer_alert = NULL`. `sig == pin` → `signer_alert = NULL`. `sig != pin` and `sig != signer_alert` → `signer_alert = sig` and, after the transaction, `events.emit("project.signer_changed", {"project_id", "upstream_id", "tag", "old_sha256": pin, "new_sha256": sig, "job_id": job_id})` and log `[!] signer changed`. `sig != pin` and `sig == signer_alert` → nothing (no second event).
-- `signer_alert` NULL after this step and `auto_push = 1` → `enqueue_auto_push(project_id, notify)` where `notify = jobs.get(job_id)["options"].get("notify", True)` when `job_id` is set (same read as `notify.py:53-56`), else `True`.
+- `signer_alert` NULL after this step and `auto_push = 1` → `enqueue_auto_push(project_id, notify)` where `notify = jobs.get(job_id)["options"].get("notify", True)` when `job_id` is set (same read as `notify.deliver`), else `True`.
 
-`enqueue_auto_push(project_id, notify)`: for each device in `device_projects` of the project, ordered by device id, `jobs.enqueue("ota", {"device_id": d, "project_ids": [project_id]}, "upstream", options={"notify": notify})`. Trigger `upstream` exists (`schema/001_core.sql:7`). Returns the job ids. Identical queued jobs collapse (`jobs.py:191-194`).
+`enqueue_auto_push(project_id, notify)`: for each device in `device_projects` of the project, ordered by device id, `jobs.enqueue("ota", {"device_id": d, "project_ids": [project_id]}, "upstream", options={"notify": notify})`. Trigger `upstream` exists (`schema/001_core.sql` table `jobs`). Returns the job ids. Identical queued jobs collapse (`jobs.enqueue`).
 
 ---
 
