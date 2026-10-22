@@ -18,7 +18,7 @@ One Docker Compose file, five containers. The existing builder container becomes
 | 4a Live log, history with failure reason, retention | core §5 and §8 (jobs, SSE log), build §5 (fail codes), build §6 (retention) |
 | 4b Notifications (one of Telegram, Discord, ntfy) | device D9, §4.4, §6 |
 | 4c Web editing of patch selection, options, version pin | catalog §4, §4.1, §4.2 |
-| 4d Multiple phones, per-phone apps, dependency apps | device §3.1 (`device_assignments`), D8, §4.3; catalog §3 (`dependency_app`, `item_dependency`) |
+| 4d Multiple phones, per-phone apps, followed projects | device §3.1 (`device_assignments`), §4.3; followed projects (`docs/superpowers/specs/2026-10-23-follow-project-design.md` §3: `project`, `item_dependency`, `device_projects`) |
 | Linux host / NAS (host network, mDNS) | core §1, §12; device D3, D4 |
 | macOS Docker Desktop (manual IP:port + code) | core §1, §12; device D4, §4.1 |
 | Single admin with password, LAN | core §7 (plain HTTP, decision Q6) |
@@ -37,7 +37,7 @@ Tables and owners (one schema file per owner, core §4):
 |---|---|
 | core `001_core.sql` | `settings`, `sessions`, `jobs`, `schedules` |
 | build `002_build.sql` | `build_jobs` (detail of a `jobs` row, CASCADE), `artifacts` (RESTRICT) |
-| catalog `003_catalog.sql` | `upstream`, `source`, `app`, `grp`, `item`, `bundle_info`, `dependency_app`, `item_dependency` |
+| catalog `003_catalog.sql` | `upstream`, `source`, `app`, `grp`, `item`, `bundle_info`; `005_follow.sql` rebuilds `upstream` (kind `project`), `item_dependency`, `ota_installs` and adds `project`, `device_projects` (`docs/superpowers/specs/2026-10-23-follow-project-design.md` §3.1) |
 | device `004_device.sql` | `devices`, `device_assignments`, `ota_jobs` (detail of a `jobs` row, CASCADE), `ota_installs` |
 | ci | no tables (state = release asset labels, ci §4.3) |
 
@@ -58,7 +58,7 @@ Events (`events.emit` / `events.subscribe`, core §5):
 | `ota.failed` | device | `{job_id, device_id, reason}` | notifier |
 | `device.offline` | device | `{job_id, device_id}` | notifier |
 
-In-process functions between parts: `catalog.resolve_items(target)`, `catalog.resolve_upstreams(target)`, `devices.resolve_devices(target)` (schedule expansion, core §4); `catalog.job_input(item_id)` (build input, catalog §5.3, fields = build §3.1); `build.latest_artifact(item_id, abi)` (device §4.3); `build.item_status(item_ids)` and `build.needs_build(item_id)` (build §3.4; App list status, `only_changed` schedules); `build.forget_item(item_id)` (item delete, build §3.4); `catalog.set_apkmirror_versions(package, versions)` (called by the build handler, catalog §3); `jobs.run_inline(kind, target, trigger, options=None)` (core §5, used by ci §4); catalog dependency lookup `(dependency_app_id, package, tag, file path, signer_sha256)` (catalog §3).
+In-process functions between parts: `catalog.resolve_items(target)`, `catalog.resolve_upstreams(target)`, `devices.resolve_devices(target)` (schedule expansion, core §4); `catalog.job_input(item_id)` (build input, catalog §5.3, fields = build §3.1); `build.latest_artifact(item_id, abi)` (device §4.3); `build.item_status(item_ids)` and `build.needs_build(item_id)` (build §3.4; App list status, `only_changed` schedules); `build.forget_item(item_id)` (item delete, build §3.4); `catalog.set_apkmirror_versions(package, versions)` (called by the build handler, catalog §3); `jobs.run_inline(kind, target, trigger, options=None)` (core §5, used by ci §4); `projects.item_projects`, `projects.assigned_projects`, `projects.project_info`, `projects.check_assignment` (`docs/superpowers/specs/2026-10-23-follow-project-design.md` §4.2).
 
 Settings keys: core `admin_password_hash`, `job_history_count`, `base_url`; build `artifact_retention`; device `notify`.
 
@@ -77,12 +77,12 @@ All routes need the admin session except the two marked "no auth". Mutating requ
 | `GET/PUT /api/settings` | core | job history size, base URL, artifact retention count, GitHub token details, server info (arch, TZ, network mode, disk use) |
 | `GET /api/catalog` | catalog | app list: groups with ordered items, names, icons, versions, upstream state |
 | `GET/POST /api/sources`, `PUT/DELETE /api/sources/{id}` | catalog | patch sources |
-| `GET/POST /api/items`, `GET/PUT/DELETE /api/items/{id}` | catalog | items: display name, group, enabled, variants, dependency apps, engine options |
+| `GET/POST /api/items`, `GET/PUT/DELETE /api/items/{id}` | catalog | items: display name, group, enabled, variants, dependency projects (`project_ids`), engine options |
 | `GET/POST /api/groups`, `PUT/DELETE /api/groups/{id}`, `PUT /api/groups/order`, `PUT /api/groups/{id}/items/order` (id `0` = Ungrouped) | catalog | groups (name, colour) and ordering |
 | `GET/PUT /api/items/{id}/patches`, `PUT /api/items/{id}/version` | catalog | patch selection and options, version pin |
 | `GET /api/apps/{pkg}/icon`, `POST /api/apps/{pkg}/icon/refresh`, `PUT /api/apps/{pkg}` | catalog | icon, display name, APKMirror/APKPure URLs |
 | `GET /api/upstreams`, `POST /api/upstreams/check`, `POST /api/upstreams/{id}/pull` | catalog | upstream state, check now, pull (job) |
-| `GET /api/dependency-apps` | catalog | dependency apps (MicroG RE) for the item edit page |
+| `GET/POST /api/projects`, `PUT/DELETE /api/projects/{id}`, `POST /api/projects/assets`, `POST /api/projects/{id}/signer/accept` | projects | followed projects (`docs/superpowers/specs/2026-10-23-follow-project-design.md` §6) |
 | `POST /api/items/{id}/build`, `POST /api/builds` | build | rebuild one item / many |
 | `GET /api/items/{id}/artifacts`, `GET /api/artifacts/{id}/download` | build | artifacts, download |
 | `GET /api/groups/{id}/download` (id `0` = Ungrouped) | build | ZIP of the newest successful artifacts of the group's items (build §3.4) |
@@ -99,7 +99,7 @@ Contradictions between the parts and how they were resolved (arch-core is the ti
 |---|---|---|---|
 | Job table | build `build_jobs` and device `ota_jobs` each held status/trigger/times; core had `jobs` | one core `jobs` table for lifecycle; `build_jobs` and `ota_jobs` hold kind-specific detail keyed by `job_id` | one history list, one log/SSE path, one queue, one restart rule |
 | Auto version with no compatible version | catalog: fail; build: fall back to newest with a warning | fail with `version_unresolved`; the user can choose `version_mode='latest'` explicitly | the silent fallback is a known hazard (`docs/logs/2026-10-19-preflight-build.md:73`); `latest` keeps the behaviour available on purpose |
-| Dependency link table | catalog `item_dependency(item_id, dependency_app_id)`; device `item_dependencies(item_id, upstream_id)` | catalog's table | `dependency_app` carries package and display name the device planner needs |
+| Dependency link table | `item_dependency(item_id, project_id)` | followed projects (`docs/superpowers/specs/2026-10-23-follow-project-design.md` §3.1) | `project` carries package, display name and signer pin; `projects.project_info` gives the planner the APK path |
 | OTA concurrency | device: parallel per device; core: one OTA worker | one OTA worker | one phone is the common case; per-device workers are a later change inside `jobs.py` |
 | Scheduled OTA | device `devices.ota_cron`; core `schedules` | core `schedules` kind `ota` | one scheduler, one editor, no cron parser |
 | Notification channels | device: many channels; contract: "one of" | one channel in settings key `notify` | contract wording; fewer routes |
@@ -441,7 +441,7 @@ No new container and no new dependency: GitHub and Play calls are plain HTTPS fr
 ### 3. Data model (schema file `local/webui/schema/003_catalog.sql`, owned here)
 
 ```
-upstream    id PK, kind ('patches'|'cli'|'dependency'|'module'), repo ('owner/name'),
+upstream    id PK, kind ('patches'|'cli'|'project'|'module'), repo ('owner/name'),
             channel ('stable'|'prerelease'|'tag'), tag (text, only for channel='tag'),
             asset_regex, latest_tag, latest_published_at, checked_at, check_error,
             downloaded_tag, notified_tag
@@ -461,8 +461,8 @@ item        id PK, source_id → source, package → app, key, display_name (nul
             patch_overrides (JSON), engine_options (JSON, null unless engine is lspatch/npatch, xposed §4)
             UNIQUE(source_id, package)
 bundle_info upstream_id, tag, package, patches (JSON, §5.2)   PK(upstream_id, tag, package)
-dependency_app  id PK, upstream_id → upstream (kind='dependency'), package, display_name
-item_dependency item_id → item ON DELETE CASCADE, dependency_app_id → dependency_app   PK(both)
+project         id PK, upstream_id → upstream (kind='project') UNIQUE, package, display_name, auto_push, signer_sha256, signer_since, signer_alert (`docs/superpowers/specs/2026-10-23-follow-project-design.md` §3.1)
+item_dependency item_id → item ON DELETE CASCADE, project_id → project ON DELETE CASCADE   PK(both)
 ```
 
 Rules:
@@ -471,7 +471,7 @@ Rules:
 - **Several sources may share one upstream row** (dedup by `UNIQUE(repo, channel, tag)`), so one GitHub request serves them.
 - **CLI upstream per source** (`source.cli_upstream_id`): all Morphe sources share one row (`kind='cli'`, `MorpheApp/morphe-desktop`, stable; every script downloads it the same way today, `morphe.sh:7` and 15 others); LSPatch and NPatch have their own rows (xposed §4.1).
 - **Item type = `source.engine`**: `morphe` = patches item; `lspatch`/`npatch` = Xposed module item (xposed §4). `revanced-cli v4.6.0` downloaded by `BiliRoamingM.sh:6` and `Dropped-Patches-Revanced.sh:10` is never run by `patch()` (`utils.sh:765` always runs `morphe-desktop-*.jar`), so it is not modelled.
-- **Dependency apps** (MicroG RE, `README.md:24,134`): `dependency_app` rows backed by an upstream row with `kind='dependency'`; `item_dependency` links items to them, editable on the item edit page. Catalog checks/downloads them like patches and exposes `(dependency_app_id, package, tag, file path, signer_sha256)`; `signer_sha256` from `apksigner verify --print-certs` at download. arch-device consumes this at install time only. Seed: MicroG RE (`MorpheApp/MicroG-RE`, stable, asset_regex `^microg-[0-9.]+\.apk$` = universal with icon; release 7.2.1 assets checked 2026-10-19: `microg-7.2.1.apk`, `-noicon`, and per-ABI `-arm64-v8a`/`-armeabi-v7a` variants) linked to YouTube, YouTube Music, Google Photos (`README.md:24`) and Solid Explorer hoo-dles (`README.md:954`) items. Per-ABI dependency assets are not modelled; the universal APK installs on all ABIs.
+- **Followed projects** (MicroG RE, `README.md:24,134`): replaced the dependency-app model; see `docs/superpowers/specs/2026-10-23-follow-project-design.md`. Seed: project 1 MicroG RE (`MorpheApp/MicroG-RE`, stable, asset_regex `^microg-[0-9.]+\.apk$`) linked through `item_dependency` to YouTube, YouTube Music, Google Photos (`README.md:24`) and Solid Explorer hoo-dles (`README.md:954`) items.
 - `item.key` is the artifact name stem used today (first arg of `patch`, e.g. `youtube`, `youtube-music-arm64-v8a`; `morphe.sh:14,55`). arch-build uses it for artifact naming.
 - `item.enabled = false` excludes the item from "build all" and schedules but keeps its settings.
 - `app.apkmirror_versions`: non-beta versions listed on the first page of the app's APKMirror list page, written only by `catalog.set_apkmirror_versions(package, versions)` from the build handler (build §3.2, §4 step 5d), which also sets `apkmirror_checked_at`. The catalog never fetches APKMirror itself (§3.3). `job_input` sets `apkmirror.versions_due` = true when `apkmirror_checked_at` is null or older than 24 h (§5.3).
@@ -539,7 +539,7 @@ For each upstream row (deduplicated):
 3. Inspect (patches upstreams only). First, if the CLI upstream (`source.cli_upstream_id`) of the sources on this upstream has no `downloaded_tag`, pull it in the same job (steps 1–2 for that row). Then run in the web server container, per package used by items of the sources on this upstream:
    `java -jar <cli> options-create -p <files> -f <package> -o <tmp.json>` (names, default enabled, option defaults as JSON) and
    `java -jar <cli> list-patches --patches <files> --with-packages --with-versions --with-options -f <package>` (descriptions, option types, compatible versions; text parsed like `utils.sh:195-201`).
-   Store the merged result in `bundle_info`. `cli`, `module` and `dependency` rows are not inspected.
+   Store the merged result in `bundle_info`. `cli`, `module` and `project` rows are not inspected (`project` rows are verified instead, `docs/superpowers/specs/2026-10-23-follow-project-design.md` §4.3).
 4. Keep the two newest tags per upstream on disk, delete older ones (a job started before the pull still has its files).
 5. Optional rebuild: if the job's `options.rebuild` is true (absent = false; schedules default true and the UI buttons send true, decision Q4; `ci-build` sends none, ci §4.2) and a new tag was downloaded, enqueue builds of the enabled items of the sources on this upstream.
 
@@ -566,15 +566,15 @@ Seed: one daily schedule `{"every":"day","at":"09:00"}` of kind `upstream`, targ
 |---|---|
 | exposes → UI | `GET /api/catalog`, `GET /api/items/{id}` (item object below); CRUD `/api/sources`, `/api/items`, `/api/groups`; the reorder, patches, version, upstream check/pull and icon routes above |
 | exposes → arch-build | job input §5.3 via an in-process function; `variants` JSON stored as given |
-| exposes → arch-device | `dependency_app` + `item_dependency` rows; per dependency `(dependency_app_id, package, tag, file path, signer_sha256)`; event `upstream.new_version` |
+| exposes → arch-device | `project`, `item_dependency`, `device_projects` rows and `projects.project_info` (`docs/superpowers/specs/2026-10-23-follow-project-design.md` §4.2); event `upstream.new_version` |
 | exposes → core | `resolve_items(target)`, `resolve_upstreams(target)`, upstream job handler, event `upstream.new_version` |
 | consumes | `build.item_status(item_ids)` for the item object (build §3.4); Java toolchain in the web container (build §2.1); `jobs.enqueue('build', ..., 'upstream')` (core §5); token file; scheduler (core §6); notification sender (device) |
 
 Item object (one shape for the App list and App detail, ui §2):
 - `GET /api/catalog` → `{groups:[{id, name, color, position, items:[item…]}], ungrouped:[item…]}`, groups and items in `position` order.
 - item = `{id, label (§3.2), display_name, source_id, source_name, engine, package, key, enabled, group_id, position, icon_url, abis:[variant abi…], upstream:{id, repo, channel, downloaded_tag, latest_tag, checked_at, check_error}, last_build, last_success, active_job}`; the last three come from `build.item_status` (build §3.4).
-- `GET /api/items/{id}` = item + `version {mode, pin, allow_nearest}`, `variants`, `engine_options`, `dependency_app_ids`, `apkmirror {versions, checked_at}` (from `app.apkmirror_versions`/`apkmirror_checked_at`, §3; the Version tab marks versions newer than `compatible_versions[0]` as "not in patch list", ui §2).
-- `POST /api/items {source_id, package, group_id, display_name?, variants?, engine_options?}`: creates the `app` row if missing (icon fetched by the background task, §3.3); `variants` default = universal + arm64-v8a, APKMirror `apk` download (decision Q5). `PUT /api/items/{id}` takes the same fields plus `enabled`, `dependency_app_ids`. `DELETE /api/items/{id}` follows the delete rules of §0.3 (409 while a build of the item is queued or running). When the created item's source upstream is a `patches` row with a `downloaded_tag` and no `bundle_info` row exists for `(upstream_id, downloaded_tag, package)`, `POST /api/items` also enqueues the pull job of that upstream with `options` `{"rebuild":false}`; step 1 of §5.2 then finds the missing package and re-inspects. The step-1 rule alone would wait for the next scheduled or manual pull, so the edit page would show "patch list unavailable" until then; one enqueue at creation is the smallest fix.
+- `GET /api/items/{id}` = item + `version {mode, pin, allow_nearest}`, `variants`, `engine_options`, `project_ids`, `apkmirror {versions, checked_at}` (from `app.apkmirror_versions`/`apkmirror_checked_at`, §3; the Version tab marks versions newer than `compatible_versions[0]` as "not in patch list", ui §2).
+- `POST /api/items {source_id, package, group_id, display_name?, variants?, engine_options?}`: creates the `app` row if missing (icon fetched by the background task, §3.3); `variants` default = universal + arm64-v8a, APKMirror `apk` download (decision Q5). `PUT /api/items/{id}` takes the same fields plus `enabled`, `project_ids`. `DELETE /api/items/{id}` follows the delete rules of §0.3 (409 while a build of the item is queued or running). When the created item's source upstream is a `patches` row with a `downloaded_tag` and no `bundle_info` row exists for `(upstream_id, downloaded_tag, package)`, `POST /api/items` also enqueues the pull job of that upstream with `options` `{"rebuild":false}`; step 1 of §5.2 then finds the missing package and re-inspects. The step-1 rule alone would wait for the next scheduled or manual pull, so the edit page would show "patch list unavailable" until then; one enqueue at creation is the smallest fix.
 - `POST /api/sources {id, name, engine, repo, channel, tag?, asset_regex?, keystore, cli_upstream_id}`: `repo/channel/tag` are deduped into an `upstream` row (kind `patches`, or `module` when `engine` ≠ `morphe`, xposed §5.1). `DELETE /api/sources/{id}` answers 409 while items use it.
 
 ### 7. Data flow
@@ -874,7 +874,7 @@ Facts cited from `docs/logs/2026-10-19-preflight-runtime.md` (= RT) and `docs/lo
 | D5 | adb host key dir `/data/home/.android` (`adbkey`, `adbkey.pub`): the `app` container sets `HOME=/data/home` (core §1), so adb's default `$HOME/.android` is on the persistent data dir. | The key is the host identity the phone trusts after pairing (RT §5 [B] "known to the host from pairing"); losing it = re-pair every phone. |
 | D6 | Signature mismatch is detected from the install result, not by a pre-check. On `INSTALL_FAILED_UPDATE_INCOMPATIBLE` the job stops and the UI offers "Uninstall and install (app data is lost)" requiring explicit confirmation. Never automatic, never in scheduled runs. | `pm install` already verifies the signer; a pre-check duplicates it. Uninstall destroys data (RT §5). |
 | D7 | "Needs update" = the newest successful artifact's `build_job_id` differs from the `build_job_id` of the last successful install of that item on that device, **or** the package is missing on the phone. Version code is not the trigger. | A new patches release rebuilds the same app version (same versionCode); comparing versionCode would never ship patch updates. `adb install -r` reinstalls same version. |
-| D8 | Dependency apps (MicroG RE) are installed **before** the item that needs them, only if the package is missing on the phone or the cached release tag differs from the tag this server last installed on that phone (same rule as D7). The item → dependency link is catalog's `item_dependency(item_id, dependency_app_id)`; download/caching is catalog's generic upstream (row kind `dependency`, repo `MorpheApp/MicroG-RE`). | PP §10: YouTube, YouTube Music, Google Photos, Solid Explorer (hoo-dles) need MicroG RE (README.md:24,954); nothing in the repo fetches it. Release 7.2.1 assets include the universal `microg-7.2.1.apk` (`gh api repos/MorpheApp/MicroG-RE/releases/latest`), so one universal asset serves every phone. |
+| D8 | Dependency projects (MicroG RE) are installed **before** the item that needs them; the rule, ordering and signer blocking are in `docs/superpowers/specs/2026-10-23-follow-project-design.md` §5.4. | PP §10: YouTube, YouTube Music, Google Photos, Solid Explorer (hoo-dles) need MicroG RE (README.md:24,954). |
 | D9 | Notifications: one channel, type `telegram` / `discord` / `ntfy`, with per-event toggles. Plain HTTPS POST from the web server, no SDKs. | Requirement 4b says "to one of" the three. Each is one HTTP request (§6). |
 
 ### 2. Components and responsibilities
@@ -913,7 +913,7 @@ Dependency links: catalog's `item_dependency` (catalog §3), read only here. Sch
 
 `ota_jobs` — job_id pk → core `jobs(id)` ON DELETE CASCADE, device_id (plain column, no FK, §0.3 delete rules), item_ids (JSON, copied from the job target; null = all assignments), mode (copied from `jobs.options.mode`: `normal` / `force_reinstall` / `downgrade`), outcome (`done` / `partial` / `failed` / `skipped_offline`, null while running). Status, trigger and times live in core `jobs`: outcome `done`/`partial` → core status `success`, `failed`/`skipped_offline` → `failed`; the outcome is repeated in `jobs.reason`.
 
-`ota_installs` — id, job_id → core `jobs(id)` ON DELETE CASCADE, device_id (plain column, no FK), kind (`item` / `dependency`), ref_id (item_id, or upstream_id of the dependency), build_job_id (null for dependency), upstream_tag (null for item), package, version_name, version_code, result (`installed` / `up_to_date` / `failed`), error_code (§5), error_text (last 2 KB of adb output). History and D7 lookup ("last successful install of item X on device Y") read this table.
+`ota_installs` — id, job_id → core `jobs(id)` ON DELETE CASCADE, device_id (plain column, no FK), kind (`item` / `project`), ref_id (item_id, or project id), build_job_id (null for project), upstream_tag (null for item), package, version_name, version_code, result (`installed` / `up_to_date` / `failed`), error_code (§5), error_text (last 2 KB of adb output). History and D7 lookup ("last successful install of item X on device Y") read this table. Schema after migration 005: `docs/superpowers/specs/2026-10-23-follow-project-design.md` §3.1.
 
 Notification channel: core settings key `notify` = `{type, enabled, config, events}`; config: telegram `{bot_token, chat_id}`, discord `{webhook_url}`, ntfy `{server_url, topic, token?}`; events = JSON array of event names from §3.3.
 
@@ -923,7 +923,7 @@ Secrets (`bot_token`, `webhook_url`, ntfy `token`) are write-only through the AP
 
 | route | purpose |
 |---|---|
-| `GET /api/devices` | devices + online state + `assignments:[{item_id, installed:{version_name, build_job_id, at}|null, available:{version_name, build_job_id}|null, pending}]` + `dependencies:[{dependency_app_id, display_name, package, installed_tag|null, available_tag, required_by:[item_id]}]`; computed from `ota_installs`, `latest_artifact` and catalog dependency rows without calling adb (`pending` = D7/D8 minus the on-phone presence check) |
+| `GET /api/devices` | devices + online state + `assignments:[{item_id, installed:{version_name, build_job_id, at}|null, available:{version_name, build_job_id}|null, pending}]` + `projects:[DP]` (`docs/superpowers/specs/2026-10-23-follow-project-design.md` §6); computed from `ota_installs`, `latest_artifact` and `projects.project_info` without calling adb (`pending` = D7/D8 minus the on-phone presence check) |
 | `GET /api/devices/discovered` | current mDNS map: pairing services (not yet paired) and connect services (with matched device id if known) |
 | `POST /api/devices/pair` `{host, pair_port, code, connect_port?}` | `adb pair host:pair_port code`; then connect (connect_port from body, or from mDNS by same host); then read facts; upsert device by serial |
 | `POST /api/devices/{id}/connect` `{host?, connect_port?}` | reconnect; body optional (Mac: user types the new port shown on the phone) |
@@ -948,7 +948,7 @@ Notifier event names = these names; default toggles for a new channel: all excep
 #### 3.4 Consumed from other parts
 
 - arch-build (agreed): `artifacts` rows `{item_id, job_id (= build_job_id here), path, package, version_name, version_code, abi (arm64-v8a|armeabi-v7a|x86|x86_64|universal), signer_sha256, size, created_at}`; package/version read from the patched APK. `latest_artifact(item_id, abi)` = newest succeeded job, exact ABI else `universal`. Retention never deletes the newest succeeded job's files and only deletes files older than the newest N jobs. No pin: the executor resolves the artifact immediately before each install (§4.3 step 4); a missing file at that moment re-resolves once.
-- arch-catalog (agreed): `upstream` rows of kind `dependency` with latest downloaded tag, cached file path and package; asset regex for MicroG RE `^microg-[0-9.]+\.apk$` (universal, with icon).
+- followed projects: `projects.project_info(project_id, abis)` gives downloaded tag, picked APK path and package (`docs/superpowers/specs/2026-10-23-follow-project-design.md` §4.2).
 - core: scheduler (schedules kind `ota`), job queue (`jobs.register('ota', handler, detail)`), event bus, log streaming, DB, `HOME=/data/home`, network mode per platform, `base_url` setting for links.
 
 ### 4. Data flow
@@ -1109,7 +1109,7 @@ Rendering rules: lists are rebuilt from JSON with template strings; every server
 
 | mockup element | spec | decision |
 |---|---|---|
-| Header: name, source, package, upstream repo + channel, built version, "v1.5.0 available" | — | **add** `GET /api/items/{id}` (catalog §6, same item object + `version`, `variants`, `dependency_app_ids`, `upstream.repo/channel`) |
+| Header: name, source, package, upstream repo + channel, built version, "v1.5.0 available" | — | **add** `GET /api/items/{id}` (catalog §6, same item object + `version`, `variants`, `project_ids`, `upstream.repo/channel`) |
 | Header buttons Update upstream / Rebuild / Download | as App list | covered |
 | "Installed on" devices with installed version and "(behind)", Manage devices | — | **add** per-assignment state in `GET /api/devices` (device §3.2): `installed`, `available`, `pending`; client filters devices by item |
 | Patches tab: switch per patch, description, counts "133/142", live counter, All on / All off / Reset to defaults, show filter, search | `GET/PUT /api/items/{id}/patches` (catalog §4.1) | covered / client. Reset = PUT with empty overrides. |
@@ -1176,7 +1176,7 @@ Rendering rules: lists are rebuilt from JSON with template strings; every server
 | Online latency "4 ms" | — | **deferred to next phase** (§0.6 F3): adb has no cheap ping |
 | Assigned apps editor | `PUT /api/devices/{id}/assignments` | covered |
 | Assigned app installed → available, ✓ when current, "OTA now · 2 pending" | — | **add** per-assignment `{item_id, installed:{version_name, build_job_id, at}|null, available:{version_name, build_job_id}|null, pending}` in `GET /api/devices`, from `ota_installs` and `latest_artifact` without calling adb (device §3.2) |
-| Dependency apps: microG version installed / not installed, required by, "installs first" | device D8, catalog `item_dependency` | **add** per-device `dependencies:[{dependency_app_id, display_name, package, installed_tag|null, available_tag, required_by:[item_id]}]` in `GET /api/devices` (device §3.2). The "Install / upgrade before apps" switch is **dropped**: always on (D8). |
+| Dependency projects: installed / available tag, required by, pending | device D8, `item_dependency`, `device_projects` | per-device `projects: [DP]` in `GET /api/devices` (`docs/superpowers/specs/2026-10-23-follow-project-design.md` §6). |
 | Last OTA result on the card | `GET /api/jobs?kind=ota&device_id=&limit=1` + list `detail` | covered |
 | Offline guidance, disabled OTA reason | device §5 `DEVICE_OFFLINE` | client text |
 | Unpair, Reconnect, OTA now, OTA all online | `DELETE /api/devices/{id}`, `POST …/connect`, `POST …/ota` | covered; OTA all = client loop over online devices |
@@ -1214,7 +1214,7 @@ Rendering rules: lists are rebuilt from JSON with template strings; every server
 | spec feature | UI placement |
 |---|---|
 | `PUT /api/apps/{pkg}` (display name, APKMirror/APKPure URLs), `POST /api/apps/{pkg}/icon/refresh` | App detail header menu "Edit app…" (dialog) |
-| `PUT /api/items/{id}` enabled, display name, group, variants, dependency apps (`GET /api/dependency-apps`) | App detail header menu "Item settings…" (dialog); variants as ABI chips (universal, arm64-v8a, armeabi-v7a, x86, x86_64) |
+| `PUT /api/items/{id}` enabled, display name, group, variants, dependency projects (`project_ids`, list from `GET /api/projects`) | App detail header menu "Item settings…" (dialog); variants as ABI chips (universal, arm64-v8a, armeabi-v7a, x86, x86_64) |
 | `DELETE /api/items/{id}`, `POST/PUT/DELETE /api/sources/{id}` | item settings dialog; Add app dialog → "New source…" sub-form (id, name, engine Morphe/LSPatch/NPatch, repo, channel/tag, asset regex, keystore, CLI upstream; xposed §8) |
 | `PATCH /api/devices/{id}` `ota_after_build` | switch "Install after build" on the device card |
 | Global "Update CLI" (catalog §5.2) | Settings, GitHub token card: button "Update CLI" = pull of the CLI upstream |
@@ -1439,7 +1439,7 @@ Telegram is **not** a module source in v1: nothing uses it today, and it needs a
 ### 4. Data model changes (catalog `003_catalog.sql`)
 
 ```
-upstream  kind ('patches'|'cli'|'dependency'|'module')                       -- + 'module'
+upstream  kind ('patches'|'cli'|'project'|'module')                          -- + 'module'; 'project' since 005_follow.sql
 source    + engine TEXT NOT NULL DEFAULT 'morphe' CHECK (engine IN ('morphe','lspatch','npatch'))
           + cli_upstream_id → upstream (kind='cli')                         -- per source, was one global row
           keystore: unchanged column; seed 'lspatch-signing.p12' / 'fiorenmas.ks' for Xposed sources
