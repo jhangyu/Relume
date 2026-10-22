@@ -235,7 +235,7 @@ class HandlerFailTest(BuildCase):
 
 
 class IsolationTest(BuildCase):
-    """Spec L779: patch code runs as RELUME_RUNNER_UID, sees DATA through RELUME_RUNNER_DATA (compose: /data), keeps no caps.
+    """Patch code runs as RELUME_RUNNER_UID, sees DATA through RELUME_RUNNER_DATA (compose: /data), keeps no caps.
     T_PY runs as root, so setpriv can switch uid here."""
 
     def test_runner_uid_paths_and_secret(self):

@@ -72,7 +72,7 @@ def parse_apk_info(text):
 
 
 def parse_signer(text):
-    """None unless exactly one digest line: a certificate DN may carry a newline and a fake digest line (review B1)."""
+    """None unless exactly one digest line: a certificate DN may carry a newline and a fake digest line."""
     found = [m.group(1).lower() for m in map(_SIGNER.match, (line.strip() for line in text.splitlines())) if m]
     return found[0] if len(found) == 1 else None
 
@@ -113,7 +113,7 @@ def _apks(upstream_id, tag):
 
 def _alert(r, facts):
     """Stored signer_alert, else the downloaded tag's signer when it differs from the pin: a job that stopped between
-    the tag commit and after_download must not leave a new-signer release installable (review S1)."""
+    the tag commit and after_download must not leave a new-signer release installable."""
     sig = facts[0].get("signer_sha256") if facts else None
     return r["signer_alert"] or (sig if r["signer_sha256"] and sig and sig != r["signer_sha256"] else None)
 
@@ -165,12 +165,11 @@ def check_assignment(item_ids, project_ids):
 
 def _tool(argv, log, parse, error):
     lines = []
-    # parses an untrusted downloaded APK: isolated runner uid like the inspector (spec L779)
+    # parses an untrusted downloaded APK: isolated runner uid like the inspector
     with tempfile.TemporaryDirectory() as tmp:
         os.chmod(tmp, 0o770)
         try:
-            rc = log.run(jobs.isolate(argv), cwd=tmp, env=dict(upstream._child_env(), HOME=tmp), timeout=120,
-                         on_line=lines.append)
+            rc = jobs.run_isolated(log, argv, tmp, timeout=120, on_line=lines.append)
         except jobs.JobFailed as e:
             if str(e) == "cancelled":
                 raise
@@ -321,15 +320,18 @@ def _device_ids(v):
     return v
 
 
-def _release(repo, channel, rx):
-    """(release, matched assets) through upstream._fetch; GitHub errors become HTTP errors (never 401)."""
+def _release(repo, channel, rx, no_match):
+    """(release, matched assets) through upstream.fetch; GitHub errors become HTTP errors (never 401), no matching
+    asset becomes 400 no_match."""
     try:
-        return upstream._fetch({"kind": "project", "repo": repo, "channel": channel, "tag": None, "asset_regex": rx})
+        return upstream.fetch({"kind": "project", "repo": repo, "channel": channel, "tag": None, "asset_regex": rx})
     except upstream.TokenRejected:
         raise server.HttpError(502, "token rejected")
     except upstream.RateLimited as e:
         raise server.HttpError(429, str(e))
-    except upstream._CheckError as e:
+    except upstream.NoMatchingAsset:
+        raise server.HttpError(400, no_match)
+    except upstream.CheckError as e:
         raise server.HttpError(400, str(e))
 
 
@@ -353,12 +355,7 @@ def list_projects(req):
 def post_assets(req):
     b = req.json or {}
     repo, channel = server.validate_repo(b.get("repo"), "repo"), _channel(b.get("channel"))
-    try:
-        rel, assets = _release(repo, channel, r"\.apk$")
-    except server.HttpError as e:
-        if e.message == "no matching asset":
-            raise server.HttpError(400, "no APK asset in latest release")
-        raise
+    rel, assets = _release(repo, channel, r"\.apk$", "no APK asset in latest release")
     names = [a["name"] for a in assets]
     rx = None
     if b.get("selected") is not None:
@@ -389,12 +386,7 @@ def post_project(req):
     devs = _device_ids(b.get("device_ids", []))
     if _exists(repo, channel):
         raise server.HttpError(409, "project exists")
-    try:
-        _, assets = _release(repo, channel, rx)
-    except server.HttpError as e:
-        if e.message == "no matching asset":
-            raise server.HttpError(400, "asset_regex matches no asset")
-        raise
+    _, assets = _release(repo, channel, rx, "asset_regex matches no asset")
     if not any(a["name"].endswith(".apk") for a in assets):
         raise server.HttpError(400, "asset_regex matches no asset")
     with db.tx() as c:

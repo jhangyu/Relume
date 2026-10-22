@@ -16,7 +16,7 @@ RUNNER = str(REPO_ROOT / "src" / "build" / "build-item.sh")
 CATALOG = None  # test seam; None -> webui.catalog (imported at call time)
 FAIL_CODES = ("upstream_missing", "version_unresolved", "apk_not_listed", "download_failed",
               "merge_failed", "patch_failed", "timeout", "internal")
-ENV_KEYS = ("PATH", "TZ", "LANG", "FLARESOLVERR_URL", "CFBYPASS_URL", "APKM_SOLVER_URL")
+SOLVER_ENV = ("FLARESOLVERR_URL", "CFBYPASS_URL", "APKM_SOLVER_URL")  # passed to the isolated runner
 _steps = {}
 _steps_lock = threading.Lock()
 
@@ -30,14 +30,6 @@ def _cat():
 
 def now_iso():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def runner_env():
-    """X10: no GITHUB_TOKEN, the runner executes third-party patch code (spec L779). HOME is set per job to its
-    work dir: the server's HOME holds the adb key."""
-    env = {k: os.environ[k] for k in ENV_KEYS if k in os.environ}
-    env["RELUME_APK_CACHE"] = jobs.runner_path(db.DATA / "apk-cache")
-    return env
 
 
 class _Markers:
@@ -108,7 +100,7 @@ def _register(job, item_id, inp, work, result):
     with db.tx() as c:
         for v in result["variants"]:
             target = dest / artifact_name(inp["source_id"], inp["key"], v["name"], result["app_version"], inp["upstream_tag"])
-            # copy from the fd validated now, not the path validated earlier (round-2 review S3)
+            # copy from the fd validated now, not the path validated earlier
             with jobs.open_runner_file(work, v["file"]) as src, open(target, "xb") as out:
                 shutil.copyfileobj(src, out, 1 << 20)
             ids.append(c.execute("""INSERT INTO artifacts(job_id, item_id, variant, abi, package, version_name, version_code,
@@ -150,8 +142,8 @@ def handler(job, log):
             _fail(job, item_id, "upstream_missing", f"missing file {Path(missing[0]).name}")
         m = _Markers(job.id, inp["package"])
         try:
-            rc = log.run(jobs.isolate(["bash", RUNNER, rp(work / "job.json")]), cwd=rwork,
-                         env=dict(runner_env(), HOME=rwork), timeout=3600, on_line=m.feed)
+            rc = jobs.run_isolated(log, ["bash", RUNNER, rp(work / "job.json")], rwork, env_keys=SOLVER_ENV,
+                                   env={"RELUME_APK_CACHE": rp(db.DATA / "apk-cache")}, timeout=3600, on_line=m.feed)
         except jobs.JobFailed as e:
             if str(e) == "timeout":
                 _fail(job, item_id, "timeout", "runner exceeded 3600 s")
@@ -231,7 +223,7 @@ def _newest_success_job(item_id):
 
 
 def latest_artifact(item_id, abi):
-    """X8: artifacts row of the newest success build with this ABI, else universal, else None."""
+    """Artifacts row of the newest success build with this ABI, else universal, else None."""
     jid = _newest_success_job(item_id)
     if jid is None:
         return None

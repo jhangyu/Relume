@@ -72,14 +72,27 @@ def _kill_group(p):
             pass
 
 
+CHILD_ENV = ('PATH', 'LANG', 'TZ')
+
+
 def isolate(argv):
-    """argv for third-party code (patch bundles, CLIs; spec L779): runs as RELUME_RUNNER_UID, same gid, no supplementary
-    groups, no capabilities, no new privileges. Unset (tests, bare image) = the server's own uid."""
+    """argv for third-party code (patch bundles, CLIs, untrusted APKs): runs as RELUME_RUNNER_UID, same gid, no
+    supplementary groups, no capabilities, no new privileges. Unset (tests, bare image) = the server's own uid."""
     uid = os.environ.get('RELUME_RUNNER_UID')
     if not uid:
         return list(argv)
     return ['setpriv', f'--reuid={uid}', f'--regid={os.getgid()}', '--clear-groups',
             '--inh-caps=-all', '--ambient-caps=-all', '--no-new-privs', *argv]
+
+
+def run_isolated(log, argv, home, env_keys=(), env=None, timeout=None, on_line=None):
+    """log.run of third-party code: isolated uid (isolate), cwd and HOME = home, and only the CHILD_ENV + env_keys
+    server variables plus the env extras. No GITHUB_TOKEN or other server secret; HOME is set last because the
+    server's HOME holds the adb key. A module function, not a Log method, so test log stand-ins work unchanged."""
+    child = {k: os.environ[k] for k in (*CHILD_ENV, *env_keys) if k in os.environ}
+    child.update(env or {})
+    child['HOME'] = home
+    return log.run(isolate(argv), cwd=home, env=child, timeout=timeout, on_line=on_line)
 
 
 def runner_path(p):
@@ -92,7 +105,7 @@ def runner_path(p):
 def open_runner_file(base, rel):
     """Binary file object for base/rel, a file the isolated runner wrote. No symlink is followed anywhere below
     base (every component is opened O_NOFOLLOW relative to its parent fd) and the open fd must be a regular file
-    with one link, so a runner leftover cannot swap in a link to a secret (round-2 review S3). Raises OSError."""
+    with one link, so a runner leftover cannot swap in a link to a secret. Raises OSError."""
     parts = pathlib.PurePath(rel).parts
     if not parts or pathlib.PurePath(rel).is_absolute() or '..' in parts:
         raise OSError(f'bad runner path: {rel}')
@@ -159,7 +172,7 @@ class Log:
                     os.waitid(os.P_PID, p.pid, os.WEXITED | os.WNOWAIT)
                 except ChildProcessError:  # the watch thread reaped it
                     pass
-            try:  # nothing of the group outlives the job, also on success (round-2 review S3)
+            try:  # nothing of the group outlives the job, also on success
                 os.killpg(p.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
@@ -220,7 +233,7 @@ def _execute(job):
     if job.cancel_event.is_set():
         status, reason = 'cancelled', 'cancelled'
     with db.tx() as c:
-        # a handler that returns normally may have written jobs.reason itself (OTA outcome, spec L914)
+        # a handler that returns normally may have written jobs.reason itself (OTA outcome)
         c.execute('UPDATE jobs SET status=?, reason=COALESCE(?, reason), finished_at=? WHERE id=?',
                   (status, reason, db.utcnow(), job.id))
     log.close()

@@ -1,4 +1,5 @@
-import json, os, pathlib, sqlite3, threading, time, unittest
+import json, os, pathlib, sqlite3, subprocess, tempfile, threading, time, unittest
+from unittest import mock
 from webui import db, jobs, settings
 from webui.tests.helpers import DataTestCase
 
@@ -30,6 +31,45 @@ class EnqueueTest(DataTestCase):
         raw = db.conn().execute('SELECT options, target FROM jobs WHERE id=?', (jid,)).fetchone()
         self.assertEqual(raw['options'], '{"notify":true,"pull":true,"rebuild":true}')
         self.assertEqual(raw['target'], '{"upstream_id":3}')
+
+
+
+class RunIsolatedTest(unittest.TestCase):
+    """Third-party code sees only whitelisted server variables, never GITHUB_TOKEN or the server's HOME."""
+
+    class CaptureLog:
+        def run(self, argv, cwd=None, env=None, timeout=None, on_line=None):
+            self.argv, self.cwd, self.env = argv, cwd, env
+            p = subprocess.run(argv, cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout)
+            for text in p.stdout.splitlines():
+                on_line(text)
+            return p.returncode
+
+    ENVIRON = {'GITHUB_TOKEN': 'secret', 'HOME': '/root', 'PATH': os.environ['PATH'], 'FLARESOLVERR_URL': 'http://fs',
+               'LANG': 'C.UTF-8'}
+
+    def test_env_whitelist(self):
+        log, lines = self.CaptureLog(), []
+        with tempfile.TemporaryDirectory() as home, mock.patch.dict(os.environ, self.ENVIRON, clear=True):
+            rc = jobs.run_isolated(log, ['env'], home, env_keys=('FLARESOLVERR_URL',), env={'EXTRA': 'x'},
+                                   on_line=lines.append)
+            self.assertEqual(rc, 0)
+            self.assertEqual(log.cwd, home)
+            self.assertEqual(sorted(lines), sorted([f'PATH={os.environ["PATH"]}', 'LANG=C.UTF-8',
+                                                    'FLARESOLVERR_URL=http://fs', 'EXTRA=x', f'HOME={home}']))
+        log, lines = self.CaptureLog(), []
+        with tempfile.TemporaryDirectory() as home, mock.patch.dict(os.environ, self.ENVIRON, clear=True):
+            jobs.run_isolated(log, ['env'], home, env={'HOME': '/root'}, on_line=lines.append)
+            self.assertEqual(sorted(lines), sorted([f'PATH={os.environ["PATH"]}', 'LANG=C.UTF-8', f'HOME={home}']))
+
+    def test_runner_uid_uses_setpriv(self):
+        log = mock.Mock()
+        with mock.patch.dict(os.environ, {'RELUME_RUNNER_UID': '10001'}):
+            jobs.run_isolated(log, ['true'], '/tmp')
+        argv = log.run.call_args.args[0]
+        self.assertEqual(argv[:2], ['setpriv', '--reuid=10001'])
+        self.assertIn('--no-new-privs', argv)
+        self.assertEqual(argv[-1], 'true')
 
 
 class WorkerTest(DataTestCase):

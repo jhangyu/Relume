@@ -219,7 +219,7 @@ class InspectRowTest(PatchesCase):
         self.assertTrue(any(l.startswith("[!] inspect failed for") for l in log.lines), log.lines)
 
     def test_inspect_runs_isolated(self):
-        """Spec L779: the inspector runs bundle code as RELUME_RUNNER_UID with DATA paths in the runner view.
+        """The inspector runs bundle code as RELUME_RUNNER_UID with DATA paths in the runner view.
         T_PY runs as root, so setpriv can switch uid here."""
         self.add_cli()
         with db.tx() as c:
