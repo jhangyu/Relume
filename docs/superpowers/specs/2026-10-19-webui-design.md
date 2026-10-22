@@ -1,6 +1,6 @@
 # Web UI for the local build — Design
 
-Date: 2026-10-19. Requirements: `docs/logs/2026-10-19-webui-contract.md`. Facts: `docs/logs/2026-10-19-preflight-{build,patches,runtime}.md`. Line cites `utils.sh:NNN` refer to upstream commit 9fd15dc, not the current tree.
+Date: 2026-10-19. Requirements: `docs/logs/2026-10-19-webui-contract.md`. Facts: `docs/logs/2026-10-19-preflight-{build,patches,runtime}.md`. File references in the "today"/upstream fact tables describe upstream commit 9fd15dc. Most of those files are deleted, so names (functions, workflow jobs, steps), not lines, are cited.
 This file merges seven parts: Core (topology, web stack, auth, persistence, API, scheduler), Catalog (sources, apps, items, patches, upstream), Build (build orchestration), Device (wireless ADB, OTA, notifications), UI (Part 5: mockup ↔ spec mapping, frontend files), CI (Part 6: GitHub Actions builds), Xposed (Part 7: LSPatch/NPatch module items). A reference "core §N", "catalog §N", "build §N", "device §N", "ui §N", "ci §N", "xposed §N" means section N of that part below. User decisions: §0.6.
 
 ## 0.1 Summary
@@ -185,20 +185,20 @@ All services: `restart: unless-stopped`. `app` has `healthcheck: curl -sf http:/
 
 Why this shape:
 - Builds run inside `app` as child processes. No Docker socket, no host-path translation. This removes preflight-build §1 blockers 1 and 3 (`docs/logs/2026-10-19-preflight-build.md:22`).
-- `netns` is the network-namespace anchor (today the anchor is `flaresolverr`, `local/docker-compose.yml:17,28,38`). It owns `ports:` and `network_mode`, because a container that joins another container's namespace cannot publish ports. The sidecars and `app` keep reaching each other on `localhost` exactly as today (`local/docker-compose.yml:41-43`).
+- `netns` is the network-namespace anchor (today the anchor is `flaresolverr`, `local/docker-compose.yml` at 9fd15dc, `network_mode: service:flaresolverr`). It owns `ports:` and `network_mode`, because a container that joins another container's namespace cannot publish ports. The sidecars and `app` keep reaching each other on `localhost` exactly as today (`local/docker-compose.yml` at 9fd15dc, `builder` env `FLARESOLVERR_PORT`, `CFBYPASS_PORT`, `APKM_SOLVER_PORT`).
 - Why not `app` as the anchor: when the restart policy restarts a crashed anchor, containers that joined its namespace keep the old one (Docker 29 / Compose v5), so every build would fail `download_failed` until a manual `up -d`. Verified 2026-10-19 (Docker 29.8.2, Compose v5, scratch project, bridge mode): with an idle busybox anchor, a crash of `app` (`kill 1` inside it; RestartCount 0 → 1) leaves `app` → sidecar and sidecar → `app` loopback connections working, with no restart of the sidecar. Compose docs: `network_mode: service:{name}` "gives the container access to the specified container", and Compose orders start/stop by `network_mode: "service:..."` dependencies (docs.docker.com/compose/how-tos/networking, startup-order, fetched 2026-10-19).
 - The only platform difference is one value in `local/.env`:
   - Linux: `RELUME_NETWORK_MODE=host` → the anchor's namespace is the host's; mDNS reaches the LAN; the web port is the host's port 47000.
   - macOS: `RELUME_NETWORK_MODE=bridge` → port 47000 is published; outbound TCP from the container to the phone works; mDNS finds nothing; the manual pairing form is used.
   - Same code on both. Discovery runs on both and simply returns no devices on macOS.
 - Proof (run 2026-10-19, Docker 29.8.2, Compose v5.5.0, scratch project): a service with `network_mode: host` plus `ports:` starts and Compose prints `Published ports are discarded when using host network mode`; with `bridge` the port is published (`0.0.0.0:47999->8080/tcp`); a second service with `network_mode: service:<first service>` starts in both modes. `${VAR:?msg}` makes Compose stop with an error if the variable is not set, so a wrong platform default cannot happen silently.
-- Sidecars bind `127.0.0.1` because in Linux host mode they would otherwise be open on the LAN (FlareSolverr is an open browser proxy). Verified bind knobs: FlareSolverr reads `HOST` (`/app/flaresolverr.py:94` in `ghcr.io/flaresolverr/flaresolverr:latest`); cfbypass `server.py:11` has `--host` (default `0.0.0.0`) and its `/app/docker-entrypoint.sh` forwards args (`exec python3 server.py "$@"`); `local/solver/solver.py:79` binds `0.0.0.0` today and changes to `127.0.0.1` (owner: build).
+- Sidecars bind `127.0.0.1` because in Linux host mode they would otherwise be open on the LAN (FlareSolverr is an open browser proxy). Verified bind knobs: FlareSolverr reads `HOST` (`/app/flaresolverr.py` in `ghcr.io/flaresolverr/flaresolverr:latest`); cfbypass `server.py` has `--host` (default `0.0.0.0`) and its `/app/docker-entrypoint.sh` forwards args (`exec python3 server.py "$@"`); `local/solver/solver.py` (the `ThreadingHTTPServer` bind) binds `0.0.0.0` today and changes to `127.0.0.1` (owner: build).
 - Host ports used in Linux host mode: 47000, 47191, 47800, 47900, and adb's 5037 (loopback). They must be free on the host.
 
 Mounts on `app`:
 - `..:/repo:ro` — repo code incl. `local/webui/`, `src/build/*`, keystores. Read-only: nothing writes into the checkout.
 - `${RELUME_DATA_DIR:-./data}:/data` (default `local/data/`, gitignored) — every write: DB, job logs, work dirs, artifacts, caches, adb keys. A host directory (not a named volume) so the user can back it up and reach artifacts on a NAS share. Long-syntax bind with `bind: {create_host_path: false}` (as for the token file): Docker would otherwise create a missing host dir owned by root, and a non-root `app` (`RELUME_UID`) could not write it. The user creates the directory (§12 step 1); the server creates `/data/home`, `/data/logs` and the other subdirectories at start.
-- GitHub token file bind, unchanged (`local/docker-compose.yml:46-52`).
+- GitHub token file bind, unchanged (`local/docker-compose.yml` at 9fd15dc, `builder` volume `github_token`).
 
 Process user: `user: "${RELUME_UID:-0}:${RELUME_GID:-0}"`, env `HOME=/data/home`. Linux sets its own uid/gid in `local/.env` so `local/data/` is owned by the host user (preflight-build §7 ownership blocker, `docs/logs/2026-10-19-preflight-build.md:85`). macOS leaves the default; Docker Desktop maps ownership.
 
@@ -246,7 +246,7 @@ Input validation (one rule set in `server.py`/owner handlers, checked before any
 - Variant fields: `abi` and `strip_libs` ∈ the ABI list (build §3.1); `download.kind`/`type` ∈ their enums; `arch`, `dpi` slugs; `minver` `^[A-Za-z0-9 .+-]*$`; `download.url` `https://` URL. `version_pin` slug.
 - Devices: `host` = IPv4 address (`ipaddress.IPv4Address`) or an RFC 1123 hostname (labels `[A-Za-z0-9-]`, not starting with `-`); ports int 1–65535; pairing `code` exactly 6 digits.
 - Remote values (GitHub `tag`, APKMirror-scraped app version) are mapped with `[^A-Za-z0-9._-]` → `_` and a leading `.` or `-` → `_` before they are used in a path or file name.
-- Every subprocess call uses an argv list (no shell string). The runner (`build-item.sh`, `utils.sh` `patch_variant`) uses no `eval` and quotes every expansion; today's `eval` in `patch` (`utils.sh:765`) is removed with it.
+- Every subprocess call uses an argv list (no shell string). The runner (`build-item.sh`, `utils.sh` `patch_variant`) uses no `eval` and quotes every expansion; today's `eval` in `patch` (`utils.sh`) is removed with it.
 
 ### 4. Persistence
 
@@ -387,7 +387,7 @@ Log SSE: `GET /api/jobs/{id}/log`. Each event carries a chunk of log lines; `id:
 
 Linux arm64 host / NAS:
 1. `cp local/.env.example local/.env`; set `RELUME_NETWORK_MODE=host`, `RELUME_UID=$(id -u)`, `RELUME_GID=$(id -g)`, `TZ`. As the same user, `mkdir -p local/data` (or the `RELUME_DATA_DIR` path); Compose does not create it (§1 mounts), so it is owned by that user.
-2. Put the GitHub token in the token file (as today, `local/build.sh:9-11` behaviour moves to the server start check; build part owns it).
+2. Put the GitHub token in the token file (as today, `local/build.sh` token-file block behaviour moves to the server start check; build part owns it).
 3. `docker compose -f local/docker-compose.yml up -d --build`.
 4. Read the admin password from `logs app`; open `http://<host>:47000`.
 5. Host firewall must allow inbound TCP 47000, and outbound UDP multicast to 224.0.0.251:5353 with its unicast replies (device discovery, device part D3).
@@ -397,7 +397,7 @@ macOS (Docker Desktop, Apple silicon):
 2. The repo must be under a Docker Desktop shared path (default includes `/Users`).
 3. Open `http://localhost:47000` (or the Mac's LAN IP). Pair phones with the manual form.
 
-Both: memory headroom for two browser containers (`shm_size: 2g` each, `local/docker-compose.yml:16,27`).
+Both: memory headroom for two browser containers (`shm_size: 2g` each, `local/docker-compose.yml` at 9fd15dc, `shm_size` of `cfbypass` and `apkmsolver`).
 
 ### 13. User decisions (core)
 
@@ -416,12 +416,12 @@ Today the catalog is spread over five places (all citations verified in code):
 
 | Today | Where | Problem for the UI |
 |---|---|---|
-| Source list (org, script, runs) | `local/build.sh:16-34` and again `.github/workflows/manual-patch.yml:16-34` | Unit is an org "run", not (source × app) |
-| Upstream repo + channel | 3rd arg of `dl_gh` in each script, e.g. `src/build/morphe.sh:6`, `morphe-beta.sh:6` | Hard-coded; re-downloaded every run, tag never stored (`src/build/utils.sh:37-99`) |
-| Include/exclude | `src/patches/<key>/{include,exclude}-patches`, read by `get_patches_key` (`utils.sh:138-172`), rewritten by `sed -i` (`utils.sh:147-148`) | Second toggle mechanism; options after `|` are dropped (`utils.sh:158`) |
-| Patch options | `src/options/<org>.json`, passed as `--options-file` (`utils.sh:765`) | Shared by all apps of an org and by stable/beta orgs |
-| Version pin | Shell `version="…"` before `get_apk` (`hoo-dles.sh:14,38`, `rushiranpise.sh:24`, `Piko-Newx.sh:12`); `near_version=1` (`hoo-dles.sh:26`) | Pinning means editing a script |
-| APKMirror/APKPure lookup | `src/build/helper/apps.json` (`utils.sh:289-295,562`) | Fine, but a second registry keyed by package |
+| Source list (org, script, runs) | `local/build.sh` `ORGS` table and again `.github/workflows/manual-patch.yml` `workflow_dispatch` input `org` options | Unit is an org "run", not (source × app) |
+| Upstream repo + channel | 3rd arg of `dl_gh` in each script, e.g. `src/build/morphe.sh`, `morphe-beta.sh` | Hard-coded; re-downloaded every run, tag never stored (`src/build/utils.sh` `dl_gh`) |
+| Include/exclude | `src/patches/<key>/{include,exclude}-patches`, read by `get_patches_key` (`utils.sh`), rewritten by `sed -i` (`utils.sh` `get_patches_key`) | Second toggle mechanism; options after `|` are dropped (`utils.sh` `get_patches_key`) |
+| Patch options | `src/options/<org>.json`, passed as `--options-file` (`utils.sh` `patch`) | Shared by all apps of an org and by stable/beta orgs |
+| Version pin | Shell `version="…"` before `get_apk` (`hoo-dles.sh`, `rushiranpise.sh`, `Piko-Newx.sh`); `near_version=1` (`hoo-dles.sh`) | Pinning means editing a script |
+| APKMirror/APKPure lookup | `src/build/helper/apps.json` (`utils.sh` `get_apk`, `get_apkpure`) | Fine, but a second registry keyed by package |
 | Display name, icon | Nowhere (README headers only, e.g. the README MicroG RE note) | Must be new fields |
 
 The new model replaces all of these with database rows plus a file cache. Old files are deleted after the one-time seed (§8).
@@ -449,7 +449,7 @@ upstream    id PK, kind ('patches'|'cli'|'project'|'module'), repo ('owner/name'
 source      id PK (slug, e.g. 'morphe', 'morphe-beta'), name, upstream_id → upstream,
             cli_upstream_id → upstream (kind='cli'),
             engine ('morphe'|'lspatch'|'npatch', default 'morphe', xposed §4),
-            keystore (file name in src/keystore, default 'morphe.keystore', utils.sh:765)
+            keystore (file name in src/keystore, default 'morphe.keystore', utils.sh)
 app         package PK, display_name, icon_file, icon_fetched_at,
             apkmirror_list_url, apkmirror_example_url, apkmirror_example_url2, apkpure_url,
             apkmirror_versions (JSON array, newest first, null = never seen), apkmirror_checked_at
@@ -466,13 +466,13 @@ item_dependency item_id → item ON DELETE CASCADE, project_id → project ON DE
 ```
 
 Rules:
-- **Item = (source × package).** This is the list unit of requirement 2. TikTok in `DeRevanced.sh:119,123` becomes two items (two packages). YouTube Music × 4 archs (`Anddea-Revanced-Extended.sh:26-40`) stays one item; the arch outputs are entries of `item.variants` (format owned by arch-build, build §3.1).
-- **Stable and beta are separate sources** with separate upstream rows (same repo, channel differs), e.g. `morphe` (stable) and `morphe-beta` (prerelease). Each item owns its overrides; the sharing of `src/options/morphe.json` and `src/patches/youtube-morphe` between stable and beta (`morphe.sh:12`, `morphe-beta.sh:12`) ends. The seed copies the shared values into both items.
+- **Item = (source × package).** This is the list unit of requirement 2. TikTok in `DeRevanced.sh` becomes two items (two packages). YouTube Music × 4 archs (`Anddea-Revanced-Extended.sh`) stays one item; the arch outputs are entries of `item.variants` (format owned by arch-build, build §3.1).
+- **Stable and beta are separate sources** with separate upstream rows (same repo, channel differs), e.g. `morphe` (stable) and `morphe-beta` (prerelease). Each item owns its overrides; the sharing of `src/options/morphe.json` and `src/patches/youtube-morphe` between stable and beta (`morphe.sh`, `morphe-beta.sh`) ends. The seed copies the shared values into both items.
 - **Several sources may share one upstream row** (dedup by `UNIQUE(repo, channel, tag)`), so one GitHub request serves them.
-- **CLI upstream per source** (`source.cli_upstream_id`): all Morphe sources share one row (`kind='cli'`, `MorpheApp/morphe-desktop`, stable; every script downloads it the same way today, `morphe.sh:7` and 15 others); LSPatch and NPatch have their own rows (xposed §4.1).
-- **Item type = `source.engine`**: `morphe` = patches item; `lspatch`/`npatch` = Xposed module item (xposed §4). `revanced-cli v4.6.0` downloaded by `BiliRoamingM.sh:6` and `Dropped-Patches-Revanced.sh:10` is never run by `patch()` (`utils.sh:765` always runs `morphe-desktop-*.jar`), so it is not modelled.
+- **CLI upstream per source** (`source.cli_upstream_id`): all Morphe sources share one row (`kind='cli'`, `MorpheApp/morphe-desktop`, stable; every script downloads it the same way today, `morphe.sh` and 15 others); LSPatch and NPatch have their own rows (xposed §4.1).
+- **Item type = `source.engine`**: `morphe` = patches item; `lspatch`/`npatch` = Xposed module item (xposed §4). `revanced-cli v4.6.0` downloaded by `BiliRoamingM.sh` and `Dropped-Patches-Revanced.sh` is never run by `patch()` (`utils.sh` `patch` always runs `morphe-desktop-*.jar`), so it is not modelled.
 - **Followed projects** (MicroG RE, per the README MicroG RE note): replaced the dependency-app model; see `docs/superpowers/specs/2026-10-23-follow-project-design.md`. Seed: project 1 MicroG RE (`MorpheApp/MicroG-RE`, stable, asset_regex `^microg-[0-9.]+\.apk$`) linked through `item_dependency` to YouTube, YouTube Music, Google Photos and Solid Explorer hoo-dles items.
-- `item.key` is the artifact name stem used today (first arg of `patch`, e.g. `youtube`, `youtube-music-arm64-v8a`; `morphe.sh:14,55`). arch-build uses it for artifact naming.
+- `item.key` is the artifact name stem used today (first arg of `patch`, e.g. `youtube`, `youtube-music-arm64-v8a`; `morphe.sh`). arch-build uses it for artifact naming.
 - `item.enabled = false` excludes the item from "build all" and schedules but keeps its settings.
 - `app.apkmirror_versions`: non-beta versions listed on the first page of the app's APKMirror list page, written only by `catalog.set_apkmirror_versions(package, versions)` from the build handler (build §3.2, §4 step 5d), which also sets `apkmirror_checked_at`. The catalog never fetches APKMirror itself (§3.3). `job_input` sets `apkmirror.versions_due` = true when `apkmirror_checked_at` is null or older than 24 h (§5.3).
 
@@ -480,7 +480,7 @@ Rules:
 - Groups are global (`grp.position`). Items have `group_id` and `position` inside the group.
 - Group colour (§0.6 R6): `POST /api/groups {name, color?}` and `PUT /api/groups/{id} {name?, color?}` set `grp.color`; `color` must match `^#[0-9A-Fa-f]{6}$` or be null (null clears it), else 400. Ungrouped has no colour. Seed groups have `color` null.
 - Reorder is "send the full new order": `PUT /api/groups/order {ids:[…]}` and `PUT /api/groups/{id}/items/order {item_ids:[…]}`. The second call also moves items into the group. The server rewrites `position` as 0..n-1 in one transaction. No fractional ranks needed for lists of this size (seed ≈ 55 items).
-- Deleting a group moves its items to "Ungrouped". Ungrouped has no `grp` row; `PUT /api/groups/0/items/order` orders it and moves items into it (`group_id` null). Seed: one group per source, in `local/build.sh:16-34` order, then group "Xposed" (xposed §4.1).
+- Deleting a group moves its items to "Ungrouped". Ungrouped has no `grp` row; `PUT /api/groups/0/items/order` orders it and moves items into it (`group_id` null). Seed: one group per source, in `local/build.sh` `ORGS` table order, then group "Xposed" (xposed §4.1).
 
 #### 3.2 Display names
 - `app.display_name` default = Google Play `og:title` with the suffix ` - Apps on Google Play` removed (verified 2026-10-19: `curl -A Mozilla 'https://play.google.com/store/apps/details?id=com.google.android.youtube&hl=en'` returns `og:title` "YouTube - Apps on Google Play"). If the fetch fails, default = package name.
@@ -497,8 +497,8 @@ Rules:
 One mechanism replaces include/exclude files and per-org options files: **per-item overrides in Morphe CLI options-file format.** Not applicable to Xposed items: the patches routes answer 409 and `version_mode='auto'` answers 400 (xposed §5.1).
 
 - Stored: `item.patch_overrides = {"<patch name>": {"enabled": true|false, "options": {"<key>": <value>}}}`; a patch absent from the map uses the bundle default. Only user changes are stored, so new upstream defaults apply automatically.
-- Written for a build as `[ {"patches": <overrides>} ]`, one array entry per patches file of the source (piko-newx downloads several `.mpp` and patches with all of them, `Piko-Newx.sh:5-14`, `utils.sh:780-785`).
-- Evidence that partial files work with the current CLI: `src/options/anddea.json` contains one patch only, 13 option files are `[]`, and both are used by builds today (`utils.sh:765`). Morphe CLI docs (`MorpheApp/morphe-cli` `docs/documentation.md`, fetched 2026-10-19): the options file is "a list of patch bundles", `"enabled": false` disables a patch, `-e/-d/-O` override the file; `options-create -p … -f <package> -o <file>` writes defaults and merges into an existing file.
+- Written for a build as `[ {"patches": <overrides>} ]`, one array entry per patches file of the source (piko-newx downloads several `.mpp` and patches with all of them, `Piko-Newx.sh`, `utils.sh` `patch_multi`).
+- Evidence that partial files work with the current CLI: `src/options/anddea.json` contains one patch only, 13 option files are `[]`, and both are used by builds today (`utils.sh` `patch`). Morphe CLI docs (`MorpheApp/morphe-cli` `docs/documentation.md`, fetched 2026-10-19): the options file is "a list of patch bundles", `"enabled": false` disables a patch, `-e/-d/-O` override the file; `options-create -p … -f <package> -o <file>` writes defaults and merges into an existing file.
 - `-e`/`-d` flags, `get_patches_key`, `src/patches/**` and `src/options/**` are deleted.
 
 #### 4.1 What the edit page shows
@@ -512,11 +512,11 @@ One mechanism replaces include/exclude files and per-org options files: **per-it
 `values` = preset values printed by `list-patches --with-options` (empty when none; the UI shows a select when non-empty). Data comes from `bundle_info` (§5.2) merged with `item.patch_overrides`. `PUT /api/items/{id}/patches` stores the overrides after validating: patch names exist in the bundle, option keys exist, value type matches. Stale overrides are kept and listed (the user may be between upstream versions); they are dropped from the build input (§5.3) and logged as a warning.
 
 #### 4.2 Version pin
-- `version_mode='auto'` (default): highest version listed as compatible for the package across the whole bundle (existing rule, `utils.sh:189-204`). If that list is empty the build fails with `version_unresolved` (build §5) instead of today's silent newest (`utils.sh:314`); the edit page shows the empty list in advance.
-- `version_mode='latest'`: explicit newest non-beta on APKMirror (`utils.sh:340-343`), for items whose bundle lists no versions (universal patches).
-- `version_mode='pinned'`, `version_pin = "<x>"` → passed to the build as the requested version (replaces `version="x"` in scripts). Pins outside `compatible_versions` are allowed with a warning, because existing pins are already outside it (e.g. `Piko-Newx.sh:12` `12.24.0-prod.02`) and `--continue-on-error` (`utils.sh:765`) lets them build.
-- `item.allow_nearest = true` → replaces `near_version=1` (`hoo-dles.sh:26`, `utils.sh:379-404`).
-- `prefer_version` and the CI experimental-version scrape (`morphe-beta.sh:13`, `.github/actions/experimental-check/action.yml:20-71`) are not carried over; a pin covers the same need.
+- `version_mode='auto'` (default): highest version listed as compatible for the package across the whole bundle (existing rule, `utils.sh` `detect_version`). If that list is empty the build fails with `version_unresolved` (build §5) instead of today's silent newest (`utils.sh` `get_apk`); the edit page shows the empty list in advance.
+- `version_mode='latest'`: explicit newest non-beta on APKMirror (`utils.sh` `get_apk`), for items whose bundle lists no versions (universal patches).
+- `version_mode='pinned'`, `version_pin = "<x>"` → passed to the build as the requested version (replaces `version="x"` in scripts). Pins outside `compatible_versions` are allowed with a warning, because existing pins are already outside it (e.g. `Piko-Newx.sh` `12.24.0-prod.02`) and `--continue-on-error` (`utils.sh` `patch`) lets them build.
+- `item.allow_nearest = true` → replaces `near_version=1` (`hoo-dles.sh`, `utils.sh` `get_apk`).
+- `prefer_version` and the CI experimental-version scrape (`morphe-beta.sh`, `.github/actions/experimental-check/action.yml` step `Fetch experimental support versions`) are not carried over; a pin covers the same need.
 - `PUT /api/items/{id}/version {version_mode, version_pin, allow_nearest}`. Seed: items with `version=` lines become `pinned`; others `auto`, except items whose seed-time inspect shows an empty compatible list become `latest` (keeps today's behaviour explicit).
 
 ### 5. Upstream release tracking (requirements 1 and 2 button)
@@ -524,12 +524,12 @@ One mechanism replaces include/exclude files and per-org options files: **per-it
 #### 5.1 Check
 For each upstream row (deduplicated):
 - `channel='stable'` → `GET /repos/{repo}/releases/latest` (GitHub docs: "the most recent non-prerelease, non-draft release", fetched 2026-10-19).
-- `channel='prerelease'` → `GET /repos/{repo}/releases?per_page=10`, newest by `published_at` among non-drafts, prerelease or not. This keeps today's meaning: `dl_gh … prerelease` takes the newest release of any kind (`utils.sh:54-58`). Sorting is done by us because the docs do not state list order.
-- `channel='tag'` → `GET /repos/{repo}/releases/tags/{tag}` (only for pinned sources such as `Dropped-Patches-Revanced.sh:8` `v1.4.2`).
+- `channel='prerelease'` → `GET /repos/{repo}/releases?per_page=10`, newest by `published_at` among non-drafts, prerelease or not. This keeps today's meaning: `dl_gh … prerelease` takes the newest release of any kind (`utils.sh` `dl_gh`). Sorting is done by us because the docs do not state list order.
+- `channel='tag'` → `GET /repos/{repo}/releases/tags/{tag}` (only for pinned sources such as `Dropped-Patches-Revanced.sh` `v1.4.2`).
 - One upstream is checked by the plain function `upstream.check(upstream_id)`, used by the route, the pull job and `ci-plan` (ci §4.1).
 - Module rows (`kind='module'`) must match exactly one asset, else `check_error="ambiguous module asset (<n> matches)"` (xposed §9).
-- Asset filter: `asset_regex` on `assets[].name`, defaults: patches `\.mpp$`, cli `^morphe-desktop-.*-all\.jar$` (seen: `local/work/morphe-1/morphe-desktop-1.18.1-all.jar`), always skip `\.asc$`; for `stable` also skip names containing `dev` (`utils.sh:90`).
-- Auth: the existing token file mounted read-only (`local/docker-compose.yml:45-52`); empty file = unauthenticated (60 req/h, `local/build.sh:8`). One check of all upstreams ≈ 18 requests (one per distinct repo+channel), within the unauthenticated budget once per hour.
+- Asset filter: `asset_regex` on `assets[].name`, defaults: patches `\.mpp$`, cli `^morphe-desktop-.*-all\.jar$` (seen: `local/work/morphe-1/morphe-desktop-1.18.1-all.jar`), always skip `\.asc$`; for `stable` also skip names containing `dev` (`utils.sh` `dl_gh`).
+- Auth: the existing token file mounted read-only (`local/docker-compose.yml` at 9fd15dc, `builder` volume `github_token`); empty file = unauthenticated (60 req/h, `local/build.sh` token-file block). One check of all upstreams ≈ 18 requests (one per distinct repo+channel), within the unauthenticated budget once per hour.
 - Result: `latest_tag`, `latest_published_at`, `checked_at`, `check_error` (null on success). If `latest_tag != downloaded_tag` the source's items show "Update available".
 - Event: when `latest_tag != notified_tag`, emit `upstream.new_version {upstream_id, tag, item_ids, job_id}` once and set `notified_tag` (prevents a notification on every scheduled check). Notification delivery is arch-device's section.
 
@@ -538,7 +538,7 @@ For each upstream row (deduplicated):
 2. Download every matching asset to `<data>/upstream/<upstream_id>/<tag>.part/`; verify size equals `assets[].size` and, when GitHub gives `assets[].digest` (`sha256:…`), the hash. Rename the directory to `<tag>/` (atomic on the same filesystem). Then set `downloaded_tag`.
 3. Inspect (patches upstreams only). First, if the CLI upstream (`source.cli_upstream_id`) of the sources on this upstream has no `downloaded_tag`, pull it in the same job (steps 1–2 for that row). Then run in the web server container, per package used by items of the sources on this upstream:
    `java -jar <cli> options-create -p <files> -f <package> -o <tmp.json>` (names, default enabled, option defaults as JSON) and
-   `java -jar <cli> list-patches --patches <files> --with-packages --with-versions --with-options -f <package>` (descriptions, option types, compatible versions; text parsed like `utils.sh:195-201`).
+   `java -jar <cli> list-patches --patches <files> --with-packages --with-versions --with-options -f <package>` (descriptions, option types, compatible versions; text parsed like `utils.sh` `detect_version`).
    Store the merged result in `bundle_info`. `cli`, `module` and `project` rows are not inspected (`project` rows are verified instead, `docs/superpowers/specs/2026-10-23-follow-project-design.md` §4.3).
 4. Keep the two newest tags per upstream on disk, delete older ones (a job started before the pull still has its files).
 5. Optional rebuild: if the job's `options.rebuild` is true (absent = false; schedules default true and the UI buttons send true, decision Q4; `ci-build` sends none, ci §4.2) and a new tag was downloaded, enqueue builds of the enabled items of the sources on this upstream.
@@ -553,12 +553,12 @@ Function `catalog.job_input(item_id) -> dict`, called by the build handler when 
 - `version` = `{mode: version_mode, value: version_pin, near: allow_nearest}`.
 - Morphe items: `options_file_json` = `[ {"patches": overrides minus stale} ]`, one entry per patches file. This is the only patch-selection input; `enabled` true/false replaces include/exclude.
 - `recipe` = `{"variants": item.variants}` verbatim.
-The build never calls GitHub: `dl_gh`, `morphe_dl`-style functions and `src/etc/connection.sh` (`local/build.sh:70`) leave the build path. If `downloaded_tag` is null for the source or CLI upstream, `job_input` raises and the build fails with `upstream_missing` (build §5); there is no silent download inside the build.
+The build never calls GitHub: `dl_gh`, `morphe_dl`-style functions and `src/etc/connection.sh` (`local/build.sh` per-org loop) leave the build path. If `downloaded_tag` is null for the source or CLI upstream, `job_input` raises and the build fails with `upstream_missing` (build §5); there is no silent download inside the build.
 
 #### 5.4 Schedules
 The scheduler engine is core's (core §6). A pull is a core job: `kind='upstream'`, target `{"upstream_id":N}`, registered by `upstream.py` with `jobs.register('upstream', handler)`; its log shows each GitHub call, download and inspect step. Schedules of kind `upstream` target `{"source_ids":[…]}` or `{"all":true}` (expanded by `catalog.resolve_upstreams`), `options.pull` (default true) and `options.rebuild` (default true, Q4): enqueue `jobs.enqueue('build', {"item_id":N}, 'upstream')` for enabled items whose source got a new tag.
 "Check only" (no download) is the synchronous route `POST /api/upstreams/check` (≈18 GitHub requests, no job); it updates state and emits `upstream.new_version` with `job_id` null.
-Seed: one daily schedule `{"every":"day","at":"09:00"}` of kind `upstream`, target all, `rebuild=true`, matching the existing CI cadence `0 9 * * *` (`.github/workflows/ci.yml:4-5`, kept by `.github/workflows/build.yml`, ci §5).
+Seed: one daily schedule `{"every":"day","at":"09:00"}` of kind `upstream`, target all, `rebuild=true`, matching the existing CI cadence `0 9 * * *` (`.github/workflows/ci.yml` `on.schedule`, kept by `.github/workflows/build.yml`, ci §5).
 
 ### 6. Interfaces summary
 
@@ -594,12 +594,12 @@ app created ──► icon fetcher (Play) → <data>/icons/<pkg>, app.display_na
 ### 8. Seed and deletion (no backward compatibility)
 
 - During implementation, a one-off script (not kept) scans `src/build/*.sh` (`get_patches_key`/`get_apk`/`patch`/`dl_gh`/`version=` lines), `src/patches/**`, `src/options/*.json`, `src/build/helper/apps.json`, and writes one committed seed file `local/webui/catalog-seed.json` with sources, upstreams, apps, items, groups, overrides, pins, variants (in build §3.1 format), dependency links.
-- Overrides conversion: exclude line `X` → `{"X":{"enabled":false}}`; include line `X` → `{"X":{"enabled":true}}`; each options-file `patches` entry copied (enabled + options). The `|`-suffix in include lines was never applied (`utils.sh:158`) and is dropped.
+- Overrides conversion: exclude line `X` → `{"X":{"enabled":false}}`; include line `X` → `{"X":{"enabled":true}}`; each options-file `patches` entry copied (enabled + options). The `|`-suffix in include lines was never applied (`utils.sh` `get_patches_key`) and is dropped.
 - The web server imports the seed only when the catalog tables are empty. After that the database is the only source of truth. The seed file is also CI's catalog input; `python3 -m webui export-seed` writes the current catalog back in seed format (ci §4.4).
 - Decision Q3: BiliRoamingM and Dropped-Patches are seeded as normal items; the first build shows whether they still patch.
-- Decision Q5: the seed keeps only variants with `abi` `universal` or `arm64-v8a` (e.g. morphe YouTube keeps 2 of 5, `src/build/morphe.sh:14-18`; anddea YouTube Music keeps arm64-v8a); an item with neither keeps all its variants and the seed script lists it. Other ABIs are added per item in the UI.
+- Decision Q5: the seed keeps only variants with `abi` `universal` or `arm64-v8a` (e.g. morphe YouTube keeps 2 of 5, `src/build/morphe.sh`; anddea YouTube Music keeps arm64-v8a); an item with neither keeps all its variants and the seed script lists it. Other ABIs are added per item in the UI.
 - Xposed: the seed adds 4 upstreams, 3 sources, 8 items and group "Xposed" (xposed §4.1).
-- Not migrated: 17 unreferenced `src/patches` dirs (preflight-patches §4), `paresh.json`, `piko-x-shim.json` (no caller), the `scrazzz-patches` row (script missing, `local/build.sh:33`), commented-out builds (Hola-VPN, TeraBox, medium, strava, GoogleNews). They can be re-added in the UI.
+- Not migrated: 17 unreferenced `src/patches` dirs (preflight-patches §4), `paresh.json`, `piko-x-shim.json` (no caller), the `scrazzz-patches` row (script missing, `local/build.sh` `ORGS` table), commented-out builds (Hola-VPN, TeraBox, medium, strava, GoogleNews). They can be re-added in the UI.
 - Deleted after seed: `src/options/`, `src/patches/`, `src/build/helper/apps.json` (moved into `app`), the org table in `local/build.sh`, the per-org scripts and `src/build/Xposed.sh` (build §7). The GitHub workflows are replaced by `.github/workflows/build.yml` (decision Q1, ci §5, §9). The untracked `hushfacebook.json` and `piko-newx.json` are read by the seed script, then removed with the directory.
 
 ### 9. Error handling
@@ -653,15 +653,15 @@ Terms: **item** = one (patch source × app) row of the catalog (owned by catalog
 
 ### 1. Today (facts the design replaces)
 
-- Smallest unit is an org "run" (a numbered shell function), not an app: `src/build/morphe.sh:57-67` dispatches by `$1`; one run can hold several apps (`src/build/hoo-dles.sh:9-21` = Prime Video + AdGuard).
-- The org registry is a bash table (`local/build.sh:16-34`); runs are serial (`local/build.sh:61-79`) through `docker compose exec` into the builder (`local/build.sh:70-71`).
-- Work dir `local/work/<org>-<run>` is wiped per run (`local/build.sh:66-67`); APKs are copied flat into `local/out/<org>/`, overwriting, never cleaned (`local/build.sh:73-74`). File names carry no version (`src/build/utils.sh:765`).
-- No log is persisted; output is stdout with ANSI colours (`src/build/utils.sh:24-32`), no timestamps.
-- PASS = exit 0 and ≥1 APK per run (`local/build.sh:75`); `rc` is unreliable because scripts have no `set -e` and `patch` uses `--continue-on-error` (`src/build/utils.sh:765`).
-- Sourcing `utils.sh` has side effects: `mkdir`, pup + APKEditor download, UA scrape (`src/build/utils.sh:3-19`).
-- Patches and CLI are re-downloaded every run (`dl_gh`, `src/build/utils.sh:37-99`); `get_patches_key` rewrites `src/patches/*` in place with `sed -i` (`src/build/utils.sh:147-148`).
-- Version auto-detect works only for `*.mpp` and silently falls back to the newest APK when empty (`src/build/utils.sh:191,314`).
-- Solver endpoints are hard-coded `http://localhost:$PORT` (`src/build/utils.sh:212,245,252,529`), which forces the builder into flaresolverr's network namespace (`local/docker-compose.yml:17,28,38`).
+- Smallest unit is an org "run" (a numbered shell function), not an app: `src/build/morphe.sh` dispatches by `$1`; one run can hold several apps (`src/build/hoo-dles.sh` = Prime Video + AdGuard).
+- The org registry is a bash table (`local/build.sh` `ORGS` table); runs are serial (`local/build.sh` per-org loop) through `docker compose exec` into the builder (`local/build.sh` per-org loop).
+- Work dir `local/work/<org>-<run>` is wiped per run (`local/build.sh` per-org loop); APKs are copied flat into `local/out/<org>/`, overwriting, never cleaned (`local/build.sh` per-org loop). File names carry no version (`src/build/utils.sh` `patch`).
+- No log is persisted; output is stdout with ANSI colours (`src/build/utils.sh` `green_log`, `red_log`, `yellow_log`), no timestamps.
+- PASS = exit 0 and ≥1 APK per run (`local/build.sh` per-org loop); `rc` is unreliable because scripts have no `set -e` and `patch` uses `--continue-on-error` (`src/build/utils.sh` `patch`).
+- Sourcing `utils.sh` has side effects: `mkdir`, pup + APKEditor download, UA scrape (`src/build/utils.sh` top-level code).
+- Patches and CLI are re-downloaded every run (`dl_gh`, `src/build/utils.sh`); `get_patches_key` rewrites `src/patches/*` in place with `sed -i` (`src/build/utils.sh` `get_patches_key`).
+- Version auto-detect works only for `*.mpp` and silently falls back to the newest APK when empty (`src/build/utils.sh` `detect_version`, `get_apk`).
+- Solver endpoints are hard-coded `http://localhost:$PORT` (`src/build/utils.sh` `_fs_get`, `_cfb_get`, `get_apk`), which forces the builder into flaresolverr's network namespace (`local/docker-compose.yml` at 9fd15dc, `network_mode: service:flaresolverr`).
 
 ### 2. Components and responsibilities
 
@@ -676,9 +676,9 @@ Nothing else is added: no message broker, no separate worker container, no docke
 
 #### 2.1 Execution placement (requirement on core part)
 
-The job service spawns `bash src/build/build-item.sh <job.json>` as a **child process in the web server container**. Therefore that container image must contain today's builder toolchain (`local/Dockerfile:3-10`: java 21, apksigner, jq, wget, curl, unzip, zip, python venv) plus pup v0.4.0 and APKEditor 1.4.9 baked in at image build (moved out of `src/build/utils.sh:6-12`). The image is multi-arch: the pup binary is chosen by the build architecture (today `uname -m`, `src/build/utils.sh:6`), so it also builds on amd64 GitHub runners (ci §5). The separate `builder` service and `docker compose exec` path are deleted.
+The job service spawns `bash src/build/build-item.sh <job.json>` as a **child process in the web server container**. Therefore that container image must contain today's builder toolchain (`local/Dockerfile:3-10`: java 21, apksigner, jq, wget, curl, unzip, zip, python venv) plus pup v0.4.0 and APKEditor 1.4.9 baked in at image build (moved out of `src/build/utils.sh` top-level code). The image is multi-arch: the pup binary is chosen by the build architecture (today `uname -m`, `src/build/utils.sh` top-level code), so it also builds on amd64 GitHub runners (ci §5). The separate `builder` service and `docker compose exec` path are deleted.
 
-Solver reachability: `utils.sh` reads full URLs `FLARESOLVERR_URL`, `CFBYPASS_URL`, `APKM_SOLVER_URL` from env instead of `localhost:$PORT`. Compose sets them to `http://127.0.0.1:47191`, `http://127.0.0.1:47800`, `http://127.0.0.1:47900` (the sidecars share the `netns` network namespace with `app` and bind loopback only, core §1). `local/solver/solver.py:79` changes its bind address from `0.0.0.0` to `127.0.0.1`.
+Solver reachability: `utils.sh` reads full URLs `FLARESOLVERR_URL`, `CFBYPASS_URL`, `APKM_SOLVER_URL` from env instead of `localhost:$PORT`. Compose sets them to `http://127.0.0.1:47191`, `http://127.0.0.1:47800`, `http://127.0.0.1:47900` (the sidecars share the `netns` network namespace with `app` and bind loopback only, core §1). `local/solver/solver.py` (the `ThreadingHTTPServer` bind) changes its bind address from `0.0.0.0` to `127.0.0.1`.
 
 ### 3. Interfaces
 
@@ -710,16 +710,16 @@ Built when the job **starts** (not when queued), so a queued job uses the latest
 ```
 
 `recipe.variants` is stored opaquely by the catalog as `item.variants` and copied verbatim; its schema is owned here. Field semantics map 1:1 to today's script arguments, so every current script body is expressible as data:
-- `download.kind`: `apkmirror` = `get_apk` (`src/build/utils.sh:281`), `apkpure` = `get_apkpure` (`src/build/utils.sh:556`), `url` = `req` direct download (`src/build/Dropped-Patches-Revanced.sh:16`).
-- `download.type` = `get_apk` 3rd arg (`apk|bundle|bundle_extract`, `src/build/utils.sh:283`); `arch/dpi/minver` = args 4-6.
-- `exclude_splits` = `split_editor <in> <out> exclude "<list>"` (`src/build/morphe.sh:45`); `[]` = merge all splits (`src/build/morphe.sh:42`); `null` = no split step.
-- `strip_libs` = `split_arch` `--striplibs` (`src/build/utils.sh:891-899`).
+- `download.kind`: `apkmirror` = `get_apk` (`src/build/utils.sh` `get_apk`), `apkpure` = `get_apkpure` (both in `src/build/utils.sh`), `url` = `req` direct download (`src/build/Dropped-Patches-Revanced.sh`).
+- `download.type` = `get_apk` 3rd arg (`apk|bundle|bundle_extract`, `src/build/utils.sh` `get_apk`); `arch/dpi/minver` = args 4-6.
+- `exclude_splits` = `split_editor <in> <out> exclude "<list>"` (`src/build/morphe.sh`); `[]` = merge all splits (`src/build/morphe.sh`); `null` = no split step.
+- `strip_libs` = `split_arch` `--striplibs` (`src/build/utils.sh` `split_arch`).
 - `abi` ∈ `arm64-v8a|armeabi-v7a|x86|x86_64|universal`; the device part matches it against the phone ABI.
-- More than one `patches_files` entry = today's `patch_multi` (`src/build/utils.sh:776-785`). `patches_files` = the engine's payload files: patches bundles for `engine=morphe`, module APKs for `lspatch`/`npatch` (xposed §5.2).
+- More than one `patches_files` entry = today's `patch_multi` (`src/build/utils.sh` `patch_multi`). `patches_files` = the engine's payload files: patches bundles for `engine=morphe`, module APKs for `lspatch`/`npatch` (xposed §5.2).
 - Patch selection and options come only from `options_file_json` (written to `options.json`, passed as `--options-file`); no `-e/-d` flags.
-- `apkmirror` / `apkpure_url` replace the `src/build/helper/apps.json` lookup in `get_apk`/`get_apkpure` (`src/build/utils.sh:289-295,562`); those functions take the URLs as arguments.
+- `apkmirror` / `apkpure_url` replace the `src/build/helper/apps.json` lookup in `get_apk`/`get_apkpure` (`src/build/utils.sh` `get_apk`, `get_apkpure`); those functions take the URLs as arguments.
 
-Mapping examples: morphe YouTube = one apk download, 5 variants (`src/build/morphe.sh:13-18`); morphe Reddit = `bundle_extract`, variants `all-splits` (`exclude_splits: []`) + `arm64-v8a` with exclude list (`src/build/morphe.sh:41-47`); anddea YouTube Music = 4 variants each with its own `download.arch` (`src/build/Anddea-Revanced-Extended.sh:26-40`).
+Mapping examples: morphe YouTube = one apk download, 5 variants (`src/build/morphe.sh`); morphe Reddit = `bundle_extract`, variants `all-splits` (`exclude_splits: []`) + `arm64-v8a` with exclude list (`src/build/morphe.sh`); anddea YouTube Music = 4 variants each with its own `download.arch` (`src/build/Anddea-Revanced-Extended.sh`).
 
 #### 3.1.1 Patch inspection (for the catalog part)
 
@@ -778,12 +778,12 @@ In-process: builds are enqueued with core `jobs.enqueue('build', {"item_id":N}, 
 3. Job service reads catalog → writes `DATA/work/<id>/job.json` + `options.json` (no `options.json` for Xposed items); inserts the `build_jobs` row with `patches_version = upstream_tag`, `cli_version = cli_tag` (shown on the Builds page while running). Precheck: every `patches_files` and `cli_jar` path exists, else fail `upstream_missing` without spawning.
 4. Spawn `bash src/build/build-item.sh job.json` via core `log.run(..., timeout=3600)` (own process group), cwd = work dir, env = the three solver URLs only. No `GITHUB_TOKEN`: builds never call GitHub (§5.1), and the runner executes third-party patch code that must not see the token.
 5. Runner:
-   a. `init_ua` (UA scrape moved out of source-time, `src/build/utils.sh:14-19`).
+   a. `init_ua` (UA scrape moved out of source-time, `src/build/utils.sh` top-level code).
    b. Symlink `cli_jar` and `patches_files` into the work dir (globs `morphe-desktop-*.jar`, `*.mpp` keep working).
-   c. Version (rule owned by catalog §4.2): `version.mode='pinned'` → `version=<value>`; `'latest'` → empty version, newest non-beta on APKMirror (`src/build/utils.sh:340-343`); `'auto'` → `detect_version`, and if that is empty → `::fail::version_unresolved` (the silent fallback of `src/build/utils.sh:314` is removed; the user picks `latest` explicitly). `version.near` → `near_version=1`.
-   d. APKMirror versions (restored mockup feature, §0.6 R4): whenever this step fetches the app's APKMirror list page anyway (version `latest`, or the version page lookup falls back to the list page), the runner prints `::apkm_versions::` from that page (0 extra requests). Otherwise, when `apkmirror.versions_due` is true and the item has an `apkmirror` download, it fetches the list page once through the same `_cf_get` chain, after the input APK is obtained, and prints the marker; a failure only logs `[!]` and never fails the job. So APKMirror sees at most one extra request per package per 24 h, only inside builds on the single build worker; no page load and no schedule of its own scrapes APKMirror. Versions are parsed from the `h5.appRowTitle a.fontBlack` titles, beta/alpha excluded (same selector as `get_apk`, `src/build/utils.sh:340-343`).
+   c. Version (rule owned by catalog §4.2): `version.mode='pinned'` → `version=<value>`; `'latest'` → empty version, newest non-beta on APKMirror (`src/build/utils.sh` `get_apk`); `'auto'` → `detect_version`, and if that is empty → `::fail::version_unresolved` (the silent fallback of `src/build/utils.sh` `get_apk` is removed; the user picks `latest` explicitly). `version.near` → `near_version=1`.
+   d. APKMirror versions (restored mockup feature, §0.6 R4): whenever this step fetches the app's APKMirror list page anyway (version `latest`, or the version page lookup falls back to the list page), the runner prints `::apkm_versions::` from that page (0 extra requests). Otherwise, when `apkmirror.versions_due` is true and the item has an `apkmirror` download, it fetches the list page once through the same `_cf_get` chain, after the input APK is obtained, and prints the marker; a failure only logs `[!]` and never fails the job. So APKMirror sees at most one extra request per package per 24 h, only inside builds on the single build worker; no page load and no schedule of its own scrapes APKMirror. Versions are parsed from the `h5.appRowTitle a.fontBlack` titles, beta/alpha excluded (same selector as `get_apk` in `src/build/utils.sh`).
    For each distinct `download` spec: look in `DATA/apk-cache/<package>/<version>-<type>-<arch>-<dpi>.apk|apkm`; hit → copy; miss → `get_apk`/`get_apkpure`/`req`, then store in cache replacing older files of the same spec. Cache bypassed when the version is empty or `allow_nearest` is set (resolved version unknown before scrape).
-   e. For each variant: optional `split_editor` (exclude_splits), then `patch_variant` = one CLI call: `java -jar <cli> patch -p <files...> --options-file options.json --keystore=src/keystore/<keystore> --force --continue-on-error [--striplibs <abi>] --out=release/<variant>.apk <input>` (merges `patch`, `patch_multi`, `split_arch`, `src/build/utils.sh:760-794,891-904`). Missing output → `::fail::patch_failed`. `engine=lspatch|npatch` uses the engine command, output-dir rule and keystore credential table of xposed §5.3 instead.
+   e. For each variant: optional `split_editor` (exclude_splits), then `patch_variant` = one CLI call: `java -jar <cli> patch -p <files...> --options-file options.json --keystore=src/keystore/<keystore> --force --continue-on-error [--striplibs <abi>] --out=release/<variant>.apk <input>` (merges `patch`, `patch_multi`, `split_arch` of `src/build/utils.sh`). Missing output → `::fail::patch_failed`. `engine=lspatch|npatch` uses the engine command, output-dir rule and keystore credential table of xposed §5.3 instead.
    f. Write `result.json` (sha256 via `sha256sum`, package/version via APKEditor `info`, signer via `apksigner verify --print-certs`). A variant whose package cannot be read → `::fail::patch_failed`.
 6. Core `log.run`, line by line: strip ANSI, prefix `HH:MM:SS`, append to `/data/logs/<id>.log`, wake SSE readers of that job.
 7. On exit: validate (§3.2); move each variant to `DATA/artifacts/<item_id>/<job_id>/<source_id>-<key>-<variant>-<app_version>-<upstream_tag>.apk` (source prefix keeps downloads from morphe and morphe-beta distinct on the user's disk); insert `artifacts` rows; fill `build_jobs` versions; handler returns (job `success`); else raise `JobFailed` with the last `::fail::` line (no marker → `internal`, detail = last `[-]` line).
@@ -795,8 +795,8 @@ In-process: builds are enqueued with core `jobs.enqueue('build', {"item_id":N}, 
 |---|---|---|
 | `upstream_missing` | job service precheck | No downloaded patches/CLI for the source → run "Update upstream". |
 | `version_unresolved` | runner step c | `auto` mode and the bundle lists no compatible version → pin a version or choose `latest`. |
-| `apk_not_listed` | runner step d | Item has no `apkmirror.list_url` (today `src/build/utils.sh:297-299`). |
-| `download_failed` | runner step d | Page scrape or file download failed after FlareSolverr → CFBypass → Turnstile solver chain (`src/build/utils.sh:272-279,517-543`). Detail = last `[-]` line. |
+| `apk_not_listed` | runner step d | Item has no `apkmirror.list_url` (today `src/build/utils.sh` `get_apk`). |
+| `download_failed` | runner step d | Page scrape or file download failed after FlareSolverr → CFBypass → Turnstile solver chain (`src/build/utils.sh` `_cf_get`, `get_apk`). Detail = last `[-]` line. |
 | `merge_failed` | runner step e | APKEditor merge produced no APK. |
 | `patch_failed` | runner step e | CLI exited non-zero or output missing. |
 | `timeout` | core `log.run` | Wall clock > 60 min → kill. |
@@ -810,10 +810,10 @@ Restart: core marks `running` → `failed` (`server restarted`); `queued` rows a
 
 #### 5.1 APKMirror rate limit and solver
 
-- Concurrency is fixed at **1 running build** globally (core's one worker per kind). Reasons: APKMirror 429 is IP-wide after a burst (`docs/logs/2026-10-19-preflight-runtime.md` §4), all jobs share one exit IP, and each Turnstile solve peaks ~1.09 GB with an unbounded `ThreadingHTTPServer` (`local/solver/solver.py:78`). `ponytail: global single worker; per-host-resource limits only if build throughput matters.`
+- Concurrency is fixed at **1 running build** globally (core's one worker per kind). Reasons: APKMirror 429 is IP-wide after a burst (`docs/logs/2026-10-19-preflight-runtime.md` §4), all jobs share one exit IP, and each Turnstile solve peaks ~1.09 GB with an unbounded `ThreadingHTTPServer` (`local/solver/solver.py`). `ponytail: global single worker; per-host-resource limits only if build throughput matters.`
 - Within a job, downloads stay sequential as today; the input APK cache removes repeat hits for rebuilds.
-- The solver is still only called after a failed plain download (`src/build/utils.sh:525`), now via `APKM_SOLVER_URL`.
-- GitHub API is no longer called by builds (downloads move to the catalog's upstream fetcher), so build volume no longer spends GitHub quota; `src/etc/connection.sh` (a GitHub reachability probe, `src/etc/connection.sh:5-12`) is deleted.
+- The solver is still only called after a failed plain download (`src/build/utils.sh` `get_apk`), now via `APKM_SOLVER_URL`.
+- GitHub API is no longer called by builds (downloads move to the catalog's upstream fetcher), so build volume no longer spends GitHub quota; `src/etc/connection.sh` (a GitHub reachability probe, `src/etc/connection.sh` `check_connection`) is deleted.
 
 ### 6. Retention and cleanup
 
@@ -828,7 +828,7 @@ Restart: core marks `running` → `failed` (`server restarted`); `queued` rows a
 Deleted (project is unreleased; no compatibility): `local/build.sh`; every org script `src/build/{morphe,morphe-beta,Anddea-Revanced-Extended,Anddea-Revanced-Extended-Beta,Piko,Piko-Beta,Piko-Newx,DeRevanced,HushFacebook,hoo-dles,bufferk,arandomhooman,icysymmetra,docbt,rushiranpise,BiliRoamingM,Dropped-Patches-Revanced}.sh` (their bodies become catalog variant data); `src/build/Xposed.sh` (its apps become catalog data, xposed §4.1); `src/etc/connection.sh`; the `builder` service; `local/out/`, `local/work/`; the old GitHub workflows, actions and `src/etc/ci.sh` (ci §9).
 
 `src/build/utils.sh` changes:
-- Remove top-level side effects `src/build/utils.sh:3-19` (tools into image; UA into `init_ua`).
+- Remove top-level side effects `src/build/utils.sh` top-level code (tools into image; UA into `init_ua`).
 - Remove `dl_gh`, `dl_gl` (`:37-133`, upstream download is catalog's), `get_patches_key` (`:138-172`, selection now lives in the options file), `get_apk_chplay` (`:645`, no active caller), `telegram_dl` (`:704`, no caller; secret `TDL_BACKUP` is retired with it), `apk_editor` (`:882-888`, no caller).
 - Replace `patch`, `patch_multi`, `split_arch` with `patch_variant`. Replace `exit 1` inside library functions (`:772`) with `return 1` so the runner decides the fail code.
 - Solver URLs from env (§2.1).
@@ -854,7 +854,7 @@ Answered in §0.6: GitHub Actions kept (Q1, Part 6); Xposed apps kept (Q2, Part 
 
 - Run duration is unmeasured; the 60 min timeout is a guess sized for 5 patch passes + solver retries.
 - APKEditor `info` flag names are from the current README, not verified against the pinned 1.4.9.
-- Whether BiliRoamingM / Dropped-Patches (revanced-cli sources) still patch with morphe-desktop (`src/build/utils.sh:765`) is unverified; they are seeded (decision Q3) and the first build shows the result.
+- Whether BiliRoamingM / Dropped-Patches (revanced-cli sources) still patch with morphe-desktop (`src/build/utils.sh` `patch`) is unverified; they are seeded (decision Q3) and the first build shows the result.
 
 
 # Part 4 — Devices, OTA, notifications
@@ -1051,8 +1051,8 @@ Served by core `server.py` from `local/webui/static/` (stdlib Python, no npm, no
 
 | file | made from (mockup) | content |
 |---|---|---|
-| `static/app.css` | the first `<style>` block, identical in 6 of the 8 mockup files (`apps.html:1-158`) | tokens (light/dark), components (Card, Button, Badge, Switch, Tabs, Dialog, dropdown, Toast, OTP input), shell, responsive drawer. The two variants (`login.html` adds `.auth`, `schedules.html` adds one media query) move into those pages' own `<style>`. |
-| `static/app.js` (ES module) | the first `<script>` (`apps.html:158-165`: theme, toast, drawer, dropdown close, tabs roving focus) | plus: `api(method, path, body)` (JSON fetch, `Content-Type: application/json` on mutations, 401 → `location = '/login.html'`, `{error}` → toast); `logStream(jobId, onText, onEnd)` (`EventSource` on `/api/jobs/{id}/log`); `esc()` HTML-escape; `fmt.rel/abs/bytes/duration`; `shell()` fills the sidebar status (§2 row "Sidebar") and sets `aria-current` from `location.pathname`. |
+| `static/app.css` | the first `<style>` block, identical in 6 of the 8 mockup files (`apps.html`, deleted) | tokens (light/dark), components (Card, Button, Badge, Switch, Tabs, Dialog, dropdown, Toast, OTP input), shell, responsive drawer. The two variants (`login.html` adds `.auth`, `schedules.html` adds one media query) move into those pages' own `<style>`. |
+| `static/app.js` (ES module) | theme, toast, drawer, dropdown close and tabs roving focus from the first `<script>` of the deleted mockup `apps.html` | plus: `api(method, path, body)` (JSON fetch, `Content-Type: application/json` on mutations, 401 → `location = '/login.html'`, `{error}` → toast); `logStream(jobId, onText, onEnd)` (`EventSource` on `/api/jobs/{id}/log`); `esc()` HTML-escape; `fmt.rel/abs/bytes/duration`; `shell()` fills the sidebar status (§2 row "Sidebar") and sets `aria-current` from `location.pathname`. |
 | `static/<page>.html` | each mockup page body; the sidebar/top-bar markup is copied into every page as in the mockup (static HTML, no templating) | page markup with sample rows removed; page CSS stays in the page's second `<style>`. |
 | `static/<page>.js` (ES module) | the page's second `<script>` | the mockup interaction logic kept (filters, drag-reorder, tabs, save bar, log follow/wrap/find) but fed by `api()` instead of sample DOM. |
 
@@ -1066,7 +1066,7 @@ Rendering rules: lists are rebuilt from JSON with template strings; every server
 
 | mockup element | spec | decision |
 |---|---|---|
-| Sidebar nav, sign out (`apps.html:166-170`) | `POST /api/auth/logout` (core §8) | covered |
+| Sidebar nav, sign out (`apps.html`, deleted) | `POST /api/auth/logout` (core §8) | covered |
 | Sidebar "Worker busy · 1 running · 2 queued" | `GET /api/jobs?status=running` / `?status=queued` (core §8) | covered, client counts |
 | Sidebar "Disk 6.9 / 63 GB · arm64", host name | — | **add** `server` object in `GET /api/settings` (core §8): `{arch, tz, now, network_mode, disk:{total, free, artifacts, apk_cache, upstream, logs, artifacts_count}}`; host name = `location.hostname` (client) |
 | Light/dark toggle saved in localStorage | — | client |
@@ -1231,12 +1231,12 @@ Decision input: user decision Q1 = (b) keep GitHub Actions builds (`docs/logs/20
 
 ### 1. Today (facts the design replaces)
 
-- `ci.yml` runs daily at `0 9 * * *` (`.github/workflows/ci.yml:4-5`), runs `src/etc/ci.sh <repo> <channel> <asset name>` once per org (`ci.yml:20-87`), and calls `manual-patch.yml` per org when `new_patch == 1` (`ci.yml:107-242`).
-- Change detection = time compare: upstream release asset `updated_at` vs our release asset `updated_at` for one hand-picked asset name (`src/etc/ci.sh:20-33`). One representative asset per org; other apps of the org are not checked.
-- `manual-patch.yml` has one job per org, each a matrix over run numbers calling `src/build/<org>.sh <run>` (`.github/workflows/manual-patch.yml:44-67`), after a GitHub reachability probe (`manual-patch.yml:57-59`). `ci_.yml` does the same for `src/build/Xposed.sh` (`.github/workflows/ci_.yml:12-27`).
-- Toolchain on the runner: `.github/actions/preparing` (JDK 21, FlareSolverr and cfbypass containers, optional usque/python/BouncyCastle, `.github/actions/preparing/action.yml:22-84`).
-- Publishing: `ncipollo/release-action` to the single release tag `all`, `allowUpdates: true`, files `./release/*.apk` (`.github/actions/release/action.yml:19-27`). README links fixed names, e.g. `releases/download/all/youtube-morphe.apk` (142 links in `README.md`).
-- Secrets: `GITHUB_TOKEN` (`manual-patch.yml:5`) and `TDL_BACKUP` (`manual-patch.yml:41,196,222`). `TDL_BACKUP` is read only by `telegram_dl` (`src/build/utils.sh:702-722`), which no script calls (`grep -n telegram_dl src/build/*.sh` finds only the definition). `permissions: write-all` (`ci.yml:2`, `manual-patch.yml:2`, `ci_.yml:2`).
+- `ci.yml` runs daily at `0 9 * * *` (`.github/workflows/ci.yml` `on.schedule`), runs `src/etc/ci.sh <repo> <channel> <asset name>` once per org (`ci.yml` job `check`, steps `Check new patch …`), and calls `manual-patch.yml` per org when `new_patch == 1` (`ci.yml` jobs `Patch-*`).
+- Change detection = time compare: upstream release asset `updated_at` vs our release asset `updated_at` for one hand-picked asset name (`src/etc/ci.sh` `checker`). One representative asset per org; other apps of the org are not checked.
+- `manual-patch.yml` has one job per org, each a matrix over run numbers calling `src/build/<org>.sh <run>` (`.github/workflows/manual-patch.yml` jobs `patch_*`), after a GitHub reachability probe (`manual-patch.yml` step `Check github connection`). `ci_.yml` does the same for `src/build/Xposed.sh` (`.github/workflows/ci_.yml` job `Patch-Xposed`).
+- Toolchain on the runner: `.github/actions/preparing` (JDK 21, FlareSolverr and cfbypass containers, optional usque/python/BouncyCastle, `.github/actions/preparing/action.yml` steps).
+- Publishing: `ncipollo/release-action` to the single release tag `all`, `allowUpdates: true`, files `./release/*.apk` (`.github/actions/release/action.yml` step `Release`). README links fixed names, e.g. `releases/download/all/youtube-morphe.apk` (142 links in `README.md`).
+- Secrets: `GITHUB_TOKEN` (`manual-patch.yml` top-level `env`) and `TDL_BACKUP` (`manual-patch.yml` `workflow_call` secrets and the `patch_*` job envs). `TDL_BACKUP` is read only by `telegram_dl` (`src/build/utils.sh` `telegram_dl`), which no script calls (`grep -n telegram_dl src/build/*.sh` finds only the definition). `permissions: write-all` (top-level `permissions` of `ci.yml`, `manual-patch.yml`, `ci_.yml`).
 
 ### 2. Design in one paragraph
 
@@ -1341,7 +1341,7 @@ Notes:
 - `RELUME_GITHUB_TOKEN_FILE` is set through `$GITHUB_ENV` in a step, not in `jobs.build.env`: the `runner` context is not available in `jobs.<job_id>.env` (allowed there: `github, needs, strategy, matrix, vars, secrets, inputs`; `runner` is allowed in `steps.run`/`steps.env`; docs.github.com/en/actions/reference/workflows-and-actions/contexts, context availability table, fetched 2026-10-19). A `$GITHUB_ENV` value is visible from the next step on, so the file is written in the following step.
 - `actions/checkout@v7.0.1` = latest release (`gh api repos/actions/checkout/releases/latest`, 2026-10-19). Runner image `ubuntu-24.04` ships Docker Compose 2.38.2 and GitHub CLI 2.102.0 (actions/runner-images `Ubuntu2404-Readme.md`, 2026-10-19).
 - Matrix from a job output with `fromJSON(needs.<job>.outputs.<name>)`, `fail-fast`, `max-parallel`: docs.github.com "Running variations of jobs in a workflow" (fetched 2026-10-19). The `if` guards the empty list.
-- Matrix unit = **source**, items of one source run serially in one runner (one exit IP per source, as build §5.1 asks for one host). Sources run in parallel on separate runners, as today's per-org jobs do (`ci.yml:107-242`). `max-parallel` is not set (today has none).
+- Matrix unit = **source**, items of one source run serially in one runner (one exit IP per source, as build §5.1 asks for one host). Sources run in parallel on separate runners, as today's per-org jobs do (`ci.yml` jobs `Patch-*`). `max-parallel` is not set (today has none).
 - `concurrency: group: build` without `cancel-in-progress`: a second run waits; a newer pending run replaces an older pending one (workflow-syntax docs: "any existing `pending` job or workflow in the same concurrency group will be canceled"). Prevents two runs uploading the same asset.
 - `gh release upload <tag> <files>... --clobber`, label by appending `#<label>` to the file argument (cli.github.com/manual/gh_release_upload, fetched 2026-10-19). `xargs -d '\n'` keeps each line (label has spaces) as one argument.
 - `permissions: contents: write` covers release upload ("allows the action to create a release", workflow-syntax docs) and replaces `write-all`.
@@ -1371,7 +1371,7 @@ cron 09:00 / dispatch(source, force)
 | Upstream pull fails in `ci-build` | build of each item fails `upstream_missing` (build §5); job exit 1; nothing uploaded for them |
 | One item build fails | its log is printed; other items continue; successes uploaded; job red (exit 1) |
 | Upload interrupted with `--clobber` | gh docs: "the original assets will be lost". Next `ci-plan` sees the asset missing and rebuilds that source. |
-| Runner job timeout | per-build timeout 60 min stays core's (`log.run`, build §4 step 4); GitHub's job limit applies above it. A source whose serial build exceeds it must be split in the catalog (one source per run, as today's DeRevanced 10-run matrix, `manual-patch.yml:107`). |
+| Runner job timeout | per-build timeout 60 min stays core's (`log.run`, build §4 step 4); GitHub's job limit applies above it. A source whose serial build exceeds it must be split in the catalog (one source per run, as today's DeRevanced 10-run matrix, `manual-patch.yml` job `patch_derv`, matrix `run`). |
 | APKMirror 429 / Cloudflare | same solver chain inside the container as locally (build §5.1); no CI-only retries |
 
 ### 8. Testing
@@ -1384,7 +1384,7 @@ cron 09:00 / dispatch(source, force)
 
 ### 9. Deletions and one-time steps
 
-Deleted: `.github/workflows/ci.yml`, `.github/workflows/ci_.yml`, `.github/workflows/manual-patch.yml`, `.github/actions/preparing/`, `.github/actions/release/`, `.github/actions/experimental-check/`, `.github/actions/re-run/` (re-dispatches `manual-patch.yml`, `.github/actions/re-run/action.yml:14-25`), `src/etc/ci.sh`. Secret `TDL_BACKUP` is no longer used (user may delete it in repo settings).
+Deleted: `.github/workflows/ci.yml`, `.github/workflows/ci_.yml`, `.github/workflows/manual-patch.yml`, `.github/actions/preparing/`, `.github/actions/release/`, `.github/actions/experimental-check/`, `.github/actions/re-run/` (re-dispatches `manual-patch.yml`, `.github/actions/re-run/action.yml` `createWorkflowDispatch` call), `src/etc/ci.sh`. Secret `TDL_BACKUP` is no longer used (user may delete it in repo settings).
 One-time (user action, destructive, not automated): delete the old-name assets on release `all` after the first full run; rewrite the README download links to the new names (the seed one-off script can print the table, catalog §8).
 
 
@@ -1398,16 +1398,16 @@ References "catalog §N", "build §N", "device §N", "core §N" mean sections of
 
 | Fact | Evidence |
 |---|---|
-| Entry: `bash src/build/Xposed.sh <1..5>`, only from the GitHub workflow "3. Another Patch" (matrix 1–5). Not in the local build table. | `src/build/Xposed.sh:59-75`, `.github/workflows/ci_.yml:13,27`, `local/build.sh:16-34` |
-| Engines: LSPatch from `JingMatrix/LSPatch` latest (`dl_gh … latest` downloads every asset; the jar is picked by glob `lspatch-*-release.jar`). NPatch from `7723mod/NPatch` pinned `v1.0.5` (glob `jar*.jar`). `NPatch_dl` (latest) is defined but never called. | `Xposed.sh:5-10,50`, `utils.sh:811,835` |
-| Modules (Xposed module APKs embedded into the app): `revenge-mod/revenge-xposed` latest, file `app-release.apk`; `gnadgnaoh/NexAlloy` pinned `v1.1`, glob `NexAlloy*.apk`, first match wins. | `Xposed.sh:12,17,19,27`, `utils.sh:800-809` |
-| Apps (8 items, one module each): Discord (Revenge, LSPatch), Facebook, Messenger, Instagram, Threads, Zalo (NexAlloy, LSPatch), TikTok, TikTok Asia (NexAlloy, NPatch). | `Xposed.sh:18-57` |
-| Base APK download: the same `get_apk` (APKMirror) and `get_apkpure` (Zalo) as Morphe items; `bundle` is merged to one APK by APKEditor before patching. | `Xposed.sh:18,26,29,36,39,46,53,56`, `utils.sh:546-553,625-636` |
-| Version: Facebook pinned `580.0.0.51.74`; all others newest (no `.mpp` in the work dir, so `detect_version` returns empty and `get_apk` takes the newest non-beta). `lspatch` unsets `version`, so Messenger is not pinned. | `Xposed.sh:25`, `utils.sh:189-204,336-343,813` |
-| Engine flags: Discord none; Facebook, Messenger, Instagram, Threads, Zalo `--injectdex --sigbypasslv 3`; TikTok, TikTok Asia `--sigbypasslv 3`. | `Xposed.sh:19,27,30,37,40,47,54,57` |
-| Signing: LSPatch `-k src/keystore/lspatch-signing.p12 morphe fiorenmas morphe`; NPatch `-k src/keystore/fiorenmas.ks fiorenmas morphe fiorenmas` (path, store password, alias, alias password). Morphe items use `morphe.keystore`. | `utils.sh:811,835,765` |
-| Output: engine writes `<input base>-<n>-lspatched.apk` / `-npatched.apk` into `-o`; the script renames it to `release/<key>-<module owner>.apk`. | `utils.sh:812,836` |
-| Telegram: `telegram_dl` (tdl client) needs secret `TDL_BACKUP` = base64 backup of a logged-in Telegram account session. **It has no caller anywhere** (grep of the repo: only its definition). Workflows pass `TDL_BACKUP` to `Piko.sh`/`Piko-Beta.sh`, which do not use it. | `utils.sh:701-756`, `.github/workflows/manual-patch.yml:41,196,222` |
+| Entry: `bash src/build/Xposed.sh <1..5>`, only from the GitHub workflow "3. Another Patch" (matrix 1–5). Not in the local build table. | `src/build/Xposed.sh`, `.github/workflows/ci_.yml` job `Patch-Xposed` matrix and `Patch apk` step, `local/build.sh` `ORGS` table |
+| Engines: LSPatch from `JingMatrix/LSPatch` latest (`dl_gh … latest` downloads every asset; the jar is picked by glob `lspatch-*-release.jar`). NPatch from `7723mod/NPatch` pinned `v1.0.5` (glob `jar*.jar`). `NPatch_dl` (latest) is defined but never called. | `Xposed.sh`, `utils.sh` `lspatch`, `npatch` |
+| Modules (Xposed module APKs embedded into the app): `revenge-mod/revenge-xposed` latest, file `app-release.apk`; `gnadgnaoh/NexAlloy` pinned `v1.1`, glob `NexAlloy*.apk`, first match wins. | `Xposed.sh`, `utils.sh` `lspatch` |
+| Apps (8 items, one module each): Discord (Revenge, LSPatch), Facebook, Messenger, Instagram, Threads, Zalo (NexAlloy, LSPatch), TikTok, TikTok Asia (NexAlloy, NPatch). | `Xposed.sh` |
+| Base APK download: the same `get_apk` (APKMirror) and `get_apkpure` (Zalo) as Morphe items; `bundle` is merged to one APK by APKEditor before patching. | `Xposed.sh`, `utils.sh` `get_apk`, `get_apkpure` |
+| Version: Facebook pinned `580.0.0.51.74`; all others newest (no `.mpp` in the work dir, so `detect_version` returns empty and `get_apk` takes the newest non-beta). `lspatch` unsets `version`, so Messenger is not pinned. | `Xposed.sh`, `utils.sh` `detect_version`, `get_apk`, `lspatch` |
+| Engine flags: Discord none; Facebook, Messenger, Instagram, Threads, Zalo `--injectdex --sigbypasslv 3`; TikTok, TikTok Asia `--sigbypasslv 3`. | `Xposed.sh` |
+| Signing: LSPatch `-k src/keystore/lspatch-signing.p12 morphe fiorenmas morphe`; NPatch `-k src/keystore/fiorenmas.ks fiorenmas morphe fiorenmas` (path, store password, alias, alias password). Morphe items use `morphe.keystore`. | `utils.sh` `lspatch`, `npatch`, `patch` |
+| Output: engine writes `<input base>-<n>-lspatched.apk` / `-npatched.apk` into `-o`; the script renames it to `release/<key>-<module owner>.apk`. | `utils.sh` `lspatch`, `npatch` |
+| Telegram: `telegram_dl` (tdl client) needs secret `TDL_BACKUP` = base64 backup of a logged-in Telegram account session. **It has no caller anywhere** (grep of the repo: only its definition). Workflows pass `TDL_BACKUP` to `Piko.sh`/`Piko-Beta.sh`, which do not use it. | `utils.sh` `telegram_dl`, `.github/workflows/manual-patch.yml` `workflow_call` secrets and the `patch_*` job envs |
 
 Third-party CLI facts (checked 2026-10-19 against source at the release tags, via `gh api`):
 - LSPatch `v1.2` (latest, `lspatch-v1.2-487-release.jar`): `-o` output dir, `-f` force, `-l/--sigbypasslv` 0–3 (default 0), `--injectdex`, `-k` arity 4, `-m/--embed` list, `--manager` "cannot work with embedding modules" (`patch/src/main/java/org/lsposed/patch/LSPatch.java:35-66`). Output name `%s-%d-lspatched.apk` (`patch/.../ApkPatcher.java:138-143`). Modules are stored inside the APK at `assets/lspatch/modules/<pkg>.apk` (`ApkPatcher.java:394`, `share/.../Constants.java:9`).
@@ -1480,7 +1480,7 @@ Items (one group "Xposed", appended after the Morphe groups; variants per Q5 = o
 | nexalloy-npatch | com.zhiliaoapp.musically | tiktok | latest | apkmirror, apk, –, –, – | universal | 3, false |
 | nexalloy-npatch | com.ss.android.ugc.trill | tiktok-asian | latest | apkmirror, apk, –, –, – | universal | 3, false |
 
-All values from `Xposed.sh:18-57`. Apps rows (`apkmirror_*`, `apkpure_url`) come from `src/build/helper/apps.json` like other items (all 8 packages are present there). Note: preflight-patches §1 says "9 items"; the script has 8.
+All values from `Xposed.sh`. Apps rows (`apkmirror_*`, `apkpure_url`) come from `src/build/helper/apps.json` like other items (all 8 packages are present there). Note: preflight-patches §1 says "9 items"; the script has 8.
 
 ### 5. Interfaces
 
@@ -1528,10 +1528,10 @@ engine=lspatch|npatch →
 ```
 - `-l` is always passed: NPatch's default is 1, LSPatch's is 0 (§1); explicit values make the seed reproduce today's flags exactly.
 - The output is taken as "the only APK in an empty dir", not by predicting `-lspatched`/`-npatched` names (they contain the engine's internal version code, §1).
-- Keystore credentials: a table in `build-item.sh` keyed by keystore file name, values copied from `utils.sh:811,835`: `lspatch-signing.p12 → morphe fiorenmas morphe`, `fiorenmas.ks → fiorenmas morphe fiorenmas`. Unknown keystore file for an Xposed engine → `::fail::internal::unknown keystore`. These passwords are already public in the repo; no new secret.
+- Keystore credentials: a table in `build-item.sh` keyed by keystore file name, values copied from `utils.sh` `lspatch`, `npatch`: `lspatch-signing.p12 → morphe fiorenmas morphe`, `fiorenmas.ks → fiorenmas morphe fiorenmas`. Unknown keystore file for an Xposed engine → `::fail::internal::unknown keystore`. These passwords are already public in the repo; no new secret.
 - Version step (build §4 step 5c) is unchanged: `latest` → empty version, `pinned` → value. `auto` cannot reach the runner (API rejects it); if it does, `detect_version` finds no `.mpp`, version is empty → `::fail::version_unresolved` (existing rule).
 - Input download, APK cache, `result.json` (package, version, `signer_sha256`) are unchanged. `version_code` stays the original app's (no `--version-code`/`-r` passed).
-- Engine flags are built only from validated `engine_options` fields; no free-text argument string is stored or passed (today's `$4` raw string, `utils.sh:811`, is not carried over).
+- Engine flags are built only from validated `engine_options` fields; no free-text argument string is stored or passed (today's `$4` raw string, `utils.sh` `lspatch`, is not carried over).
 
 ### 6. Data flow
 
@@ -1555,7 +1555,7 @@ build ─► job_input(item) {engine, engine_options, module paths, engine jar}
 - Embedded modules: the module APK is inside the patched APK (`assets/lspatch/modules/`, §1). One APK per item; nothing extra is installed on the phone; no LSPatch manager. A module update reaches the phone only through rebuild + OTA.
 - Signature: each engine signs with its fixed keystore (§5.3). Rebuilds keep the same signer, so `adb install -r` updates work (device D7 by `build_job_id`, unchanged).
 - First install over a Play Store app fails with `SIGNATURE_MISMATCH` → existing D6 confirm-uninstall flow (data loss warning).
-- Same package from two sources: Morphe sources also build Facebook, Messenger, Threads, TikTok (`DeRevanced.sh:22,27,99,120,124`, `HushFacebook.sh:11`, `icysymmetra.sh:11`) and Instagram (`Piko.sh:21`, `Piko-Beta.sh:20`) with `morphe.keystore`. Switching a phone between such items hits `SIGNATURE_MISMATCH` (device §8, already a listed limitation). See §10 item 6 for the assignment rule.
+- Same package from two sources: Morphe sources also build Facebook, Messenger, Threads, TikTok (`DeRevanced.sh`, `HushFacebook.sh`, `icysymmetra.sh`) and Instagram (`Piko.sh`, `Piko-Beta.sh`) with `morphe.keystore`. Switching a phone between such items hits `SIGNATURE_MISMATCH` (device §8, already a listed limitation). See §10 item 6 for the assignment rule.
 - MicroG / dependency apps: not applicable to the seeded Xposed items (§4).
 - Retention, download route, `latest_artifact(item_id, abi)`: unchanged.
 
