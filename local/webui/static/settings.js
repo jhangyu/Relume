@@ -1,4 +1,4 @@
-import { $, $$, act, api, fmt, html, shell, toast } from '/static/app.js';
+import { $, $$, act, api, catalogItems, fmt, html, shell, toast } from '/static/app.js';
 
 const FIELDS = {
   telegram: { bot_token: '#tg-token', chat_id: '#tg-chat' },
@@ -143,7 +143,7 @@ $('#pw-save').addEventListener('click', async () => {
 (async () => {
   shell();
   const cat = await api('GET', '/api/catalog');
-  Z.items = [...cat.groups.flatMap(g => g.items), ...cat.ungrouped];
+  Z.items = catalogItems(cat);
   await Promise.all([loadNotify(), loadSettings(false)]);
   checkPw();
 })().catch(e => toast(e.message, 'error'));

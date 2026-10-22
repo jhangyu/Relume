@@ -1,4 +1,4 @@
-import { $, $$, act, api, every, fmt, html, shell, toast } from '/static/app.js';
+import { $, $$, act, api, ask, catalogItems, every, fmt, html, shell, toast } from '/static/app.js';
 
 const D = { devices: [], items: new Map(), projects: [], last: new Map() };
 const label = id => (D.items.get(id) || {}).label || `item ${id}`;
@@ -22,7 +22,7 @@ function wireOtp(g) {
 function card(d) {
   const pending = d.assignments.filter(a => a.pending).length + d.projects.filter(x => x.pending).length;
   const last = D.last.get(d.id);
-  return html`<section class="card" data-dev="${d.id}"><div class="card-h"><div class="row between"><div class="row"><span class="dot ${d.online ? 'on' : 'off'}" aria-hidden="true"></span><h2 contenteditable="true" spellcheck="false" data-rename title="Click to rename">${d.name}</h2><span class="xs muted">${d.model} · Android ${d.android_release}</span></div>
+  return html`<section class="card" data-dev="${d.id}"><div class="card-h"><div class="row between"><div class="row"><span class="dot ${d.online ? 'on' : 'off'}" aria-hidden="true"></span><h2 contenteditable="true" spellcheck="false" data-rename role="textbox" aria-label="Device name" title="Click to rename">${d.name}</h2><span class="xs muted">${d.model} · Android ${d.android_release}</span></div>
 <label class="row sm"><span class="switch"><input type="checkbox" data-oab ${d.ota_after_build ? html`checked` : ''}><span></span></span>Install after build</label></div>
 <p class="xs muted mono">${d.host}:${d.connect_port} · ${(d.abi_list || '').split(',')[0]} · last seen ${fmt.rel(d.last_seen_at)}</p>${d.online ? '' : html`<div class="alert warn"><span>Turn on Wireless debugging on the phone, then Reconnect.</span></div>`}</div>
 <div class="card-c stack-sm"><ul class="alist">${d.assignments.map(a => html`<li><span>${a.pending ? '' : '✓'}</span><span>${label(a.item_id)} <span class="xs muted mono">${a.installed ? a.installed.version_name : 'not installed'}${a.available ? ` → ${a.available.version_name}` : ''}</span></span><span class="xs ${a.pending ? 'newer' : 'muted'}">${a.pending ? 'pending' : 'current'}</span></li>`)}</ul>
@@ -89,30 +89,24 @@ async function reconnect(d) {
   await loadDevices();
 }
 
-function editAssignments(d) {
+async function editAssignments(d) {
   const mine = new Set(d.assignments.map(a => a.item_id));
   const mineP = new Set(d.projects.filter(x => x.assigned).map(x => x.project_id));
   $('#as-items').innerHTML = html`${[...D.items.values()].map(it => html`<label class="row sm"><input type="checkbox" class="cb" value="${it.id}" ${mine.has(it.id) ? html`checked` : ''}> ${it.label} <span class="xs muted mono">${it.package}</span></label>`)}`;
   $('#as-projects').innerHTML = html`<span class="lbl" style="margin-top:.5rem">Followed projects</span>${D.projects.length ? D.projects.map(p => html`<label class="row sm"><input type="checkbox" class="cb" value="${p.id}" ${mineP.has(p.id) ? html`checked` : ''}> ${p.label} <span class="xs muted mono">${p.package || p.repo}</span></label>`) : html`<p class="xs muted">No followed projects.</p>`}`;
   const dlg = $('#dlg-assign');
-  dlg.showModal();
-  dlg.addEventListener('close', () => {
-    if (dlg.returnValue !== 'ok') return;
-    act('PUT', `/api/devices/${d.id}/assignments`, { item_ids: $$('#as-items input:checked').map(i => Number(i.value)), project_ids: $$('#as-projects input:checked').map(i => Number(i.value)) }, 'Apps saved').then(loadDevices).catch(() => {});
-  }, { once: true });
+  if (await ask(dlg) !== 'ok') return;
+  act('PUT', `/api/devices/${d.id}/assignments`, { item_ids: $$('#as-items input:checked').map(i => Number(i.value)), project_ids: $$('#as-projects input:checked').map(i => Number(i.value)) }, 'Apps saved').then(loadDevices).catch(() => {});
 }
 
-function pairDialog(p) {
+async function pairDialog(p) {
   $('#pt').textContent = `Pair ${p.dataset.pair}:${p.dataset.port}`;
   $$('#d-otp input').forEach(i => { i.value = ''; });
   const dlg = $('#dlg-pair');
-  dlg.showModal();
-  dlg.addEventListener('close', () => {
-    if (dlg.returnValue !== 'ok') return;
-    const body = { host: p.dataset.pair, pair_port: Number(p.dataset.port), code: otpValue($('#d-otp')) };
-    if ($('#d-cport').value) body.connect_port = Number($('#d-cport').value);
-    pair(body);
-  }, { once: true });
+  if (await ask(dlg) !== 'ok') return;
+  const body = { host: p.dataset.pair, pair_port: Number(p.dataset.port), code: otpValue($('#d-otp')) };
+  if ($('#d-cport').value) body.connect_port = Number($('#d-cport').value);
+  pair(body);
 }
 
 document.addEventListener('click', async e => {
@@ -147,6 +141,13 @@ document.addEventListener('change', e => {
   const sec = e.target.closest('[data-dev]');
   if (sec && e.target.matches('[data-oab]')) act('PATCH', `/api/devices/${sec.dataset.dev}`, { ota_after_build: e.target.checked }, 'Saved').catch(loadDevices);
 });
+document.addEventListener('keydown', e => {
+  const h = e.target.closest('[data-rename]');
+  if (!h || (e.key !== 'Enter' && e.key !== 'Escape')) return;
+  e.preventDefault();
+  if (e.key === 'Escape') h.textContent = D.devices.find(x => x.id === Number(h.closest('[data-dev]').dataset.dev)).name;
+  h.blur();
+});
 document.addEventListener('focusout', e => {
   const h = e.target.closest('[data-rename]');
   if (!h) return;
@@ -172,7 +173,7 @@ $('#of').addEventListener('change', () => loadHistory().catch(() => {}));
   wireOtp($('#m-otp'));
   wireOtp($('#d-otp'));
   const [cat, s] = await Promise.all([api('GET', '/api/catalog'), api('GET', '/api/settings')]);
-  [...cat.groups.flatMap(g => g.items), ...cat.ungrouped].forEach(it => D.items.set(it.id, it));
+  catalogItems(cat).forEach(it => D.items.set(it.id, it));
   $('#hostline').textContent = `Network mode: ${s.server.network_mode || 'unknown'} · discovery runs on every platform; when nothing is found, enter the phone's IP and ports below`;
   await loadDevices();
   await loadHistory();

@@ -1,4 +1,4 @@
-import { $, $$, act, api, every, fmt, html, iconTile, logStream, shell, toast } from '/static/app.js';
+import { $, $$, act, api, catalogItems, every, fmt, html, iconTile, JOB_BADGE, logStream, shell, toast } from '/static/app.js';
 
 const qs = new URLSearchParams(location.search);
 const ITEM = qs.get('item') ? Number(qs.get('item')) : null;
@@ -9,11 +9,10 @@ const B = { items: new Map(), schedules: new Map(), sel: null, es: null, text: '
 const triggerText = j => (j.trigger === 'schedule' ? `schedule "${B.schedules.get(j.schedule_id) || j.schedule_id}"`
   : j.trigger === 'upstream' ? 'patch update' : j.trigger === 'after_build' ? 'after build' : 'manual');
 const itemOf = j => B.items.get(j.target.item_id) || { label: `item ${j.target.item_id}`, source_name: '', abis: [] };
-const BADGE = { success: ['b-ok', 'Success'], failed: ['b-err', 'Failed'], running: ['b-info', 'Running'], queued: ['b-mute', 'Waiting'], cancelled: ['b-mute', 'Cancelled'] };
 
 async function loadRefs() {
   const [cat, sch] = await Promise.all([api('GET', '/api/catalog'), api('GET', '/api/schedules')]);
-  [...cat.groups.flatMap(g => g.items), ...cat.ungrouped].forEach(it => B.items.set(it.id, it));
+  catalogItems(cat).forEach(it => B.items.set(it.id, it));
   sch.schedules.forEach(s => B.schedules.set(s.id, s.name));
 }
 
@@ -22,7 +21,7 @@ async function renderQueue() {
   const rows = [...r.jobs, ...q.jobs.reverse()];
   $('#qsum').textContent = `${r.jobs.length} running · ${q.jobs.length} waiting · 1 worker`;
   $('#queue tbody').innerHTML = html`${rows.map(j => {
-    const it = itemOf(j), [cls, label] = BADGE[j.status];
+    const it = itemOf(j), [cls, label] = JOB_BADGE[j.status];
     return html`<tr><td class="mono" style="width:4rem"><a href="?job=${j.id}" data-sel="${j.id}">#${j.id}</a></td><td><div class="row" style="flex-wrap:nowrap">${iconTile(it, 'ico-sm')}<b style="font-weight:500">${it.label}</b><span class="src">${it.source_name}</span></div></td><td class="hide-m sm muted">${triggerText(j)}</td><td><span class="badge ${cls}">${label}</span></td><td style="text-align:right"><button class="btn btn-ghost btn-sm" type="button" data-cancel="${j.id}">${j.status === 'running' ? 'Cancel' : 'Remove'}</button></td></tr>`;
   })}`;
   return r.jobs[0];
@@ -90,7 +89,7 @@ async function select(id) {
   const j = await api('GET', `/api/jobs/${id}`);
   B.sel = id;
   B.last = j;
-  const it = itemOf(j), d = j.detail || {}, [cls, label] = BADGE[j.status];
+  const it = itemOf(j), d = j.detail || {}, [cls, label] = JOB_BADGE[j.status];
   const tpl = document.createElement('template');
   tpl.innerHTML = html`${iconTile(it)}`;
   tpl.content.firstChild.id = 'bico';
@@ -108,7 +107,7 @@ async function select(id) {
   renderSteps();
   B.es = logStream(id, appendLines, status => {
     B.last = { ...B.last, status };
-    const [c2, l2] = BADGE[status] || ['b-mute', status];
+    const [c2, l2] = JOB_BADGE[status] || ['b-mute', status];
     $('#bst').className = `badge ${c2}`;
     $('#bst').textContent = l2;
     $('#cancel').disabled = true;
@@ -135,7 +134,7 @@ async function renderHistory(append) {
   const done = jobs.filter(j => j.status !== 'queued' && j.status !== 'running');
   if (jobs.length) oldest = jobs[jobs.length - 1].id;
   const rows = html`${done.map(j => {
-    const it = itemOf(j), [cls, label] = BADGE[j.status], size = ((j.detail && j.detail.artifacts) || []).reduce((n, a) => n + a.size, 0);
+    const it = itemOf(j), [cls, label] = JOB_BADGE[j.status], size = ((j.detail && j.detail.artifacts) || []).reduce((n, a) => n + a.size, 0);
     return html`<tr data-id="${j.id}" ${j.id === B.sel ? html`aria-current="true"` : ''}><td class="mono">#${j.id}</td><td><div class="row" style="flex-wrap:nowrap">${iconTile(it, 'ico-sm')}<span>${it.label}</span></div></td><td class="hide-m sm muted">${triggerText(j)}</td><td><span class="badge ${cls}">${label}</span>${j.status === 'failed' ? html`<div class="xs danger">${j.reason || ''}</div>${fixFor(j)}` : ''}</td><td class="hide-m">${fmt.abs(j.started_at)}</td><td class="hide-m">${fmt.duration(j.started_at, j.finished_at)}</td><td class="hide-m">${size ? fmt.bytes(size) : '—'}</td><td><button class="btn btn-ghost btn-sm" type="button" data-sel="${j.id}">View log</button></td></tr>`;
   })}`;
   if (append) $('#hist tbody').insertAdjacentHTML('beforeend', html`${rows}`);

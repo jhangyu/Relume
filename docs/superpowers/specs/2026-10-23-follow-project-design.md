@@ -62,7 +62,7 @@ Commands use the test command of §1. `T_MOD <modules>` = the §1 module form.
 
 ## 1. Test command (verified)
 
-- Definition: `T_PY <pattern>` = `docker run --rm --network none -v "$PWD:/repo:ro" -e PYTHONPATH=/repo/local -e PYTHONDONTWRITEBYTECODE=1 relume-builder python3 -m unittest discover -s /repo/local/webui/tests -t /repo/local -p '<pattern>'` (`docs/superpowers/plans/2026-10-19-webui.md:45`). Used as gate G1/H1 (`docs/logs/2026-10-19-gate-r1.md:5`, `docs/logs/2026-10-19-gate-r2.md:5`).
+- Definition: `T_PY <pattern>` = `docker run --rm --network none -v "$PWD:/repo:ro" -e PYTHONPATH=/repo/local -e PYTHONDONTWRITEBYTECODE=1 relume-builder python3 -m unittest discover -s /repo/local/webui/tests -t /repo/local -p '<pattern>'`. Used as gate G1/H1 (`docs/logs/2026-10-19-gate-r1.md:5`, `docs/logs/2026-10-19-gate-r2.md:5`).
 - Image: the `relume-builder` image does not exist on this machine today (`docker images` lists `relume-app:latest` and `relume-cfbypass`). The command is run with image **`relume-app`**, built from `local/Dockerfile` (python3 at `local/Dockerfile:6`). Verified 2026-10-23 at `4cc414a`: `T_PY 'test_*.py'` with `relume-app` → `Ran 293 tests in 53.902s`, `OK`, RC 0.
 - Module form (verified the same day, `Ran 17 tests … OK` for two modules): `T_MOD <m…>` = `docker run --rm --network none -v "$PWD:/repo:ro" -w /repo/local -e PYTHONPATH=/repo/local -e PYTHONDONTWRITEBYTECODE=1 relume-app python3 -m unittest <m…>` with modules like `webui.tests.test_projects`. A single test: `webui.tests.test_projects.MigrationTest.test_v4_database_migrates`.
 - Run from the repo root, foreground. Tests that need `setpriv` only pass in Linux, so always use the container.
@@ -308,7 +308,7 @@ def enqueue_auto_push(project_id: int, notify: bool = True) -> list[int]
 
 `verify_release` (runs on the `.part` dir, before commit):
 1. `apks = sorted(part.glob("*.apk"))`; none → `ValueError("no APK in release")`.
-2. Per APK: `abi = apk_abi(apk)`; then in a fresh temp dir (`chmod 0o770`), with `env=dict(upstream._child_env(), HOME=tmp)`, `cwd=tmp`, `timeout=120`, through `log.run(jobs.isolate(argv), …, on_line=collect)` — the same pattern as `upstream.py:370-374`:
+2. Per APK: `abi = apk_abi(apk)`; then in a fresh temp dir (`chmod 0o770`), with `home=tmp`, `timeout=120`, through `jobs.run_isolated(log, argv, tmp, …, on_line=collect)` (env limited to `jobs.CHILD_ENV`) — the same pattern as the patches-bundle inspect in `upstream.py`:
    - `[*APKSIGNER, "verify", "--print-certs", jobs.runner_path(apk)]` → `parse_signer`; `None` or non-zero rc → `ValueError("signer unreadable: <file>")`.
    - `[*APKEDITOR, "info", "-i", jobs.runner_path(apk), "-package", "-version-code", "-version-name"]` → `parse_apk_info`; `None` or non-zero rc → `ValueError("package unreadable: <file>")`.
    - `jobs.JobFailed("cancelled")` from `log.run` is re-raised; any other `jobs.JobFailed` becomes `ValueError(str(e))`.
@@ -332,7 +332,7 @@ Because `verify` runs inside `_download`'s `try` (§5.2), a `ValueError` deletes
 
 ### 5.1 Add a project
 
-1. UI → `POST /api/projects/assets {repo, channel}`. The server builds the in-memory row `{"kind": "project", "repo", "channel", "tag": None, "asset_regex": r"\.apk$"}` and calls `upstream._fetch(row)` unchanged (`upstream.py:94-119`): token reuse, stable/prerelease selection, 401/403/429/404 mapping.
+1. UI → `POST /api/projects/assets {repo, channel}`. The server builds the in-memory row `{"kind": "project", "repo", "channel", "tag": None, "asset_regex": r"\.apk$"}` and calls `upstream.fetch(row)` unchanged: token reuse, stable/prerelease selection, 401/403/429/404 mapping.
 2. User ticks assets → UI posts again with `selected: [names]`; server returns `asset_regex = derive_regex(selected)` and `matched` per asset. User edits the regex → UI posts `asset_regex`; server re-marks. `matched = bool(re.search(asset_regex, name))`, the same test as `match_assets` (`upstream.py:74-78`). JavaScript never evaluates the regex.
 3. `POST /api/projects` validates, re-fetches the latest release with the final regex (must match ≥ 1 APK asset), creates the upstream row with `catalog.upstream_row(c, "project", repo, channel, None, asset_regex)` (`catalog.py:370-380`), inserts the `project` row and the `device_projects` rows, then enqueues `jobs.enqueue("upstream", {"upstream_id": uid}, "manual", options={"rebuild": False})` (same call as `catalog.py:527`).
 
@@ -438,7 +438,6 @@ Project object `P`:
 | `PUT /api/devices/{id}/assignments` | devices.py | `{item_ids: [int], project_ids?: [int]}` | `{device}` | 400 `item_ids must be a list of integers` / `project_ids must be a list of integers` / `unknown item N` / `unknown project N` / `two apps with package P` |
 | `POST /api/devices/{id}/ota` | ota.py | `{item_ids?, project_ids?}` (each a non-empty int list when present) | `{job_id}` | adds 400 `project_ids must be a non-empty list of integers`, 400 `project not assigned to this device` |
 | `GET /api/devices` | ota.py | — | each device: existing fields + `assignments` (unchanged, `ota.py:103-108`) + `projects: [DP]`; `dependencies` removed | — |
-| `GET /api/devices/{id}/plan` | ota.py | — | `{online, steps}`; project steps as §5.4 | unchanged |
 | `GET /api/items/{id}`, `PUT /api/items/{id}` | catalog.py | `project_ids: [int]` replaces `dependency_app_ids` (`catalog.py:486-490`, `catalog.py:552-567`) | item detail with `project_ids` | 400 `invalid project_ids`, 400 `unknown project` |
 | `GET /api/jobs?kind=ota` | jobs.py (exists) | — | `detail.installs[].kind` is `item`\|`project`; `detail.project_ids` added | — |
 
@@ -577,7 +576,7 @@ No file appears in two packages. No package touches `jobs.py`, `scheduler.py`, `
 Files (only these):
 - `local/webui/schema/005_follow.sql` (new), `local/webui/projects.py` (new), `local/webui/upstream.py`, `local/webui/catalog.py`, `local/webui/catalog-seed.json`, `local/webui/notify.py`, `local/webui/server.py` (only `MODULES` at `server.py:16`: add `'projects'` after `'upstream'`)
 - `local/webui/tests/test_projects.py` (new), `local/webui/tests/test_catalog_store.py`, `local/webui/tests/test_catalog_seed.py`, `local/webui/tests/test_catalog_upstream.py`, `local/webui/tests/test_device_notify.py`, `local/webui/tests/catalog_rows.py`, `local/webui/tests/fixtures/catalog/fake-apkeditor.sh` (new), `local/webui/tests/fixtures/catalog/fake-apksigner.sh`
-- `docs/superpowers/specs/2026-10-19-webui-design.md`, `docs/superpowers/plans/parts/ui-api-shapes.md` (replace the dependency-app rows — spec lines 21, 40, 80, 85, 102, 444, 464-465, 474, 542, 569, 576, 877, 916, 951, 1179, 1217, 1442; ui-api-shapes lines 8, 14, 21, 29, 32 — with the new shapes or a pointer to this file)
+- `docs/superpowers/specs/2026-10-19-webui-design.md` (replace the dependency-app rows with the new shapes or a pointer to this file)
 
 Delivers: §3 (migration, seed), §4 (all of `projects.py`), §5.1–5.3, §5.6, §6 routes owned by `projects.py`, catalog `project_ids`, deletions in §12 for its files, §7.
 
@@ -666,7 +665,7 @@ Run from the repo root. The stack is compose project `relume`; the live DB is `l
 
 ## 13. Spec author notes for the lead (contradictions and deviations)
 
-1. Test image: `relume-builder` (plan `docs/superpowers/plans/2026-10-19-webui.md:45`) is absent on this machine; §1 uses `relume-app` (verified 293 tests OK at `4cc414a`).
+1. Test image: `relume-builder` is absent on this machine; §1 uses `relume-app` (verified 293 tests OK at `4cc414a`).
 2. Mockup add-dialog ABI column, Flavor column, "Tick all freenet" and per-phone preview are dropped: ABI comes from `lib/` entries after download (user decision 8).
 3. Unfollow while items use the project returns 409 (mockup), not B's cascade.
 4. Live DB has 0 paired devices, so the migration's direct MicroG assignment adds 0 rows there (still specified and tested).

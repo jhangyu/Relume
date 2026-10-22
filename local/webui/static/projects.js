@@ -1,4 +1,4 @@
-// Followed projects page (spec 2026-10-23-follow-project-design §8; layout from mockup option A).
+// Followed projects page (spec 2026-10-23-follow-project-design §8).
 import { $, $$, act, api, ask, every, fmt, html, iconTile, shell, toast } from '/static/app.js';
 
 const S = { projects: [], devices: [], items: new Map(), schedules: [], running: [], queued: [], ota: [], cur: null, filter: 'all', q: '' };
@@ -204,7 +204,7 @@ $('#pane').addEventListener('click', async e => {
   } catch (_) { /* act showed it */ }
 });
 
-// ---- signer dialog (row 51)
+// ---- signer dialog
 function signerDialog(p) {
   $('#sigName').textContent = p.label;
   $('#sigVer').textContent = p.downloaded_tag || '';
@@ -223,7 +223,7 @@ function signerDialog(p) {
 }
 $('#sigAck').addEventListener('change', e => { $('#sigOk').disabled = !e.target.checked; });
 
-// ---- assign phones dialog (row 26)
+// ---- assign phones dialog
 const phoneList = (sel, checked) => {
   $(sel).innerHTML = html`${S.devices.length ? S.devices.map(d => html`<label><input type="checkbox" class="cb" value="${d.id}" ${checked.includes(d.id) ? html`checked` : ''}><span>${d.name} <span class="xs muted">· ${d.online ? 'online' : 'offline'}</span></span><span></span></label>`)
     : html`<p class="xs muted">No paired phones. Pair one on the Devices page.</p>`}`;
@@ -237,7 +237,7 @@ async function assignDialog(p) {
   reload();
 }
 
-// ---- add / edit dialog (rows 38-50)
+// ---- add / edit dialog
 const A = { repo: null, edit: null, assets: [], dirty: false, seq: 0, timer: 0 };
 const msg = (text, bad) => { $('#dlgMsg').className = `xs ${bad ? 'danger' : 'muted'}`; $('#dlgMsg').textContent = text; };
 const chan = () => $('input[name=chan]:checked').value;

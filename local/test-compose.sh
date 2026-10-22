@@ -35,4 +35,21 @@ for name in RELUME_GITHUB_TOKEN_FILE RELUME_UID RELUME_GID RELUME_DATA_DIR RELUM
 	grep -q "$name" "$f" || fail compose_shape "missing env name $name"
 done
 [ "$fails" -eq "$before" ] && pass compose_shape
+
+# Portainer stack must not drift from the main compose file (spec core §11).
+pj=$(RELUME_NETWORK_MODE=bridge RELUME_IMAGE=x docker compose --env-file /dev/null -f local/docker-compose-portainer.yml config --format json 2>/dev/null) || pj='{}'
+pbefore=$fails
+same() { [ "$(jq -cS "$1" <<<"$j")" = "$(jq -cS "$1" <<<"$pj")" ] || fail portainer_drift "$1"; }
+same '.services | keys'
+same '.services.app.environment'
+same '.services.app.cap_add'
+same '.services.app.cap_drop'
+same '.services.app.command'
+same '.services.app.healthcheck'
+same '.services.app.user'
+same '[.services[] | .network_mode]'
+same '.services.flaresolverr'
+same '.services.cfbypass | del(.image, .build)'
+same '.services.apkmsolver | del(.image, .build, .volumes)'
+[ "$fails" -eq "$pbefore" ] && pass portainer_same
 [ "$fails" -eq 0 ] || exit 1
