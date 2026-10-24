@@ -55,21 +55,6 @@ def resolve_items(target):
     return [r["id"] for r in rows if r["enabled"] and keep(r)]
 
 
-def resolve_upstreams(target):
-    c = db.conn()
-    if target.get("all") is True:
-        return [r[0] for r in c.execute("SELECT id FROM upstream ORDER BY id")]
-    ids = target.get("source_ids")
-    if not isinstance(ids, list):
-        return []
-    out = set()
-    for sid in ids:
-        r = c.execute("SELECT upstream_id, cli_upstream_id FROM source WHERE id = ?", (sid,)).fetchone()
-        if r:
-            out.update((r[0], r[1]))
-    return sorted(out)
-
-
 # ---- item object (catalog §6) ----
 
 def _item_obj(r, st):

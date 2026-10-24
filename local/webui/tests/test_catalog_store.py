@@ -134,11 +134,6 @@ class ResolveTest(CatalogCase):
         self.assertEqual(catalog.resolve_items({"group_ids": [0]}), [1])
         self.assertEqual(catalog.resolve_items({"all": True}), [3, 1])
 
-    def test_resolve_upstreams(self):
-        self.assertEqual(catalog.resolve_upstreams({"all": True}), [1, 2, 3])
-        self.assertEqual(catalog.resolve_upstreams({"source_ids": ["morphe-beta"]}), [1, 3])
-        self.assertEqual(catalog.resolve_upstreams({"source_ids": ["nope"]}), [])
-
 
 class CrudTest(CatalogCase):
     SRC = {"id": "hoo", "name": "Hoo", "engine": "morphe", "repo": "hoo-dles/morphe-patches",
