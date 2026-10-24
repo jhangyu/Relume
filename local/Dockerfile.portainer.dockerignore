@@ -1,9 +1,0 @@
-*
-!local/webui
-!local/solver
-!src/build
-!src/keystore
-# the token never goes into an image; tests and caches are not needed at run time
-src/keystore/github_token
-local/webui/tests
-**/__pycache__

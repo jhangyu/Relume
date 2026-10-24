@@ -1,14 +1,30 @@
-# app image: web server + build toolchain + adb (spec core §1, build §2.1, device D1/D2). Code is bind-mounted.
-FROM ubuntu:24.04
+# syntax=docker/dockerfile:1
+# Two images from one file (build both: `docker compose -f local/docker-compose.yml build`, context = repo root):
+#   app     web server + build toolchain + adb, Relume code baked in (no signing keys: they are mounted at deploy time)
+#   browser upstream CloudflareBypassForScraping image (named context "upstream", pinned in compose) + the APKMirror solver
+# Large independent payloads live in their own stages and arrive via COPY --link, so changing one layer never invalidates the others.
+
+FROM alpine:3.23 AS dl-pup
+ARG TARGETARCH
+RUN wget -q -O /tmp/pup.zip "https://github.com/ericchiang/pup/releases/download/v0.4.0/pup_v0.4.0_linux_${TARGETARCH}.zip" \
+    && unzip -q /tmp/pup.zip -d /out && chmod 755 /out/pup
+
+FROM alpine:3.23 AS dl-apkeditor
+RUN wget -q -O /APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.9/APKEditor-1.4.9.jar
+
+FROM debian:trixie-slim AS app
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
       bash curl wget jq unzip zip ca-certificates tzdata adb \
-      openjdk-21-jdk-headless python3 apksigner \
+      openjdk-21-jre-headless python3 apksigner \
     && rm -rf /var/lib/apt/lists/*
-RUN case "$(dpkg --print-architecture)" in arm64) a=arm64 ;; amd64) a=amd64 ;; *) echo "unsupported arch" >&2; exit 1 ;; esac \
-    && wget -q -O /tmp/pup.zip "https://github.com/ericchiang/pup/releases/download/v0.4.0/pup_v0.4.0_linux_${a}.zip" \
-    && unzip -q /tmp/pup.zip -d /usr/local/bin && rm /tmp/pup.zip && chmod 755 /usr/local/bin/pup \
-    && wget -q -O /opt/APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.9/APKEditor-1.4.9.jar
+COPY --link --from=dl-pup /out/pup /usr/local/bin/pup
+COPY --link --from=dl-apkeditor /APKEditor.jar /opt/APKEditor.jar
 ENV HOME=/data/home PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/repo/local
 WORKDIR /repo
+COPY --link local/webui /repo/local/webui
+COPY --link src/build /repo/src/build
 CMD ["python3", "-m", "webui"]
+
+FROM upstream AS browser
+COPY --link local/solver /solver

@@ -42,7 +42,7 @@ Web UI pages: app catalog (patches, options and version pin per app), builds, sc
 
 ### Portainer
 
-`local/docker-compose-portainer.yml` is the same stack for a Portainer web-editor stack: data lives in named volumes and the code is baked into images you publish once with `local/Dockerfile.portainer`. The publish steps and the `RELUME_IMAGE` variable are described at the top of that file.
+`local/docker-compose-portainer.yml` is the same stack for a Portainer web-editor stack: data lives in named volumes and the code is baked into the images `jhangyu/relume-app` and `jhangyu/relume-browser` (built from `local/Dockerfile`, published by `scripts/release.py`). Signing keystores are never in an image: set `RELUME_KEYSTORE_DIR` to a host directory holding them (see the top of that file).
 
 ## More
 

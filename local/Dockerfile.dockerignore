@@ -1,1 +1,7 @@
 *
+!local/webui
+!local/solver
+!src/build
+# tests and caches are not needed at run time
+local/webui/tests
+**/__pycache__

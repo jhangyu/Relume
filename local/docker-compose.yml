@@ -16,11 +16,21 @@ services:
       HOST: "127.0.0.1"
       PORT: "47191"
     restart: unless-stopped
+  upstream-browser:
+    # build-only: the upstream browser image as-is (pinned commit; its Dockerfile is multi-arch: ubuntu:rolling + CloakBrowser linux-arm64),
+    # the base of the browser target in local/Dockerfile. Never started.
+    deploy: {replicas: 0}
+    build:
+      context: https://github.com/sarperavci/CloudflareBypassForScraping.git#0f628b9ccbea9ab69ca61bc1c896c2ef766a0f06
+    image: relume-upstream-browser:0f628b9
   cfbypass:
     build:
-      # pinned upstream commit; its Dockerfile is multi-arch (ubuntu:rolling + CloakBrowser linux-arm64)
-      context: https://github.com/sarperavci/CloudflareBypassForScraping.git#0f628b9ccbea9ab69ca61bc1c896c2ef766a0f06
-    image: relume-cfbypass:0f628b9
+      context: ..
+      dockerfile: local/Dockerfile
+      target: browser
+      additional_contexts:
+        upstream: service:upstream-browser
+    image: jhangyu/relume-browser:latest
     # upstream has CMD (no ENTRYPOINT); the entrypoint forwards args to server.py
     command: ["/app/docker-entrypoint.sh", "--host", "127.0.0.1", "--port", "47800"]
     shm_size: 2g
@@ -28,24 +38,20 @@ services:
     depends_on: [netns]
     restart: unless-stopped
   apkmsolver:
-    # headed CloakBrowser Turnstile solver for APKMirror downloads; same image as cfbypass, own entrypoint starts Xvfb
-    build:
-      context: https://github.com/sarperavci/CloudflareBypassForScraping.git#0f628b9ccbea9ab69ca61bc1c896c2ef766a0f06
-    image: relume-cfbypass:0f628b9
+    # headed CloakBrowser Turnstile solver for APKMirror downloads; same image as cfbypass (the solver is baked in), own entrypoint starts Xvfb
+    image: jhangyu/relume-browser:latest
     entrypoint: ["sh", "/solver/xrun.sh"]
     command: ["/app/venv/bin/python3", "-u", "/solver/solver.py", "47900"]
     shm_size: 2g
     network_mode: service:netns
     depends_on: [netns, cfbypass]
-    volumes:
-      # only the solver code: the browser container must not see the repo (token file)
-      - ./solver:/solver:ro
     restart: unless-stopped
   app:
     build:
       context: ..
       dockerfile: local/Dockerfile
-    image: relume-app
+      target: app
+    image: jhangyu/relume-app:latest
     network_mode: service:netns
     depends_on: [netns, flaresolverr, cfbypass, apkmsolver]
     init: true  # reaps orphaned grandchildren of killed jobs (PID 1 is python3 -m webui)
@@ -71,10 +77,10 @@ services:
       CFBYPASS_URL: http://127.0.0.1:47800
       APKM_SOLVER_URL: http://127.0.0.1:47900
     volumes:
-      - ..:/repo:ro
-      # the default data dir lies inside the repo: hide it from /repo (local/data must exist, see .env.example)
-      - type: tmpfs
-        target: /repo/local/data
+      # signing keystores are not in the image: mount exactly these files (src/keystore also holds the github token)
+      - ../src/keystore/fiorenmas.ks:/repo/src/keystore/fiorenmas.ks:ro
+      - ../src/keystore/lspatch-signing.p12:/repo/src/keystore/lspatch-signing.p12:ro
+      - ../src/keystore/morphe.keystore:/repo/src/keystore/morphe.keystore:ro
       # Root-only 0700 tmpfs: the kernel enforces it, file modes on Docker Desktop bind mounts are not enforced.
       # Holds what the runner uid must not reach: database, HOME with the adb key, adb server socket.
       - type: tmpfs

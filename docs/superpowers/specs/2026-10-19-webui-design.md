@@ -176,7 +176,7 @@ Other parts design against §1–§7. arch-core is the tie-breaker for shared in
 | service | image | network | role |
 |---|---|---|---|
 | `netns` | `busybox:1.38.0-musl`, `command: ["tail","-f","/dev/null"]` | `network_mode: ${RELUME_NETWORK_MODE:?set RELUME_NETWORK_MODE in local/.env}`; `ports: ["${RELUME_WEB_PORT:-47000}:47000"]` | network-namespace anchor only; runs no code that can crash |
-| `app` | `local/Dockerfile` (today's builder, `ubuntu:24.04`) + `adb` (device D2) + pup and APKEditor baked in (build §2.1) + `tzdata`; `CMD ["python3","-m","webui"]` | `network_mode: service:netns` | web UI, API, scheduler, job workers; runs builds and `adb` as child processes |
+| `app` | `local/Dockerfile` target `app` (`debian:trixie-slim`, JRE 21) + `adb` (device D2) + pup and APKEditor baked in (build §2.1) + `tzdata` + the code baked in (`jhangyu/relume-app`); `CMD ["python3","-m","webui"]` | `network_mode: service:netns` | web UI, API, scheduler, job workers; runs builds and `adb` as child processes |
 | `flaresolverr` | as today | `network_mode: service:netns`; env `HOST=127.0.0.1`, `PORT=47191` | page fetch |
 | `cfbypass` | as today | `network_mode: service:netns`; `command: [..., "--host","127.0.0.1","--port","47800"]` | page fetch fallback |
 | `apkmsolver` | as today | `network_mode: service:netns`; solver binds `127.0.0.1:47900` | Turnstile solver |
@@ -196,7 +196,7 @@ Why this shape:
 - Host ports used in Linux host mode: 47000, 47191, 47800, 47900, and adb's 5037 (loopback). They must be free on the host.
 
 Mounts on `app`:
-- `..:/repo:ro` — repo code incl. `local/webui/`, `src/build/*`, keystores. Read-only: nothing writes into the checkout.
+- the three signing keystores of `src/keystore/` as read-only file mounts at `/repo/src/keystore/<name>`; the code (`local/webui/`, `src/build/*`) is baked into the image, never the keystores or the token file.
 - `${RELUME_DATA_DIR:-./data}:/data` (default `local/data/`, gitignored) — every write: DB, job logs, work dirs, artifacts, caches, adb keys. A host directory (not a named volume) so the user can back it up and reach artifacts on a NAS share. Long-syntax bind with `bind: {create_host_path: false}` (as for the token file): Docker would otherwise create a missing host dir owned by root, and a non-root `app` (`RELUME_UID`) could not write it. The user creates the directory (§12 step 1); the server creates `/data/home`, `/data/logs` and the other subdirectories at start.
 - GitHub token file bind, unchanged (`local/docker-compose.yml` at 9fd15dc, `builder` volume `github_token`).
 
@@ -213,7 +213,7 @@ CI only: `local/docker-compose.ci.yml` overrides `app` with `command: ["sleep","
 - Backend: Python 3.12 standard library only. Verified in `relume-builder`: Python `3.12.3`, `hashlib.scrypt` present. Modules: `http.server.ThreadingHTTPServer`, `sqlite3`, `hashlib`, `secrets`, `hmac`, `threading`, `subprocess`, `urllib.request`, `json`, `zoneinfo`. No pip packages for the server.
 - Frontend: static HTML/CSS/vanilla JS (ES modules) in `local/webui/static/`, ported from the user-chosen mockup `docs/superpowers/mockups/final/` (files and mapping: ui §1, §2). No npm, no bundler. Drag-reorder uses the native HTML Drag and Drop API.
 - Live log: Server-Sent Events (`EventSource`).
-- Code changes need only `docker compose restart app` (code is on the read-only bind mount); `--build` is needed only when the Dockerfile changes.
+- Code changes need `docker compose -f local/docker-compose.yml build app` and `up -d` (code is baked into the image).
 
 ### 3. Code layout
 

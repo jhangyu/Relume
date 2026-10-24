@@ -63,8 +63,8 @@ Commands use the test command of §1. `T_MOD <modules>` = the §1 module form.
 ## 1. Test command (verified)
 
 - Definition: `T_PY <pattern>` = `docker run --rm --network none -v "$PWD:/repo:ro" -e PYTHONPATH=/repo/local -e PYTHONDONTWRITEBYTECODE=1 relume-builder python3 -m unittest discover -s /repo/local/webui/tests -t /repo/local -p '<pattern>'`. Used as gate G1/H1 (`docs/logs/2026-10-19-gate-r1.md:5`, `docs/logs/2026-10-19-gate-r2.md:5`).
-- Image: the `relume-builder` image does not exist on this machine today (`docker images` lists `relume-app:latest` and `relume-cfbypass`). The command is run with image **`relume-app`**, built from `local/Dockerfile` (python3 installed in `local/Dockerfile`). Verified 2026-10-23 at `4cc414a`: `T_PY 'test_*.py'` with `relume-app` → `Ran 293 tests in 53.902s`, `OK`, RC 0.
-- Module form (verified the same day, `Ran 17 tests … OK` for two modules): `T_MOD <m…>` = `docker run --rm --network none -v "$PWD:/repo:ro" -w /repo/local -e PYTHONPATH=/repo/local -e PYTHONDONTWRITEBYTECODE=1 relume-app python3 -m unittest <m…>` with modules like `webui.tests.test_projects`. A single test: `webui.tests.test_projects.MigrationTest.test_v4_database_migrates`.
+- Image: the `relume-builder` image does not exist on this machine today (`docker images` lists `relume-app:latest` and `relume-cfbypass`). The command is run with image **`relume-app`**, built from `local/Dockerfile` (python3 installed in `local/Dockerfile`; since the image restructure it is `jhangyu/relume-app`). Verified 2026-10-23 at `4cc414a`: `T_PY 'test_*.py'` with `relume-app` → `Ran 293 tests in 53.902s`, `OK`, RC 0.
+- Module form (verified the same day, `Ran 17 tests … OK` for two modules): `T_MOD <m…>` = `docker run --rm --network none -v "$PWD:/repo:ro" -w /repo/local -e PYTHONPATH=/repo/local -e PYTHONDONTWRITEBYTECODE=1 jhangyu/relume-app python3 -m unittest <m…>` with modules like `webui.tests.test_projects`. A single test: `webui.tests.test_projects.MigrationTest.test_v4_database_migrates`.
 - Run from the repo root, foreground. Tests that need `setpriv` only pass in Linux, so always use the container.
 
 ---
