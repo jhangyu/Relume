@@ -121,18 +121,14 @@ class GroupsTest(CatalogCase):
 
 
 class ResolveTest(CatalogCase):
-    def test_resolve_items(self):
-        from webui import db
+    def test_enabled_group_items(self):
         with db.tx() as c:
             c.execute("UPDATE item SET enabled=0 WHERE id=2")
-        self.assertEqual(catalog.resolve_items({"all": True}), [1, 3])
-        self.assertEqual(catalog.resolve_items({"group_ids": [2]}), [3])
-        self.assertEqual(catalog.resolve_items({"item_ids": [3, 1]}), [1, 3])
-        self.assertEqual(catalog.resolve_items({}), [])
+        self.assertEqual(catalog.enabled_group_items(1), [1])
+        self.assertEqual(catalog.enabled_group_items(2), [3])
         with db.tx() as c:
             c.execute("UPDATE item SET group_id=NULL WHERE id=1")
-        self.assertEqual(catalog.resolve_items({"group_ids": [0]}), [1])
-        self.assertEqual(catalog.resolve_items({"all": True}), [3, 1])
+        self.assertEqual(catalog.enabled_group_items(0), [1])
 
 
 class CrudTest(CatalogCase):

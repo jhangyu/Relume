@@ -167,8 +167,13 @@ def appcheck_handler(job, log):
         work.mkdir(parents=True, exist_ok=True)
         work.chmod(0o770)  # the isolated runner uid shares the server's gid
         m = _Markers(job.id, package)
-        rc = jobs.run_isolated(log, ["bash", CHECK_VERSIONS, row["apkmirror_list_url"]], jobs.runner_path(work),
-                               env_keys=SOLVER_ENV, timeout=CHECK_TIMEOUT, on_line=m.feed)
+        try:
+            rc = jobs.run_isolated(log, ["bash", CHECK_VERSIONS, row["apkmirror_list_url"]], jobs.runner_path(work),
+                                   env_keys=SOLVER_ENV, timeout=CHECK_TIMEOUT, on_line=m.feed)
+        except jobs.JobFailed as e:
+            if str(e) == "cancelled":
+                raise
+            raise jobs.JobFailed(f"{package}: version check {e}")
     finally:
         shutil.rmtree(work, ignore_errors=True)
     if job.cancel_event.is_set():
@@ -333,7 +338,7 @@ def download_artifact(req):
 
 def group_zip_files(group_id):
     files = []
-    for iid in catalog.resolve_items({"group_ids": [group_id]}):
+    for iid in catalog.enabled_group_items(group_id):
         jid = _newest_success_job(iid)
         if jid is not None:
             files += [(Path(r[0]), Path(r[0]).name) for r in db.conn().execute("SELECT path FROM artifacts WHERE job_id = ? ORDER BY id", (jid,))]

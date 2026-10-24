@@ -158,6 +158,29 @@ class PullTest(CatalogCase):
         upstream.pull(2, self.log, rebuild=True)  # same tag: no new builds
         self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM jobs WHERE kind='build'").fetchone()[0], 1)
 
+    def queued_builds(self):
+        return [json.loads(r[0])["item_id"] for r in db.conn().execute("SELECT target FROM jobs WHERE kind='build' ORDER BY id")]
+
+    def test_new_cli_tag_rebuilds_switched_on_items_of_its_sources(self):
+        with db.tx() as c:  # items 1 and 3 follow the CLI through two sources, 2 has Update off
+            c.execute("UPDATE item SET auto_update=1 WHERE id IN (1, 3)")
+        self.routes()
+        upstream.pull(1, self.log, rebuild=True)
+        self.assertEqual(self.queued_builds(), [1, 3])
+
+    def test_new_dependency_project_tag_rebuilds_switched_on_dependents(self):
+        with db.tx() as c:
+            c.execute("INSERT INTO upstream(id, kind, repo, channel) VALUES (9,'project','MorpheApp/MicroG-RE','stable')")
+            c.execute("INSERT INTO project(id, upstream_id) VALUES (1, 9)")
+            c.execute("INSERT INTO item_dependency(item_id, project_id) VALUES (1,1),(2,1),(3,1)")
+            c.execute("UPDATE item SET auto_update=1 WHERE id IN (1, 3)")
+            c.execute("UPDATE item SET enabled=0 WHERE id=3")
+        rel = {"tag_name": "v7", "draft": False, "assets": [{"name": "microg.apk", "size": 5, "browser_download_url": "https://dl.invalid/microg.apk"}]}
+        self.http({f"{API}/repos/MorpheApp/MicroG-RE/releases/latest": (200, rel, {})})
+        with mock.patch.object(upstream.projects, "verify_release"), mock.patch.object(upstream.projects, "after_download"):
+            upstream.pull(9, self.log, rebuild=True)
+        self.assertEqual(self.queued_builds(), [1])
+
     def test_no_rebuild_flag(self):
         self.routes()
         upstream.pull(2, self.log)

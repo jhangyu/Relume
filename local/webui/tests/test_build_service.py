@@ -93,8 +93,8 @@ class FakeCatalog:
     def set_apkmirror_versions(self, package, versions):
         self.versions.append((package, versions))
 
-    def resolve_items(self, target):
-        return [r[0] for r in db.conn().execute("SELECT id FROM item WHERE ifnull(group_id, 0) = ? ORDER BY id", (target["group_ids"][0],))]
+    def enabled_group_items(self, group_id):
+        return [r[0] for r in db.conn().execute("SELECT id FROM item WHERE ifnull(group_id, 0) = ? ORDER BY id", (group_id,))]
 
 
 class BuildCase(helpers.DataTestCase):

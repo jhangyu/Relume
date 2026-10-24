@@ -438,9 +438,11 @@ def pull(upstream_id, log, rebuild=False, job_id=None):
                 log.line(f"[+] CLI upstream {cli_id} not downloaded, pulling it first")
                 _fetch_row(cli_id, log, job_id)
         inspect_row(upstream_id, row["downloaded_tag"], log)
-    if new and rebuild and row["kind"] in ("patches", "module"):
-        ids = [r[0] for r in db.conn().execute("""SELECT i.id FROM item i JOIN source s ON s.id = i.source_id
-            WHERE s.upstream_id = ? AND i.enabled = 1 AND i.auto_update = 1 ORDER BY i.id""", (upstream_id,))]
+    if new and rebuild:
+        affected = affected_items(upstream_id)
+        ids = [r[0] for r in db.conn().execute(
+            f"SELECT id FROM item WHERE enabled = 1 AND auto_update = 1 AND id IN ({','.join('?' * len(affected))}) ORDER BY id",
+            affected)]
         for iid in ids:
             jobs.enqueue("build", {"item_id": iid}, "upstream")
         log.line(f"[+] rebuild enqueued for {len(ids)} item(s)")

@@ -34,25 +34,11 @@ def _j(text):
 
 # ---- target resolution (core §4) ----
 
-def resolve_items(target):
+def enabled_group_items(group_id):
+    """Ids of the enabled items of a group (0 = ungrouped) in display order."""
     rows = db.conn().execute(
         "SELECT i.id, i.group_id, i.enabled FROM item i LEFT JOIN grp g ON g.id = i.group_id" + ORDER_SQL).fetchall()
-    if target.get("all") is True:
-        def keep(r):
-            return True
-    elif isinstance(target.get("group_ids"), list):
-        gids = set(target["group_ids"])
-
-        def keep(r):
-            return (r["group_id"] or 0) in gids
-    elif isinstance(target.get("item_ids"), list):
-        iids = set(target["item_ids"])
-
-        def keep(r):
-            return r["id"] in iids
-    else:
-        return []
-    return [r["id"] for r in rows if r["enabled"] and keep(r)]
+    return [r["id"] for r in rows if r["enabled"] and (r["group_id"] or 0) == group_id]
 
 
 # ---- item object (catalog §6) ----
