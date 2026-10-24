@@ -73,7 +73,7 @@ def _check_spec(spec):
 
 
 def _check_target(kind, t):
-    if t == {'all': True} and kind == 'app':
+    if t == {'all': True}:
         return t
     if not isinstance(t, dict) or not t or not set(t) <= set(TARGET_KEYS[kind]):
         raise HttpError(400, 'invalid target')

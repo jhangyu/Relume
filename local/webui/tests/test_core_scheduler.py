@@ -107,6 +107,9 @@ class FireTest(DataTestCase):
                 scheduler.create('x', 'app', target, SPEC, options)
         scheduler.create('x', 'app', {'item_ids': [1], 'project_ids': [1]}, SPEC, {'build': True, 'force': True})
 
+    def test_ota_all_devices_target(self):
+        self.assertTrue(scheduler.create('x', 'ota', {'all': True}, SPEC, {}))
+
     def test_ota_validation(self):
         from webui.server import HttpError
         for options in ({'mode': 'force_reinstall'}, {'retries': 6}):
