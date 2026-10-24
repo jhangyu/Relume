@@ -79,7 +79,7 @@ def _item_obj(r, st):
         "label": r["display_name"] or f'{r["app_name"] or r["package"]} · {r["source_name"]}',
         "display_name": r["display_name"], "source_id": r["source_id"], "source_name": r["source_name"],
         "engine": r["engine"], "package": r["package"], "key": r["key"], "enabled": bool(r["enabled"]),
-        "group_id": r["group_id"], "position": r["position"],
+        "auto_update": bool(r["auto_update"]), "group_id": r["group_id"], "position": r["position"],
         "icon_url": f'/api/apps/{r["package"]}/icon' if r["icon_file"] else None,
         "abis": [v["abi"] for v in variants],
         "upstream": {"id": r["u_id"], "repo": r["u_repo"], "channel": r["u_channel"],
@@ -502,8 +502,8 @@ def post_item(req):
             raise server.HttpError(409, "item exists")
         c.execute("INSERT OR IGNORE INTO app(package) VALUES (?)", (pkg,))
         pos = _next_position(c, "item WHERE group_id IS ?", (gid,))
-        iid = c.execute("""INSERT INTO item(source_id, package, key, display_name, group_id, position, variants, engine_options)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""", (src["id"], pkg, _default_key(pkg), dn, gid, pos, json.dumps(variants),
+        iid = c.execute("""INSERT INTO item(source_id, package, key, display_name, group_id, position, variants, engine_options,
+            enabled, auto_update) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0)""", (src["id"], pkg, _default_key(pkg), dn, gid, pos, json.dumps(variants),
                                                  None if eo is None else json.dumps(eo))).lastrowid
         up = c.execute("SELECT kind, downloaded_tag FROM upstream WHERE id = ?", (src["upstream_id"],)).fetchone()
         need_pull = bool(up["kind"] == "patches" and up["downloaded_tag"] and not c.execute(
@@ -530,10 +530,11 @@ def put_item(req):
     if "engine_options" in b:
         eo = b["engine_options"]
         sets["engine_options"] = None if eo is None else json.dumps(eo)
-    if "enabled" in b:
-        if not isinstance(b["enabled"], bool):
-            raise server.HttpError(400, "invalid enabled")
-        sets["enabled"] = int(b["enabled"])
+    for flag in ("enabled", "auto_update"):
+        if flag in b:
+            if not isinstance(b[flag], bool):
+                raise server.HttpError(400, f"invalid {flag}")
+            sets[flag] = int(b[flag])
     deps = None
     if "project_ids" in b:
         deps = server.int_list(b["project_ids"], "project_ids")
@@ -846,7 +847,8 @@ SEED_TABLES = {
 }
 JSON_COLS = {"variants", "patch_overrides", "engine_options"}
 BOOL_COLS = {"enabled", "allow_nearest", "auto_push"}
-DAILY_SCHEDULE = ("Daily upstream", "upstream", {"all": True}, {"every": "day", "at": "09:00"}, {"rebuild": True})
+DAILY_SCHEDULE = ("Daily update", "app", {"all": True}, {"every": "day", "at": "09:00"},
+                  {"update": True, "build": True, "force": False, "notify": True})
 
 
 def _to_db(col, v):

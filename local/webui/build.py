@@ -15,6 +15,8 @@ ARTIFACT_RETENTION_DEFAULT = 1  # successful builds kept per item
 RUNNER = str(db.REPO_ROOT / "src" / "build" / "build-item.sh")
 FAIL_CODES = ("upstream_missing", "version_unresolved", "apk_not_listed", "download_failed",
               "merge_failed", "patch_failed", "timeout", "internal")
+CHECK_VERSIONS = str(db.REPO_ROOT / "src" / "build" / "check-versions.sh")
+CHECK_TIMEOUT = 300  # one list-page request with solver retries
 SOLVER_ENV = ("FLARESOLVERR_URL", "CFBYPASS_URL", "APKM_SOLVER_URL")  # passed to the isolated runner
 _steps = {}
 _steps_lock = threading.Lock()
@@ -25,7 +27,7 @@ class _Markers:
 
     def __init__(self, job_id, package):
         self.job_id, self.package = job_id, package
-        self.fail_code = self.fail_detail = self.last_err = None
+        self.fail_code = self.fail_detail = self.last_err = self.versions = None
 
     def feed(self, text):
         if text.startswith("::step::"):
@@ -42,6 +44,7 @@ class _Markers:
         elif text.startswith("::apkm_versions::"):
             versions = [v for v in text[17:].strip().split(",") if v]
             if versions:
+                self.versions = versions
                 catalog.set_apkmirror_versions(self.package, versions)
         elif text.startswith("::fail::"):
             code, _, detail = text[8:].partition("::")
@@ -153,6 +156,35 @@ def handler(job, log):
             _steps.pop(job.id, None)
 
 
+def appcheck_handler(job, log):
+    """appcheck job (spec per-app §3.2): refresh the APKMirror version list of one package, optionally rebuild."""
+    package = job.target["package"]
+    row = db.conn().execute("SELECT apkmirror_list_url FROM app WHERE package = ?", (package,)).fetchone()
+    if row is None or not row["apkmirror_list_url"]:
+        raise jobs.JobFailed(f"{package}: no APKMirror list URL")
+    work = db.DATA / "work" / str(job.id)
+    try:
+        work.mkdir(parents=True, exist_ok=True)
+        work.chmod(0o770)  # the isolated runner uid shares the server's gid
+        m = _Markers(job.id, package)
+        rc = jobs.run_isolated(log, ["bash", CHECK_VERSIONS, row["apkmirror_list_url"]], jobs.runner_path(work),
+                               env_keys=SOLVER_ENV, timeout=CHECK_TIMEOUT, on_line=m.feed)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    if job.cancel_event.is_set():
+        return
+    if rc != 0 or m.versions is None:
+        raise jobs.JobFailed(f"{package}: version check failed: {m.last_err or f'runner exited {rc} without versions'}")
+    log.line(f"[+] {package}: APKMirror newest {m.versions[0]} ({len(m.versions)} versions)")
+    if (job.options or {}).get("rebuild"):
+        ids = [r[0] for r in db.conn().execute(
+            "SELECT id FROM item WHERE package = ? AND version_mode = 'latest' AND enabled = 1 AND auto_update = 1 ORDER BY id",
+            (package,)) if needs_build(r[0])]
+        for iid in ids:
+            jobs.enqueue("build", {"item_id": iid}, "upstream")
+        log.line(f"[+] rebuild enqueued for {len(ids)} item(s)")
+
+
 def _artifact_obj(r):
     d = dict(r)
     path = d.pop("path")
@@ -171,6 +203,7 @@ def detail(job_id):
 
 def register():
     jobs.register("build", handler, detail)
+    jobs.register("appcheck", appcheck_handler)
 
 
 def start():
@@ -254,9 +287,15 @@ def needs_build(item_id):
     ls, lb = st["last_success"], st["last_build"]
     if ls is None or lb["status"] == "failed":
         return True
-    r = db.conn().execute("""SELECT u.downloaded_tag AS p, c.downloaded_tag AS cl FROM item i JOIN source s ON s.id = i.source_id
+    r = db.conn().execute("""SELECT u.downloaded_tag AS p, c.downloaded_tag AS cl, i.version_mode, a.apkmirror_versions AS vs
+        FROM item i JOIN source s ON s.id = i.source_id JOIN app a ON a.package = i.package
         JOIN upstream u ON u.id = s.upstream_id JOIN upstream c ON c.id = s.cli_upstream_id WHERE i.id = ?""", (item_id,)).fetchone()
-    return r is not None and (r["p"] != ls["patches_version"] or r["cl"] != ls["cli_version"])
+    if r is None:
+        return False
+    if r["p"] != ls["patches_version"] or r["cl"] != ls["cli_version"]:
+        return True
+    newest = json.loads(r["vs"] or "[]")[:1]
+    return r["version_mode"] == "latest" and bool(newest) and newest[0] != ls["app_version"]
 
 
 def _item_exists(iid):

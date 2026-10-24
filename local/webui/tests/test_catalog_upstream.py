@@ -144,9 +144,13 @@ class PullTest(CatalogCase):
         upstream.pull(2, self.log)
         self.assertEqual(sorted(p.name for p in base.iterdir()), ["v1.47.0", "v2"])
 
-    def test_rebuild_enqueues_enabled_items_only(self):
-        with db.tx() as c:
+    def test_rebuild_enqueues_items_with_build_and_update_on_only(self):
+        with db.tx() as c:  # item 1 both on, 2 Build off, 4 Update off, 3 is on another source
+            c.execute("UPDATE item SET auto_update=1 WHERE id IN (1, 2)")
             c.execute("UPDATE item SET enabled=0 WHERE id=2")
+        with db.tx() as c:
+            c.execute("INSERT INTO app(package) VALUES ('com.tumblr')")
+            c.execute("INSERT INTO item(id, source_id, package, key, position, variants, auto_update) VALUES (4,'morphe','com.tumblr','tumblr',9,'[]',0)")
         self.routes()
         upstream.pull(2, self.log, rebuild=True)
         rows = db.conn().execute("SELECT target, trigger FROM jobs WHERE kind='build'").fetchall()
@@ -188,7 +192,7 @@ class PullTest(CatalogCase):
             c.execute("INSERT INTO upstream(id, kind, repo, channel) VALUES (6,'module','revenge-mod/revenge-xposed','stable'),(7,'cli','JingMatrix/LSPatch','stable')")
             c.execute("INSERT INTO source(id, name, upstream_id, cli_upstream_id, engine, keystore) VALUES ('revenge-lspatch','Revenge',6,7,'lspatch','lspatch-signing.p12')")
             c.execute("INSERT INTO app(package) VALUES ('com.discord')")
-            c.execute("INSERT INTO item(id, source_id, package, key, group_id, position, variants) VALUES (10,'revenge-lspatch','com.discord','discord',NULL,0,'[]')")
+            c.execute("INSERT INTO item(id, source_id, package, key, group_id, position, variants, auto_update) VALUES (10,'revenge-lspatch','com.discord','discord',NULL,0,'[]',1)")
         rel = {"tag_name": "1801", "draft": False, "assets": [{"name": "app-release.apk", "size": 5, "browser_download_url": "https://dl.invalid/microg.apk"}]}
         self.http({f"{API}/repos/revenge-mod/revenge-xposed/releases/latest": (200, rel, {})})
         upstream.pull(6, self.log, rebuild=True)
@@ -208,36 +212,6 @@ class PullTest(CatalogCase):
         self.assertEqual(json.loads(row["options"])["rebuild"], True)
         self.assertEqual(self.status_of(upstream.post_pull, json={}, id=99), 404)
 
-
-
-class CheckOnlyTest(CatalogCase):
-    """Scheduled upstream job with options.pull false = check only."""
-
-    def setUp(self):
-        super().setUp()
-        self.inspected = []
-        for name, fake in (("http_download", lambda *a, **k: self.fail("downloaded")),
-                           ("inspect_row", lambda uid, tag, log: self.inspected.append((uid, tag)))):
-            self.enterContext(mock.patch.object(upstream, name, fake))
-
-    def routes(self):
-        return self.http({f"{API}/repos/MorpheApp/morphe-patches/releases/latest": (200, fix("release-stable.json"), {})})
-
-    def test_pull_false_checks_without_download(self):
-        self.routes()
-        upstream._handler(mock.Mock(id=78, target={"upstream_id": 2}, options={"pull": False, "rebuild": True}), FakeLog())
-        row = upstream._row(2)
-        self.assertEqual((row["latest_tag"], row["downloaded_tag"]), ("v1.47.0", None))
-        self.assertFalse((self.data / "upstream" / "2").exists())
-        self.assertEqual(self.inspected, [])
-        self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM jobs").fetchone()[0], 0)
-        evs = [pl["job_id"] for t, pl in self.emitted if t == "upstream.new_version"]
-        self.assertEqual(evs, [78])
-
-    def test_pull_false_check_error_fails_job(self):
-        self.http({})
-        with self.assertRaises(jobs.JobFailed):
-            upstream._handler(mock.Mock(id=79, target={"upstream_id": 2}, options={"pull": False}), FakeLog())
 
 
 class RedirectAuthTest(unittest.TestCase):

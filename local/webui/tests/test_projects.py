@@ -41,6 +41,9 @@ def add_project(c, pid=1, uid=9, package=GMS, repo="MorpheApp/MicroG-RE", **cols
         c.execute(f"UPDATE project SET {k} = ? WHERE id = ?", (v, pid))
 
 
+LATEST_SCHEMA = max(int(f.name[:3]) for f in db.SCHEMA_DIR.glob('[0-9][0-9][0-9]_*.sql'))
+
+
 class MigrationTest(unittest.TestCase):
     def setUp(self):
         jobs.stop()
@@ -75,7 +78,7 @@ class MigrationTest(unittest.TestCase):
             t.execute("INSERT INTO ota_installs(job_id, device_id, kind, ref_id, upstream_tag, package, result) "
                       "VALUES (7,5,'dependency',23,'7.2.1',?,'installed')", (GMS,))
         db.migrate()
-        self.assertEqual(c.execute("PRAGMA user_version").fetchone()[0], 5)
+        self.assertEqual(c.execute("PRAGMA user_version").fetchone()[0], LATEST_SCHEMA)
         u = c.execute("SELECT kind, downloaded_tag, notified_tag, asset_regex FROM upstream WHERE id=23").fetchone()
         self.assertEqual(tuple(u), ("project", None, "7.2.2", "^microg-[0-9.]+\\.apk$"))
         p = c.execute("SELECT * FROM project WHERE id=1").fetchone()
@@ -95,7 +98,7 @@ class MigrationTest(unittest.TestCase):
         names = {r[0] for r in db.conn().execute("SELECT name FROM sqlite_master WHERE type='table'")}
         self.assertNotIn("dependency_app", names)
         self.assertLessEqual({"project", "device_projects", "item_dependency", "ota_installs", "upstream"}, names)
-        self.assertEqual(db.conn().execute("PRAGMA user_version").fetchone()[0], 5)
+        self.assertEqual(db.conn().execute("PRAGMA user_version").fetchone()[0], LATEST_SCHEMA)
         with self.assertRaises(sqlite3.IntegrityError):
             with db.tx() as c:
                 c.execute("INSERT INTO upstream(kind, repo, channel) VALUES ('dependency','a/b','stable')")
@@ -256,7 +259,7 @@ class CrudRouteTest(ProjectCase):
         self.assertEqual((r["kind"], r["repo"], r["channel"], r["tag"], r["asset_regex"], r["display_name"], r["auto_push"],
                           r["package"]), ("project", "mihonapp/mihon", "stable", None, self.BODY["asset_regex"], "Mihon", 1, None))
         self.assertEqual(self.jobs_of("upstream"), [({"upstream_id": r["upstream_id"]}, "manual",
-                                                     {"pull": True, "rebuild": False, "notify": True})])
+                                                     {"rebuild": False, "notify": True})])
         self.assertEqual(db.conn().execute("SELECT id FROM jobs").fetchone()[0], b["job_id"])
         for bad in ({"channel": "tag"}, {"asset_regex": "("}, {"auto_push": 1}, {"display_name": ""}, {"device_ids": [1, 1]}):
             self.assertEqual(self.status_of(projects.post_project, json=dict(self.BODY, **bad)), 400, bad)
@@ -292,7 +295,7 @@ class CrudRouteTest(ProjectCase):
         st, p = self.call(projects.put_project, json={"asset_regex": r"^microg.*\.apk$", "display_name": "G"}, method="PUT", id=1)
         self.assertEqual((st, p["asset_regex"], p["downloaded_tag"], p["latest_tag"], p["label"]), (200, r"^microg.*\.apk$", None, "v1", "G"))
         self.assertEqual((p["signer_sha256"], p["signer_since"]), (AB, "v1"))
-        self.assertEqual(self.jobs_of("upstream"), [({"upstream_id": 9}, "manual", {"pull": True, "rebuild": False, "notify": True})])
+        self.assertEqual(self.jobs_of("upstream"), [({"upstream_id": 9}, "manual", {"rebuild": False, "notify": True})])
         self.call(projects.put_project, json={"auto_push": True}, method="PUT", id=1)
         self.assertEqual(len(self.jobs_of("upstream")), 1)
         self.assertEqual(self.error(projects.put_project, json={"repo": "a/b"}, method="PUT", id=1), (400, "repo cannot change"))

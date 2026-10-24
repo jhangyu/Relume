@@ -440,31 +440,14 @@ def pull(upstream_id, log, rebuild=False, job_id=None):
         inspect_row(upstream_id, row["downloaded_tag"], log)
     if new and rebuild and row["kind"] in ("patches", "module"):
         ids = [r[0] for r in db.conn().execute("""SELECT i.id FROM item i JOIN source s ON s.id = i.source_id
-            WHERE s.upstream_id = ? AND i.enabled = 1 ORDER BY i.id""", (upstream_id,))]
+            WHERE s.upstream_id = ? AND i.enabled = 1 AND i.auto_update = 1 ORDER BY i.id""", (upstream_id,))]
         for iid in ids:
             jobs.enqueue("build", {"item_id": iid}, "upstream")
         log.line(f"[+] rebuild enqueued for {len(ids)} item(s)")
 
 
-def check_only(upstream_id, log, job_id=None):
-    """Scheduled job with options.pull false: check without download or inspect."""
-    try:
-        row = check(upstream_id, job_id)
-    except KeyError:
-        raise jobs.JobFailed("upstream not found")
-    except (TokenRejected, RateLimited) as e:
-        raise jobs.JobFailed(str(e))
-    if row["check_error"]:
-        raise jobs.JobFailed(row["check_error"])
-    log.line(f"[+] check only: {row['repo']} latest {row['latest_tag']}, downloaded {row['downloaded_tag']}")
-
-
 def _handler(job, log):
-    opts = job.options or {}
-    if opts.get("pull", True) is False:
-        check_only(job.target["upstream_id"], log, job_id=job.id)
-        return
-    pull(job.target["upstream_id"], log, rebuild=bool(opts.get("rebuild", False)), job_id=job.id)
+    pull(job.target["upstream_id"], log, rebuild=bool((job.options or {}).get("rebuild", False)), job_id=job.id)
 
 
 def register():

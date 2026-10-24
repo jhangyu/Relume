@@ -1,6 +1,8 @@
 """Catalog store tests (spec catalog §3, §6, §10)."""
 import json
+import shutil
 import sqlite3
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -39,6 +41,36 @@ class CatalogSchemaTest(helpers.DataTestCase):
         with db.tx() as c:
             c.execute("DELETE FROM item WHERE id=1")
         self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM item_dependency").fetchone()[0], 0)
+
+
+class MigrationAutoUpdateTest(helpers.DataTestCase):
+    """006: item.auto_update defaults to 0 for existing rows and the jobs rebuild keeps rows and accepts kind appcheck."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        for f in sorted(db.SCHEMA_DIR.glob("00[1-5]_*.sql")):
+            shutil.copy(f, tmp.name)
+        self.schema_dir = tmp.name
+        super().setUp()
+        with db.tx() as c:
+            c.execute("INSERT INTO upstream(id, kind, repo, channel) VALUES (1,'cli','c/c','stable'),(2,'patches','p/p','stable')")
+            c.execute("INSERT INTO source(id, name, upstream_id, cli_upstream_id) VALUES ('s','S',2,1)")
+            c.execute("INSERT INTO app(package) VALUES ('com.a.b')")
+            c.execute("INSERT INTO item(id, source_id, package, key, position, variants) VALUES (1,'s','com.a.b','b',0,'[]')")
+            c.execute("INSERT INTO jobs(id, kind, status, trigger, target, created_at) VALUES (7,'build','success','manual','{}','t')")
+            c.execute("INSERT INTO build_jobs(job_id, item_id) VALUES (7, 1)")
+        db.migrate()
+
+    def test_column_default_kind_and_child_rows(self):
+        self.assertEqual(db.conn().execute("SELECT auto_update FROM item WHERE id = 1").fetchone()[0], 0)
+        self.assertEqual(db.conn().execute("SELECT kind, status FROM jobs WHERE id = 7").fetchone()[:], ("build", "success"))
+        self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM build_jobs").fetchone()[0], 1)
+        with db.tx() as c:
+            c.execute("INSERT INTO jobs(kind, status, trigger, target, created_at) VALUES ('appcheck','queued','manual','{}','t')")
+        with self.assertRaises(sqlite3.IntegrityError):
+            with db.tx() as c:
+                c.execute("INSERT INTO jobs(kind, status, trigger, target, created_at) VALUES ('nope','queued','manual','{}','t')")
 
 
 class GroupsTest(CatalogCase):
@@ -138,9 +170,17 @@ class CrudTest(CatalogCase):
         self.assertEqual(it["variants"][1]["strip_libs"], "arm64-v8a")
         self.assertEqual(it["key"], "duolingo")
         self.assertEqual(it["position"], 2)
+        self.assertEqual((it["enabled"], it["auto_update"]), (False, False))
         self.assertIsNotNone(db.conn().execute("SELECT 1 FROM app WHERE package='com.duolingo'").fetchone())
         self.assertEqual(self.status_of(catalog.post_item, json={"source_id": "morphe", "package": "com.duolingo"}), 409)
         self.assertEqual(self.status_of(catalog.post_item, json={"source_id": "morphe", "package": "bad"}), 400)
+
+    def test_item_put_auto_update_validation(self):
+        st, it = self.call(catalog.put_item, json={"auto_update": True}, method="PUT", id=1)
+        self.assertEqual((st, it["auto_update"], it["enabled"]), (200, True, True))
+        self.assertEqual(db.conn().execute("SELECT auto_update FROM item WHERE id = 1").fetchone()[0], 1)
+        for bad in (1, "true", None):
+            self.assertEqual(self.status_of(catalog.put_item, json={"auto_update": bad}, method="PUT", id=1), 400, bad)
 
     def test_item_create_enqueues_pull_when_bundle_missing(self):
         with db.tx() as c:

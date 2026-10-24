@@ -389,6 +389,15 @@ class StatusTest(BuildCase):
             c.execute("UPDATE upstream SET downloaded_tag = 'v1.1.0' WHERE id = 1")
         self.assertTrue(build.needs_build(1))
 
+    def test_latest_mode_compares_apkmirror_newest(self):
+        self.finished("success")  # built app 20.1.0
+        for mode, versions, want in (("latest", '["20.1.0","19.0.0"]', False), ("latest", '["20.2.0","20.1.0"]', True),
+                                     ("latest", None, False), ("auto", '["20.2.0"]', False), ("pinned", '["20.2.0"]', False)):
+            with db.tx() as c:
+                c.execute("UPDATE item SET version_mode = ? WHERE id = 1", (mode,))
+                c.execute("UPDATE app SET apkmirror_versions = ? WHERE package = ?", (versions, YT))
+            self.assertIs(build.needs_build(1), want, (mode, versions))
+
     def test_failed_newest(self):
         self.finished("success")
         self.finished("failed")
@@ -403,6 +412,59 @@ class StatusTest(BuildCase):
         build._Markers(running.id, YT).feed("::step::patch::2/3")
         st = build.item_status([1])[1]["active_job"]
         self.assertEqual(st, {"job_id": running.id, "status": "running", "step": "patch", "step_index": 2, "step_count": 3})
+
+
+class AppcheckTest(BuildCase):
+    """appcheck job: version list stored, rebuild only for latest-mode items with both switches on and a newer app."""
+
+    def setUp(self):
+        super().setUp()
+        with db.tx() as c:
+            c.execute("UPDATE app SET apkmirror_list_url = 'https://apkmirror.invalid/yt/' WHERE package = ?", (YT,))
+            # item 1: latest, both on, never built. 2: Update off. 3: version mode auto. 4: Build off. 5: up to date.
+            for iid, mode, enabled, auto_update in ((1, "latest", 1, 1), (2, "latest", 1, 0), (3, "auto", 1, 1),
+                                                    (4, "latest", 0, 1), (5, "latest", 1, 1)):
+                if iid > 1:
+                    c.execute("INSERT INTO source(id, name, upstream_id, cli_upstream_id) VALUES (?, ?, 2, 1)", (f"s{iid}", f"S{iid}"))
+                    c.execute("INSERT INTO item(id, source_id, package, key, position, variants) VALUES (?, ?, ?, 'youtube', 0, '[]')",
+                              (iid, f"s{iid}", YT))
+                c.execute("UPDATE item SET version_mode = ?, enabled = ?, auto_update = ? WHERE id = ?", (mode, enabled, auto_update, iid))
+            jid = add_job(c, 5, "success")
+            c.execute("INSERT INTO build_jobs(job_id, item_id, app_version, patches_version, cli_version) VALUES (?, 5, '2.0', 'v1.2.3', 'v1.0.0')", (jid,))
+        self.n = 100
+
+    def check(self, script, rebuild=True, package=YT):
+        self.enterContext(mock.patch.object(build, "CHECK_VERSIONS", str(FIX / script)))
+        self.n += 1
+        job = SimpleNamespace(id=self.n, target={"package": package}, options={"rebuild": rebuild}, cancel_event=threading.Event())
+        build.appcheck_handler(job, StreamLog())
+
+    def queued_builds(self):
+        return [json.loads(r[0])["item_id"] for r in db.conn().execute("SELECT target FROM jobs WHERE kind = 'build' AND status = 'queued' ORDER BY id")]
+
+    def test_rebuild_selects_latest_items_with_both_switches_and_newer_app(self):
+        self.check("check-ok.sh")
+        self.assertEqual(self.cat.versions, [(YT, ["2.0", "1.0"])])
+        self.assertEqual(self.queued_builds(), [1])
+
+    def test_no_rebuild_only_stores_versions(self):
+        self.check("check-ok.sh", rebuild=False)
+        self.assertEqual(self.cat.versions, [(YT, ["2.0", "1.0"])])
+        self.assertEqual(self.queued_builds(), [])
+
+    def test_fetch_failure_names_package(self):
+        with self.assertRaises(jobs.JobFailed) as cm:
+            self.check("check-fail.sh")
+        self.assertIn(YT, cm.exception.reason)
+        self.assertIn("fetch failed", cm.exception.reason)
+        self.assertEqual(self.queued_builds(), [])
+
+    def test_no_list_url_fails_naming_package(self):
+        with db.tx() as c:
+            c.execute("UPDATE app SET apkmirror_list_url = NULL WHERE package = ?", (YT,))
+        with self.assertRaises(jobs.JobFailed) as cm:
+            self.check("check-ok.sh")
+        self.assertIn(YT, cm.exception.reason)
 
 
 if __name__ == "__main__":

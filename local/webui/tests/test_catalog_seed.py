@@ -17,10 +17,10 @@ class SeedImportTest(helpers.DataTestCase):
         rows = db.conn().execute("SELECT name, kind, target, spec, options, enabled FROM schedules").fetchall()
         self.assertEqual(len(rows), 1)
         r = rows[0]
-        self.assertEqual((r["name"], r["kind"], r["enabled"]), ("Daily upstream", "upstream", 1))
+        self.assertEqual((r["name"], r["kind"], r["enabled"]), ("Daily update", "app", 1))
         self.assertEqual(json.loads(r["target"]), {"all": True})
         self.assertEqual(json.loads(r["spec"]), {"every": "day", "at": "09:00"})
-        self.assertIs(json.loads(r["options"])["rebuild"], True)
+        self.assertEqual(json.loads(r["options"]), {"update": True, "build": True, "force": False, "notify": True})
         self.assertIsNotNone(db.conn().execute("SELECT next_run_at FROM schedules").fetchone()[0])
         seeded = json.loads(catalog.SEED_PATH.read_text())
         self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM item").fetchone()[0], len(seeded["items"]))
