@@ -51,6 +51,8 @@ services:
       context: ..
       dockerfile: local/Dockerfile
       target: app
+      args:
+        RELUME_VERSION: ${RELUME_VERSION:-dev}
     image: jhangyu/relume-app:latest
     network_mode: service:netns
     depends_on: [netns, flaresolverr, cfbypass, apkmsolver]

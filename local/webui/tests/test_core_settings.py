@@ -27,7 +27,7 @@ class SettingsTest(DataTestCase):
         self.assertEqual(st, 200)
         d = json.loads(body)
         self.assertEqual(sorted(d), ['app', 'ok', 'started_at', 'version'])
-        self.assertEqual((d['ok'], d['app'], d['version']), (True, 'Relume', '1.0'))
+        self.assertEqual((d['ok'], d['app'], d['version']), (True, 'Relume', 'dev'))
 
     def test_defaults_and_put(self):
         s = self.get()

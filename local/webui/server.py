@@ -2,6 +2,7 @@ import importlib
 import ipaddress
 import json
 import mimetypes
+import os
 import pathlib
 import re
 import shutil
@@ -12,7 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import db
 
-VERSION = '1.0'
+VERSION = os.environ.get('RELUME_VERSION', 'dev')
 STARTED_AT = db.utcnow()
 MODULES = ('catalog', 'upstream', 'projects', 'build', 'devices', 'ota', 'notify')
 CORE = ('auth', 'jobs', 'scheduler', 'settings')

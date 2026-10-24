@@ -22,8 +22,11 @@ COPY --link --from=dl-pup /out/pup /usr/local/bin/pup
 COPY --link --from=dl-apkeditor /APKEditor.jar /opt/APKEditor.jar
 ENV HOME=/data/home PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/repo/local
 WORKDIR /repo
-COPY --link local/webui /repo/local/webui
+# src/build before local/webui: BuildKit chains cache keys forward, so the faster-changing webui layer must come last
 COPY --link src/build /repo/src/build
+COPY --link local/webui /repo/local/webui
+ARG RELUME_VERSION=dev
+ENV RELUME_VERSION=$RELUME_VERSION
 CMD ["python3", "-m", "webui"]
 
 FROM upstream AS browser
