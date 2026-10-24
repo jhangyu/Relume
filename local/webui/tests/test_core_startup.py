@@ -1,6 +1,6 @@
 import contextlib, io, os, pathlib, subprocess, sys, threading, types, unittest
 from unittest import mock
-from webui import db, server
+from webui import auth, db, server, settings
 from webui.tests.helpers import DataTestCase
 import webui.__main__ as cli
 
@@ -40,15 +40,18 @@ class StartupTest(DataTestCase):
                 mock.patch.object(cli.scheduler, 'start', lambda: calls.append('scheduler.start')):
             cli.boot(start=True, names=names)
         self.assertEqual(calls, ['devices.register', 'jobs.recover', 'jobs.start', 'scheduler.start', 'devices.start'])
-        self.assertIn('admin password: ', out.getvalue())
+        self.assertNotIn('password', out.getvalue())
+        self.assertIsNone(db.conn().execute("SELECT 1 FROM settings WHERE key LIKE 'admin_%'").fetchone())
 
     def test_reset_password(self):
         db.conn().execute("INSERT INTO sessions VALUES ('t','2999-01-01T00:00:00Z')")
+        settings.put('admin_username', 'root')
+        auth.set_password('old-password-1')
         out = io.StringIO()
         with mock.patch.object(server, 'MODULES', ()), mock.patch.dict('os.environ', {'RELUME_DATA': str(self.data)}), \
                 contextlib.redirect_stdout(out):
             self.assertEqual(cli.main(['reset-password']), 0)
-        self.assertRegex(out.getvalue(), r'admin password: \S{20}\n')
+        self.assertRegex(out.getvalue(), r'^admin password reset for root: \S{20}\n$')
         self.assertEqual(db.conn().execute('SELECT count(*) FROM sessions').fetchone()[0], 0)
 
     def test_unknown_command(self):

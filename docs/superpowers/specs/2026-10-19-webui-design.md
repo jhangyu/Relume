@@ -21,7 +21,7 @@ One Docker Compose file, five containers. The existing builder container becomes
 | 4d Multiple phones, per-phone apps, followed projects | device §3.1 (`device_assignments`), §4.3; followed projects (`docs/superpowers/specs/2026-10-23-follow-project-design.md` §3: `project`, `item_dependency`, `device_projects`) |
 | Linux host / NAS (host network, mDNS) | core §1, §12; device D3, D4 |
 | macOS Docker Desktop (manual IP:port + code) | core §1, §12; device D4, §4.1 |
-| Single admin with password, LAN | core §7 (plain HTTP, decision Q6) |
+| Single admin (username + password, created on first start), LAN | core §7 (plain HTTP, decision Q6) |
 | Web UI screens (final mockup, 7 screens) | ui §2 (every element mapped, added or dropped), ui §1 (frontend files) |
 | GitHub Actions builds kept (decision Q1) | ci §2–§9 |
 | Xposed / LSPatch / NPatch items kept (decision Q2) | xposed §2–§9 |
@@ -60,18 +60,18 @@ Events (`events.emit` / `events.subscribe`, core §5):
 
 In-process functions between parts: `catalog.resolve_items(target)`, `catalog.resolve_upstreams(target)`, `devices.resolve_devices(target)` (schedule expansion, core §4); `catalog.job_input(item_id)` (build input, catalog §5.3, fields = build §3.1); `build.latest_artifact(item_id, abi)` (device §4.3); `build.item_status(item_ids)` and `build.needs_build(item_id)` (build §3.4; App list status, `only_changed` schedules); `build.forget_item(item_id)` (item delete, build §3.4); `catalog.set_apkmirror_versions(package, versions)` (called by the build handler, catalog §3); `jobs.run_inline(kind, target, trigger, options=None)` (core §5, used by ci §4); `projects.item_projects`, `projects.assigned_projects`, `projects.project_info`, `projects.check_assignment` (`docs/superpowers/specs/2026-10-23-follow-project-design.md` §4.2).
 
-Settings keys: core `admin_password_hash`, `job_history_count`, `base_url`; build `artifact_retention`; device `notify`.
+Settings keys: core `admin_username`, `admin_password_hash`, `job_history_count`, `base_url`; build `artifact_retention`; device `notify`.
 
 Files under `/data` (host `local/data/`): `webui.db`, `logs/<job id>.log` (core), `work/<job id>/`, `artifacts/`, `apk-cache/` (build), `upstream/`, `icons/` (catalog), `home/.android/` (device, adb keys).
 
 ## 0.4 Route table
 
-All routes need the admin session except the two marked "no auth". Mutating requests must be `Content-Type: application/json` (core §7).
+All routes need the admin session except the five marked "no auth" (`GET /api/health`, `GET /api/auth/state`, `POST /api/auth/setup`, `POST /api/auth/login`, `POST /api/auth/reset`). Mutating requests must be `Content-Type: application/json` (core §7).
 
 | route | owner | purpose |
 |---|---|---|
 | `GET /api/health` | core | liveness and login-page server summary, no auth (core §8) |
-| `POST /api/auth/login`, `POST /api/auth/logout`, `POST /api/auth/password` | core | login with optional `remember` (no auth), logout, change password |
+| `GET /api/auth/state`, `POST /api/auth/setup`, `POST /api/auth/login`, `POST /api/auth/reset`, `POST /api/auth/logout`, `POST /api/auth/password` | core | setup state, first-run account creation, login with optional `remember`, forgot-password reset (these four without auth), logout, change password |
 | `GET /api/jobs`, `GET /api/jobs/{id}`, `POST /api/jobs/{id}/cancel`, `GET /api/jobs/{id}/log` (SSE) | core | history (rows carry `detail`) and live log of build, upstream and OTA jobs; cancel also removes a queued job |
 | `GET/POST /api/schedules`, `PUT/DELETE /api/schedules/{id}`, `POST /api/schedules/preview`, `POST /api/schedules/{id}/run` | core | schedules |
 | `GET/PUT /api/settings` | core | job history size, base URL, artifact retention count, GitHub token details, server info (arch, TZ, network mode, disk use) |
@@ -281,7 +281,7 @@ CREATE TABLE schedules (
 ```
 Job log file: `/data/logs/<job id>.log`.
 
-Settings keys and owners: core `admin_password_hash`, `job_history_count` (default 500 per kind), `base_url` (absolute URL of the UI, used for links in notifications; empty = no links); build `artifact_retention`; device `notify`. Owners document their keys in their parts. Secrets in settings are never returned by the API; the API returns `"set": true|false`.
+Settings keys and owners: core `admin_username`, `admin_password_hash`, `job_history_count` (default 500 per kind), `base_url` (absolute URL of the UI, used for links in notifications; empty = no links); build `artifact_retention`; device `notify`. Owners document their keys in their parts. Secrets in settings are never returned by the API; the API returns `"set": true|false`.
 
 Owner tables reference `jobs(id)` and catalog `item(id)` by foreign key. Detail rows of a job use `ON DELETE CASCADE`; rows that must outlive history cleanup (artifacts) use `ON DELETE RESTRICT`.
 
@@ -325,14 +325,15 @@ Behaviour:
 
 ### 7. Auth (`auth.py`)
 
-- One admin. Login form has only a password field.
-- First start: if `admin_password_hash` is missing, the server creates a random 20-character password, stores its hash, and prints it once to stdout: `docker compose -f local/docker-compose.yml logs app | grep 'admin password'`.
-- Reset: `docker compose -f local/docker-compose.yml exec app python3 -m webui reset-password` prints a new password and deletes all sessions.
+- One admin account: username + password, stored as settings `admin_username` and `admin_password_hash`. The account exists only when both are set; a hash without a username counts as no account.
+- First start: the server generates and prints no password. While no account exists, `GET /api/auth/state` → `{"setup_required":true}` and the first visitor creates the account with `POST /api/auth/setup {username, password, remember?}`: username 1–64 chars of `[A-Za-z0-9._-]`, password ≥ 10 chars (else 400). Check and create run in one `BEGIN IMMEDIATE` transaction, so of two concurrent setups exactly one gets 200 (and a session cookie, like login); any later setup → 409 `{"error":"already set up"}`. Login and reset while no account exists → 409.
+- Forgot password: `POST /api/auth/reset` (no auth) → 202 `{"ok":true}`. The server sets a new random 20-character password, deletes all sessions, and prints `admin password reset for <username>: <new password>` to stdout (`docker logs relume-app`, Portainer container logs). A second reset within `RESET_COOLDOWN` (5 minutes, in-memory) → 429 `{"error":"cooldown","retry_after":S}`.
+- CLI: `docker compose -f local/docker-compose.yml exec app python3 -m webui reset-password` calls the same function (same output, deletes all sessions; exits 1 when no account exists).
 - Hash: `hashlib.scrypt(n=2**14, r=8, p=1)`, 16-byte random salt, compare with `hmac.compare_digest`.
 - Session: `secrets.token_urlsafe(32)` in cookie `relume_session` (`HttpOnly`, `SameSite=Strict`, `Path=/`). Login body `remember` ("Keep me signed in", default true in the form): true → cookie `Max-Age=2592000` and server-side `expires_at` = now + 30 days; false → cookie without `Max-Age`/`Expires` (ends when the browser closes) and server-side `expires_at` = now + 12 h. Password change deletes all sessions except the current one.
-- Every `/api/*` route except `POST /api/auth/login` and `GET /api/health` needs a valid session → else 401. Pages under `/` redirect to `/login.html` without a session.
+- Every `/api/*` route except `GET /api/auth/state`, `POST /api/auth/setup`, `POST /api/auth/login`, `POST /api/auth/reset` and `GET /api/health` needs a valid session → else 401. Pages under `/` redirect to `/login.html` without a session.
 - CSRF: `SameSite=Strict`, mutating methods require `Content-Type: application/json`, and if an `Origin` header is present its host must equal the `Host` header.
-- Brute force: after 5 failed logins within 5 minutes, login answers 429 for 5 minutes (in-memory counter). Wrong password → 401 `{"error":"wrong password","attempts_left":N}`; locked → 429 `{"error":"locked","retry_after":S}` (login page text, ui §2).
+- Brute force: after 5 failed logins within 5 minutes, login answers 429 for 5 minutes (in-memory counter). Wrong username or wrong password → the same 401 `{"error":"wrong credentials","attempts_left":N}` (no user enumeration); locked → 429 `{"error":"locked","retry_after":S}` (login page text, ui §2).
 - Transport is plain HTTP on the LAN (decision Q6, §0.6).
 
 ### 8. API surface
@@ -342,7 +343,7 @@ All JSON. Owners define the routes under their prefixes in their parts.
 | owner | prefix | routes |
 |---|---|---|
 | core | `/api/health` | `GET` → `{"ok":true, "app":"Relume", "version":"1.0", "started_at":"<ISO time>"}` (no auth); `version` is the constant `VERSION` in `server.py`, `started_at` the process start time. The login page shows it as the server summary (ui §2 Login). It carries only these four fields: never item, app or device names, counts, IPs, host or network details, arch, tokens or paths. |
-| core | `/api/auth` | `POST /login {password, remember?}` (core §7), `POST /logout`, `POST /password {old,new}` (new ≥ 10 chars) → `{"signed_out":N}` (other sessions deleted) |
+| core | `/api/auth` | `GET /state` → `{setup_required}`, `POST /setup {username, password, remember?}`, `POST /login {username, password, remember?}`, `POST /reset` (core §7), `POST /logout`, `POST /password {old,new}` (new ≥ 10 chars) → `{"signed_out":N}` (other sessions deleted) |
 | core | `/api/jobs` | `GET ?kind=&status=&item_id=&device_id=&before_id=&limit=` (newest first, max 100); `GET /{id}`; `POST /{id}/cancel`; `GET /{id}/log` (SSE) |
 | core | `/api/schedules` | `GET` (each row adds `next_runs` = next 5 run times, and `last_counts` = `{status: n}` of the jobs of that schedule created at or after `last_run_at`), `POST`, `PUT /{id}`, `DELETE /{id}`, `POST /preview {spec}` → next 5 run times; `POST /{id}/run` → run now |
 | core | `/api/settings` | `GET` → non-secret core settings; `github {state (absent/unauthenticated/authenticated/rejected), limit, remaining, reset_at, token_hint ("****" + last 4), path, expires_at, scopes}` from `GET https://api.github.com/rate_limit`, cached 5 min, `?recheck=1` bypasses the cache; `expires_at`/`scopes` from the `github-authentication-token-expiration`/`X-OAuth-Scopes` response headers when present, else null; `server {arch (platform.machine()), tz, now, network_mode, disk {total, free (shutil.disk_usage('/data')), artifacts, apk_cache, upstream, logs (directory size sums), artifacts_count}}`. `PUT {job_history_count, base_url, artifact_retention}` (`artifact_retention` is build's key, edited on the Settings page; a change runs build retention for every item at once, build §6) |
@@ -373,7 +374,7 @@ Log SSE: `GET /api/jobs/{id}/log`. Each event carries a chunk of log lines; `id:
 | job handler exception other than `JobFailed` | job `failed`, reason = exception class + message (first line), traceback into the job log |
 | server restart during a job | job `failed` with reason `server restarted` (§5) |
 | sidecar down | build handler's concern (build part); core healthcheck covers `app` only |
-| forgotten password | `reset-password` CLI (§7) |
+| forgotten password | login-page "Forgot password?" → `POST /api/auth/reset`, or `reset-password` CLI (§7) |
 
 ### 11. Testing (core)
 
@@ -381,7 +382,7 @@ Log SSE: `GET /api/jobs/{id}/log`. Each event carries a chunk of log lines; `id:
 - Core tests: router pattern matching and int params; auth hash verify, session expiry, 401 without cookie, 415 on non-JSON mutating request, Origin mismatch → 403, 429 after 5 failures; `remember` true → `Max-Age` cookie and 30-day expiry, false → no `Max-Age` and 12 h expiry; `GET /api/health` without a session returns exactly the four documented keys; `register()` of every module starts no thread (thread count unchanged); migration order and `user_version`; job enqueue dedup (scheduled and manual build of one item → one job; `force_reinstall` OTA not merged into `normal`; unknown option keys dropped), serial order per kind, parallel across kinds, cancel kills the child process group (child `sleep` process is gone), restart recovery; history cleanup skips RESTRICT rows; scheduler next-run for day/week/hours including a DST change in `Europe/Berlin`; missed-run single catch-up; SSE resume from `Last-Event-ID` and `end` event.
 - Compose checks: `RELUME_NETWORK_MODE=host docker compose -f local/docker-compose.yml config` and the same with `bridge` both exit 0; with the variable unset it exits non-zero.
 - `run_inline` and the CI compose override check: ci §8.
-- Smoke on each platform (user-run): `up -d --build`, read the password from logs, `curl` login, `GET /api/jobs` → 200; `docker compose exec app curl -sf localhost:47191` → FlareSolverr answers; from another LAN machine on Linux host mode `curl <host>:47191` fails (sidecar not exposed).
+- Smoke on each platform (user-run): `up -d --build`, open the UI, create the admin account (`POST /api/auth/setup`), `curl` login, `GET /api/jobs` → 200; `docker compose exec app curl -sf localhost:47191` → FlareSolverr answers; from another LAN machine on Linux host mode `curl <host>:47191` fails (sidecar not exposed).
 
 ### 12. Deployment
 
@@ -389,7 +390,7 @@ Linux arm64 host / NAS:
 1. `cp local/.env.example local/.env`; set `RELUME_NETWORK_MODE=host`, `RELUME_UID=$(id -u)`, `RELUME_GID=$(id -g)`, `TZ`. As the same user, `mkdir -p local/data` (or the `RELUME_DATA_DIR` path); Compose does not create it (§1 mounts), so it is owned by that user.
 2. Put the GitHub token in the token file (as today, `local/build.sh` token-file block behaviour moves to the server start check; build part owns it).
 3. `docker compose -f local/docker-compose.yml up -d --build`.
-4. Read the admin password from `logs app`; open `http://<host>:47000`.
+4. Open `http://<host>:47000` and create the admin account (username + password) on the first-start page.
 5. Host firewall must allow inbound TCP 47000, and outbound UDP multicast to 224.0.0.251:5353 with its unicast replies (device discovery, device part D3).
 
 macOS (Docker Desktop, Apple silicon):
@@ -1077,11 +1078,11 @@ Rendering rules: lists are rebuilt from JSON with template strings; every server
 | mockup element | spec | decision |
 |---|---|---|
 | Password field, show/hide, busy state, `aria-invalid` | core §7 | covered / client |
-| Username field | core §7 "Login form has only a password field" | **drop**: one admin, no user name |
-| "Initial password comes from the server's environment" | core §7 (random password printed to the log) | text changed to the core §7 log command |
-| "Wrong password. 4 attempts left before a 5-minute lockout" | core §7 brute-force counter | **add** 401 body `{"error":"wrong password","attempts_left":N}`, 429 body `{"error":"locked","retry_after":S}` (core §7) |
+| Username field | first-run account contract (`GET /api/auth/state`, `POST /api/auth/setup`, `POST /api/auth/login`) | **restored**: username + password in both modes; the page reads `setup_required` from `GET /api/auth/state`. Setup mode: heading "Create admin account", extra "Confirm password" field (client check: ≥ 10 chars and equal), button "Create account" → `POST /api/auth/setup`. Login mode: button "Sign in" → `POST /api/auth/login`. After success → `/` |
+| "Initial password comes from the server's environment" | first-run account contract | **drop**: no password is printed at boot; the password hint shows only in setup mode (≥ 10 chars) |
+| "Wrong password. 4 attempts left before a 5-minute lockout" | core §7 brute-force counter | 401 `{"error":"wrong credentials","attempts_left":N}` → "Wrong username or password. N attempts left before a 5-minute lockout."; 429 `{"error":"locked","retry_after":S}` → "Too many attempts. Try again in M min S s." and the button stays disabled; 400 → server message; 409 → page re-reads the state and switches mode |
 | "Keep me signed in (30 days)" checkbox | core §7 `remember` | **restored** (§0.6 R2): checked by default; sends `remember` with the login; unchecked = browser-session cookie, 12 h server limit |
-| Forgot-password hint | core §7 `reset-password` CLI | covered; text uses the core §7 command (the mockup's `docker compose exec web relume …` is sample) |
+| "Forgot password?" button (login mode only) | first-run account contract (`POST /api/auth/reset`) | opens a confirm dialog; on 202 shows "the new password is in the server log" with the places to look (Portainer > Containers > relume-app > Logs, or `docker logs relume-app`); 429 `{"error":"cooldown","retry_after":S}` → "A reset was just done. Try again in M min S s." and the button stays disabled; 409 → page switches to setup mode |
 | Server summary (host, arch, item count, devices) | `GET /api/health` (core §8, no auth) | **restored** (§0.6 R5) with non-sensitive data only: host = `location.host` (client, the address the user typed), "Server up" + app name, version and "up since" from `GET /api/health`; health error → "Server unreachable". Not shown before sign-in: item, app or device names, item/device counts, IPs or network details, arch, tokens, paths. |
 | Footer "Relume v1.0" | — | static text in `login.html` |
 

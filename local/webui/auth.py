@@ -2,7 +2,9 @@ import datetime
 import hashlib
 import hmac
 import http.cookies
+import json
 import math
+import re
 import secrets
 import threading
 import time
@@ -11,11 +13,16 @@ from . import db, settings
 from .server import HttpError
 
 COOKIE = 'relume_session'
-PUBLIC = {('POST', '/api/auth/login'), ('GET', '/api/health')}
+PUBLIC = {('POST', '/api/auth/login'), ('POST', '/api/auth/setup'), ('POST', '/api/auth/reset'),
+          ('GET', '/api/auth/state'), ('GET', '/api/health')}
 MAX_FAILS, WINDOW, LOCK = 5, 300, 300
 REMEMBER, SHORT = 30 * 86400, 12 * 3600
+RESET_COOLDOWN = 300
+MIN_PASSWORD = 10
+USERNAME_RE = re.compile(r'[A-Za-z0-9._-]{1,64}\Z')
+_clock = time.monotonic
 _fails = []
-_state = {'locked_until': 0.0}
+_state = {'locked_until': 0.0, 'reset_at': None}
 _lock = threading.Lock()
 
 
@@ -44,11 +51,21 @@ def new_password():
     return secrets.token_urlsafe(15)
 
 
-def ensure_password():
-    if settings.get('admin_password_hash') is None:
-        pw = new_password()
-        set_password(pw)
-        print(f'admin password: {pw}', flush=True)
+def account_exists():
+    return settings.get('admin_username') is not None and settings.get('admin_password_hash') is not None
+
+
+def reset_password():
+    """Random new password to stdout (server log), all sessions deleted. Used by the reset endpoint and the CLI."""
+    username = settings.get('admin_username')
+    if username is None or settings.get('admin_password_hash') is None:
+        raise HttpError(409, 'setup required')
+    pw = new_password()
+    with db.tx() as c:  # one transaction: a failed DELETE cannot leave an unprinted new password
+        c.execute('INSERT INTO settings(key, value) VALUES (?, ?) '
+                  'ON CONFLICT(key) DO UPDATE SET value=excluded.value', ('admin_password_hash', json.dumps(hash_password(pw))))
+        c.execute('DELETE FROM sessions')
+    print(f'admin password reset for {username}: {pw}', flush=True)
 
 
 def reset_lockout():
@@ -84,15 +101,53 @@ def session_token(cookie_header):
     return r['token'] if r else None
 
 
+def auth_state(req):
+    return 200, {'setup_required': not account_exists()}
+
+
+def setup(req):
+    username, pw = req.json.get('username'), req.json.get('password')
+    if not isinstance(username, str) or not USERNAME_RE.match(username):
+        raise HttpError(400, 'username must be 1-64 characters of A-Z a-z 0-9 . _ -')
+    if not isinstance(pw, str) or len(pw) < MIN_PASSWORD:
+        raise HttpError(400, f'password must have at least {MIN_PASSWORD} characters')
+    stored = hash_password(pw)
+    with db.tx() as c:  # BEGIN IMMEDIATE: check and write are one atomic step across threads
+        have = {r['key'] for r in c.execute("SELECT key FROM settings WHERE key IN ('admin_username', 'admin_password_hash')")}
+        if len(have) == 2:
+            return 409, {'error': 'already set up'}
+        for k, v in (('admin_username', username), ('admin_password_hash', stored)):
+            c.execute('INSERT INTO settings(key, value) VALUES (?, ?) '
+                      'ON CONFLICT(key) DO UPDATE SET value=excluded.value', (k, json.dumps(v)))
+    _, cookie = create_session(bool(req.json.get('remember', True)))
+    return 200, {'ok': True}, {'Set-Cookie': cookie}
+
+
+def reset(req):
+    now = _clock()
+    with _lock:
+        last = _state['reset_at']
+        if last is not None and now - last < RESET_COOLDOWN:
+            return 429, {'error': 'cooldown', 'retry_after': math.ceil(RESET_COOLDOWN - (now - last))}
+        reset_password()
+        _state['reset_at'] = now
+    return 202, {'ok': True}
+
+
 def login(req):
-    now = time.monotonic()
+    if not account_exists():
+        return 409, {'error': 'setup required'}
+    now = _clock()
     with _lock:
         if now < _state['locked_until']:
             return 429, {'error': 'locked', 'retry_after': math.ceil(_state['locked_until'] - now)}
-    pw = req.json.get('password')
-    if not isinstance(pw, str):
-        raise HttpError(400, 'password required')
-    if verify_password(pw, settings.get('admin_password_hash')):
+    username, pw = req.json.get('username'), req.json.get('password')
+    if not isinstance(pw, str) or not isinstance(username, str):
+        raise HttpError(400, 'username and password required')
+    # both checks always run, so a wrong username costs the same time as a wrong password
+    user_ok = hmac.compare_digest(username.encode(), settings.get('admin_username').encode())
+    pw_ok = verify_password(pw, settings.get('admin_password_hash'))
+    if user_ok and pw_ok:
         reset_lockout()
         _, cookie = create_session(bool(req.json.get('remember', True)))
         return 200, {'ok': True}, {'Set-Cookie': cookie}
@@ -102,7 +157,7 @@ def login(req):
             _fails.clear()
             _state['locked_until'] = now + LOCK
             return 429, {'error': 'locked', 'retry_after': LOCK}
-        return 401, {'error': 'wrong password', 'attempts_left': MAX_FAILS - len(_fails)}
+        return 401, {'error': 'wrong credentials', 'attempts_left': MAX_FAILS - len(_fails)}
 
 
 def logout(req):
@@ -124,6 +179,9 @@ def change_password(req):
 
 
 ROUTES = [
+    ('GET', '/api/auth/state', auth_state),
+    ('POST', '/api/auth/setup', setup),
+    ('POST', '/api/auth/reset', reset),
     ('POST', '/api/auth/login', login),
     ('POST', '/api/auth/logout', logout),
     ('POST', '/api/auth/password', change_password),

@@ -7,7 +7,7 @@ import unittest
 import urllib.error
 import urllib.request
 
-from webui import auth, db, events, jobs, server
+from webui import auth, db, events, jobs, server, settings
 
 
 class DataTestCase(unittest.TestCase):
@@ -65,8 +65,9 @@ def http(method, url, body=None, cookie=None, headers=None):
         return e.code, dict(e.headers), e.read()
 
 
-def login(base_url, password='correct-horse-42'):
+def login(base_url, password='correct-horse-42', username='admin'):
+    settings.put('admin_username', username)
     auth.set_password(password)
-    st, h, body = http('POST', base_url + '/api/auth/login', {'password': password, 'remember': True})
+    st, h, body = http('POST', base_url + '/api/auth/login', {'username': username, 'password': password, 'remember': True})
     assert st == 200, (st, body)
     return h['Set-Cookie'].split(';')[0]

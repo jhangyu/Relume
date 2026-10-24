@@ -38,7 +38,7 @@ docker compose -f local/docker-compose.yml up -d --build
 
 Open `http://localhost:47000` (in bridge mode the port is `RELUME_WEB_PORT`). All settings are listed in `local/.env.example`; the data directory (database, logs, artifacts, caches) is `RELUME_DATA_DIR`, default `local/data`.
 
-Web UI pages: app catalog (patches, options and version pin per app), builds, schedules, devices and settings. Helper commands: `docker compose -f local/docker-compose.yml exec app python3 -m webui reset-password` and `... python3 -m webui export-seed`.
+On first start, open the Web UI and create the admin account (username + password). Forgot it: the login page's "Forgot password?" button writes a new random password to the server log (`docker logs relume-app`, or Portainer > Containers > relume-app > Logs). Web UI pages: app catalog (patches, options and version pin per app), builds, schedules, devices and settings. Helper commands: `docker exec relume-app python3 -m webui reset-password` and `docker exec relume-app python3 -m webui export-seed`.
 
 ### Portainer
 

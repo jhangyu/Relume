@@ -35,7 +35,6 @@ def boot(start=False, names=None):
             m.register()
     if start:
         settings.check_token_file()
-        auth.ensure_password()
         jobs.recover()
         jobs.start()
         scheduler.start()
@@ -53,11 +52,11 @@ def main(argv=None):
         return ci.main(argv)
     if cmd == 'reset-password':
         boot()
-        pw = auth.new_password()
-        auth.set_password(pw)
-        with db.tx() as c:
-            c.execute('DELETE FROM sessions')
-        print(f'admin password: {pw}', flush=True)
+        try:
+            auth.reset_password()
+        except server.HttpError as e:
+            print(f'reset-password failed: {e.message}', file=sys.stderr)
+            return 1
         return 0
     if cmd != 'serve':
         print(USAGE, file=sys.stderr)
