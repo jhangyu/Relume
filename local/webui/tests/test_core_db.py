@@ -1,4 +1,4 @@
-import datetime, pathlib, sqlite3, tempfile, threading, unittest
+import datetime, json, pathlib, shutil, sqlite3, tempfile, threading, unittest
 from webui import db, events
 from webui.tests.helpers import DataTestCase
 
@@ -58,6 +58,55 @@ class DbTest(DataTestCase):
 
     def test_utcnow_format(self):
         self.assertRegex(db.utcnow(), r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$')
+
+
+class AppScheduleMigrationTest(unittest.TestCase):
+    def test_old_schedule_rows_become_app_rows(self):
+        schema = pathlib.Path(db.SCHEMA_DIR)
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as data:
+            old = pathlib.Path(d)
+            for f in schema.glob('00[1-6]_*.sql'):
+                shutil.copy(f, old)
+            db.init(data)
+            db.migrate(old)
+            c = db.conn()
+            c.executescript("""
+                INSERT INTO upstream(id, kind, repo, channel) VALUES (1,'cli','a/c','stable'),(2,'patches','a/p','stable');
+                INSERT INTO source(id, name, upstream_id, cli_upstream_id) VALUES ('s1','S1',2,1),('s2','S2',2,1);
+                INSERT INTO app(package) VALUES ('p1'),('p2'),('p3');
+                INSERT INTO grp(id, name, position) VALUES (1,'G',0);
+                INSERT INTO item(id, source_id, package, key, group_id, variants) VALUES
+                  (1,'s1','p1','a',1,'[]'),(2,'s1','p2','b',NULL,'[]'),(3,'s2','p3','c',1,'[]');""")
+            sp = '{"every":"day","at":"04:00"}'
+            rows = [('up-all', 'upstream', '{"all":true}', '{"pull":true,"rebuild":false,"notify":false}'),
+                    ('up-src', 'upstream', '{"source_ids":["s1"]}', '{"pull":false,"rebuild":true}'),
+                    ('up-none', 'upstream', '{"source_ids":["nope"]}', '{}'),
+                    ('b-all', 'build', '{"all":true}', '{"only_changed":true}'),
+                    ('b-grp', 'build', '{"group_ids":[1]}', '{}'),
+                    ('b-ungrouped', 'build', '{"group_ids":[0]}', '{"notify":false}'),
+                    ('b-items', 'build', '{"item_ids":[2,3]}', '{"only_changed":false}'),
+                    ('b-empty', 'build', '{"group_ids":[9]}', '{}'),
+                    ('ota', 'ota', '{"device_ids":[1]}', '{"retries":1}')]
+            for i, (n, k, t, o) in enumerate(rows, 1):
+                c.execute("INSERT INTO schedules(id,name,kind,target,spec,options,enabled,next_run_at) VALUES (?,?,?,?,?,?,1,'2026-10-20T04:00:00Z')",
+                          (i, n, k, t, sp, o))
+            shutil.copy(schema / '007_app_schedule.sql', old)
+            db.migrate(old)
+            got = {r['name']: (r['kind'], r['target'], r['options'], r['enabled'], r['next_run_at'])
+                   for r in db.conn().execute('SELECT * FROM schedules')}
+        def app(update, build, force, notify=True):
+            return json.dumps({'build': build, 'force': force, 'notify': notify, 'update': update}, sort_keys=True, separators=(',', ':'))
+        T = '2026-10-20T04:00:00Z'
+        self.assertEqual(got, {
+            'up-all': ('app', '{"all":true}', app(True, False, False, False), 1, T),
+            'up-src': ('app', '{"item_ids":[1,2]}', app(True, True, False), 1, T),
+            'up-none': ('app', '{"all":true}', app(True, True, False), 0, None),
+            'b-all': ('app', '{"all":true}', app(False, True, False), 1, T),
+            'b-grp': ('app', '{"item_ids":[1,3]}', app(False, True, True), 1, T),
+            'b-ungrouped': ('app', '{"item_ids":[2]}', app(False, True, True, False), 1, T),
+            'b-items': ('app', '{"item_ids":[2,3]}', app(False, True, True), 1, T),
+            'b-empty': ('app', '{"all":true}', app(False, True, True), 0, None),
+            'ota': ('ota', '{"device_ids":[1]}', '{"retries":1}', 1, T)})
 
 
 class EventsTest(unittest.TestCase):

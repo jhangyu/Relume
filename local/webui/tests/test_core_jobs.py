@@ -27,10 +27,12 @@ class EnqueueTest(DataTestCase):
 
     def test_unknown_option_dropped_and_defaults(self):
         jid = jobs.enqueue('upstream', {'upstream_id': 3}, 'manual', options={'rebuild': True, 'bogus': 1})
-        self.assertEqual(jobs.get(jid)['options'], {'pull': True, 'rebuild': True, 'notify': True})
+        self.assertEqual(jobs.get(jid)['options'], {'rebuild': True, 'notify': True})
         raw = db.conn().execute('SELECT options, target FROM jobs WHERE id=?', (jid,)).fetchone()
-        self.assertEqual(raw['options'], '{"notify":true,"pull":true,"rebuild":true}')
+        self.assertEqual(raw['options'], '{"notify":true,"rebuild":true}')
         self.assertEqual(raw['target'], '{"upstream_id":3}')
+        jid = jobs.enqueue('appcheck', {'package': 'x.y'}, 'schedule')
+        self.assertEqual(jobs.get(jid)['options'], {'rebuild': False, 'notify': True})
 
 
 
