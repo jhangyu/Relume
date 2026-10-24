@@ -1,4 +1,4 @@
--- Build tables (spec build §3.3). Owner: build. Settings key artifact_retention (default 3).
+-- Build tables (spec build §3.3). Owner: build. Settings key artifact_retention (default 1).
 CREATE TABLE build_jobs (
   job_id INTEGER PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
   item_id INTEGER NOT NULL REFERENCES item(id) ON DELETE CASCADE,

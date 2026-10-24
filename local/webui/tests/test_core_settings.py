@@ -31,7 +31,7 @@ class SettingsTest(DataTestCase):
 
     def test_defaults_and_put(self):
         s = self.get()
-        self.assertEqual((s['job_history_count'], s['base_url'], s['artifact_retention']), (500, '', 3))
+        self.assertEqual((s['job_history_count'], s['base_url'], s['artifact_retention']), (500, '', 1))
         st, _, _ = http('PUT', self.base + '/api/settings', {'artifact_retention': 5, 'base_url': 'http://nas:47000/'}, cookie=self.c)
         self.assertEqual(st, 200)
         self.assertEqual(self.calls, [None])

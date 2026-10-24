@@ -130,7 +130,7 @@ def server_info():
 
 def _payload(recheck=False):
     return {'job_history_count': get('job_history_count', 500), 'base_url': get('base_url', ''),
-            'artifact_retention': get('artifact_retention', 3),
+            'artifact_retention': get('artifact_retention', build.ARTIFACT_RETENTION_DEFAULT),
             'github': github_status(recheck), 'server': server_info()}
 
 
@@ -153,7 +153,7 @@ def put_route(req):
             raise server.HttpError(400, f'invalid {k}')
     if 'base_url' in b and not (b['base_url'] == '' or (isinstance(b['base_url'], str) and re.match(r'^https?://\S+$', b['base_url']))):
         raise server.HttpError(400, 'invalid base_url')
-    old_keep = get('artifact_retention', 3)
+    old_keep = get('artifact_retention', build.ARTIFACT_RETENTION_DEFAULT)
     for k, v in b.items():
         if k == 'github_token':
             set_github_token(v)   # write-only: never stored in the settings table, never returned

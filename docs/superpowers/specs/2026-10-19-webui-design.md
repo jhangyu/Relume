@@ -747,7 +747,7 @@ artifacts(id PK, job_id FK jobs(id) ON DELETE RESTRICT, item_id FK item(id) ON D
   signer_sha256 TEXT, path TEXT, size INT, sha256 TEXT, created_at)
 ```
 Index: `build_jobs(item_id, job_id DESC)`, `artifacts(item_id, abi, created_at DESC)`. Schema file `local/webui/schema/002_build.sql`.
-Settings key: `artifact_retention` (int, default 3, per item). Job history size is core's `job_history_count`.
+Settings key: `artifact_retention` (int, default 1, per item). Job history size is core's `job_history_count`.
 Log file is core's `/data/logs/<job id>.log`.
 
 #### 3.4 HTTP API (route list held by core part)

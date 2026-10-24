@@ -11,6 +11,7 @@ from pathlib import Path
 
 from . import catalog, db, events, jobs, server, settings
 
+ARTIFACT_RETENTION_DEFAULT = 1  # successful builds kept per item
 RUNNER = str(db.REPO_ROOT / "src" / "build" / "build-item.sh")
 FAIL_CODES = ("upstream_missing", "version_unresolved", "apk_not_listed", "download_failed",
               "merge_failed", "patch_failed", "timeout", "internal")
@@ -185,7 +186,7 @@ def start():
 
 def run_retention(item_id=None):
     """Keep the artifacts of the newest N jobs per item; the newest is never deleted (spec build §6)."""
-    n = max(1, int(settings.get("artifact_retention", 3)))
+    n = max(1, int(settings.get("artifact_retention", ARTIFACT_RETENTION_DEFAULT)))
     c = db.conn()
     items = [item_id] if item_id is not None else [r[0] for r in c.execute("SELECT DISTINCT item_id FROM artifacts")]
     for iid in items:
