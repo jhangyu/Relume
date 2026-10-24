@@ -14,7 +14,7 @@ Root cause of the "Rebuild button cannot be clicked" report: `static/schedules.j
 | Update | `item.auto_update` (new, INTEGER 0/1) | off | On = the item follows new versions (§3). Off = update checks skip it and nothing rebuilds it automatically. |
 
 - Items created through the UI/API are inserted with `enabled = 0, auto_update = 0`. Existing rows keep their `enabled` value; migration sets `auto_update = 0`. Seed import keeps the values in `catalog-seed.json` (seed has no `auto_update` → 0).
-- App list (`static/index.js`) shows two switches per item row: Build and Update. Each switch PATCHes the item (`enabled` / `auto_update`, bool, validated like `enabled` in `catalog.py`).
+- App list (`static/index.js`) shows two switches per item row: Build and Update. Each switch PUTs the item (`enabled` / `auto_update`, bool, validated like `enabled` in `catalog.py`).
 - Item page (`static/item.js`) shows the Update switch next to the existing enabled switch.
 
 ## 3. "New version" = union of two triggers
