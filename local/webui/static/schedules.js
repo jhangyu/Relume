@@ -1,8 +1,8 @@
 import { $, $$, act, api, ask, catalogItems, fmt, html, shell, toast } from '/static/app.js';
 
-const KIND = { upstream: 'Check', build: 'Rebuild', ota: 'OTA' };
+const KIND = { app: 'App', ota: 'OTA' };
 const DAYS = ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'];
-const R = { list: [], sources: [], groups: [], items: [], devices: [], cur: null, pickItems: null };
+const R = { list: [], items: [], projects: [], devices: [], cur: null, pick: { item_ids: [], project_ids: [] } };
 
 const uiToSpec = u => (u + 6) % 7;
 const specToUi = d => (d + 1) % 7;
@@ -16,17 +16,14 @@ function sentence(spec) {
 }
 
 function targetText(kind, t) {
-  if (t.all) return kind === 'upstream' ? 'All sources and projects' : kind === 'build' ? 'All items' : 'All devices';
-  if (t.source_ids) return t.source_ids.join(', ');
-  if (t.group_ids) return t.group_ids.map(id => (id === 0 ? 'Ungrouped' : (R.groups.find(g => g.id === id) || {}).name || `group ${id}`)).join(', ');
-  if (t.item_ids) return `${t.item_ids.length} picked items`;
+  if (t.all) return kind === 'app' ? 'All apps' : 'All devices';
+  if (kind === 'app') return [...(t.item_ids || []).map(id => (R.items.find(i => i.id === id) || {}).label || `item ${id}`), ...(t.project_ids || []).map(id => (R.projects.find(p => p.id === id) || {}).label || `project ${id}`)].join(', ');
   return (t.device_ids || []).map(id => (R.devices.find(d => d.id === id) || {}).name || `device ${id}`).join(', ');
 }
 
 function optionText(s) {
   const o = s.options;
-  if (s.kind === 'upstream') return `${o.pull === false ? 'Check only' : 'Pull new patches'}${o.pull !== false && o.rebuild !== false ? ' · rebuild affected items' : ''}`;
-  if (s.kind === 'build') return o.only_changed ? 'Only items whose patches changed' : 'Rebuild everything';
+  if (s.kind === 'app') return [o.update && 'Update patches', o.build && (o.force ? 'Rebuild even if unchanged' : 'Build when changed')].filter(Boolean).join(' · ');
   return o.retries ? `Retry offline devices ${o.retries}×` : 'Skip offline devices';
 }
 
@@ -50,12 +47,14 @@ function chip(name, value, label, checked) {
   return html`<label class="chip"><input type="checkbox" name="${name}" value="${value}" ${checked ? html`checked` : ''}><span>${label}</span></label>`;
 }
 
-function renderTargets(t) {
-  const has = (k, v) => !!(t && t[k] && t[k].includes(v));
-  $('#tg-upstream').innerHTML = html`${chip('tu', 'all', `All sources and projects (${R.sources.length})`, !t || t.all)}${R.sources.map(s => chip('tu', s.id, s.id, has('source_ids', s.id)))}`;
-  $('#tg-build').innerHTML = html`${chip('tb', 'all', `All items (${R.items.length})`, !t || t.all)}${R.groups.map(g => chip('tb', `g${g.id}`, g.name, has('group_ids', g.id)))}${chip('tb', 'g0', 'Ungrouped', has('group_ids', 0))}<button class="btn btn-ghost btn-sm" type="button" id="pick">Pick items…${t && t.item_ids ? ` (${t.item_ids.length})` : ''}</button>`;
-  $('#tg-ota').innerHTML = html`${chip('to', 'all', 'All devices', !t || t.all)}${R.devices.map(d => chip('to', d.id, d.name, has('device_ids', d.id)))}`;
-  R.pickItems = t && t.item_ids ? [...t.item_ids] : null;
+const pickCount = () => R.pick.item_ids.length + R.pick.project_ids.length;
+const pickLabel = () => `Pick apps…${pickCount() ? ` (${pickCount()})` : ''}`;
+
+function renderTargets(kind, t) {
+  const app = kind === 'app' ? t : null, ota = kind === 'ota' ? t : null;
+  R.pick = { item_ids: [...((app && app.item_ids) || [])], project_ids: [...((app && app.project_ids) || [])] };
+  $('#tg-app').innerHTML = html`${chip('ta', 'all', `All apps (${R.items.length + R.projects.length})`, !app || app.all)}<button class="btn btn-ghost btn-sm" type="button" id="pick">${pickLabel()}</button>`;
+  $('#tg-ota').innerHTML = html`${chip('to', 'all', 'All devices', !ota || ota.all)}${R.devices.map(d => chip('to', d.id, d.name, !!(ota && ota.device_ids && ota.device_ids.includes(d.id))))}`;
 }
 
 const kindNow = () => $('[name=act]:checked').value;
@@ -68,19 +67,27 @@ function readSpec() {
 }
 
 function readTarget(kind) {
-  const vals = n => $$(`[name=${n}]:checked`).map(i => i.value);
-  if (kind === 'upstream') { const v = vals('tu'); return v.includes('all') || !v.length ? { all: true } : { source_ids: v }; }
-  if (kind === 'ota') { const v = vals('to'); return v.includes('all') || !v.length ? { all: true } : { device_ids: v.map(Number) }; }
-  const v = vals('tb');
-  if (R.pickItems && R.pickItems.length && !v.length) return { item_ids: R.pickItems };
-  return v.includes('all') || !v.length ? { all: true } : { group_ids: v.map(x => Number(x.slice(1))) };
+  if (kind === 'app') {
+    if ($('[name=ta][value=all]').checked || !pickCount()) return { all: true };
+    const t = {};
+    if (R.pick.item_ids.length) t.item_ids = R.pick.item_ids;
+    if (R.pick.project_ids.length) t.project_ids = R.pick.project_ids;
+    return t;
+  }
+  const v = $$('[name=to]:checked').map(i => i.value);
+  return v.includes('all') || !v.length ? { all: true } : { device_ids: v.map(Number) };
 }
 
 function readOptions(kind) {
   const notify = $('#notify').checked;
-  if (kind === 'upstream') return { pull: $('#o-pull').checked, rebuild: $('#o-rebuild').checked, notify };
-  if (kind === 'build') return { only_changed: $('[name=onlych]:checked').value === 'changed', notify };
+  if (kind === 'app') { const update = $('#o-upd').checked, build = $('#o-bld').checked; return { update, build, force: build && !update && $('#o-force').checked, notify }; }
   return { retries: Math.min(5, Math.max(0, Number($('#o-retries').value) || 0)), notify };
+}
+
+function syncForce() {
+  const f = $('#o-force');
+  f.disabled = !($('#o-bld').checked && !$('#o-upd').checked);
+  if (f.disabled) f.checked = false;
 }
 
 function showKind(kind) {
@@ -111,20 +118,20 @@ function preview() {
 
 function edit(s) {
   R.cur = s;
-  const kind = s ? s.kind : 'build', spec = s ? s.spec : { every: 'day', at: '04:00' }, o = s ? s.options : {};
+  const kind = s ? s.kind : 'app', spec = s ? s.spec : { every: 'day', at: '04:00' }, o = s ? s.options : {};
   $('#sn').value = s ? s.name : '';
   $(`[name=act][value=${kind}]`).checked = true;
-  $$('[name=act]').forEach(r => { r.disabled = !!s && r.value !== kind; });   // kind cannot change on PUT
-  $('#o-pull').checked = o.pull !== false;
-  $('#o-rebuild').checked = o.rebuild !== false;
-  $(`[name=onlych][value=${o.only_changed === false ? 'all' : 'changed'}]`).checked = true;
+  $('#o-upd').checked = kind === 'app' && s ? !!o.update : true;
+  $('#o-bld').checked = kind === 'app' && s ? !!o.build : true;
+  $('#o-force').checked = !!o.force;
+  syncForce();
   $('#o-retries').value = o.retries || 0;
   $('#notify').checked = o.notify !== false;
   $(`[name=f][value=${spec.every}]`).checked = true;
   if (spec.every === 'hours') { $('#hh').value = [1, 3, 6, 12, 24].includes(spec.hours) ? spec.hours : ''; $('#hh-n').value = spec.hours; }
   if (spec.at) $('#tm').value = spec.at;
   $$('#days input').forEach(i => { i.checked = spec.every === 'week' && spec.days.map(specToUi).includes(Number(i.value)); });
-  renderTargets(s ? s.target : null);
+  renderTargets(kind, s ? s.target : null);
   showKind(kind);
   showRepeat(spec.every);
   $('#del').hidden = $('#runnow').hidden = !s;
@@ -156,23 +163,25 @@ $('#edc').addEventListener('change', e => {
   if (e.target.name === 'act') showKind(e.target.value);
   if (e.target.name === 'f') showRepeat(e.target.value);
   if (e.target.id === 'hh' && e.target.value) $('#hh-n').value = e.target.value;
-  if (e.target.name && /^t[ubo]$/.test(e.target.name)) {
-    const all = $(`[name=${e.target.name}][value=all]`);
-    if (e.target === all && all.checked) $$(`[name=${e.target.name}]`).forEach(i => { if (i !== all) i.checked = false; });
-    else if (e.target !== all && e.target.checked) { all.checked = false; R.pickItems = null; }
+  if (e.target.id === 'o-upd' || e.target.id === 'o-bld') syncForce();
+  if (e.target.name === 'ta' && e.target.checked) { R.pick = { item_ids: [], project_ids: [] }; $('#tg-app button').textContent = pickLabel(); }
+  if (e.target.name === 'to') {
+    const all = $('[name=to][value=all]');
+    if (e.target === all && all.checked) $$('[name=to]').forEach(i => { if (i !== all) i.checked = false; });
+    else if (e.target !== all && e.target.checked) all.checked = false;
   }
   preview();
 });
 $('#edc').addEventListener('input', e => { if (e.target.id === 'tm' || e.target.id === 'hh-n') preview(); });
 $('#edc').addEventListener('click', async e => {
   if (e.target.id !== 'pick') return;
-  const dlg = $('#dlg-items');
-  $('#pick-list').innerHTML = html`${R.items.map(it => html`<label class="row sm"><input type="checkbox" class="cb" value="${it.id}" ${R.pickItems && R.pickItems.includes(it.id) ? html`checked` : ''}> ${it.label}</label>`)}`;
+  const row = (cls, o, text) => html`<label class="row sm"><input type="checkbox" class="cb ${cls}" value="${o.id}" ${R.pick[cls === 'pi' ? 'item_ids' : 'project_ids'].includes(o.id) ? html`checked` : ''}> ${o.label} <span class="xs muted mono">${text}</span></label>`;
+  $('#pick-list').innerHTML = html`<h3 class="sm">Apps</h3>${R.items.map(it => row('pi', it, it.package))}<h3 class="sm">Followed projects</h3>${R.projects.length ? R.projects.map(p => row('pp', p, p.package || p.repo)) : html`<p class="xs muted">None followed</p>`}`;
   const btn = e.target;
-  if (await ask(dlg) !== 'ok') return;
-  R.pickItems = $$('#pick-list input:checked').map(i => Number(i.value));
-  $$('[name=tb]').forEach(i => { i.checked = false; });
-  btn.textContent = `Pick items… (${R.pickItems.length})`;
+  if (await ask($('#dlg-items')) !== 'ok') return;
+  R.pick = { item_ids: $$('#pick-list .pi:checked').map(i => Number(i.value)), project_ids: $$('#pick-list .pp:checked').map(i => Number(i.value)) };
+  if (pickCount()) $('[name=ta][value=all]').checked = false;
+  btn.textContent = pickLabel();
   preview();
 });
 $('#list').addEventListener('click', async e => {
@@ -199,9 +208,8 @@ $('#del').addEventListener('click', async () => {
 
 (async () => {
   shell();
-  const [{ sources }, cat, { devices }] = await Promise.all([api('GET', '/api/sources'), api('GET', '/api/catalog'), api('GET', '/api/devices')]);
-  R.sources = sources;
-  R.groups = cat.groups;
+  const [cat, { projects }, { devices }] = await Promise.all([api('GET', '/api/catalog'), api('GET', '/api/projects'), api('GET', '/api/devices')]);
+  R.projects = projects;
   R.items = catalogItems(cat);
   R.devices = devices;
   await load();

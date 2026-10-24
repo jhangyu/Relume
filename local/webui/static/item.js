@@ -400,6 +400,7 @@ $('#m-item').addEventListener('click', async () => {
   }
   let variants = clone(it.variants);
   $('#i-en').checked = it.enabled;
+  $('#i-au').checked = it.auto_update;
   $('#i-name').value = it.display_name || '';
   $('#i-grp').innerHTML = html`${groups.map(g => html`<option value="${g.id}" ${g.id === it.group_id ? html`selected` : ''}>${g.name}</option>`)}<option value="" ${it.group_id == null ? html`selected` : ''}>Ungrouped</option>`;
   const chips = () => {
@@ -418,6 +419,7 @@ $('#m-item').addEventListener('click', async () => {
   if (await ask($('#dlg-item')) !== 'ok') return;
   const body = {
     enabled: $('#i-en').checked,
+    auto_update: $('#i-au').checked,
     display_name: $('#i-name').value.trim() || null,
     group_id: $('#i-grp').value ? Number($('#i-grp').value) : null,
     variants,
