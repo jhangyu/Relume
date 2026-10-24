@@ -152,7 +152,7 @@ async function save() {
   const kind = kindNow();
   const body = { name: $('#sn').value.trim(), kind, spec: readSpec(), target: readTarget(kind), options: readOptions(kind) };
   try {
-    if (R.cur) { const { kind: _k, ...rest } = body; await act('PUT', `/api/schedules/${R.cur.id}`, rest, 'Schedule saved'); }
+    if (R.cur) await act('PUT', `/api/schedules/${R.cur.id}`, body, 'Schedule saved');
     else { const r = await act('POST', '/api/schedules', body, 'Schedule saved'); R.cur = { id: r.id }; }
     await load();
     edit(R.list.find(s => s.id === R.cur.id) || null);
