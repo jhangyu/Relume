@@ -40,7 +40,7 @@ for name in RELUME_GITHUB_TOKEN_FILE RELUME_UID RELUME_GID RELUME_DATA_DIR RELUM
 done
 [ "$fails" -eq "$before" ] && pass compose_shape
 
-# Portainer stack must not drift from the main compose file (spec core §11).
+# Portainer stack must not drift from the main compose file (spec core §11); only its fixed container names differ.
 pj=$(RELUME_NETWORK_MODE=bridge RELUME_KEYSTORE_DIR=/x docker compose --env-file /dev/null -f local/docker-compose-portainer.yml config --format json 2>/dev/null) || pj='{}'
 pbefore=$fails
 same() { [ "$(jq -cS "$1" <<<"$j")" = "$(jq -cS "$1" <<<"$pj")" ] || fail portainer_drift "$1"; }
@@ -52,8 +52,8 @@ same '.services.app.command'
 same '.services.app.healthcheck'
 same '.services.app.user'
 same '[.services[] | .network_mode]'
-same '.services.flaresolverr'
-same '.services.cfbypass | del(.build)'
-same '.services.apkmsolver | del(.build)'
+same '.services.flaresolverr | del(.container_name)'
+same '.services.cfbypass | del(.build, .container_name)'
+same '.services.apkmsolver | del(.build, .container_name)'
 [ "$fails" -eq "$pbefore" ] && pass portainer_same
 [ "$fails" -eq 0 ] || exit 1

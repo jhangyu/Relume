@@ -1,6 +1,7 @@
 # One compose file for macOS (RELUME_NETWORK_MODE=bridge) and Linux (host). Spec core §1.
 # netns holds the network namespace; app and the three sidecars join it and reach each other on 127.0.0.1.
-name: relume
+# Project relume-dev: never collides with the Portainer stack (project relume, fixed container names) on the same host.
+name: relume-dev
 services:
   netns:
     image: busybox:1.38.0-musl

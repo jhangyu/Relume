@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Build, deploy, verify and push the Relume images.
 
-Steps: preflight -> compose build -> compose up -d --wait -> all containers healthy
--> delete dangling Relume images -> arch check -> tag + push -> local git tag v<version>.
+Steps: preflight -> compose build -> verification stack (project relume-dev) up --wait -> all containers healthy and
+/api/health reports the version -> stack down -> delete unused dangling Relume images -> arch check -> tag + push ->
+local git tag v<version>. The verification stack publishes RELEASE_WEB_PORT so it runs next to the Portainer stack.
 Usage: python3 scripts/release.py MAJOR.MINOR.PATCH [--no-push]
 """
 import argparse
 import json
+import urllib.request
 import os
 import re
 import subprocess
@@ -17,7 +19,8 @@ from pathlib import Path
 BUILD_CONTEXT = ["local/Dockerfile", "local/Dockerfile.dockerignore", "local/docker-compose.yml", "local/webui", "local/solver", "src/build"]
 ROOT = Path(__file__).resolve().parent.parent
 COMPOSE = ["docker", "compose", "-f", str(ROOT / "local" / "docker-compose.yml")]
-PROJECT = "relume"
+PROJECT = "relume-dev"
+RELEASE_WEB_PORT = "47010"  # the Portainer stack owns 47000
 IMAGES = ["jhangyu/relume-app", "jhangyu/relume-browser"]
 DOCKER_CONFIG = Path.home() / ".docker" / "config.json"
 HUB_AUTH_KEY = "https://index.docker.io/v1/"
@@ -83,10 +86,22 @@ def check_healthy() -> None:
         fail("unhealthy containers:\n" + "\n".join(bad))
 
 
+def check_version(version: str) -> None:
+    url = f"http://127.0.0.1:{RELEASE_WEB_PORT}/api/health"
+    actual = json.load(urllib.request.urlopen(url, timeout=10)).get("version")
+    if actual != version:
+        fail(f"{url} reports version {actual!r}: expected {version!r}")
+
+
 def remove_dangling() -> None:
-    ids = run("docker", "image", "ls", "-q", "--filter", "dangling=true", "--filter", f"label={PROJECT_LABEL}", capture=True).split()
-    if ids:
-        run("docker", "image", "rm", *ids)
+    ids = run("docker", "image", "ls", "-q", "--no-trunc", "--filter", "dangling=true", "--filter", f"label={PROJECT_LABEL}", capture=True).split()
+    containers = run("docker", "ps", "-aq", capture=True).split()
+    used = set(run("docker", "inspect", "-f", "{{.Image}}", *containers, capture=True).split()) if containers else set()
+    # an old image still run by the Portainer stack stays until that stack is redeployed; the next release removes it
+    for kept in sorted(set(ids) & used):
+        print(f"keeping dangling image {kept[7:19]}: still used by a container", flush=True)
+    if unused := [i for i in ids if i not in used]:
+        run("docker", "image", "rm", *unused)
 
 
 def check_platform(image: str, actual: str) -> None:
@@ -114,9 +129,12 @@ def main() -> None:
     args = parser.parse_args()
     built_sha = preflight(args.version, push=not args.no_push)
     os.environ["RELUME_VERSION"] = args.version  # compose reads it as the build arg
+    os.environ["RELUME_WEB_PORT"] = RELEASE_WEB_PORT  # overrides local/.env
     run(*COMPOSE, "build")
     run(*COMPOSE, "up", "-d", "--wait")
     check_healthy()
+    check_version(args.version)
+    run(*COMPOSE, "down")
     remove_dangling()
     if not args.no_push:
         push(args.version, built_sha)

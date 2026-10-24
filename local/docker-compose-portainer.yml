@@ -14,12 +14,14 @@
 # After a release use "Pull and redeploy" on the stack.
 services:
   netns:
+    container_name: relume-netns
     image: busybox:1.38.0-musl
     command: ["tail", "-f", "/dev/null"]
     network_mode: ${RELUME_NETWORK_MODE:-host}
     ports: ["${RELUME_WEB_PORT:-47000}:47000"]
     restart: unless-stopped
   flaresolverr:
+    container_name: relume-flaresolverr
     image: ghcr.io/flaresolverr/flaresolverr:v3.5.2
     network_mode: service:netns
     depends_on: [netns]
@@ -28,6 +30,7 @@ services:
       PORT: "47191"
     restart: unless-stopped
   cfbypass:
+    container_name: relume-cfbypass
     image: jhangyu/relume-browser:latest
     command: ["/app/docker-entrypoint.sh", "--host", "127.0.0.1", "--port", "47800"]
     shm_size: 2g
@@ -35,6 +38,7 @@ services:
     depends_on: [netns]
     restart: unless-stopped
   apkmsolver:
+    container_name: relume-apkmsolver
     image: jhangyu/relume-browser:latest
     entrypoint: ["sh", "/solver/xrun.sh"]
     command: ["/app/venv/bin/python3", "-u", "/solver/solver.py", "47900"]
@@ -43,6 +47,7 @@ services:
     depends_on: [netns, cfbypass]
     restart: unless-stopped
   app:
+    container_name: relume-app
     image: jhangyu/relume-app:latest
     network_mode: service:netns
     depends_on: [netns, flaresolverr, cfbypass, apkmsolver]
