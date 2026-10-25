@@ -54,7 +54,7 @@ function groupCard(g, open) {
 <button class="btn btn-ghost btn-sm hide-m" type="button" data-act="gpull">Update all</button>
 <button class="btn btn-ghost btn-sm hide-m" type="button" data-act="gbuild">Rebuild all</button>
 <details class="dd"><summary class="btn btn-ghost btn-sm btn-icon" aria-label="More actions for ${g.name}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></summary>
-<div class="menu" role="menu"><button role="menuitem" type="button" data-act="gota">OTA group to devices</button><a role="menuitem" href="/api/groups/${g.id}/download" download>Download all (zip) · newest successful build of each item</a>${named ? html`<button role="menuitem" type="button" data-act="grename">Rename…</button><button role="menuitem" type="button" data-act="gdelete">Delete group</button>` : ''}</div></details>
+<div class="menu" role="menu"><button class="only-m" role="menuitem" type="button" data-act="gpull">Update all</button><button class="only-m" role="menuitem" type="button" data-act="gbuild">Rebuild all</button><button role="menuitem" type="button" data-act="gota">OTA group to devices</button><a role="menuitem" href="/api/groups/${g.id}/download" download>Download all (zip) · newest successful build of each item</a>${named ? html`<button role="menuitem" type="button" data-act="grename">Rename…</button><button role="menuitem" type="button" data-act="gdelete">Delete group</button>` : ''}</div></details>
 </summary><div data-list>${g.items.map(itemRow)}</div></details>`;
 }
 
@@ -120,9 +120,8 @@ const itemById = id => allItems().find(it => it.id === Number(id));
 const groupById = id => groupsWithUngrouped().find(g => g.id === Number(id));
 
 async function pullAll(items) {
-  const ids = [...new Set(items.map(it => it.upstream && it.upstream.id).filter(Boolean))];
-  await Promise.all(ids.map(id => act('POST', `/api/upstreams/${id}/pull`, { rebuild: true })));
-  toast(`Update queued for ${ids.length} upstream${ids.length === 1 ? '' : 's'}`);
+  await Promise.all(items.map(it => act('POST', `/api/items/${it.id}/update`, { rebuild: true })));
+  toast(`Update queued for ${items.length} item${items.length === 1 ? '' : 's'}`);
 }
 
 async function otaGroup(g) {
@@ -147,7 +146,7 @@ document.addEventListener('click', async e => {
   if (a === 'dl') { if (!it.last_success) { e.preventDefault(); return; } fillDownloads(el.nextElementSibling, it.id).catch(() => {}); return; }
   e.preventDefault();
   try {
-    if (a === 'pull') await act('POST', `/api/upstreams/${it.upstream.id}/pull`, { rebuild: true }, `Update queued: ${it.source_name}`);
+    if (a === 'pull') await act('POST', `/api/items/${it.id}/update`, { rebuild: true }, `Update queued: ${it.label}`);
     if (a === 'build') await act('POST', `/api/items/${it.id}/build`, {}, `Build queued: ${it.label}`);
     if (a === 'gpull') await pullAll(g.items);
     if (a === 'gbuild') {

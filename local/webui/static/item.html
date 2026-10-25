@@ -1,5 +1,5 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Item · Relume</title><link rel="stylesheet" href="/static/app.css">
+<title>Item · Relume</title><link rel="stylesheet" href="/static/app.css"><link rel="manifest" href="/static/manifest.webmanifest"><meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff"><meta name="theme-color" media="(prefers-color-scheme: dark)" content="#09090b"><link rel="apple-touch-icon" href="/static/icon-192.png">
 <style>
 .prow{padding:.625rem 1.5rem;border-bottom-width:1px;flex-wrap:nowrap;cursor:pointer}
 .prow .tag.chg{color:hsl(var(--accent));background:hsl(var(--accent)/.1);border-color:hsl(var(--accent)/.3)}
@@ -29,7 +29,7 @@ fieldset:target,fieldset.flash{box-shadow:0 0 0 2px hsl(var(--ring))}
 <div class="row"><button class="btn btn-ghost btn-sm" type="button" data-all="1">All on</button><button class="btn btn-ghost btn-sm" type="button" data-all="0">All off</button><button class="btn btn-ghost btn-sm" type="button" id="reset">Reset to defaults</button></div></div>
 <div class="alert warn" id="punavail" hidden style="margin-top:.5rem"><span>Patch list unavailable — run Update upstream. Builds still use the saved settings.</span></div>
 <div class="alert warn" id="pstale" hidden style="margin-top:.5rem"><span></span></div>
-<div class="row between" style="margin-top:.5rem"><div class="row"><input class="input" id="pf" type="search" style="width:220px" placeholder="Filter patches…" aria-label="Filter patches">
+<div class="row between" style="margin-top:.5rem"><div class="row"><input class="input pf" id="pf" type="search" placeholder="Filter patches…" aria-label="Filter patches">
 <div class="seg" role="radiogroup" aria-label="Show"><label><input type="radio" name="pshow" value="all" checked><span>All</span></label><label><input type="radio" name="pshow" value="in"><span>Included</span></label><label><input type="radio" name="pshow" value="ex"><span>Excluded</span></label><label><input type="radio" name="pshow" value="opt"><span>Has options</span></label></div></div>
 <span class="sm muted" aria-live="polite"><b id="pinc" style="color:hsl(var(--fg))">0</b> / <span id="ptotal">0</span> included</span></div></div>
 <div style="border-top-width:1px" id="plist"></div>
@@ -57,11 +57,11 @@ fieldset:target,fieldset.flash{box-shadow:0 0 0 2px hsl(var(--ring))}
 <div><button class="btn btn-outline btn-sm" type="button" id="m-save">Save module</button></div></div></section>
 <div class="savebar card" id="savebar" hidden><span class="dot" style="background:hsl(var(--warn))" aria-hidden="true"></span><span class="sm grow" id="sbtxt" aria-live="polite"></span><button class="btn btn-ghost btn-sm" type="button" id="discard">Discard</button><button class="btn btn-outline btn-sm" type="button" id="save">Save</button><button class="btn btn-accent btn-sm" type="button" id="saverun">Save &amp; rebuild</button></div>
 </main></div></div>
-<dialog id="dlg-app" aria-labelledby="dlg-app-t"><form method="dialog" class="card stack" style="min-width:340px">
+<dialog id="dlg-app" aria-labelledby="dlg-app-t"><form method="dialog" class="card stack">
 <div class="card-h"><h2 id="dlg-app-t">Edit app</h2></div>
 <div class="card-c stack"><div class="field"><label class="lbl" for="e-name">Display name (optional)</label><input class="input" id="e-name"></div><div class="field"><label class="lbl" for="e-list">APKMirror list URL</label><input class="input mono" id="e-list"></div><div class="field"><label class="lbl" for="e-ex">Example URL</label><input class="input mono" id="e-ex"></div><div class="field"><label class="lbl" for="e-ex2">Example URL 2</label><input class="input mono" id="e-ex2"></div><div class="field"><label class="lbl" for="e-pure">APKPure URL</label><input class="input mono" id="e-pure"></div><p class="hint">Empty URL fields stay unchanged.</p></div>
 <div class="card-f"><button class="btn btn-outline" value="cancel" formnovalidate>Cancel</button><button class="btn" value="ok">Save</button></div></form></dialog>
-<dialog id="dlg-item" aria-labelledby="dlg-item-t"><form method="dialog" class="card stack" style="min-width:340px">
+<dialog id="dlg-item" aria-labelledby="dlg-item-t"><form method="dialog" class="card stack">
 <div class="card-h"><h2 id="dlg-item-t">Item settings</h2></div>
 <div class="card-c stack"><label class="row sm"><span class="switch"><input type="checkbox" id="i-en"><span></span></span>Build</label><label class="row sm"><span class="switch"><input type="checkbox" id="i-au"><span></span></span>Update</label><div class="field"><label class="lbl" for="i-name">Display name (empty = default)</label><input class="input" id="i-name"></div><div class="field"><label class="lbl" for="i-grp">Group</label><select class="input" id="i-grp"></select></div><div class="field"><span class="lbl">ABI variants</span><div class="chips" id="i-abis"></div></div><div class="field"><span class="lbl">Dependencies</span><div class="stack-sm" id="i-deps"></div></div></div>
 <div class="card-f"><button class="btn btn-outline danger" type="button" id="i-del" style="margin-right:auto">Delete item</button><button class="btn btn-outline" value="cancel" formnovalidate>Cancel</button><button class="btn" value="ok">Save</button></div></form></dialog>

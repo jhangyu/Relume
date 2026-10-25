@@ -144,6 +144,13 @@ document.addEventListener('click', e => {
   else if (document.body.classList.contains('nav-open') && !e.target.closest('.side')) document.body.classList.remove('nav-open');
   $$('details.dd[open]').forEach(d => { if (!d.contains(e.target)) d.open = false; });
 });
+document.addEventListener('click', e => {
+  const p = e.target.closest('[data-proxy]');
+  if (!p) return;
+  const target = $(p.dataset.proxy);
+  if (p.dataset.value === undefined) target.click();
+  else { target.value = p.dataset.value; target.dispatchEvent(new Event('change', { bubbles: true })); }
+});
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   document.body.classList.remove('nav-open');
@@ -209,7 +216,8 @@ export async function fillDownloads(menu, itemId) {
   try {
     const { artifacts } = await api('GET', `/api/items/${itemId}/artifacts`);
     const newest = artifacts.length ? artifacts[0].job_id : null;
-    const rows = artifacts.filter(a => a.job_id === newest);
+    const abiRank = a => (a.abi === 'arm64-v8a' ? 0 : a.abi === 'universal' ? 1 : 2);
+    const rows = artifacts.filter(a => a.job_id === newest).sort((x, y) => abiRank(x) - abiRank(y));
     menu.innerHTML = html`${rows.length
       ? rows.map(a => html`<a role="menuitem" href="/api/artifacts/${a.id}/download" download>${a.variant} · ${a.abi} · ${fmt.bytes(a.size)}</a>`)
       : html`<span class="xs muted" style="padding:.5rem">No artifact</span>`}`;

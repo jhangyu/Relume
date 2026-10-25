@@ -125,6 +125,7 @@ dialog::backdrop{background:rgb(0 0 0/.6)}
 .menu{position:absolute;right:0;top:calc(100% + 4px);min-width:220px;background:hsl(var(--card));border-width:1px;border-radius:var(--radius);padding:.25rem;box-shadow:var(--shadow-lg);z-index:20}
 .menu button{display:flex;width:100%;gap:.5rem;align-items:center;padding:.4rem .5rem;border-radius:4px;background:none;border:0;color:inherit;font:inherit;font-size:.875rem;cursor:pointer;text-align:left}
 .menu button:hover,.menu button:focus-visible{background:hsl(var(--muted))}.menu svg{width:15px;height:15px}.menu hr{border:0;border-top-width:1px;margin:.25rem -.25rem}
+.pf{width:220px}
 .kbd{font-size:.6875rem;border-width:1px;border-radius:4px;padding:0 .3rem;color:hsl(var(--muted-fg))}
 .only-m{display:none!important}
 @media (max-width:1100px){.item{grid-template-columns:20px 36px 1fr 1fr 130px auto}.item .col-up{display:none}.grid4{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -146,3 +147,22 @@ dialog::backdrop{background:rgb(0 0 0/.6)}
 .toast[data-kind=error]{border-color:hsl(var(--destructive))}
 .group[data-color]{border-left:4px solid var(--gc)}
 .gdot{width:8px;height:8px;border-radius:50%;background:var(--gc);display:inline-block}
+@media (max-width:768px){
+ .btn,.btn-sm,.btn-icon,.btn-sm.btn-icon,.menu button,.menu a{min-height:44px}
+ .btn-icon,.btn-sm.btn-icon{min-width:44px}
+ .menu a{display:flex;align-items:center;padding:.4rem .5rem}
+ .switch{width:44px;height:26px}
+ .switch span::after{width:22px;height:22px}
+ .switch input:checked+span::after{transform:translateX(18px)}
+ .chip span{height:44px;min-width:44px}
+ .handle{width:44px;height:44px}
+ input[type=checkbox].cb,input[type=radio].cb{width:24px;height:24px}
+ .item .acts{flex-wrap:wrap}
+ dialog{width:min(440px,92vw);max-height:92dvh}
+ dialog form{overflow:auto;max-height:92dvh}
+ .side{height:100dvh;padding-bottom:calc(1rem + env(safe-area-inset-bottom))}
+ .toast{right:.75rem;left:.75rem;bottom:calc(1.25rem + env(safe-area-inset-bottom))}
+ body:has(.savebar:not([hidden])) .toast{bottom:calc(6rem + env(safe-area-inset-bottom))}
+ .savebar{bottom:calc(1rem + env(safe-area-inset-bottom))}
+ .pf{width:100%}
+}
