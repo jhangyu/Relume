@@ -130,10 +130,11 @@ class FileResponseTest(PublicRoutesMixin, DataTestCase):
 
     def test_file_shrinking_mid_transfer_aborts_without_writing_an_error_into_the_body(self):
         grown = mock.Mock(st_size=len(self.BODY) + 50)  # fstat saw a bigger file than the read finds
-        with mock.patch.object(server.os, 'fstat', return_value=grown), mock.patch('traceback.print_exc'):
+        with mock.patch.object(server.os, 'fstat', return_value=grown), mock.patch('traceback.print_exc') as logged:
             with self.assertRaises(httpclient.IncompleteRead) as cm:
                 self.get()
         self.assertEqual(cm.exception.partial, self.BODY)
+        logged.assert_called_once()
 
 
 class StaticTest(DataTestCase):

@@ -165,7 +165,10 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 traceback.print_exc()
                 self._json(500, {'error': 'internal error'})
-        except ConnectionError:  # peer gone, or a started body that cannot be completed
+        except ConnectionAbortedError:  # a started body that cannot be completed: the connection is dropped, the cause is logged
+            traceback.print_exc()
+            self.close_connection = True
+        except (BrokenPipeError, ConnectionResetError):
             self.close_connection = True
         except Exception:
             traceback.print_exc()
