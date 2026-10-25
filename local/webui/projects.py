@@ -11,6 +11,7 @@ from pathlib import Path
 from . import catalog, db, events, jobs, server, upstream
 
 ABI_TOKENS = ("arm64-v8a", "armeabi-v7a", "x86_64", "aarch64", "armeabi", "arm64", "armv7", "x86")
+COMPANION_PACKAGE = "io.github.jhangyu.relume"
 APKSIGNER = ["apksigner"]
 APKEDITOR = ["java", "-jar", os.environ.get("RELUME_APKEDITOR", "/opt/APKEditor.jar")]
 _ABI_SPLIT = re.compile("(" + "|".join(map(re.escape, ABI_TOKENS)) + ")")
@@ -108,7 +109,9 @@ def _apks(upstream_id, tag):
         facts = json.loads((upstream.tag_dir(upstream_id, tag) / "apks.json").read_text())
     except (OSError, ValueError):
         return None
-    return facts if isinstance(facts, list) else None
+    if not isinstance(facts, list) or not all(isinstance(f, dict) and f.get("sha256") for f in facts):
+        return None  # a tag downloaded before sha256 was recorded is unreadable until it is pulled again
+    return facts
 
 
 def _alert(r, facts):
@@ -136,8 +139,15 @@ def project_info(project_id, abis):
     pick = pick_apk(facts, abis) if facts else None
     path = os.path.abspath(upstream.tag_dir(r["upstream_id"], tag) / pick["file"]) if pick else None
     return {"project_id": r["id"], "upstream_id": r["upstream_id"], "package": r["package"], "display_name": label(r),
-            "tag": tag, "path": path, **{k: pick[k] if pick else None for k in ("file", "abi", "version_name", "version_code")},
+            "tag": tag, "path": path,
+            **{k: pick[k] if pick else None for k in ("file", "abi", "version_name", "version_code", "sha256", "size",
+                                                      "signer_sha256")},
             "signer_alert": _alert(r, facts), "auto_push": bool(r["auto_push"])}
+
+
+def companion_info(abis):
+    r = db.conn().execute("SELECT id FROM project WHERE package = ?", (COMPANION_PACKAGE,)).fetchone()
+    return project_info(r["id"], abis) if r else None
 
 
 def check_assignment(item_ids, project_ids):
@@ -192,7 +202,8 @@ def verify_release(upstream_id, part, log):
         info = _tool([*APKEDITOR, "info", "-i", jobs.runner_path(apk), "-package", "-version-code", "-version-name"],
                      log, parse_apk_info, f"package unreadable: {apk.name}")
         facts.append({"file": apk.name, "abi": abi, "package": info["package"], "version_name": info["version_name"],
-                      "version_code": info["version_code"], "signer_sha256": sig, "size": apk.stat().st_size})
+                      "version_code": info["version_code"], "signer_sha256": sig, "size": apk.stat().st_size,
+                      "sha256": upstream._sha256(apk)})
     if len({f["signer_sha256"] for f in facts}) > 1:
         raise ValueError("signers differ within release")
     if len({f["package"] for f in facts}) > 1:
@@ -252,7 +263,8 @@ def enqueue_auto_push(project_id, notify=True):
 
 def project_devices(project_id):
     return [x[0] for x in db.conn().execute(
-        "SELECT device_id FROM device_projects WHERE project_id = ? ORDER BY device_id", (project_id,))]
+        "SELECT dp.device_id FROM device_projects dp JOIN devices d ON d.id = dp.device_id "
+        "WHERE dp.project_id = ? AND d.kind = 'adb' ORDER BY dp.device_id", (project_id,))]
 
 
 # ---- routes (§6) ----
@@ -470,7 +482,23 @@ def accept_signer(req):
     return 200, _obj(pid)
 
 
+def download_apk(req):
+    r = _get(req.params["id"])
+    tag = r["downloaded_tag"]
+    facts = _apks(r["upstream_id"], tag) if tag else None
+    f = next((x for x in facts or () if x["file"] == req.params["file"]), None)
+    if f is None:
+        raise server.HttpError(404, "apk not found")
+    if _alert(r, facts):
+        raise server.HttpError(409, "signer changed: confirm on the Followed projects page")
+    return server.FileResponse(upstream.tag_dir(r["upstream_id"], tag) / f["file"], download_name=f["file"],
+                               etag=f["sha256"],
+                               headers={"X-Relume-Sha256": f["sha256"], "X-Relume-Signer-Sha256": f["signer_sha256"],
+                                        "X-Relume-Package": f["package"], "X-Relume-Version-Code": str(f["version_code"])})
+
+
 ROUTES = [
+    ("GET", "/api/projects/{id}/apks/{file}", download_apk),
     ("GET", "/api/projects", list_projects),
     ("POST", "/api/projects", post_project),
     ("POST", "/api/projects/assets", post_assets),

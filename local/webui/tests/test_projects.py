@@ -1,4 +1,5 @@
 """Followed projects tests (spec 2026-10-23-follow-project-design §3-§6, §10.1)."""
+import hashlib
 import io
 import json
 import os
@@ -338,6 +339,14 @@ class CrudRouteTest(ProjectCase):
         self.assertEqual(p["device_ids"], [1])
         self.assertEqual(self.error(projects.put_project, json={"device_ids": [3]}, method="PUT", id=1), (400, "unknown device 3"))
 
+    def test_project_devices_skips_app_devices(self):
+        with db.tx() as c:
+            add_project(c)
+            add_device(c, 1)
+            c.execute("INSERT INTO devices(id, name, kind) VALUES (2, 'phone', 'app')")
+            c.execute("INSERT INTO device_projects VALUES (1,1),(2,1)")
+        self.assertEqual(projects.project_devices(1), [1])
+
     def test_delete_removes_rows_and_dir(self):
         with db.tx() as c:
             add_project(c)
@@ -380,7 +389,7 @@ class CrudRouteTest(ProjectCase):
         (base / "v1" / "old.apk").write_bytes(b"1234")
         (base / "v2" / "microg-2.apk").write_bytes(b"123456")
         facts = [{"file": "microg-2.apk", "abi": "universal", "package": GMS, "version_name": "2", "version_code": 20,
-                  "signer_sha256": AB, "size": 6}]
+                  "signer_sha256": AB, "size": 6, "sha256": "ee"}]
         (base / "v2" / "apks.json").write_text(json.dumps(facts))
         (base / "v3.part" / "x.apk").write_bytes(b"12")
         os.utime(base / "v2", (1000, 1000))  # current first even when older
@@ -401,7 +410,8 @@ class CrudRouteTest(ProjectCase):
         info = projects.project_info(1, ["arm64-v8a"])
         self.assertEqual(info, {"project_id": 1, "upstream_id": 9, "package": GMS, "display_name": "MicroG RE", "tag": "v2",
                                 "path": str(base / "v2" / "microg-2.apk"), "file": "microg-2.apk", "abi": "universal",
-                                "version_name": "2", "version_code": 20, "signer_alert": None, "auto_push": False})
+                                "version_name": "2", "version_code": 20, "sha256": "ee", "size": 6, "signer_sha256": AB,
+                                "signer_alert": None, "auto_push": False})
         self.assertIsNone(projects.project_info(99, []))
         self.assertEqual((projects.item_projects(1), projects.assigned_projects(4), projects.assigned_projects(5)), ([1], [1], []))
 
@@ -483,7 +493,7 @@ class ReleaseTest(ProjectCase):
         d = self.data / "upstream" / "9" / "v7.2.1"
         facts = json.loads((d / "apks.json").read_text())
         self.assertEqual([f["file"] for f in facts], ["microg-7.2.1-arm64.apk", "microg-7.2.1.apk"])
-        self.assertEqual({k: v for k, v in facts[1].items() if k != "size"},
+        self.assertEqual({k: v for k, v in facts[1].items() if k not in ("size", "sha256")},
                          {"file": "microg-7.2.1.apk", "abi": "universal", "package": GMS, "version_name": "7.2.1",
                           "version_code": 255070218, "signer_sha256": AB})
         self.assertEqual((facts[0]["abi"], facts[1]["size"]), ("arm64-v8a", (d / "microg-7.2.1.apk").stat().st_size))
@@ -494,6 +504,51 @@ class ReleaseTest(ProjectCase):
         self.assertEqual(projects.project_info(1, ["x86"])["file"], "microg-7.2.1.apk")
         self.assertEqual(projects.project_info(1, ["arm64-v8a"])["file"], "microg-7.2.1-arm64.apk")
         self.assertEqual([e for e in self.emitted if e[0] == "project.signer_changed"], [])
+
+    def test_verify_release_writes_sha256(self):
+        self.pull("v7.2.1", {"microg-7.2.1.apk": ("arm64-v8a",)})
+        d = self.data / "upstream" / "9" / "v7.2.1"
+        want = hashlib.sha256((d / "microg-7.2.1.apk").read_bytes()).hexdigest()
+        self.assertEqual(json.loads((d / "apks.json").read_text())[0]["sha256"], want)
+        info = projects.project_info(1, ["arm64-v8a"])
+        self.assertEqual((info["sha256"], info["signer_sha256"], info["size"]), (want, AB, (d / "microg-7.2.1.apk").stat().st_size))
+
+    def test_apks_without_sha256_unreadable(self):
+        self.pull("v1", {"microg-1.apk": ()})
+        d = self.data / "upstream" / "9" / "v1"
+        self.assertIsNotNone(projects._apks(9, "v1"))
+        facts = json.loads((d / "apks.json").read_text())
+        del facts[0]["sha256"]
+        (d / "apks.json").write_text(json.dumps(facts))
+        self.assertIsNone(projects._apks(9, "v1"))
+        self.assertIsNone(projects.project_info(1, ["arm64-v8a"])["tag"])
+
+    def test_companion_info(self):
+        self.assertIsNone(projects.companion_info(["universal"]))
+        with db.tx() as c:
+            c.execute("UPDATE project SET package = ?", (projects.COMPANION_PACKAGE,))
+        self.assertEqual(projects.companion_info(["universal"])["package"], projects.COMPANION_PACKAGE)
+
+    def test_apk_route_membership_and_traversal(self):
+        self.pull("v1", {"microg-1.apk": ()})
+        d = self.data / "upstream" / "9" / "v1"
+        (d / "stray.apk").write_bytes(b"x")
+        (self.data / "upstream" / "9" / "secret.apk").write_bytes(b"x")
+        res = self.call(projects.download_apk, method="GET", id=1, file="microg-1.apk")
+        fact = json.loads((d / "apks.json").read_text())[0]
+        self.assertEqual((res.path, res.etag, res.headers), (d / "microg-1.apk", fact["sha256"], {
+            "X-Relume-Sha256": fact["sha256"], "X-Relume-Signer-Sha256": AB, "X-Relume-Package": GMS,
+            "X-Relume-Version-Code": str(fact["version_code"])}))
+        for name in ("stray.apk", "../secret.apk", "apks.json"):
+            self.assertEqual(self.error(projects.download_apk, method="GET", id=1, file=name), (404, "apk not found"))
+        self.assertEqual(self.error(projects.download_apk, method="GET", id=2, file="microg-1.apk"), (404, "project not found"))
+
+    def test_apk_route_signer_alert_409(self):
+        self.pull("v1", {"microg-1.apk": ()})
+        with db.tx() as c:
+            c.execute("UPDATE project SET signer_alert = ?", (CD,))
+        self.assertEqual(self.error(projects.download_apk, method="GET", id=1, file="microg-1.apk"),
+                         (409, "signer changed: confirm on the Followed projects page"))
 
     def test_up_to_date_pull_pins_missing_signer(self):
         self.pull("v1", {"microg-1.apk": ()})
@@ -562,7 +617,7 @@ class ReleaseTest(ProjectCase):
         d.mkdir(parents=True)
         (d / "microg-2.apk").write_bytes(apk_bytes())
         (d / "apks.json").write_text(json.dumps([{"file": "microg-2.apk", "abi": "universal", "package": GMS,
-                                                  "version_name": "2", "version_code": 2, "signer_sha256": CD, "size": 1}]))
+                                                  "version_name": "2", "version_code": 2, "signer_sha256": CD, "size": 1, "sha256": "ee"}]))
         self.assertIsNone(self.project()["signer_alert"])
         self.assertEqual(projects.project_info(1, ["arm64-v8a"])["signer_alert"], CD)
         self.assertEqual(self.call(projects.list_projects, method="GET")[1]["projects"][0]["signer_alert"], CD)
