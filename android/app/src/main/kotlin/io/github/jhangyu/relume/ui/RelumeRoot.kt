@@ -94,7 +94,7 @@ private fun ColumnScope.RootContent() {
     }
     val gate = model.versionGate
     if (gate != null) {
-        UpdateGate(model, gate.first, gate.second, run) { stack = stack + Screen.Install }
+        UpdateGate(model, gate.first, gate.second, run)
         InstallPrompts(model)
         return
     }
@@ -133,10 +133,12 @@ private fun ColumnScope.RootContent() {
 
 /** Spec 7.4: every screen is blocked except the companion update. */
 @Composable
-private fun UpdateGate(model: AppModel, offered: Long, own: Long, run: io.github.jhangyu.relume.install.RunState?, openRun: () -> Unit) {
+private fun UpdateGate(model: AppModel, offered: Long, own: Long, run: io.github.jhangyu.relume.install.RunState?) {
     val c = FluentTheme.colors
-    if (run != null) {
-        InstallScreen(run, model, onClose = {})
+    // An old finished run stays in the run file: show it only while it is active or after "Update now" in this visit.
+    var showRun by remember { mutableStateOf(false) }
+    if (run != null && (showRun || run.isActive)) {
+        InstallScreen(run, model, onClose = { showRun = false })
         return
     }
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -144,6 +146,6 @@ private fun UpdateGate(model: AppModel, offered: Long, own: Long, run: io.github
         Txt("The server needs a newer version of this app before it can be used.", color = c.fg2)
         Txt("installed $own\nserver offers $offered", style = FluentType.mono)
         model.error?.let { MessageBar("Update failed", Tone.Danger, detail = it, action = "Dismiss", onAction = model::dismissError) }
-        FButton("Update now", { model.updateCompanion(); openRun() }, Modifier.fillMaxWidth(), kind = ButtonKind.Primary)
+        FButton("Update now", { model.updateCompanion(); showRun = true }, Modifier.fillMaxWidth(), kind = ButtonKind.Primary)
     }
 }

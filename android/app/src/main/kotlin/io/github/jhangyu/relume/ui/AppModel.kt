@@ -103,8 +103,8 @@ class AppModel(application: Application) : AndroidViewModel(application) {
 
     fun logout() {
         viewModelScope.launch {
-            call { it.logout() }
-            if (error == null) signOutLocally(null)
+            val loggedOut = call { it.logout(); true }
+            if (loggedOut == true) signOutLocally(null)
         }
     }
 
