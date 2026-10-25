@@ -109,6 +109,60 @@ class AppScheduleMigrationTest(unittest.TestCase):
             'ota': ('ota', '{"device_ids":[1]}', '{"retries":1}', 1, T)})
 
 
+class AndroidMigrationTest(unittest.TestCase):
+    def test_migration_008_devices_and_history(self):
+        schema = pathlib.Path(db.SCHEMA_DIR)
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as data:
+            old = pathlib.Path(d)
+            for f in schema.glob('00[1-7]_*.sql'):
+                shutil.copy(f, old)
+            db.init(data)
+            db.migrate(old)
+            c = db.conn()
+            c.executescript("""
+                INSERT INTO upstream(id, kind, repo, channel, downloaded_tag) VALUES
+                  (1,'project','a/p','stable','v1'),(2,'cli','a/c','stable','v2');
+                INSERT INTO project(id, upstream_id, package) VALUES (1, 1, 'com.p');
+                INSERT INTO source(id, name, upstream_id, cli_upstream_id) VALUES ('s1','S1',2,2);
+                INSERT INTO app(package) VALUES ('com.a');
+                INSERT INTO item(id, source_id, package, key, variants) VALUES (1,'s1','com.a','a','[]');
+                INSERT INTO devices(id, name, serial, host, connect_port, ota_after_build) VALUES
+                  (1,'Pixel','192.168.1.5:5555','192.168.1.5',5555,1);
+                INSERT INTO device_assignments VALUES (1, 1);
+                INSERT INTO device_projects VALUES (1, 1);
+                INSERT INTO jobs(id, kind, status, trigger, target, created_at, finished_at) VALUES
+                  (1,'ota','success','manual','{}','2026-10-01T00:00:00Z','2026-10-01T00:05:00Z'),
+                  (2,'ota','running','manual','{}','2026-10-02T00:00:00Z',NULL);
+                INSERT INTO ota_installs(job_id, device_id, kind, ref_id, package, result) VALUES
+                  (1,1,'item',1,'com.a','installed'),(2,1,'project',1,'com.p','failed');""")
+            shutil.copy(schema / '008_android.sql', old)
+            db.migrate(old)
+            self.assertEqual(c.execute('PRAGMA user_version').fetchone()[0], 8)
+            self.assertEqual(c.execute('PRAGMA foreign_key_check').fetchall(), [])
+            dev = c.execute('SELECT * FROM devices').fetchone()
+            self.assertEqual((dev['kind'], dev['serial'], dev['ota_after_build'], dev['token_hash']),
+                             ('adb', '192.168.1.5:5555', 1, None))
+            self.assertRegex(dev['created_at'], r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$')
+            self.assertEqual(c.execute('SELECT count(*) FROM device_assignments').fetchone()[0], 1)
+            self.assertEqual(c.execute('SELECT count(*) FROM device_projects').fetchone()[0], 1)
+            self.assertEqual([r[0] for r in c.execute('SELECT at FROM ota_installs ORDER BY id')],
+                             ['2026-10-01T00:05:00Z', '2026-10-02T00:00:00Z'])
+            self.assertEqual(dict(c.execute('SELECT kind, downloaded_tag FROM upstream').fetchall()),
+                             {'project': None, 'cli': 'v2'})
+            with self.assertRaises(sqlite3.IntegrityError):
+                c.execute("INSERT INTO devices(name, kind, host) VALUES ('phone', 'app', '10.0.0.2')")
+            with self.assertRaises(sqlite3.IntegrityError):
+                c.execute("INSERT INTO devices(name, kind) VALUES ('bad', 'adb')")
+            c.execute("INSERT INTO devices(name, kind, token_hash) VALUES ('phone', 'app', 'h')")
+            # devices.pair INSERT shape (no kind, no created_at) and ota._record shape (no at) stay valid
+            did = c.execute('INSERT INTO devices(name,serial,mdns_name,host,connect_port,model,abi_list,sdk,'
+                            'android_release,ota_after_build,last_seen_at) VALUES (?,?,?,?,?,?,?,?,?,0,?)',
+                            ('P2', '10.0.0.3:5555', None, '10.0.0.3', 5555, 'm', 'arm64-v8a', 34, '14', db.utcnow())).lastrowid
+            self.assertEqual(c.execute('SELECT kind FROM devices WHERE id=?', (did,)).fetchone()[0], 'adb')
+            c.execute("INSERT INTO ota_installs(job_id, device_id, kind, ref_id, package, result) VALUES (NULL, ?, 'item', 1, 'com.a', 'installed')", (did,))
+            self.assertIsNotNone(c.execute('SELECT at FROM ota_installs WHERE job_id IS NULL').fetchone()[0])
+
+
 class EventsTest(unittest.TestCase):
     def setUp(self):
         events.reset()
