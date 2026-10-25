@@ -5,7 +5,6 @@ import mimetypes
 import os
 import pathlib
 import re
-import shutil
 import sqlite3
 import traceback
 import urllib.parse
@@ -22,9 +21,10 @@ MUTATING = {'POST', 'PUT', 'PATCH', 'DELETE'}
 MAX_BODY = 1 << 20
 MAX_DRAIN = 16 << 20  # bodies up to this size are read and discarded before a 413
 CTYPES = {'.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript',
-          '.svg': 'image/svg+xml'}
+          '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json'}
 PAGE = re.compile(r'^/([a-z]+\.html)$')
-ASSET = re.compile(r'^/static/([A-Za-z0-9_-]+\.(?:css|js|svg))$')
+ASSET = re.compile(r'^/static/([A-Za-z0-9_-]+\.(?:css|js|svg|png|webmanifest))$')
+RANGE = re.compile(r'bytes=(\d*)-(\d*)')
 
 SLUG = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9._-]*$')
 PACKAGE = re.compile(r'^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$')
@@ -39,9 +39,11 @@ class HttpError(Exception):
 
 
 class FileResponse:
-    """download_name None = inline (e.g. icons); cache_seconds > 0 adds Cache-Control max-age."""
-    def __init__(self, path, download_name=None, cache_seconds=0):
+    """download_name None = inline (e.g. icons); cache_seconds > 0 adds Cache-Control max-age;
+    etag (unquoted) enables If-Range; headers = extra response headers."""
+    def __init__(self, path, download_name=None, cache_seconds=0, etag=None, headers=None):
         self.path, self.download_name, self.cache_seconds = pathlib.Path(path), download_name, cache_seconds
+        self.etag, self.headers = etag, dict(headers or {})
 
 
 class StreamResponse:
@@ -118,6 +120,18 @@ def load_modules(names=MODULES):
 
 def _compile(pattern):
     return re.compile('^' + re.sub(r'\{(\w+)\}', r'(?P<\1>[^/]+)', pattern) + '$')
+
+
+def byte_range(header, size):
+    """One `Range: bytes=` spec -> inclusive (start, end); None when unparsable, multi-range or unsatisfiable."""
+    m = RANGE.fullmatch(header.strip())
+    if not m or not (m[1] or m[2]):
+        return None
+    if not m[1]:
+        n = int(m[2])
+        return (max(0, size - n), size - 1) if 0 < n and size else None
+    start, end = int(m[1]), int(m[2]) if m[2] else size - 1
+    return (start, min(end, size - 1)) if start <= end and start < size else None
 
 
 def _attachment(name):
@@ -225,18 +239,7 @@ class Handler(BaseHTTPRequestHandler):
         if isinstance(res, tuple):
             return self._json(*res)
         if isinstance(res, FileResponse):
-            with open(res.path, 'rb') as f:
-                size = res.path.stat().st_size
-                self.send_response(200)
-                self.send_header('Content-Type', mimetypes.guess_type(res.path.name)[0] or 'application/octet-stream')
-                self.send_header('Content-Length', str(size))
-                if res.download_name:
-                    self.send_header('Content-Disposition', _attachment(res.download_name))
-                if res.cache_seconds:
-                    self.send_header('Cache-Control', f'max-age={int(res.cache_seconds)}')
-                self.end_headers()
-                shutil.copyfileobj(f, self.wfile, 1 << 20)
-            return
+            return self._file(res)
         if isinstance(res, StreamResponse):
             self.close_connection = True
             self.send_response(200)
@@ -258,6 +261,42 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.flush()
             return
         raise TypeError(f'bad handler result {type(res).__name__}')
+
+    def _file(self, res):
+        with open(res.path, 'rb') as f:
+            size = os.fstat(f.fileno()).st_size
+            span, status = (0, size - 1), 200
+            want = self.headers.get('Range')
+            if want and (self.headers.get('If-Range') is None or self.headers['If-Range'].strip() == f'"{res.etag}"'):
+                span = byte_range(want, size)
+                if span is None:
+                    return self._json(416, {'error': f'range {want!r} not satisfiable for {size} bytes'},
+                                      {'Content-Range': f'bytes */{size}'})
+                status = 206
+            length = span[1] - span[0] + 1
+            self.send_response(status)
+            self.send_header('Content-Type', mimetypes.guess_type(res.path.name)[0] or 'application/octet-stream')
+            self.send_header('Content-Length', str(length))
+            self.send_header('Accept-Ranges', 'bytes')
+            if status == 206:
+                self.send_header('Content-Range', f'bytes {span[0]}-{span[1]}/{size}')
+            if res.etag:
+                self.send_header('ETag', f'"{res.etag}"')
+            if res.download_name:
+                self.send_header('Content-Disposition', _attachment(res.download_name))
+            if res.cache_seconds:
+                self.send_header('Cache-Control', f'max-age={int(res.cache_seconds)}')
+            for k, v in res.headers.items():
+                self.send_header(k, v)
+            self.end_headers()
+            f.seek(span[0])
+            while length > 0:
+                chunk = f.read(min(length, 1 << 20))
+                if not chunk:
+                    self.close_connection = True
+                    raise OSError(f'{res.path} shrank while sending: {length} of {size} bytes missing')
+                self.wfile.write(chunk)
+                length -= len(chunk)
 
     def _static(self, path):
         from . import auth  # lazy: auth imports HttpError from this module

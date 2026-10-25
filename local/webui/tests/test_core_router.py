@@ -1,4 +1,5 @@
-import sqlite3, sys, threading, types, unittest
+import pathlib, sqlite3, sys, tempfile, threading, types, unittest
+from unittest import mock
 from webui import server
 from webui.tests.helpers import DataTestCase, serve, http
 
@@ -83,6 +84,55 @@ class RouterTest(PublicRoutesMixin, DataTestCase):
         self.assertEqual(http('GET', self.base + '/api/boom')[:3:2], (500, b'{"error": "internal error"}'))
         self.assertEqual(http('GET', self.base + '/api/locked')[0], 503)
         self.assertEqual(http('POST', self.base + '/api/fail', body={})[2], b'{"error": "busy item"}')
+
+
+class FileResponseTest(PublicRoutesMixin, DataTestCase):
+    BODY = bytes(range(100))
+
+    def setUp(self):
+        super().setUp()
+        f = self.data / 'app.apk'
+        f.write_bytes(self.BODY)
+        hdr = {'X-Relume-Sha256': 'ab' * 32}
+        route = ('GET', '/api/file', lambda req: server.FileResponse(f, 'app.apk', etag='tag1', headers=hdr))
+        self.public(route[0], route[1])
+        self.base = serve(self, [fake_module('fakefile', [route])])
+
+    def get(self, **headers):
+        return http('GET', self.base + '/api/file', headers=headers)
+
+    def test_range_requests(self):
+        st, h, body = self.get()
+        self.assertEqual((st, body, h['Accept-Ranges'], h['ETag'], h['X-Relume-Sha256']),
+                         (200, self.BODY, 'bytes', '"tag1"', 'ab' * 32))
+        self.assertIn('attachment', h['Content-Disposition'])
+        for rng, part, cr in (('bytes=0-9', self.BODY[:10], 'bytes 0-9/100'), ('bytes=10-', self.BODY[10:], 'bytes 10-99/100'),
+                              ('bytes=-5', self.BODY[-5:], 'bytes 95-99/100'), ('bytes=90-500', self.BODY[90:], 'bytes 90-99/100')):
+            st, h, body = self.get(Range=rng)
+            self.assertEqual((st, body, h['Content-Range'], h['Content-Length']), (206, part, cr, str(len(part))), rng)
+        for bad in ('bytes=0-1,5-6', 'bytes=100-', 'bytes=5-2', 'bytes=-0', 'bytes=-', 'items=0-1', 'bytes=x-1'):
+            st, h, _ = self.get(Range=bad)
+            self.assertEqual((st, h['Content-Range']), (416, 'bytes */100'), bad)
+
+    def test_if_range_mismatch_sends_full_body(self):
+        st, h, body = self.get(Range='bytes=0-9', **{'If-Range': '"other"'})
+        self.assertEqual((st, body), (200, self.BODY))
+        self.assertNotIn('Content-Range', h)
+        st, _, body = self.get(Range='bytes=0-9', **{'If-Range': '"tag1"'})
+        self.assertEqual((st, body), (206, self.BODY[:10]))
+
+
+class StaticTest(DataTestCase):
+    def test_static_png_and_manifest_types(self):
+        d = pathlib.Path(self.enterContext(tempfile.TemporaryDirectory()))
+        (d / 'icon-192.png').write_bytes(b'\x89PNG\r\n')
+        (d / 'manifest.webmanifest').write_text('{"name": "Relume"}')
+        self.enterContext(mock.patch.object(server, 'STATIC', d))
+        base = serve(self)
+        st, h, body = http('GET', base + '/static/icon-192.png')
+        self.assertEqual((st, h['Content-Type'], body), (200, 'image/png', b'\x89PNG\r\n'))
+        st, h, body = http('GET', base + '/static/manifest.webmanifest')   # no cookie: static assets are public
+        self.assertEqual((st, h['Content-Type'], body), (200, 'application/manifest+json', b'{"name": "Relume"}'))
 
 
 class LoadModulesTest(DataTestCase):
