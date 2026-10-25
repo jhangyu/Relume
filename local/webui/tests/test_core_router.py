@@ -173,6 +173,12 @@ class ValidatorTest(unittest.TestCase):
     def test_package_repo_host_port(self):
         server.validate_package('com.google.android.youtube')
         server.validate_repo('MorpheApp/morphe-desktop')
+        self.assertEqual(server.validate_repo('o/r'), 'o/r')
+        for url in ('https://github.com/o/r', 'http://www.github.com/o/r/', 'https://github.com/o/r.git',
+                    'https://github.com/o/r/releases/tag/v1'):
+            self.assertEqual(server.validate_repo(url), 'o/r')
+        with self.assertRaises(server.HttpError):
+            server.validate_repo('https://gitlab.com/o/r')
         server.validate_host('192.168.1.20')
         server.validate_host('pixel-7a.local')
         self.assertEqual(server.validate_port(5555), 5555)

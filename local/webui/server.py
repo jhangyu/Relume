@@ -29,6 +29,7 @@ RANGE = re.compile(r'bytes=(\d*)-(\d*)')
 SLUG = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9._-]*$')
 PACKAGE = re.compile(r'^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$')
 REPO = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
+GITHUB_URL = re.compile(r'^https?://(?:www\.)?github\.com/([^/]+)/([^/]+?)(?:\.git)?(?:/.*)?$')
 LABEL = re.compile(r'^[A-Za-z0-9][A-Za-z0-9-]{0,62}$')
 
 
@@ -87,8 +88,11 @@ def validate_package(v, field='package'):
 
 
 def validate_repo(v, field='repo'):
+    m = GITHUB_URL.match(v) if isinstance(v, str) else None
+    if m:
+        v = f'{m[1]}/{m[2]}'
     if not isinstance(v, str) or not REPO.match(v):
-        raise HttpError(400, f'invalid {field}')
+        raise HttpError(400, f'invalid {field}: expected owner/repo or https://github.com/owner/repo, got {v!r}')
     return v
 
 

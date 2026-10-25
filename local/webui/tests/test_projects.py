@@ -212,7 +212,7 @@ class AssetsRouteTest(ProjectCase):
         st, b = self.call(projects.post_assets, json=body)
         self.assertEqual((b["asset_regex"], [a["matched"] for a in b["assets"]]), (r"^mihon-v[0-9.]+\.apk$", [False, True]))
         self.assertEqual(self.error(projects.post_assets, json=dict(body, channel="tag")), (400, "invalid channel"))
-        self.assertEqual(self.error(projects.post_assets, json=dict(body, repo="no slash")), (400, "invalid repo"))
+        self.assertEqual(self.error(projects.post_assets, json=dict(body, repo="no slash")), (400, "invalid repo: expected owner/repo or https://github.com/owner/repo, got 'no slash'"))
 
     def test_unknown_selected_asset_400(self):
         self.http({MIHON_URL: (200, MIHON, {})})
