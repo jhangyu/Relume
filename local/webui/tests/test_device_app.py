@@ -135,3 +135,31 @@ class AppTest(helpers.DataTestCase):
                           (None, self.me, 'project', None, '7.2.1', 255070218, 'failed', 'USER_REJECTED')])
         step = self.call(ota.me_plan)[1]['plan']['steps'][0]
         self.assertEqual((step['kind'], step['action'], step['download']), ('item', 'up_to_date', None))
+
+    def test_renamed_package_uses_artifact_package(self):
+        """A package-rename patch: the phone has the artifact's package, not the source item.package."""
+        renamed = 'app.morphe.android.youtube'
+        add_catalog_item(2, 'com.google.android.apps.youtube.music')
+        assign(self.me, 1, 2)
+        for item_id, package in ((1, renamed), (2, None)):
+            jid = add_job(kind='build', target={'item_id': item_id}, status='success')
+            with db.tx() as c:
+                c.execute("INSERT INTO artifacts(job_id,item_id,variant,abi,package,version_name,version_code,"
+                          "signer_sha256,path,size,sha256,created_at) VALUES (?,?,'universal','universal',?,'20.1',7,?,"
+                          "'/a/x.apk',3,?,'now')", (jid, item_id, package, SIGNER, 'cd' * 32))
+        self.assertIn(renamed, ota.tracked_packages())
+        self.call(ota.sync, sync_body([pkg(YT, 7), pkg(renamed, 1)]))
+        self.assertEqual(self.stored(), {YT: 7, renamed: 1})             # the renamed install is kept in the report
+        s1, s2 = self.call(ota.me_plan)[1]['plan']['steps']
+        self.assertEqual((s1['package'], s1['action'], s1['reason']), (renamed, 'install', 'new build'))
+        a1 = s1['download']['artifact_id']
+        self.assertEqual((s2['action'], s2['reason']), ('error', f"ARTIFACT_INCOMPLETE: artifact {a1 + 1} has no package"))
+        self.call(ota.post_install, {'kind': 'item', 'ref_id': 1, 'artifact_id': a1, 'result': 'installed'})
+        self.assertEqual(db.conn().execute('SELECT package FROM ota_installs').fetchone()[0], renamed)
+        s1 = self.call(ota.me_plan)[1]['plan']['steps'][0]
+        self.assertEqual((s1['action'], s1['reason']), ('up_to_date', 'same build installed'))
+        self.call(ota.sync, sync_body([pkg(renamed, 6)]))                # drift is read on the renamed package
+        self.assertEqual(self.call(ota.me_plan)[1]['plan']['steps'][0]['reason'], 'changed on phone')
+        dev = ota.devices.get(self.me)
+        self.assertEqual(ota._recovery_steps(dev, renamed, ['universal'])[0]['ref_id'], 1)
+        self.assertIsNone(ota._recovery_steps(dev, YT, ['universal']))

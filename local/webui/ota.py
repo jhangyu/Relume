@@ -50,10 +50,11 @@ def last_installs(device_id):
 
 
 def tracked_packages():
-    """Packages the server builds or follows: the only ones a phone report is stored for."""
+    """Packages the server builds or follows: the only ones a phone report is stored for. Built artifacts count on
+    their own: a package-rename patch makes the installed package differ from item.package."""
     return [r[0] for r in db.conn().execute(
         'SELECT package FROM item WHERE package IS NOT NULL UNION SELECT package FROM project WHERE package IS NOT NULL '
-        'ORDER BY 1')]
+        "UNION SELECT package FROM artifacts WHERE package IS NOT NULL AND package != '' ORDER BY 1")]
 
 
 def store_reported(device_id, packages):
@@ -118,12 +119,18 @@ def plan(items, artifacts, deps_by_item, direct, item_installs, proj_installs, p
         planned.add(p['project_id'])
         steps.append(_project_step(p, action, reason))
     for it in items:
-        iid, pkg, a = it['item_id'], it['package'], artifacts.get(it['item_id'])
+        iid, a = it['item_id'], artifacts.get(it['item_id'])
         deps = deps_by_item.get(iid, [])
-        step = {'kind': 'item', 'ref_id': iid, 'package': pkg, 'artifact': a, 'needs': [d['project_id'] for d in deps]}
+        # error steps name the source item.package: nothing is installed, so no phone package is known
+        step = {'kind': 'item', 'ref_id': iid, 'package': it['package'], 'artifact': a,
+                'needs': [d['project_id'] for d in deps]}
         if a is None:
             steps.append(dict(step, action='error', reason='NO_MATCHING_ARTIFACT'))
             continue
+        if not a['package']:  # not guessed from item.package: a package-rename patch makes them differ
+            steps.append(dict(step, action='error', reason=f"ARTIFACT_INCOMPLETE: artifact {a['id']} has no package"))
+            continue
+        pkg = step['package'] = a['package']  # the phone has the built APK's package, not the source item.package
         last = item_installs.get(iid)
         if not has(pkg):
             action, reason = 'install', 'missing on phone'
@@ -167,6 +174,7 @@ def _device_view(dev, states):
     # ponytail: an ADB row with no OTA since migration 008 has no report yet: unknown, not 'nothing installed'
     v = _plan_for(dev, None, None, reported if reported or devices.is_app(dev) else None)
     pending = {(s['kind'], s['ref_id']) for s in v['steps'] if s['action'] == 'install'}
+    item_pkgs = {s['ref_id']: s['package'] for s in v['steps'] if s['kind'] == 'item'}
     assignments = []
     for i in v['items']:
         a, inst = v['arts'][i['item_id']], v['item_inst'].get(i['item_id'])
@@ -175,7 +183,7 @@ def _device_view(dev, states):
             'installed': inst and {'version_name': inst['version_name'], 'build_job_id': inst['build_job_id'],
                                    'at': inst['at']},
             'available': a and {'version_name': a['version_name'], 'build_job_id': a['job_id']},
-            'pending': ('item', i['item_id']) in pending, 'installed_reported': reported.get(i['package'])})
+            'pending': ('item', i['item_id']) in pending, 'installed_reported': reported.get(item_pkgs[i['item_id']])})
     pmap = {}
 
     def entry(p):
@@ -411,9 +419,9 @@ def _receipt_target(dev, b):
         if item is None:
             raise HttpError(400, f'item {ref} not assigned to this device')
         a = build.latest_artifact(ref, first_abi(dev))
-        if a is None or a['id'] != aid:
+        if a is None or a['id'] != aid or not a['package']:  # no package = never offered for download
             raise HttpError(409, 'stale plan')
-        return a['job_id'], None, item['package'], a['version_name'], a['version_code'], a['signer_sha256']
+        return a['job_id'], None, a['package'], a['version_name'], a['version_code'], a['signer_sha256']
     tag = b.get('tag')
     if not isinstance(tag, str):
         _bad('tag', 'a string', tag)
@@ -582,7 +590,7 @@ def _run_item(job, dev, step, abi, log, failed):
     if failed.intersection(step['needs']):
         return _record(job, dev['id'], step, 'failed', 'DEPENDENCY_FAILED', 'dependency install failed', step['artifact'])
     if step['action'] == 'error':
-        return _record(job, dev['id'], step, 'failed', 'NO_MATCHING_ARTIFACT', 'NO_MATCHING_ARTIFACT')
+        return _record(job, dev['id'], step, 'failed', step['reason'].split(':')[0], step['reason'])
     if step['action'] == 'up_to_date':
         return _record(job, dev['id'], step, 'up_to_date', a=step['artifact'])
     # ponytail: re-resolve right before install, once more if the file is gone; no fd pinning. A file deleted
@@ -604,11 +612,11 @@ def _run_item(job, dev, step, abi, log, failed):
 def _recovery_steps(dev, package, abis):
     """Assigned items, then directly assigned projects, then dependency projects of assigned items."""
     items = assigned_items(dev['id'])
-    for i in items:
-        if i['package'] == package:
-            a = build.latest_artifact(i['item_id'], first_abi(dev))
+    for i in items:  # by the built package: the one ota_installs records and the phone has
+        a = build.latest_artifact(i['item_id'], first_abi(dev))
+        if a and a['package'] == package:
             return [{'kind': 'item', 'ref_id': i['item_id'], 'package': package, 'artifact': a, 'needs': [],
-                     'action': 'install' if a else 'error', 'reason': 'recovery' if a else 'NO_MATCHING_ARTIFACT'}]
+                     'action': 'install', 'reason': 'recovery'}]
     pids = projects.assigned_projects(dev['id']) + [pid for i in items for pid in projects.item_projects(i['item_id'])]
     for pid in dict.fromkeys(pids):
         p = projects.project_info(pid, abis)

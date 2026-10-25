@@ -11,7 +11,7 @@ OTHER = 'org.example.reader'
 
 
 def art(item_id, job_id, abi='arm64-v8a', path='/x.apk'):
-    return {'id': job_id * 10, 'job_id': job_id, 'item_id': item_id, 'variant': abi, 'abi': abi, 'package': YT,
+    return {'id': job_id * 10, 'job_id': job_id, 'item_id': item_id, 'variant': abi, 'abi': abi, 'package': {2: YTM}.get(item_id, YT),
             'version_name': '19.47.53', 'version_code': 1, 'patches_version': 'v1', 'signer_sha256': 'aa',
             'path': path, 'size': 1, 'sha256': 'bb', 'created_at': '2026-10-19T04:00:00Z'}
 

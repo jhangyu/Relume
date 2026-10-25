@@ -13,7 +13,7 @@ ONLINE = f'List of devices attached\n{ADDR}\tdevice\n'
 
 def art(item_id, job_id, path):
     return {'id': job_id * 10, 'job_id': job_id, 'item_id': item_id, 'variant': 'arm64-v8a', 'abi': 'arm64-v8a',
-            'package': YT, 'version_name': '19.47.53', 'version_code': 1, 'patches_version': 'v1',
+            'package': {2: YTM}.get(item_id, YT), 'version_name': '19.47.53', 'version_code': 1, 'patches_version': 'v1',
             'signer_sha256': 'aa', 'path': path, 'size': 3, 'sha256': 'bb', 'created_at': '2026-10-19T04:00:00Z'}
 
 
