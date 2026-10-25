@@ -37,8 +37,13 @@ class JobsApiTest(DataTestCase):
         jobs.register('build', h)
         jobs.start()
         jid = jobs.enqueue('build', {'item_id': 1}, 'manual')
-        threading.Timer(1.0, go.set).start()
-        text = read_sse(f'{self.base}/api/jobs/{jid}/log', self.c)
+        req = urllib.request.Request(f'{self.base}/api/jobs/{jid}/log', headers={'Cookie': self.c})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            seen = ''
+            while ' start' not in seen:   # 'start' arrives while the job is still blocked on go
+                seen += r.readline().decode()
+            go.set()
+            text = seen + r.read().decode()
         self.assertIn(' start', text)
         self.assertIn(' later', text)
         self.assertTrue(text.endswith('event: end\ndata: success\n\n'))

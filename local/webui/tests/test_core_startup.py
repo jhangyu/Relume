@@ -1,4 +1,4 @@
-import contextlib, io, os, pathlib, subprocess, sys, threading, types, unittest
+import concurrent.futures, contextlib, io, os, pathlib, subprocess, sys, threading, types, unittest
 from unittest import mock
 from webui import auth, db, server, settings
 from webui.tests.helpers import DataTestCase
@@ -93,10 +93,11 @@ class ImportCycleTest(unittest.TestCase):
     def test_each_module_imports_in_a_fresh_interpreter(self):
         """A circular named import only fails for some import orders, so import every module first in its own process."""
         pkg = pathlib.Path(__file__).resolve().parent.parent
-        for f in sorted(pkg.glob('*.py')):
-            if f.stem == '__init__':
-                continue
-            with self.subTest(module=f.stem):
-                r = subprocess.run([sys.executable, '-c', f'import webui.{f.stem}'], cwd=pkg.parent,
-                                   capture_output=True, text=True)
+        stems = [f.stem for f in sorted(pkg.glob('*.py')) if f.stem != '__init__']
+        run = lambda stem: subprocess.run([sys.executable, '-c', f'import webui.{stem}'], cwd=pkg.parent,
+                                          capture_output=True, text=True)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(stems)) as pool:
+            results = list(pool.map(run, stems))
+        for stem, r in zip(stems, results):
+            with self.subTest(module=stem):
                 self.assertEqual(r.returncode, 0, r.stderr)

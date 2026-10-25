@@ -7,6 +7,7 @@ from webui.tests.helpers import DataTestCase, serve, http, login
 class AuthTest(DataTestCase):
     def setUp(self):
         super().setUp()
+        self.enterContext(mock.patch.object(auth, 'SCRYPT_N', 2 ** 4))   # fast hashing, the KDF cost is not under test
         self.base = serve(self)
 
     def test_hash_roundtrip(self):
@@ -145,6 +146,7 @@ DEVICE = {'name': 'Pixel 8', 'model': 'Pixel 8', 'sdk': 35, 'android_release': '
 class DeviceTokenTest(DataTestCase):
     def setUp(self):
         super().setUp()
+        self.enterContext(mock.patch.object(auth, 'SCRYPT_N', 2 ** 4))   # fast hashing, the KDF cost is not under test
         self.base = serve(self, ['devices', 'notify', 'projects'])
         self.cookie = login(self.base)
 

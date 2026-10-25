@@ -22,6 +22,7 @@ DEVICE_NAME_MAX = 64
 MAX_FAILS, WINDOW, LOCK = 5, 300, 300
 REMEMBER, SHORT = 30 * 86400, 12 * 3600
 RESET_COOLDOWN = 300
+SCRYPT_N = 2 ** 14
 MIN_PASSWORD = 10
 USERNAME_RE = re.compile(r'[A-Za-z0-9._-]{1,64}\Z')
 _clock = time.monotonic
@@ -31,7 +32,7 @@ _lock = threading.Lock()
 
 
 def _scrypt(pw, salt):
-    return hashlib.scrypt(pw.encode(), salt=salt, n=2 ** 14, r=8, p=1, dklen=32).hex()
+    return hashlib.scrypt(pw.encode(), salt=salt, n=SCRYPT_N, r=8, p=1, dklen=32).hex()
 
 
 def hash_password(pw, salt=None):
