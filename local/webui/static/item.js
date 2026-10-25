@@ -219,7 +219,8 @@ function renderHeader() {
   $('#hdr').innerHTML = html`${iconTile(it, 'ico-lg')}<div class="grow" style="min-width:220px"><div class="row"><h2 style="font-size:1.125rem">${it.label}</h2><span class="src">${it.source_name}</span>${newer ? html`<span class="badge b-warn">${up.latest_tag} available</span>` : ''}</div><p class="sm muted mono">${it.package} · ${up.repo} (${chan(up)}) · ${built}</p></div>`;
   $('#b-pull').disabled = !newer;
   $('#b-pull').title = it.engine === 'morphe' ? `Updates the ${it.source_name} source for all its items` : `Updates module ${up.repo} for all its apps`;
-  $('#b-build').disabled = !!it.active_job;
+  $('#b-build').disabled = !!it.active_job || !it.enabled;
+  $('#saverun').disabled = !it.enabled;
   const mor = it.engine === 'morphe';
   $('#t5').hidden = mor;
   $('#t1').hidden = $('#t2').hidden = !mor;

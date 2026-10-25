@@ -36,6 +36,64 @@ class RoutesTest(BuildCase):
         self.assertEqual(len(self.call(build.post_builds, json={"item_ids": [1, 2]})[1]["job_ids"]), 2)
         self.assertEqual(self.status_of(build.post_builds, json={"item_ids": []}), 400)
 
+    def set_enabled(self, iid, v):
+        with db.tx() as c:
+            c.execute("UPDATE item SET enabled = ? WHERE id = ?", (v, iid))
+
+    def test_build_off_is_409_and_enqueues_nothing(self):
+        with db.tx() as c:
+            add_item(c, 2, "com.reddit.frontpage", "reddit")
+        self.set_enabled(2, 0)
+        self.assertEqual(self.status_of(build.post_item_build, json={}, id=2), 409)
+        with self.assertRaisesRegex(server.HttpError, "item 2"):
+            self.call(build.post_builds, json={"item_ids": [1, 2]})
+        self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM jobs").fetchone()[0], 0)
+
+    def test_cleanup_rules_and_active_skip(self):
+        with db.tx() as c:
+            add_item(c, 2, "com.reddit.frontpage", "reddit")      # off, has artifacts
+            add_item(c, 3, "com.off.only", "offonly")              # off, active job
+            add_item(c, 4, "com.third", "third")                   # on, never built
+        self.success_build(1)
+        self.success_build(2)
+        for i in (2, 3):
+            self.set_enabled(i, 0)
+        (self.data / "artifacts" / "3").mkdir()
+        with db.tx() as c:
+            c.execute("INSERT INTO jobs(kind, status, trigger, target, options, created_at) VALUES ('build', 'queued', 'manual', '{\"item_id\":3}', '{}', 'now')")
+        cache = self.data / "apk-cache"
+        files = {"com.google.android.youtube": ["20.1.0-apk-any-any.apk", "19.0.0-apk-any-any.apk"],
+                 "com.reddit.frontpage": ["1.0-apk-any-any.apk"], "com.off.only": ["2.0-apk-any-any.apk"],
+                 "com.unused": ["3.0-apk-any-any.apk"], "com.third": ["1.0-apk-any-any.apk"]}
+        for pkg, names in files.items():
+            (cache / pkg).mkdir(parents=True)
+            for n in names:
+                (cache / pkg / n).write_bytes(b"xx")
+        (cache / "com.off.only" / "x").mkdir()  # a package with an active job is untouched
+        got = self.call(build.get_cleanup, method="GET")[1]
+        self.assertEqual((got["artifact_items"], got["cache_files"]), (1, 4))  # files: yt 19.0.0, reddit, third, unused
+        self.assertGreater(got["bytes"], 0)
+        self.assertTrue((self.data / "artifacts" / "2").exists())   # preview deletes nothing
+        self.assertEqual(self.call(build.post_cleanup)[1], got)
+        self.assertFalse((self.data / "artifacts" / "2").exists())
+        self.assertTrue((self.data / "artifacts" / "1").exists())
+        self.assertTrue((self.data / "artifacts" / "3").exists())
+        left = lambda pkg: sorted(p.name for p in (cache / pkg).iterdir()) if (cache / pkg).exists() else None
+        self.assertEqual(left("com.google.android.youtube"), ["20.1.0-apk-any-any.apk"])
+        self.assertIsNone(left("com.reddit.frontpage"))
+        self.assertIsNone(left("com.unused"))
+        self.assertEqual(left("com.third"), [])
+        self.assertEqual(left("com.off.only"), ["2.0-apk-any-any.apk", "x"])
+        rows = lambda i: db.conn().execute("SELECT COUNT(*) FROM artifacts WHERE item_id = ?", (i,)).fetchone()[0]
+        self.assertEqual((rows(1), rows(2)), (2, 0))
+
+    def test_needs_build_without_artifacts(self):
+        self.success_build(1)
+        self.assertFalse(build.needs_build(1))
+        with db.tx() as c:
+            c.execute("DELETE FROM artifacts WHERE item_id = 1")
+        self.assertTrue(build.needs_build(1))
+
     def test_artifacts_list_and_download(self):
         self.success_build(1)
         arts = self.call(build.list_item_artifacts, method="GET", id=1)[1]["artifacts"]

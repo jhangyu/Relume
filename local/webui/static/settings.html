@@ -26,7 +26,7 @@
 <div class="card-c row" style="align-items:flex-end;gap:1rem"><div class="field"><label class="lbl" for="keep">Keep per item</label><input class="input" id="keep" type="number" min="1" max="100" style="width:110px"></div><p class="sm muted grow" id="est"></p></div>
 <div class="card-c row" style="align-items:flex-end;gap:1rem"><div class="field"><label class="lbl" for="hist-n">Job history count</label><input class="input" id="hist-n" type="number" min="1" max="100000" style="width:130px"></div><div class="field grow"><label class="lbl" for="base">Base URL</label><input class="input mono" id="base" placeholder="http://nas.local:47000"></div></div>
 <div class="card-c"><span class="lbl">Disk</span><div class="stack-sm" id="disk"></div></div>
-<div class="card-f"><button class="btn" type="button" id="a-save">Save</button></div></section></div>
+<div class="card-f"><button class="btn btn-outline" type="button" id="cleanup" title="Delete the builds of Build-off apps and unused download cache">Clean up</button><button class="btn" type="button" id="a-save">Save</button></div></section></div>
 <div class="stack">
 <section class="card"><div class="card-h"><h2>GitHub token</h2><p class="sm muted">Raises API rate limits for patch release downloads.</p></div>
 <div class="card-c stack"><div class="row" style="padding:.75rem 1rem;border-width:1px;border-radius:var(--radius);flex-wrap:nowrap"><span class="badge b-mute" id="gh-state"></span><div><div class="sm" id="gh-hint" style="font-weight:500"></div><div class="xs muted mono"><span id="gh-path"></span> · expires <span id="gh-exp"></span> · scopes <span id="gh-scopes"></span></div></div></div>

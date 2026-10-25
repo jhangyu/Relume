@@ -37,7 +37,7 @@ function itemRow(it) {
 <label class="row xs" style="gap:.25rem;flex-wrap:nowrap" title="Build on schedule"><span class="switch"><input type="checkbox" data-sw="enabled" ${it.enabled ? html`checked` : ''} aria-label="Build ${it.label}"><span></span></span>Build</label>
 <label class="row xs" style="gap:.25rem;flex-wrap:nowrap" title="Update on schedule"><span class="switch"><input type="checkbox" data-sw="auto_update" ${it.auto_update ? html`checked` : ''} aria-label="Update ${it.label}"><span></span></span>Update</label>
 <button class="btn btn-outline btn-sm" type="button" data-act="pull" title="${updTitle}" ${current ? html`disabled` : ''}>Update</button>
-<button class="btn btn-outline btn-sm" type="button" data-act="build" ${s === 'run' ? html`disabled` : ''}>${rebuildLabel}</button>
+<button class="btn btn-outline btn-sm" type="button" data-act="build" ${s === 'run' || !it.enabled ? html`disabled` : ''} ${it.enabled ? '' : html`title="Build switch is off"`}>${rebuildLabel}</button>
 <details class="dd"><summary class="btn btn-ghost btn-sm btn-icon" aria-label="Download ${it.label}" title="${it.last_success ? 'Download' : 'No build yet'}" data-act="dl" ${it.last_success ? '' : html`aria-disabled="true"`}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></summary><div class="menu" role="menu" data-dl-menu><span class="xs muted" style="padding:.5rem">Loading…</span></div></details>
 </div></div>`;
 }
@@ -151,7 +151,8 @@ document.addEventListener('click', async e => {
     if (a === 'gpull') await pullAll(g.items);
     if (a === 'gbuild') {
       const picked = $$('[data-item].selected', card).map(r => Number(r.dataset.item));
-      const ids = picked.length ? picked : g.items.filter(x => x.enabled).map(x => x.id);
+      const ids = (picked.length ? picked : g.items.map(x => x.id)).filter(id => itemById(id).enabled);
+      if (!ids.length) { toast('No Build-on items to build', 'error'); return; }
       await act('POST', '/api/builds', { item_ids: ids }, `Queued ${ids.length} builds`);
     }
     if (a === 'gota') await otaGroup(g);

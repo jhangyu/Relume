@@ -243,6 +243,51 @@ def forget_item(item_id):
     shutil.rmtree(db.DATA / "artifacts" / str(item_id), ignore_errors=True)
 
 
+def _files(path):
+    return [f for f in path.rglob("*") if f.is_file()] if path.is_dir() else [path]
+
+
+def _cleanup_plan():
+    """What clean-up removes (spec cleanup): artifacts of Build-off items, apk-cache of packages no Build-on item
+    uses, cache files of other versions than the newest success build of a Build-on item. Active-job items are skipped."""
+    c = db.conn()
+    items = c.execute("SELECT id, package, enabled FROM item").fetchall()
+    status = item_status([r["id"] for r in items])
+    busy = {r["package"] for r in items if status[r["id"]]["active_job"]}
+    off = [r["id"] for r in items if not r["enabled"] and not status[r["id"]]["active_job"]
+           and (db.DATA / "artifacts" / str(r["id"])).exists()]
+    keep = {}  # package -> cache version keys of Build-on items
+    for r in items:
+        if r["enabled"]:
+            ls = status[r["id"]]["last_success"]
+            keep.setdefault(r["package"], set())
+            if ls and ls["app_version"]:
+                keep[r["package"]].add(re.sub(r"[^A-Za-z0-9._-]", "_", ls["app_version"]))
+    paths = []
+    cache = db.DATA / "apk-cache"
+    for d in sorted(cache.iterdir()) if cache.is_dir() else []:
+        if d.name in busy or not d.is_dir():
+            continue
+        if d.name not in keep:
+            paths.append(d)
+        else:  # file name = <vkey>-<type>-<arch>-<dpi>.<ext>; a version that is a hyphen-prefix of another is kept (safe side)
+            paths += [f for f in sorted(d.iterdir()) if not any(f.name.startswith(k + "-") for k in keep[d.name])]
+    return off, paths
+
+
+def cleanup(apply):
+    off, paths = _cleanup_plan()
+    dirs = [db.DATA / "artifacts" / str(i) for i in off]
+    out = {"bytes": sum(f.stat().st_size for p in dirs + paths for f in _files(p)),
+           "artifact_items": len(off), "cache_files": sum(len(_files(p)) for p in paths)}
+    if apply:
+        with db.tx() as t:
+            t.executemany("DELETE FROM artifacts WHERE item_id = ?", [(i,) for i in off])
+        for p in dirs + paths:
+            shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
+    return out
+
+
 def _newest_success_job(item_id):
     r = db.conn().execute("""SELECT a.job_id FROM artifacts a JOIN jobs j ON j.id = a.job_id
         WHERE a.item_id = ? AND j.status = 'success' ORDER BY a.job_id DESC LIMIT 1""", (item_id,)).fetchone()
@@ -294,6 +339,8 @@ def needs_build(item_id):
     ls, lb = st["last_success"], st["last_build"]
     if ls is None or lb["status"] == "failed":
         return True
+    if not db.conn().execute("SELECT 1 FROM artifacts WHERE item_id = ?", (item_id,)).fetchone():
+        return True  # cleaned up: the build is gone
     r = db.conn().execute("""SELECT u.downloaded_tag AS p, c.downloaded_tag AS cl, i.version_mode, a.apkmirror_versions AS vs
         FROM item i JOIN source s ON s.id = i.source_id JOIN app a ON a.package = i.package
         JOIN upstream u ON u.id = s.upstream_id JOIN upstream c ON c.id = s.cli_upstream_id WHERE i.id = ?""", (item_id,)).fetchone()
@@ -310,9 +357,16 @@ def _item_exists(iid):
         raise server.HttpError(404, "item not found")
 
 
+def _require_build_on(ids):
+    off = [i for i in ids if not db.conn().execute("SELECT enabled FROM item WHERE id = ?", (i,)).fetchone()[0]]
+    if off:
+        raise server.HttpError(409, f"build switch is off: item {', '.join(map(str, off))}")
+
+
 def post_item_build(req):
     iid = req.params["id"]
     _item_exists(iid)
+    _require_build_on([iid])
     return 200, {"job_id": jobs.enqueue("build", {"item_id": iid}, "manual")}
 
 
@@ -322,7 +376,16 @@ def post_builds(req):
         raise server.HttpError(400, "invalid item_ids")
     for i in ids:
         _item_exists(i)
+    _require_build_on(ids)
     return 200, {"job_ids": [jobs.enqueue("build", {"item_id": i}, "manual") for i in ids]}
+
+
+def get_cleanup(req):
+    return 200, cleanup(apply=False)
+
+
+def post_cleanup(req):
+    return 200, cleanup(apply=True)
 
 
 def list_item_artifacts(req):
@@ -388,6 +451,8 @@ def download_group(req):
 ROUTES = [
     ("POST", "/api/items/{id}/build", post_item_build),
     ("POST", "/api/builds", post_builds),
+    ("GET", "/api/cleanup", get_cleanup),
+    ("POST", "/api/cleanup", post_cleanup),
     ("GET", "/api/items/{id}/artifacts", list_item_artifacts),
     ("GET", "/api/artifacts/{id}/download", download_artifact),
     ("GET", "/api/groups/{id}/download", download_group),

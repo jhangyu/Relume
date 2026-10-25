@@ -111,6 +111,16 @@ $('#n-test').addEventListener('click', async () => {
   loadNotify().catch(() => {});
 });
 $('#keep').addEventListener('input', renderEstimate);
+$('#cleanup').addEventListener('click', async () => {
+  try {
+    const p = await api('GET', '/api/cleanup');
+    if (!p.bytes) { toast('Nothing to clean up'); return; }
+    if (!confirm(`Delete ${fmt.bytes(p.bytes)}: builds of ${p.artifact_items} Build-off app(s) and ${p.cache_files} cached download file(s)? Build-off apps rebuild when turned on again.`)) return;
+    const r = await api('POST', '/api/cleanup', {});
+    toast(`Freed ${fmt.bytes(r.bytes)}`);
+    await loadSettings(false);
+  } catch (e) { toast(e.message, 'error'); }
+});
 $('#a-save').addEventListener('click', () => saveSettings().catch(() => {}));
 async function saveToken(v) {
   Z.settings = await act('PUT', '/api/settings', { github_token: v }, v ? 'Token saved' : 'Token removed');

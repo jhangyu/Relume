@@ -31,6 +31,10 @@ def add_job(c, item_id, status="running"):
                      (status, json.dumps({"item_id": item_id}, separators=(",", ":")))).lastrowid
 
 
+def add_artifact(c, item_id, job_id):
+    c.execute("INSERT INTO artifacts(job_id, item_id, variant, abi, path, created_at) VALUES (?, ?, 'universal', 'universal', '/x', 'now')", (job_id, item_id))
+
+
 class SchemaTest(helpers.DataTestCase):
     def test_restrict_and_cascade(self):
         with db.tx() as c:
@@ -392,6 +396,8 @@ class StatusTest(BuildCase):
             c.execute("UPDATE jobs SET finished_at = '2026-10-19T01:00:00Z' WHERE id = ?", (jid,))
             c.execute("INSERT INTO build_jobs(job_id, item_id, fail_code, app_version, patches_version, cli_version) VALUES (?, 1, ?, '20.1.0', ?, ?)",
                       (jid, "patch_failed" if status == "failed" else None, patches, cli))
+            if status == "success":
+                add_artifact(c, 1, jid)
         return jid
 
     def test_never_built(self):
@@ -454,6 +460,7 @@ class AppcheckTest(BuildCase):
                 c.execute("UPDATE item SET version_mode = ?, enabled = ?, auto_update = ? WHERE id = ?", (mode, enabled, auto_update, iid))
             jid = add_job(c, 5, "success")
             c.execute("INSERT INTO build_jobs(job_id, item_id, app_version, patches_version, cli_version) VALUES (?, 5, '2.0', 'v1.2.3', 'v1.0.0')", (jid,))
+            add_artifact(c, 5, jid)
         self.n = 100
 
     def check(self, script, rebuild=True, package=YT):

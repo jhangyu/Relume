@@ -121,7 +121,7 @@ function fixFor(j) {
   const code = j.detail && j.detail.fail_code, it = itemOf(j);
   if (code === 'version_unresolved' || code === 'patch_failed') return html`<a class="xs" href="/item.html?id=${j.target.item_id}#version">Pin a version</a>`;
   if (code === 'upstream_missing' && it.upstream) return html`<button class="btn btn-ghost btn-sm" type="button" data-pull="${it.upstream.id}">Update upstream</button>`;
-  return html`<button class="btn btn-ghost btn-sm" type="button" data-retry="${j.target.item_id}">Retry</button>`;
+  return html`<button class="btn btn-ghost btn-sm" type="button" data-retry="${j.target.item_id}" ${it.enabled === false ? html`disabled title="Build switch is off"` : ''}>Retry</button>`;
 }
 
 async function renderHistory(append) {
