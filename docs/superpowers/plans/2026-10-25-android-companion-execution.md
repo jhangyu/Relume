@@ -241,7 +241,7 @@ README.md
 CLAUDE.md
 ```
 Inputs: spec §11.2, §11.3, §12.3, §12.5.
-Work, commit order: (1) `scripts/test.py`; (2) `android.yml`; (3) `.gitignore` adds `src/keystore/companion.keystore`;
+Work, commit order: (1) `scripts/test.py`; (2) `android.yml`; (3) no keystore change (signing uses the committed `src/keystore/lspatch-signing.p12`);
 README sections "Android app" and "Tests"; project `CLAUDE.md`.
 Required checks: `grep -n "TOTAL_BUDGET_S = 90" scripts/test.py`, `grep -n "PER_TEST_BUDGET_S = 1.0" scripts/test.py`.
 Acceptance (mechanical red-then-green on scratch copies, not committed): a scratch test file with `time.sleep` under a

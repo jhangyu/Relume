@@ -37,7 +37,7 @@ On first start, open the Web UI and create the admin account (username + passwor
 
 ## Android app
 
-`android/` holds the companion app (Kotlin, Compose). It talks to the Web UI with a per-device token, installs the built APKs on the phone itself and reports its inventory back. The `Android` workflow builds it, runs its unit tests, signs it with the key in the `RELUME_COMPANION_KEYSTORE_B64` secret and publishes `relume-companion.apk` to the public repo `jhangyu/relume-companion`. Local build: `ANDROID_HOME=<sdk> android/gradlew -p android assembleDebug --no-watch-fs`. The release keystore is `src/keystore/companion.keystore` (gitignored, never committed): losing it makes every phone uninstall the app once.
+`android/` holds the companion app (Kotlin, Compose). It talks to the Web UI with a per-device token, installs the built APKs on the phone itself and reports its inventory back. The `Android` workflow runs only on a tag `companion-vX.Y.Z`: it builds the release APK (no tests in CI), signs it with the committed `src/keystore/lspatch-signing.p12` and publishes `relume-companion.apk` to the public repo `jhangyu/relume-companion`. Its only secret is the publish token `RELUME_COMPANION_RELEASE_TOKEN`. Local build: `ANDROID_HOME=<sdk> android/gradlew -p android assembleDebug --no-watch-fs`.
 
 ## Tests
 

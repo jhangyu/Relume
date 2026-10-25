@@ -6,4 +6,3 @@ local/data/
 .claude/tmp/
 __pycache__/
 local/.env.bak*
-src/keystore/companion.keystore

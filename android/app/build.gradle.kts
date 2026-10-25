@@ -14,13 +14,13 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+val SIGNING_STORE_PASSWORD = "morphe"
+val SIGNING_KEY_ALIAS = "fiorenmas"
+val SIGNING_KEY_PASSWORD = "morphe"
+
 val releaseEnvNames = listOf(
     "RELUME_COMPANION_VERSION_CODE",
     "RELUME_COMPANION_VERSION_NAME",
-    "RELUME_COMPANION_KEYSTORE",
-    "RELUME_COMPANION_KEYSTORE_PASSWORD",
-    "RELUME_COMPANION_KEY_ALIAS",
-    "RELUME_COMPANION_KEY_PASSWORD",
 )
 val releaseEnv = releaseEnvNames.associateWith { providers.environmentVariable(it).orNull }
 
@@ -48,11 +48,12 @@ android {
 
     signingConfigs {
         create("release") {
-            // Unset values are reported by checkReleaseEnv, which runs before every release task.
-            releaseEnv["RELUME_COMPANION_KEYSTORE"]?.let { storeFile = file(it) }
-            storePassword = releaseEnv["RELUME_COMPANION_KEYSTORE_PASSWORD"]
-            keyAlias = releaseEnv["RELUME_COMPANION_KEY_ALIAS"]
-            keyPassword = releaseEnv["RELUME_COMPANION_KEY_PASSWORD"]
+            // The committed patch keystore with its public credentials (src/build/build-item.sh): personal use, no secret key.
+            storeFile = rootProject.file("../src/keystore/lspatch-signing.p12")
+            storeType = "PKCS12"
+            storePassword = SIGNING_STORE_PASSWORD
+            keyAlias = SIGNING_KEY_ALIAS
+            keyPassword = SIGNING_KEY_PASSWORD
         }
     }
 

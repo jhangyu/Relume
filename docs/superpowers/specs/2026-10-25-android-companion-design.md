@@ -40,7 +40,7 @@ Android UI tests and screenshots; a global job-status push stream; per-device no
 | 8 | Background: new build found → app runs download, verify, PackageInstaller session in the background; prompt via notification | §9 |
 | 9 | Full suite ≤ 90 s, reason written in a project `CLAUDE.md` | §12 |
 | 10 | `tests/test_core_jobs.py` sleep rewrite is one round-1 slice | §12.4 |
-| 11 | User creates `src/keystore/companion.keystore` and the GitHub secrets before the first app release | §11.3 |
+| 11 | Release is signed with the committed `src/keystore/lspatch-signing.p12`; the only GitHub secret is `RELUME_COMPANION_RELEASE_TOKEN` | §11.3 |
 
 ## 3. Data model — migration `schema/008_android.sql`
 
@@ -436,26 +436,23 @@ serialization plugin 2.4.21, Compose BOM 2026.09.00 (ui 1.12.1, material3 1.4.0)
 `androidx.work:work-runtime-ktx` 2.12.0, `org.jetbrains.kotlinx:kotlinx-serialization-json` 1.12.0, `junit:junit`
 4.13.2. HTTP = `HttpURLConnection`. Java/Kotlin bytecode target 17 (no toolchain block: builds with any JDK ≥ 17).
 applicationId and namespace `io.github.jhangyu.relume`. Debug: versionCode 1, versionName `dev`. Release:
-versionCode from env `RELUME_COMPANION_VERSION_CODE`, versionName from `RELUME_COMPANION_VERSION_NAME`; signing from env
-`RELUME_COMPANION_KEYSTORE` (file path), `RELUME_COMPANION_KEYSTORE_PASSWORD`, `RELUME_COMPANION_KEY_ALIAS`,
-`RELUME_COMPANION_KEY_PASSWORD`; a missing variable fails the release task naming it. `android/.gitignore`:
+versionCode from env `RELUME_COMPANION_VERSION_CODE`, versionName from `RELUME_COMPANION_VERSION_NAME`; signing with
+`src/keystore/lspatch-signing.p12` (public credentials as named constants in `build.gradle.kts`); a missing version variable
+fails the release task naming it. `android/.gitignore`:
 `.gradle/`, `build/`, `app/build/`, `local.properties`.
 
 ### 11.2 CI `.github/workflows/android.yml`
-- Triggers: `push` to `main` with paths `android/**`, `scripts/test.py`, `.github/workflows/android.yml`; `workflow_dispatch`.
-- One job on `ubuntu-latest`, `permissions: contents: read`: `actions/checkout@v7.0.1` → `actions/setup-java@v6.1.0`
-  (temurin 17) → `gradle/actions/setup-gradle@v6.4.0` → `python3 scripts/test.py --legs android` (ANDROID_HOME from the
-  runner image) → decode `RELUME_COMPANION_KEYSTORE_B64` to `$RUNNER_TEMP/companion.keystore` →
-  `android/gradlew -p android assembleRelease` with versionCode `${{ github.run_number }}`, versionName
-  `1.0.${{ github.run_number }}` → copy `android/app/build/outputs/apk/release/app-release.apk` to
-  `relume-companion.apk` → `gh release create "v1.0.${{ github.run_number }}" relume-companion.apk --repo jhangyu/relume-companion --title
-  "Relume companion 1.0.${{ github.run_number }}" --notes "${{ github.sha }}"` and `GH_TOKEN` =
-  secret `RELUME_COMPANION_RELEASE_TOKEN` (fine-grained token, contents write on that repo only).
-- Monotonic versionCode = run number (the plan's `downgrade` flag compares version codes).
+- Trigger: `push` of a tag `companion-vMAJOR.MINOR.PATCH` only. CI never runs tests (`scripts/ci_guard.py` fails any
+  workflow that does). Version name = `MAJOR.MINOR.PATCH`, version code = `MAJOR*1000000 + MINOR*1000 + PATCH`
+  (monotonic; the plan's `downgrade` flag compares version codes).
+- One job on `ubuntu-latest`, `permissions: contents: read`: checkout → guard → derive version from the tag →
+  setup-java (temurin 17) → setup-gradle → `android/gradlew -p android assembleRelease --no-watch-fs` → copy
+  `app-release.apk` to `relume-companion.apk` → `gh release create "v<version>" ... --repo jhangyu/relume-companion`
+  with `GH_TOKEN` = secret `RELUME_COMPANION_RELEASE_TOKEN` (fine-grained token, contents write on that repo only).
+- Local gate: `.githooks/pre-push` runs `scripts/ci_local.py` (guard + the same Gradle build).
 
 ### 11.3 Signing key
-`src/keystore/companion.keystore`, gitignored (root `.gitignore` line). Not one of the patch keystores (their
-credentials are public). Losing it = every phone uninstalls the companion once (loses only token and settings).
+The committed `src/keystore/lspatch-signing.p12` (alias `fiorenmas`, public credentials from `src/build/build-item.sh`): personal use, no dedicated key and no signing secrets.
 
 ## 12. Tests and test entry
 
@@ -609,7 +606,7 @@ and no inline `min-width` on dialog forms; `100dvh` and `env(safe-area-inset-bot
 | 18 | Per-app spec cites `schema/006_app_schedule.sql`; the tree has `006_item_auto_update.sql` and `007_app_schedule.sql` | Code wins: next migration is 008 |
 | 19 | Layout plan: `.ts.net`, `.local`, `.lan` names allowed over http (app design option a) | Decision 4: only `.ts.net` names, localhost and private/Tailscale IP ranges |
 | 20 | Server design §7: `projects.html` "Check all now" not in the overflow list | Added (§14.3); found by grep of `hide-m` |
-| 21 | Decision 11 counts 4 GitHub secrets | Publishing to a separate public repo needs a fifth secret `RELUME_COMPANION_RELEASE_TOKEN` (user item) |
+| 21 | Decision 11 counts 4 GitHub secrets | The only GitHub secret is `RELUME_COMPANION_RELEASE_TOKEN` (publish to a separate public repo) |
 
 ## 16. Parking lot (not in this work)
 - Existing 1 s polling in `ota._pull_project` (`ota.py:222-232`).
