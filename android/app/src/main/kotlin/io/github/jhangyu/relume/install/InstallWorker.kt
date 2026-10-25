@@ -21,7 +21,7 @@ import java.io.IOException
 /**
  * Drives the run (spec 9.1): sends due receipts, advances steps until one is committed to PackageInstaller, then
  * returns; [InstallResultReceiver] enqueues it again with the result. IO errors return `Result.retry()` and the next
- * attempt resumes the `.part` file (spec 8.7). Never calls setForeground.
+ * attempt resumes the `.part` file (spec 8.7). No foreground service.
  */
 class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 

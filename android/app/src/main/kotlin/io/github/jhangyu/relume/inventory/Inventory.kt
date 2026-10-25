@@ -38,7 +38,7 @@ object Inventory {
     /** True when installing [packageName] through this app prompts once: not installed, or another installer of record (spec 8.3). */
     fun needsConfirmation(context: Context, packageName: String): Boolean {
         if (installed(context, packageName) == null) return true
-        // getInstallerPackageName is deprecated in API 30 but works on 29–37; getInstallSourceInfo would need an API 30 branch (spec 8.2).
+        // getInstallerPackageName is deprecated in API 30 but works on 29–37; its API 30 replacement would need a version branch (spec 8.2).
         @Suppress("DEPRECATION")
         val installer = context.packageManager.getInstallerPackageName(packageName)
         return installer != context.packageName
