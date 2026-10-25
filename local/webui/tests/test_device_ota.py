@@ -2,7 +2,8 @@ from unittest import mock
 
 from webui import build, db, ota, projects
 from webui.tests import helpers
-from webui.tests.device_helpers import (FakeAdb, add_catalog_item, add_device, add_group, add_job, assign, pinfo, req)
+from webui.tests.device_helpers import (FakeAdb, add_app_device, add_catalog_item, add_device, add_group, add_job, assign,
+                                        pinfo, report, req)
 
 YT, YTM, GMS = 'com.google.android.youtube', 'com.google.android.apps.youtube.music', 'app.revanced.android.gms'
 OTHER = 'org.example.reader'
@@ -159,6 +160,22 @@ class PlanTest(helpers.DataTestCase):
                          (1, True, 5, 6))
         self.assertEqual([c[0] for c in fa.calls()], ['devices'])
 
+    def test_get_devices_app_row(self):
+        add_catalog_item(1, YT)
+        d = add_app_device(token_hash='ab' * 32, app_version_code=3)
+        assign(d, 1)
+        report(d, YT, 7, '19.47.53', 'aa')
+        FakeAdb(self).rule('devices', out='List of devices attached\nNone:None\tdevice\n')
+        seams(self, latest=lambda i, abi: art(1, 6))
+        dev = ota.list_devices(req(method='GET'))[1]['devices'][0]
+        self.assertIsNone(dev['online'])
+        self.assertNotIn('token_hash', dev)
+        self.assertEqual((dev['kind'], dev['app_version_code'], dev['last_seen_at']), ('app', 3, None))
+        self.assertRegex(dev['created_at'], r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$')
+        self.assertEqual(dev['assignments'][0]['installed_reported'],
+                         {'version_code': 7, 'version_name': '19.47.53', 'signer_sha256': 'aa',
+                          'reported_at': '2026-10-25T08:00:00Z'})
+
     def test_projects_shape_and_update_available(self):
         add_catalog_item(1, YT)
         add_catalog_item(2, YTM)
@@ -180,13 +197,16 @@ class PlanTest(helpers.DataTestCase):
         self.assertEqual(dev['projects'], [
             {'project_id': 1, 'display_name': 'MicroG RE', 'package': GMS, 'assigned': False, 'required_by': [1, 2],
              'installed_tag': '7.2.1', 'available_tag': '7.2.2', 'available_file': 'microg-7.2.2.apk',
-             'available_abi': 'universal', 'update_available': True, 'pending': False, 'signer_alert': None},
+             'available_abi': 'universal', 'update_available': True, 'pending': False, 'signer_alert': None,
+             'installed_reported': None},
             {'project_id': 2, 'display_name': 'Reader', 'package': OTHER, 'assigned': True, 'required_by': [],
              'installed_tag': 'v1.4.0', 'available_tag': 'v1.4.0', 'available_file': 'reader.apk',
-             'available_abi': 'arm64-v8a', 'update_available': False, 'pending': False, 'signer_alert': None},
+             'available_abi': 'arm64-v8a', 'update_available': False, 'pending': False, 'signer_alert': None,
+             'installed_reported': None},
             {'project_id': 3, 'display_name': 'Three', 'package': 'org.example.three', 'assigned': True,
              'required_by': [], 'installed_tag': None, 'available_tag': '2.0', 'available_file': 'three.apk',
-             'available_abi': 'universal', 'update_available': False, 'pending': False, 'signer_alert': 'ef' * 32}])
+             'available_abi': 'universal', 'update_available': False, 'pending': False, 'signer_alert': 'ef' * 32,
+             'installed_reported': None}])
         # pending follows the full plan: a direct project with a newer release is an install step
         newer = dict(infos)
         newer[2] = pinfo(2, OTHER, tag='v1.5.0', path='/u/9/v1.5.0/reader.apk', upstream_id=9)

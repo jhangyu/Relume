@@ -74,6 +74,20 @@ def add_device(host='192.168.1.20', port=37011, serial='SER1', abi='arm64-v8a,ar
                          ('Pixel', serial, mdns_name, host, port, 'Pixel', abi, 35, '15', after_build)).lastrowid
 
 
+def add_app_device(name='Phone', abi='arm64-v8a', token_hash=None, app_version_code=None):
+    """An app row (schema 008): no ADB address, optional token hash."""
+    with db.tx() as c:
+        return c.execute("INSERT INTO devices(name,kind,token_hash,model,abi_list,sdk,android_release,app_version_code) "
+                         "VALUES (?,'app',?,'Pixel 9',?,35,'15',?)", (name, token_hash, abi, app_version_code)).lastrowid
+
+
+def report(device_id, package, version_code, version_name=None, signer_sha256=None):
+    with db.tx() as c:
+        c.execute('INSERT OR REPLACE INTO device_packages(device_id,package,version_code,version_name,signer_sha256,'
+                  'reported_at) VALUES (?,?,?,?,?,?)', (device_id, package, version_code, version_name, signer_sha256,
+                                                         '2026-10-25T08:00:00Z'))
+
+
 def assign(device_id, *item_ids):
     with db.tx() as c:
         c.executemany('INSERT INTO device_assignments(device_id,item_id) VALUES (?,?)',

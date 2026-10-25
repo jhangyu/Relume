@@ -29,19 +29,25 @@ def assigned_items(device_id, item_ids=None):
 
 
 def last_installs(device_id):
-    """-> (items, projects): newest installed/up_to_date row per item id and per project id."""
+    """-> (items, projects): newest installed/up_to_date row per item id and per project id. No JOIN on jobs:
+    rows written from an app receipt have job_id NULL."""
     items, projects = {}, {}
     rows = db.conn().execute(
-        "SELECT oi.kind, oi.ref_id, oi.build_job_id, oi.upstream_tag, oi.version_name, j.finished_at "
-        "FROM ota_installs oi JOIN jobs j ON j.id = oi.job_id "
-        "WHERE oi.device_id = ? AND oi.result IN ('installed','up_to_date') ORDER BY oi.id", (device_id,))
+        "SELECT kind, ref_id, build_job_id, upstream_tag, version_name, version_code, at FROM ota_installs "
+        "WHERE device_id = ? AND result IN ('installed','up_to_date') ORDER BY id", (device_id,))
     for r in rows:  # oldest first: newer rows overwrite
         if r['kind'] == 'item':
             items[r['ref_id']] = {'build_job_id': r['build_job_id'], 'version_name': r['version_name'],
-                                  'at': r['finished_at']}
+                                  'version_code': r['version_code'], 'at': r['at']}
         else:
-            projects[r['ref_id']] = {'upstream_tag': r['upstream_tag'], 'at': r['finished_at']}
+            projects[r['ref_id']] = {'upstream_tag': r['upstream_tag'], 'at': r['at']}
     return items, projects
+
+
+def reported_packages(device_id):
+    """device_packages of a phone: {package: {version_code, version_name, signer_sha256, reported_at}}."""
+    return {r['package']: {k: r[k] for k in ('version_code', 'version_name', 'signer_sha256', 'reported_at')}
+            for r in db.conn().execute('SELECT * FROM device_packages WHERE device_id = ?', (device_id,))}
 
 
 _STEP_KEYS = ('upstream_id', 'package', 'path', 'file', 'abi', 'tag', 'version_name', 'version_code')
@@ -123,6 +129,7 @@ def _plan_for(dev, item_ids, project_ids, present):
 
 
 def _device_view(dev, states):
+    reported = reported_packages(dev['id'])
     v = _plan_for(dev, None, None, None)
     pending = {(s['kind'], s['ref_id']) for s in v['steps'] if s['action'] == 'install'}
     assignments = []
@@ -133,7 +140,7 @@ def _device_view(dev, states):
             'installed': inst and {'version_name': inst['version_name'], 'build_job_id': inst['build_job_id'],
                                    'at': inst['at']},
             'available': a and {'version_name': a['version_name'], 'build_job_id': a['job_id']},
-            'pending': ('item', i['item_id']) in pending})
+            'pending': ('item', i['item_id']) in pending, 'installed_reported': reported.get(i['package'])})
     pmap = {}
 
     def entry(p):
@@ -145,7 +152,8 @@ def _device_view(dev, states):
                 'required_by': [], 'installed_tag': have, 'available_tag': avail, 'available_file': p['file'],
                 'available_abi': p['abi'],
                 'update_available': bool(have and avail and catalog.version_key(avail) > catalog.version_key(have)),
-                'pending': ('project', pid) in pending, 'signer_alert': p['signer_alert']}
+                'pending': ('project', pid) in pending, 'signer_alert': p['signer_alert'],
+                'installed_reported': reported.get(p['package'])}
         return pmap[pid]
     for p in v['projects']:
         entry(p)['assigned'] = True

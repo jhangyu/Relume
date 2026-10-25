@@ -19,6 +19,10 @@ ERROR_CODES = {
     'INSTALL_FAILED_USER_RESTRICTED': 'USER_REJECTED',
     'INSTALL_FAILED_ABORTED': 'USER_REJECTED',
 }
+# install receipt codes the Relume app may send (spec 5.1): adb codes plus the app's own pipeline failures
+APP_ERROR_CODES = frozenset(ERROR_CODES.values()) | {'HASH_MISMATCH', 'SIGNER_MISMATCH_FILE', 'INSTALLER_ERROR',
+                                                    'USER_REJECTED', 'DEPENDENCY_FAILED'}
+APP_ONLY = 'device installs through the Relume app'
 _PROP = re.compile(r'^\[([^\]]+)\]: \[(.*)\]$')
 
 
@@ -239,9 +243,15 @@ def _dev_or_404(device_id):
     return dev
 
 
+def is_app(dev):
+    return dev['kind'] == 'app'
+
+
 def device_json(dev, states):
+    """online is None for app rows: they are never reached over adb."""
     out = {k: v for k, v in dev.items() if k != 'token_hash'}   # the token hash never leaves the server
-    return dict(out, ota_after_build=bool(dev['ota_after_build']), online=states.get(address(dev)) == 'device')
+    return dict(out, ota_after_build=bool(dev['ota_after_build']),
+                online=None if is_app(dev) else states.get(address(dev)) == 'device')
 
 
 def _last(text):
@@ -375,6 +385,8 @@ def patch_device(req):
             raise HttpError(400, 'name must be 1-64 characters')
         sets['name'] = name
     if 'ota_after_build' in b:
+        if is_app(dev):
+            raise HttpError(400, 'ota_after_build is for ADB devices: this device installs through the Relume app')
         if not isinstance(b['ota_after_build'], bool):
             raise HttpError(400, 'ota_after_build must be true or false')
         sets['ota_after_build'] = int(b['ota_after_build'])
@@ -385,10 +397,11 @@ def patch_device(req):
 
 def delete_device(req):
     dev = _dev_or_404(req.params['id'])
-    try:
-        adb(['disconnect', address(dev)], timeout=10)
-    except AdbTimeout:
-        pass
+    if not is_app(dev):
+        try:
+            adb(['disconnect', address(dev)], timeout=10)
+        except AdbTimeout:
+            pass
     with db.tx() as c:
         c.execute('DELETE FROM devices WHERE id=?', (dev['id'],))
     return 200, {'deleted': dev['id']}
@@ -418,11 +431,12 @@ def put_assignments(req):
 
 def resolve_devices(target):
     c = db.conn()
+    """ADB fan-out targets: app rows never take part."""
     if target.get('all') is True:
-        return [r['id'] for r in c.execute('SELECT id FROM devices ORDER BY id')]
+        return [r['id'] for r in c.execute("SELECT id FROM devices WHERE kind='adb' ORDER BY id")]
     ids = target.get('device_ids')
     if isinstance(ids, list):
-        have = {r['id'] for r in c.execute('SELECT id FROM devices')}
+        have = {r['id'] for r in c.execute("SELECT id FROM devices WHERE kind='adb'")}
         return [i for i in ids if i in have]
     return []
 
