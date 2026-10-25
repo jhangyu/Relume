@@ -150,7 +150,10 @@ document.addEventListener('click', e => {
   const target = $(p.dataset.proxy);
   if (p.dataset.value === undefined) target.click();
   else { target.value = p.dataset.value; target.dispatchEvent(new Event('change', { bubbles: true })); }
-  p.closest('details.dd').open = false;
+});
+document.addEventListener('click', e => {
+  const m = e.target.closest('.dd [role=menuitem]');
+  if (m) m.closest('details.dd').open = false;
 });
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
