@@ -151,6 +151,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_PATCH(self): self._dispatch('PATCH')
     def do_DELETE(self): self._dispatch('DELETE')
 
+    def finish(self):
+        try:
+            super().finish()
+        finally:
+            db.close()  # the request thread ends with its connection: close this thread's sqlite handle
+
     def _dispatch(self, method):
         url = urllib.parse.urlsplit(self.path)
         try:
