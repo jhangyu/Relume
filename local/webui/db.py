@@ -36,18 +36,9 @@ def init(data_dir=None):
     _gen += 1
 
 
-class _Slot:
-    """A thread's connection. Dropping the slot (thread end, replacement) closes it, so no thread leaves one open."""
-    def __init__(self, c, gen):
-        self.c, self.gen = c, gen
-
-    def __del__(self):
-        self.c.close()
-
-
 def conn():
-    slot = getattr(_local, 'slot', None)
-    if slot is None or slot.gen != _gen:
+    c = getattr(_local, 'c', None)
+    if c is None or _local.gen != _gen:
         close()
         c = sqlite3.connect(DATA / 'webui.db', timeout=5, isolation_level=None,
                             check_same_thread=False)
@@ -55,15 +46,16 @@ def conn():
         c.execute('PRAGMA journal_mode=WAL')
         c.execute('PRAGMA foreign_keys=ON')
         c.execute('PRAGMA busy_timeout=5000')
-        slot = _local.slot = _Slot(c, _gen)
-    return slot.c
+        _local.c, _local.gen = c, _gen
+    return c
 
 
 def close():
-    """Close and forget this thread's connection (also happens by itself when the thread ends)."""
-    slot = getattr(_local, 'slot', None)
-    if slot is not None:
-        del _local.slot
+    """Close and forget this thread's connection. A thread that ends calls it itself."""
+    c = getattr(_local, 'c', None)
+    if c is not None:
+        c.close()
+        _local.c = None
 
 
 @contextmanager

@@ -286,13 +286,16 @@ def _claim(kind):
 
 
 def _worker(kind):
-    while not _stop.is_set():
-        seen = _wake.mark()
-        job = _claim(kind) if kind in _handlers else None
-        if job is None:
-            _wake.wait_change(seen)  # stop() sets _stop, then notifies
-            continue
-        _execute(job)
+    try:
+        while not _stop.is_set():
+            seen = _wake.mark()
+            job = _claim(kind) if kind in _handlers else None
+            if job is None:
+                _wake.wait_change(seen)  # stop() sets _stop, then notifies
+                continue
+            _execute(job)
+    finally:
+        db.close()
 
 
 def start():

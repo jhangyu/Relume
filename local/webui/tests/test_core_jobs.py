@@ -247,7 +247,12 @@ class LogStreamTest(DataTestCase):
             return wait_change(seen, timeout)
 
         with mock.patch.object(cond, 'wait_change', cancel_then_wait):
-            t = threading.Thread(target=lambda: out.extend(jobs.log_stream(jid)), daemon=True)
+            def stream():
+                try:
+                    out.extend(jobs.log_stream(jid))
+                finally:
+                    db.close()
+            t = threading.Thread(target=stream, daemon=True)
             t.start()
             t.join(WAKE_LIMIT_S)
         self.assertEqual(out, [b'event: end\ndata: cancelled\n\n'])
