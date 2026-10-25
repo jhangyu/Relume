@@ -172,9 +172,13 @@ class DeviceTokenTest(DataTestCase):
         self.assertEqual((row['kind'], row['token_hash'], row['abi_list'], row['host']),
                          ('app', hashlib.sha256(tok.encode()).hexdigest(), 'arm64-v8a', None))
         self.assertEqual(self.bearer('GET', '/api/jobs', tok)[0], 200)
-        for header in ('Bearer nope', 'Basic ' + tok, 'Bearer '):   # no fall-through to the valid cookie
+        for header in ('Bearer nope', 'bearer nope', 'Bearer '):   # no fall-through to the valid cookie
             st, _, body = http('GET', self.base + '/api/jobs', cookie=self.cookie, headers={'Authorization': header})
             self.assertEqual((st, json.loads(body)), (401, {'error': 'invalid device token'}), header)
+        basic = {'Authorization': 'Basic dXNlcjpwYXNz'}   # reverse-proxy auth: ignored, the cookie path applies
+        self.assertEqual(http('GET', self.base + '/api/jobs', cookie=self.cookie, headers=basic)[0], 200)
+        st, _, body = http('GET', self.base + '/api/jobs', headers=basic)
+        self.assertEqual((st, json.loads(body)), (401, {'error': 'login required'}))
         st, _, body = http('POST', self.base + '/api/me/logout', {}, cookie=self.cookie)
         self.assertEqual((st, json.loads(body)), (403, {'error': 'device token required'}))
         for bad in ({**DEVICE, 'sdk': '35'}, {**DEVICE, 'abi_list': ['mips']}, {**DEVICE, 'name': ''}, None):

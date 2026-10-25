@@ -110,14 +110,14 @@ def token_hash(token):
 
 
 def authenticate(headers):
-    """(session, device_id), at most one non-None. An Authorization header means the token path only:
-    a bad token is a 401, never a fall-through to the cookie, and never counts toward the login lockout."""
-    value = headers.get('Authorization')
-    if value is None:
+    """(session, device_id), at most one non-None. Only the Bearer scheme selects the token path: a bad token is
+    a 401, never a fall-through to the cookie, and never counts toward the login lockout. Any other Authorization
+    scheme (e.g. Basic from a reverse proxy) is ignored and the cookie path applies."""
+    scheme, _, token = (headers.get('Authorization') or '').strip().partition(' ')
+    if scheme.lower() != 'bearer':
         return session_token(headers.get('Cookie')), None
-    scheme, _, token = value.strip().partition(' ')
     row = None
-    if scheme.lower() == 'bearer' and token.strip():
+    if token.strip():
         row = db.conn().execute('SELECT id FROM devices WHERE token_hash=?', (token_hash(token.strip()),)).fetchone()
     if row is None:
         raise HttpError(401, 'invalid device token')
