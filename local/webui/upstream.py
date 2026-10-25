@@ -464,7 +464,39 @@ def post_pull(req):
     return 200, {"job_id": jobs.enqueue("upstream", {"upstream_id": uid}, "manual", options=opts)}
 
 
+def item_update_jobs(item_ids, project_ids, trigger, schedule_id, options):
+    """Update work for items and projects: every upstream they depend on plus one appcheck per latest-mode package."""
+    c = db.conn()
+    ups = set()
+    packages = set()
+    for iid in item_ids:
+        item = c.execute("SELECT package, version_mode FROM item WHERE id = ?", (iid,)).fetchone()
+        if item["version_mode"] == "latest":
+            packages.add(item["package"])
+        ups.update(c.execute("SELECT s.upstream_id, s.cli_upstream_id FROM item i JOIN source s ON s.id = i.source_id "
+                             "WHERE i.id = ?", (iid,)).fetchone())
+        ups.update(r[0] for r in c.execute("SELECT p.upstream_id FROM item_dependency d JOIN project p "
+                                           "ON p.id = d.project_id WHERE d.item_id = ?", (iid,)))
+    for pid in project_ids:
+        ups.update(r[0] for r in c.execute("SELECT upstream_id FROM project WHERE id = ?", (pid,)))
+    ids = [jobs.enqueue("upstream", {"upstream_id": u}, trigger, schedule_id, options) for u in sorted(ups)]
+    ids += [jobs.enqueue("appcheck", {"package": p}, trigger, schedule_id, options) for p in sorted(packages)]
+    return ids
+
+
+def post_item_update(req):
+    iid = req.params["id"]
+    if not db.conn().execute("SELECT 1 FROM item WHERE id = ?", (iid,)).fetchone():
+        raise server.HttpError(404, "item not found")
+    body = req.json if isinstance(req.json, dict) else {}
+    rebuild = body.get("rebuild", False)
+    if not isinstance(rebuild, bool):
+        raise server.HttpError(400, "rebuild must be a boolean")
+    return 200, {"job_ids": item_update_jobs([iid], [], "manual", None, {"rebuild": rebuild, "notify": True})}
+
+
 ROUTES = [
+    ("POST", "/api/items/{id}/update", post_item_update),
     ("GET", "/api/upstreams", list_upstreams),
     ("POST", "/api/upstreams/check", post_check),
     ("POST", "/api/upstreams/{id}/pull", post_pull),

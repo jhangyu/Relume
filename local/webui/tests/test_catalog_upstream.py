@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
 
-from webui import db, jobs, settings, upstream
+from webui import db, jobs, scheduler, settings, upstream
 from webui.tests.catalog_rows import CatalogCase, FakeLog
 
 FIX = Path(__file__).parent / "fixtures" / "catalog"
@@ -284,6 +284,22 @@ class RedirectAuthTest(unittest.TestCase):
         req = urllib.request.Request("https://api.github.com/a", headers={"Authorization": "Bearer S"})
         new = upstream._SameOriginRedirect().redirect_request(req, None, 302, "Found", {}, "http://api.github.com/b")
         self.assertFalse(new.has_header("Authorization"))
+
+
+class ItemUpdateTest(CatalogCase):
+    def test_item_update_jobs_matches_scheduler_update(self):
+        with db.tx() as c:
+            c.execute("INSERT INTO upstream(id, kind, repo, channel) VALUES (4,'project','a/dep','stable')")
+            c.execute("INSERT INTO project(id, upstream_id) VALUES (1,4)")
+            c.execute("INSERT INTO item_dependency(item_id, project_id) VALUES (1,1)")
+            c.execute("UPDATE item SET version_mode='latest', auto_update=1 WHERE id=1")
+        opts = {"rebuild": False, "notify": True}
+        sched = scheduler._app_jobs(None, {"item_ids": [1], "project_ids": []}, {"update": True, "build": False, **opts})
+        self.assertEqual(len(sched), 4)
+        self.assertEqual(upstream.item_update_jobs([1], [], "manual", None, opts), sched)
+        self.assertEqual(self.call(upstream.post_item_update, json={}, id=1), (200, {"job_ids": sched}))
+        self.assertEqual(self.status_of(upstream.post_item_update, json={"rebuild": "yes"}, id=1), 400)
+        self.assertEqual(self.status_of(upstream.post_item_update, id=99), 404)
 
 
 if __name__ == "__main__":
