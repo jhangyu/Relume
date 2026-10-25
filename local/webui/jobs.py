@@ -287,8 +287,10 @@ def _claim(kind):
 
 def _worker(kind):
     try:
-        while not _stop.is_set():
-            seen = _wake.mark()
+        while True:
+            seen = _wake.mark()  # before the stop check: a stop() after it changes seq, one before it is seen
+            if _stop.is_set():
+                return
             job = _claim(kind) if kind in _handlers else None
             if job is None:
                 _wake.wait_change(seen)  # stop() sets _stop, then notifies
