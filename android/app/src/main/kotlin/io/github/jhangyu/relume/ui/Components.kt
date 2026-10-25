@@ -83,9 +83,9 @@ fun Txt(
 
 /** Fluent line icons: the 24x24 stroke paths of the mockup. */
 object Icons {
-    const val Wifi = "M2 9a15 15 0 0120 0M5 12.5a10 10 0 0114 0M8.5 16a5 5 0 017 0M12 19.5v.1"
-    const val Search = "M11 18a7 7 0 100-14 7 7 0 000 14zM20 20l-4-4"
-    const val Refresh = "M20 11a8 8 0 10-2.3 6.2M20 4v7h-7"
+    const val Wifi = "M2 9a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M12 19.5v.1"
+    const val Search = "M11 18a7 7 0 1 0 0-14a7 7 0 0 0 0 14zM20 20l-4-4"
+    const val Refresh = "M20 11a8 8 0 1 0-2.3 6.2M20 4v7h-7"
     const val Back = "M15 6l-6 6 6 6"
     const val Close = "M6 6l12 12M18 6L6 18"
     const val Apps = "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"
@@ -95,11 +95,11 @@ object Icons {
     const val Warning = "M12 4l9.5 16.5h-19zM12 10v4M12 17.2v.1"
     const val Box = "M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10"
     const val Server = "M4 5h16v5H4zM4 14h16v5H4zM8 7.5v.1M8 16.5v.1"
-    const val User = "M12 12a4 4 0 100-8 4 4 0 000 8zM5 20a7 7 0 0114 0"
-    const val Lock = "M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 017 0v3"
-    const val Eye = "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 15a3 3 0 100-6 3 3 0 000 6z"
+    const val User = "M12 12a4 4 0 1 0 0-8a4 4 0 0 0 0 8zM5 20a7 7 0 0 1 14 0"
+    const val Lock = "M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3"
+    const val Eye = "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6a3 3 0 0 0 0 6z"
     const val Check = "M5 12.5l4.5 4.5L19 7.5"
-    const val Phone = "M8 2h8a1 1 0 011 1v18a1 1 0 01-1 1H8a1 1 0 01-1-1V3a1 1 0 011-1zM11 18h2"
+    const val Phone = "M8 2h8a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zM11 18h2"
 }
 
 @Composable

@@ -11,14 +11,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+
+private const val CONNECTED_BANNER_MS = 5_000L
 
 private enum class AppFilter(val title: String, val matches: (AppFacts) -> Boolean) {
     All("All", { true }),
@@ -51,7 +56,12 @@ fun AppsScreen(
         })
         if (searching) Field("", query, { query = it }, Modifier.padding(horizontal = ScreenPadding), icon = Icons.Search)
         val host = model.relume.prefs.serverUrl?.host
-        if (host != null && model.error == null) {
+        var showConnected by remember(host) { mutableStateOf(true) }
+        LaunchedEffect(host) {
+            delay(CONNECTED_BANNER_MS)
+            showConnected = false
+        }
+        if (host != null && showConnected && model.error == null) {
             MessageBar("Connected to $host", Tone.Ok, Modifier.padding(horizontal = ScreenPadding))
         }
         model.error?.let { MessageBar("Request failed", Tone.Danger, Modifier.padding(horizontal = ScreenPadding), detail = it, action = "Dismiss", onAction = model::dismissError) }
