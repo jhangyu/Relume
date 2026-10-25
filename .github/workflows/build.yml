@@ -20,6 +20,7 @@ jobs:
       sources: ${{ steps.plan.outputs.sources }}
     steps:
       - uses: actions/checkout@v7.0.1
+      - run: python3 scripts/ci_guard.py
       - id: plan
         env: {GITHUB_TOKEN: "${{ github.token }}"}
         run: |
