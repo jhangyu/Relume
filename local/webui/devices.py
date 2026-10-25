@@ -240,7 +240,8 @@ def _dev_or_404(device_id):
 
 
 def device_json(dev, states):
-    return dict(dev, ota_after_build=bool(dev['ota_after_build']), online=states.get(address(dev)) == 'device')
+    out = {k: v for k, v in dev.items() if k != 'token_hash'}   # the token hash never leaves the server
+    return dict(out, ota_after_build=bool(dev['ota_after_build']), online=states.get(address(dev)) == 'device')
 
 
 def _last(text):

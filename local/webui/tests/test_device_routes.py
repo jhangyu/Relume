@@ -220,6 +220,15 @@ class DeviceRoutesTest(helpers.DataTestCase):
         self.assertEqual(devices.resolve_devices({'device_ids': [b, 999]}), [b])
         self.assertEqual(devices.resolve_devices({'item_ids': [1]}), [])
 
+    def test_device_list_hides_token_hash(self):
+        add_device()
+        db.conn().execute("INSERT INTO devices(name, kind, token_hash) VALUES ('Phone', 'app', 'secret-hash')")
+        self.fa.rule('devices', out='List of devices attached\n')
+        from webui import ota
+        rows = ota.list_devices(req())[1]['devices']
+        self.assertEqual(len(rows), 2)
+        self.assertFalse(any('token_hash' in r for r in rows))
+
     def test_discovered_route(self):
         add_device(mdns_name='adb-ABC123-x1y2')
         found = dict(DISC, **{'adb-ABC123-p': {'service': 'pairing', 'host': '192.168.1.20', 'port': 41000}})
