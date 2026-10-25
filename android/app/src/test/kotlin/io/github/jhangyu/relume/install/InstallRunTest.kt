@@ -60,8 +60,19 @@ class InstallRunTest {
         assertEquals(listOf(StepState.CANCELLED, StepState.DEPENDENCY_FAILED, StepState.CANCELLED), states(all))
         assertFalse(all.isActive)
         assertNull(all.nextRunnable())
-        // a worker that still holds the old state cannot move a cancelled step on
+        // a worker that still holds the old state cannot move a cancelled step on, nor overwrite it with a result
         assertNull(InstallRun.move(all, 2, setOf(StepState.PENDING, StepState.DOWNLOADING), StepState.DOWNLOADING))
+        assertEquals(all, InstallRun.finish(all, 0, StepOutcome(StepState.FAILED, ErrorCodes.INSTALLER_ERROR, "late")))
+
+        // an uninstall result only applies to the same run, step and package in needs_uninstall
+        val needs = InstallRun.finish(run, 0, StepOutcome(StepState.NEEDS_UNINSTALL, ErrorCodes.SIGNATURE_MISMATCH, "x"))
+        val pkg = needs.steps[0].step.packageName
+        assertNull(InstallRun.staleUninstall(needs, "rev", 0, pkg))
+        assertTrue(InstallRun.staleUninstall(null, "rev", 0, pkg)!!.contains("no install run"))
+        assertTrue(InstallRun.staleUninstall(needs.copy(revision = "new"), "rev", 0, pkg)!!.contains("revision is new, expected rev"))
+        assertTrue(InstallRun.staleUninstall(needs, "rev", 7, pkg)!!.contains("expected step 7"))
+        assertTrue(InstallRun.staleUninstall(needs, "rev", 0, "other")!!.contains("expected other"))
+        assertTrue(InstallRun.staleUninstall(run, "rev", 0, pkg)!!.contains("is PENDING, expected NEEDS_UNINSTALL"))
     }
 
     @Test

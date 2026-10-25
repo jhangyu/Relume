@@ -91,13 +91,10 @@ class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                 return false
             }
             Installer.commit(ctx, id)
-        } catch (e: IOException) {
-            sessionId?.let { Installer.abandon(ctx, it) }
+        } catch (e: Exception) {
+            // Any session failure (IO, security, illegal state) ends the step; it must not stay "committed".
             finish(ctx, index, StepOutcome(StepState.FAILED, ErrorCodes.INSTALLER_ERROR, "PackageInstaller session: $e"))
-            return false
-        } catch (e: SecurityException) {
             sessionId?.let { Installer.abandon(ctx, it) }
-            finish(ctx, index, StepOutcome(StepState.FAILED, ErrorCodes.INSTALLER_ERROR, "PackageInstaller session: $e"))
             return false
         } finally {
             check(!apk.file.exists() || apk.file.delete()) { "${apk.file}: cannot delete after the session write" }

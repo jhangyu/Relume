@@ -52,7 +52,7 @@ object InstallRunner {
     /** `needs_uninstall` step: system uninstall confirmation, then the step is re-run. */
     fun uninstallAndRetry(context: Context, stepIndex: Int) {
         val s = stepAt(stepIndex, StepState.NEEDS_UNINSTALL)
-        Installer.uninstall(context, s.step.packageName, stepIndex)
+        Installer.uninstall(context, checkNotNull(InstallRunStore.state.value).revision, s.step.packageName, stepIndex)
     }
 
     /** Cancels the run: open sessions are abandoned, unfinished steps end `cancelled`, receipts are still sent. */
@@ -119,8 +119,14 @@ object InstallRunner {
         InstallWorker.enqueue(context, run.origin, replace = false)
     }
 
-    internal fun onUninstallResult(context: Context, stepIndex: Int, status: Int, message: String?, confirm: Intent?) {
+    internal fun onUninstallResult(
+        context: Context, revision: String, stepIndex: Int, packageName: String, status: Int, message: String?, confirm: Intent?,
+    ) {
         InstallRunStore.load(context)
+        InstallRun.staleUninstall(InstallRunStore.state.value, revision, stepIndex, packageName)?.let {
+            Log.w(TAG, "uninstall result ${InstallResult.statusName(status)} for $packageName (step $stepIndex, revision $revision) ignored: $it")
+            return
+        }
         val s = stepAt(stepIndex, StepState.NEEDS_UNINSTALL)
         when (status) {
             PackageInstaller.STATUS_PENDING_USER_ACTION ->

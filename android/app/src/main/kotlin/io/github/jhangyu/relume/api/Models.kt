@@ -73,7 +73,17 @@ data class Download(
     @SerialName("artifact_id") val artifactId: Int? = null,
     /** Present for project and companion steps; [PlanStep] init checks it. */
     val tag: String? = null,
-)
+) {
+    init {
+        // sha256 names the download file (`<sha256>.part`): only 64 lowercase hex may reach a path.
+        require(SHA256_HEX.matches(sha256)) { "download.sha256 must be 64 lowercase hex, got '$sha256'" }
+        require(SHA256_HEX.matches(signerSha256)) { "download.signer_sha256 must be 64 lowercase hex, got '$signerSha256'" }
+    }
+
+    private companion object {
+        val SHA256_HEX = Regex("[0-9a-f]{64}")
+    }
+}
 
 @Serializable
 data class SignerChange(val pinned: String?, val offered: String)

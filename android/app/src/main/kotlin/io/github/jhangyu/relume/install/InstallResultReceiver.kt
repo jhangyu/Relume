@@ -23,7 +23,9 @@ class InstallResultReceiver : BroadcastReceiver() {
             ACTION_UNINSTALL -> {
                 val step = intent.getIntExtra(EXTRA_STEP, MISSING)
                 check(step != MISSING) { "uninstall result: extra $EXTRA_STEP missing" }
-                InstallRunner.onUninstallResult(context, step, status, message, confirm)
+                val revision = checkNotNull(intent.getStringExtra(EXTRA_REVISION)) { "uninstall result: extra $EXTRA_REVISION missing" }
+                val pkg = checkNotNull(intent.getStringExtra(EXTRA_PACKAGE)) { "uninstall result: extra $EXTRA_PACKAGE missing" }
+                InstallRunner.onUninstallResult(context, revision, step, pkg, status, message, confirm)
             }
             else -> error("install result receiver: unexpected action ${intent.action}, expected $ACTION_INSTALL or $ACTION_UNINSTALL")
         }
@@ -33,6 +35,8 @@ class InstallResultReceiver : BroadcastReceiver() {
         const val ACTION_INSTALL = "io.github.jhangyu.relume.action.INSTALL_RESULT"
         const val ACTION_UNINSTALL = "io.github.jhangyu.relume.action.UNINSTALL_RESULT"
         const val EXTRA_STEP = "io.github.jhangyu.relume.extra.STEP"
+        const val EXTRA_REVISION = "io.github.jhangyu.relume.extra.REVISION"
+        const val EXTRA_PACKAGE = "io.github.jhangyu.relume.extra.PACKAGE"
         private const val MISSING = Int.MIN_VALUE
     }
 }

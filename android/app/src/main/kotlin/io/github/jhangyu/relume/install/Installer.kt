@@ -59,10 +59,12 @@ object Installer {
     }
 
     /** System uninstall confirmation for step [stepIndex]; the result arrives as [InstallResultReceiver.ACTION_UNINSTALL]. */
-    fun uninstall(context: Context, packageName: String, stepIndex: Int) {
+    fun uninstall(context: Context, revision: String, packageName: String, stepIndex: Int) {
         val intent = Intent(context, InstallResultReceiver::class.java)
             .setAction(InstallResultReceiver.ACTION_UNINSTALL)
             .putExtra(InstallResultReceiver.EXTRA_STEP, stepIndex)
+            .putExtra(InstallResultReceiver.EXTRA_REVISION, revision)
+            .putExtra(InstallResultReceiver.EXTRA_PACKAGE, packageName)
         val pending = checkNotNull(
             PendingIntentCompat.getBroadcast(context, stepIndex, intent, PendingIntent.FLAG_UPDATE_CURRENT, true),
         ) { "uninstall of $packageName: no PendingIntent for the result" }

@@ -116,6 +116,8 @@ object InstallRun {
     /** Ends step [index] with [outcome] and marks the dependents of a failed project step `dependency_failed`. */
     fun finish(run: RunState, index: Int, outcome: StepOutcome): RunState {
         val s = run.steps[index]
+        // An ended step (e.g. cancelled) keeps its state: a late worker or session result cannot overwrite it.
+        if (!s.state.runnable && !s.state.active) return run
         val done = s.copy(
             state = outcome.state,
             errorCode = outcome.errorCode,
@@ -145,6 +147,19 @@ object InstallRun {
             if (i == index || blocked) s.copy(state = StepState.PENDING, errorCode = null, errorText = null, sessionId = null, receiptDue = false) else s
         }
         return run.copy(steps = reopened, synced = false, syncError = null).propagate()
+    }
+
+    /**
+     * Why an uninstall result for ([revision], [index], [packageName]) does not belong to [run] (null = it does):
+     * the run can change while the system uninstall dialog is open.
+     */
+    fun staleUninstall(run: RunState?, revision: String, index: Int, packageName: String): String? {
+        if (run == null) return "no install run, expected revision $revision"
+        if (run.revision != revision) return "run revision is ${run.revision}, expected $revision"
+        val s = run.steps.getOrNull(index) ?: return "run has ${run.steps.size} steps, expected step $index"
+        if (s.step.packageName != packageName) return "step $index is ${s.step.packageName}, expected $packageName"
+        if (s.state != StepState.NEEDS_UNINSTALL) return "step $index ($packageName) is ${s.state}, expected NEEDS_UNINSTALL"
+        return null
     }
 
     /** Receipt for a step whose [StepRun.receiptDue] is set. */
