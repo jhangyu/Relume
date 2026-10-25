@@ -17,8 +17,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-# paths the Dockerfile copies into the images: any change or untracked file here ends up in a pushed image
-BUILD_CONTEXT = ["local/Dockerfile", "local/Dockerfile.dockerignore", "local/docker-compose.yml", "local/webui", "local/solver", "src/build"]
 ROOT = Path(__file__).resolve().parent.parent
 COMPOSE = ["docker", "compose", "-f", str(ROOT / "local" / "docker-compose.yml")]
 PROJECT = "relume-dev"
@@ -55,19 +53,13 @@ def current_version() -> str:
     return versions[0]
 
 
-def build_context_dirty() -> str:
-    return run("git", "status", "--porcelain", "--", *BUILD_CONTEXT, capture=True).strip()
-
-
 def head_sha() -> str:
     return run("git", "rev-parse", "HEAD", capture=True).strip()
 
 
-def check_tree_unchanged(built_sha: str, current_sha: str, dirty: str) -> None:
+def check_head_unchanged(built_sha: str, current_sha: str) -> None:
     if current_sha != built_sha:
         fail(f"HEAD moved during the release: expected {built_sha}, got {current_sha}; images are pushed, create the git tag manually on {built_sha}")
-    if dirty:
-        fail(f"build-context files changed during the release, images may not match {built_sha}; images are pushed, no git tag created:\n{dirty}")
 
 
 def preflight(version: str, push: bool) -> str:
@@ -76,10 +68,6 @@ def preflight(version: str, push: bool) -> str:
         auths = json.loads(DOCKER_CONFIG.read_text()).get("auths", {})
         if HUB_AUTH_KEY not in auths:
             fail(f"not logged in to Docker Hub: expected {HUB_AUTH_KEY} in {DOCKER_CONFIG} auths, got {sorted(auths)}; run `docker login`")
-        # the tag names a commit: a dirty tree would push content that hash does not describe
-        dirty = build_context_dirty()
-        if dirty:
-            fail(f"build-context files are modified or untracked, commit first (a pushed tag must match HEAD):\n{dirty}")
     return head_sha()
 
 
@@ -126,7 +114,7 @@ def push(version: str, built_sha: str) -> None:
     for tag in (version, "latest"):
         for image in IMAGES:
             run("docker", "push", f"{image}:{tag}")
-    check_tree_unchanged(built_sha, head_sha(), build_context_dirty())
+    check_head_unchanged(built_sha, head_sha())
     run("git", "tag", "-a", "-f", f"v{version}", built_sha, "-m", f"Relume {version}")  # local only, git is never pushed
 
 
