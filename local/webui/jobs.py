@@ -24,8 +24,31 @@ _handlers = {}
 _running = {}
 _conds = {}
 _lock = threading.Lock()
-_wake = threading.Condition()
-_wakeups = 0  # guarded by _wake: bumped by every _notify, so a worker sees a notify sent while it was claiming
+
+
+class _Signal(threading.Condition):
+    """Condition that counts its notifies. A waiter takes mark() before it looks at the state and then waits for
+    the count to change, so a notify sent between the look and the wait is never lost."""
+
+    def __init__(self):
+        super().__init__()
+        self.seq = 0
+
+    def notify_all(self):  # the caller holds the lock, as for Condition.notify_all
+        self.seq += 1
+        super().notify_all()
+
+    def mark(self):
+        with self:
+            return self.seq
+
+    def wait_change(self, seen, timeout=None):
+        """-> False when timeout passed with no notify since mark() returned seen."""
+        with self:
+            return self.wait_for(lambda: self.seq != seen, timeout)
+
+
+_wake = _Signal()  # enqueue, register, stop: a worker sees a notify sent while it was claiming
 _threads = []
 _stop = threading.Event()
 
@@ -58,7 +81,7 @@ class Job:
 
 def log_condition(job_id):
     with _lock:
-        return _conds.setdefault(job_id, threading.Condition())  # ponytail: never pruned, one small object per job
+        return _conds.setdefault(job_id, _Signal())  # ponytail: never pruned, one small object per job
 
 
 def _kill_group(p):
@@ -147,16 +170,15 @@ class Log:
                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                              start_new_session=True, text=True, errors='replace')
         done, timed_out = threading.Event(), threading.Event()
-        deadline = time.monotonic() + timeout if timeout else None
 
-        def watch():
-            while not done.wait(0.2):
-                cancel = self.job.cancel_event.is_set()
-                if cancel or (deadline and time.monotonic() > deadline):
-                    if not cancel:
-                        timed_out.set()
-                    _kill_group(p)
-                    return
+        def watch():  # woken by cancel() and by the process end below, both notify self.cond
+            with self.cond:
+                ended = self.cond.wait_for(lambda: done.is_set() or self.job.cancel_event.is_set(), timeout or None)
+            if done.is_set():
+                return
+            if not ended:
+                timed_out.set()
+            _kill_group(p)
 
         threading.Thread(target=watch, daemon=True).start()
         try:
@@ -169,18 +191,22 @@ class Log:
             _kill_group(p)
             raise
         finally:
-            p.stdout.close()
-            if p.returncode is None:
-                try:  # wait without reaping: the leader's pid (= the group id) cannot be reused before the kill
-                    os.waitid(os.P_PID, p.pid, os.WEXITED | os.WNOWAIT)
-                except ChildProcessError:  # the watch thread reaped it
+            try:
+                p.stdout.close()
+                if p.returncode is None:
+                    try:  # wait without reaping: the leader's pid (= the group id) cannot be reused before the kill
+                        os.waitid(os.P_PID, p.pid, os.WEXITED | os.WNOWAIT)
+                    except ChildProcessError:  # the watch thread reaped it
+                        pass
+                try:  # nothing of the group outlives the job, also on success
+                    os.killpg(p.pid, signal.SIGKILL)
+                except ProcessLookupError:
                     pass
-            try:  # nothing of the group outlives the job, also on success
-                os.killpg(p.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            rc = p.wait()
-            done.set()
+                rc = p.wait()
+            finally:  # the watch thread ends with the process, also when the cleanup above raises
+                with self.cond:
+                    done.set()
+                    self.cond.notify_all()
         if timed_out.is_set():
             raise JobFailed('timeout')
         if self.job.cancel_event.is_set():
@@ -199,9 +225,7 @@ def register(kind, handler, detail=None):
 
 
 def _notify():
-    global _wakeups
     with _wake:
-        _wakeups += 1
         _wake.notify_all()
 
 
@@ -263,12 +287,10 @@ def _claim(kind):
 
 def _worker(kind):
     while not _stop.is_set():
-        with _wake:
-            seen = _wakeups
+        seen = _wake.mark()
         job = _claim(kind) if kind in _handlers else None
         if job is None:
-            with _wake:
-                _wake.wait_for(lambda: _wakeups != seen or _stop.is_set())
+            _wake.wait_change(seen)  # stop() sets _stop, then notifies
             continue
         _execute(job)
 
@@ -307,13 +329,25 @@ def cancel(job_id):
         n = c.execute("UPDATE jobs SET status='cancelled', reason='cancelled', finished_at=? "
                       "WHERE id=? AND status='queued'", (db.utcnow(), job_id)).rowcount
     if n:
+        _wake_job_waiters()
         return 'cancelled'
     with _lock:
         job = _running.get(job_id)
     if job:
         job.cancel_event.set()
+        _wake_job_waiters()
         return 'cancelling'
     return None
+
+
+def _wake_job_waiters():
+    """A cancel notifies every job's condition, not only its own: a job may wait on another job's condition
+    (ota pulling a project waits for the upstream job and for its own cancel). Waiters recheck their state."""
+    with _lock:
+        conds = list(_conds.values())
+    for cond in conds:
+        with cond:
+            cond.notify_all()
 
 
 def recover():
@@ -358,6 +392,7 @@ def log_stream(job_id, offset=0):
     cond = log_condition(job_id)
     last = time.monotonic()
     while True:
+        seen = cond.mark()
         row = db.conn().execute('SELECT status FROM jobs WHERE id=?', (job_id,)).fetchone()
         done = row is None or row['status'] not in ('queued', 'running')
         chunk = b''
@@ -375,8 +410,7 @@ def log_stream(job_id, offset=0):
         if done:
             yield f"event: end\ndata: {row['status'] if row else 'missing'}\n\n".encode()
             return
-        with cond:
-            cond.wait(1)
+        cond.wait_change(seen, max(0, KEEPALIVE - (time.monotonic() - last)))  # lines, job end, cancel notify
         if time.monotonic() - last >= KEEPALIVE:
             yield b': keepalive\n\n'
             last = time.monotonic()

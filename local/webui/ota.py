@@ -554,12 +554,15 @@ def _pull_project(job, step, log):
     log.line(f"project {step['ref_id']} not downloaded: pulling upstream {step['upstream_id']}")
     jid = jobs.enqueue('upstream', {'upstream_id': step['upstream_id']}, job.trigger,
                        options={'rebuild': False, 'notify': job.options.get('notify', True)})
+    cond = jobs.log_condition(jid)  # notified when the upstream job ends and on any cancel (jobs.cancel)
     while True:
+        seen = cond.mark()
         row = jobs.get(jid)
         if row is None or row['status'] in _DONE:
             return True
-        if job.cancel_event.wait(1):
+        if job.cancel_event.is_set():
             return False
+        cond.wait_change(seen)
 
 
 def _run_project(job, dev, step, abis, log, failed):

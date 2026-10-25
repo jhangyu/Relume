@@ -5,15 +5,16 @@ from webui.tests.helpers import DataTestCase
 
 
 def wait_status(job_id, statuses, timeout=10):
-    """Final statuses only: the job writes its status before Log.close() notifies this condition."""
-    def reached():
+    """Final statuses only: the job writes its status before Log.close() notifies this condition. Any other final
+    status fails at once instead of after the timeout."""
+    def ended():
         j = jobs.get(job_id)
-        return j if j and j['status'] in statuses else None
+        return j if j and j['status'] not in ('queued', 'running') else None
     cond = jobs.log_condition(job_id)
     with cond:
-        j = cond.wait_for(reached, timeout)
-    if not j:
-        raise AssertionError(f'job {job_id} not in {statuses} within {timeout}s: {jobs.get(job_id)}')
+        j = cond.wait_for(ended, timeout)
+    if not j or j['status'] not in statuses:
+        raise AssertionError(f'job {job_id} not in {statuses} within {timeout}s: {j or jobs.get(job_id)}')
     return j
 
 
@@ -232,6 +233,24 @@ class WorkerTest(DataTestCase):
         self.assertRegex(text, r'^\d\d:\d\d:\d\d ok\n')
         self.assertNotIn('\x1b', text)
         self.assertEqual(seen, ['ok', '::step::patch'])
+
+
+class LogStreamTest(DataTestCase):
+    def test_cancel_of_queued_job_ends_stream(self):
+        """cancel() of a queued job notifies the log condition: the stream ends without waiting for its keepalive."""
+        jid = jobs.enqueue('build', {'item_id': 1}, 'manual')  # no worker runs: the job stays queued
+        cond, out = jobs.log_condition(jid), []
+        wait_change = cond.wait_change
+
+        def cancel_then_wait(seen, timeout):  # the window: the stream saw 'queued', its wait not yet begun
+            self.assertEqual(jobs.cancel(jid), 'cancelled')
+            return wait_change(seen, timeout)
+
+        with mock.patch.object(cond, 'wait_change', cancel_then_wait):
+            t = threading.Thread(target=lambda: out.extend(jobs.log_stream(jid)), daemon=True)
+            t.start()
+            t.join(WAKE_LIMIT_S)
+        self.assertEqual(out, [b'event: end\ndata: cancelled\n\n'])
 
 
 class InlineTest(DataTestCase):

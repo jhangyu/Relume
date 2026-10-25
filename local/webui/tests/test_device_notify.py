@@ -10,8 +10,6 @@ from webui.tests import helpers
 from webui.tests.device_helpers import add_catalog_item, add_job, req
 
 
-SHUTDOWN_CHECK_S = 0.01   # serve_forever notices shutdown() this fast (stdlib default 0.5 s per test)
-
 
 class Stub:
     """Local HTTP endpoint: records requests, answers from `responses` (the last one repeats)."""
@@ -43,9 +41,7 @@ class Stub:
 
         self.srv = ThreadingHTTPServer(('127.0.0.1', 0), H)
         self.srv.daemon_threads = True
-        threading.Thread(target=self.srv.serve_forever, kwargs={'poll_interval': SHUTDOWN_CHECK_S}, daemon=True).start()
-        tc.addCleanup(self.srv.server_close)
-        tc.addCleanup(self.srv.shutdown)
+        helpers.run_server(tc, self.srv)
         tc.addCleanup(lambda: self.gate and self.gate.set())
         self.url = f'http://127.0.0.1:{self.srv.server_address[1]}'
 
