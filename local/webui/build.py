@@ -53,7 +53,9 @@ class _Markers:
             self.fail_code = code if code in FAIL_CODES else "internal"
             self.fail_detail = detail.strip()
         elif text.startswith(FAILED_PATCH_PREFIX):  # the CLI runs with --continue-on-error: the build still succeeds
-            self.failed_patches.append(text[len(FAILED_PATCH_PREFIX):].strip())
+            name = text[len(FAILED_PATCH_PREFIX):].strip()
+            if name not in self.failed_patches:  # one line per variant
+                self.failed_patches.append(name)
         elif text.startswith("[-]"):
             self.last_err = text.strip()
 

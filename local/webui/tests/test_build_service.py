@@ -205,6 +205,7 @@ class HandlerFailTest(BuildCase):
         self.assertEqual(m.failed_patches, [])
         m.feed("INFO: Applied: Change app name")
         m.feed("ERROR: FAILED: Hide ads")
+        m.feed("ERROR: FAILED: Hide ads")
         self.assertEqual(m.failed_patches, ["Hide ads"])
         m.feed("::fail::bogus::x")
         self.assertEqual(m.fail_code, "internal")
