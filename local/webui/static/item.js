@@ -428,7 +428,7 @@ $('#m-item').addEventListener('click', async () => {
   };
   act('PUT', `/api/items/${ID}`, body, 'Item saved').then(load).catch(() => {});
 });
-$('#i-del').addEventListener('click', async () => {
+$('#m-del').addEventListener('click', async () => {
   if (!confirm(`Delete ${S.item.label}? Its build files are deleted too.`)) return;
   try { await act('DELETE', `/api/items/${ID}`, {}, 'Item deleted'); location.href = '/'; } catch (_) { /* shown */ }
 });

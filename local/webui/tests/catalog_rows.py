@@ -94,11 +94,11 @@ class CatalogCase(helpers.DataTestCase):
         self.enterContext(mock.patch.object(upstream, "http_get", f))
         return f
 
-    def call(self, handler, json=None, method="POST", **params):
-        return handler(helpers.fake_request(method, "/test", json=json, params=params))
+    def call(self, handler, json=None, method="POST", query=None, **params):
+        return handler(helpers.fake_request(method, "/test", json=json, params=params, query=query))
 
-    def status_of(self, handler, json=None, method="POST", **params):
+    def status_of(self, handler, json=None, method="POST", query=None, **params):
         try:
-            return self.call(handler, json=json, method=method, **params)[0]
+            return self.call(handler, json=json, method=method, query=query, **params)[0]
         except Exception as e:  # server.HttpError carries .status
             return getattr(e, "status", repr(e))

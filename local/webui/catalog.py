@@ -409,11 +409,20 @@ def put_source(req):
 
 
 def delete_source(req):
+    """Without ?cascade=1 a source with items is refused (409). With it, every item of the source is deleted with its
+    artifacts first (all-or-nothing: any active job refuses the whole delete). Upstream rows are never deleted."""
     sid = req.params["id"]
     _source(sid)
+    ids = [r[0] for r in db.conn().execute("SELECT id FROM item WHERE source_id = ?", (sid,))]
+    if ids and req.query.get("cascade") != "1":
+        raise server.HttpError(409, "source has items")
+    busy = [i for i, st in build.item_status(ids).items() if st["active_job"]]
+    if busy:
+        raise server.HttpError(409, f"source {sid}: items {busy} have a queued or running build")
+    for iid in ids:
+        build.forget_item(iid)
     with db.tx() as c:
-        if c.execute("SELECT 1 FROM item WHERE source_id = ?", (sid,)).fetchone():
-            raise server.HttpError(409, "source has items")
+        c.execute("DELETE FROM item WHERE source_id = ?", (sid,))
         c.execute("DELETE FROM source WHERE id = ?", (sid,))
     return 200, {"ok": True}
 

@@ -153,6 +153,21 @@ class CrudTest(CatalogCase):
         self.call(catalog.post_source, json=self.SRC)
         self.assertEqual(self.call(catalog.delete_source, method="DELETE", id="hoo")[0], 200)
 
+    def test_source_delete_cascade(self):
+        self.assertEqual(self.status_of(catalog.delete_source, method="DELETE", id="morphe", query={"cascade": "1"}), 200)
+        rows = db.conn()
+        self.assertEqual([r[0] for r in rows.execute("SELECT id FROM item")], [3])
+        self.assertIsNone(rows.execute("SELECT 1 FROM source WHERE id='morphe'").fetchone())
+        self.assertIsNotNone(rows.execute("SELECT 1 FROM source WHERE id='morphe-beta'").fetchone())
+        self.assertEqual(rows.execute("SELECT COUNT(*) FROM upstream").fetchone()[0], 3)  # shared CLI upstream kept
+        self.assertEqual(sorted(self.build.forgotten), [1, 2])
+
+    def test_source_delete_cascade_refused_by_active_job(self):
+        self.build.active[2] = {"status": "running"}
+        self.assertEqual(self.status_of(catalog.delete_source, method="DELETE", id="morphe", query={"cascade": "1"}), 409)
+        self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM item").fetchone()[0], 3)
+        self.assertEqual(self.build.forgotten, [])
+
     def test_item_create_defaults_and_duplicate(self):
         st, body = self.call(catalog.post_item, json={"source_id": "morphe", "package": "com.duolingo", "group_id": 1})
         self.assertEqual(st, 201)

@@ -404,8 +404,13 @@ $('#a-src-edit').addEventListener('click', async () => {
 });
 $('#a-src-del').addEventListener('click', async () => {
   const src = sourcesCache.find(x => x.id === $('#a-src').value);
-  if (!src || !confirm(`Delete source "${src.name}"?`)) return;
-  try { await act('DELETE', `/api/sources/${src.id}`, {}, 'Source deleted'); } catch (_) { /* 409 text shown */ }
+  if (!src) return;
+  const items = allItems().filter(it => it.source_id === src.id);
+  const warn = items.length
+    ? `Delete source "${src.name}" and its ${items.length} item(s) with their build history and files?\n\n${items.map(it => it.label).join('\n')}`
+    : `Delete source "${src.name}"?`;
+  if (!confirm(warn)) return;
+  try { await act('DELETE', `/api/sources/${src.id}?cascade=1`, {}, 'Source deleted'); await load(); } catch (_) { /* 409 text shown */ }
   await fillSources();
 });
 $('#add').addEventListener('click', async () => {
