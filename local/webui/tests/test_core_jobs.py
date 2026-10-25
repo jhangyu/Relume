@@ -1,17 +1,43 @@
-import json, os, pathlib, sqlite3, subprocess, tempfile, threading, time, unittest
+import json, os, pathlib, select, sqlite3, subprocess, tempfile, threading, time, unittest
 from unittest import mock
 from webui import db, jobs, settings
 from webui.tests.helpers import DataTestCase
 
 
 def wait_status(job_id, statuses, timeout=10):
-    end = time.monotonic() + timeout
-    while time.monotonic() < end:
+    """Final statuses only: the job writes its status before Log.close() notifies this condition."""
+    def reached():
         j = jobs.get(job_id)
-        if j and j['status'] in statuses:
-            return j
-        time.sleep(0.05)
-    raise AssertionError(f'job {job_id} not in {statuses}: {jobs.get(job_id)}')
+        return j if j and j['status'] in statuses else None
+    cond = jobs.log_condition(job_id)
+    with cond:
+        j = cond.wait_for(reached, timeout)
+    if not j:
+        raise AssertionError(f'job {job_id} not in {statuses} within {timeout}s: {jobs.get(job_id)}')
+    return j
+
+
+def assert_dead(case, pid):
+    """Wait for the process to exit through its pidfd, then require /proc to show it gone or a zombie."""
+    try:
+        fd = os.pidfd_open(pid)
+    except ProcessLookupError:
+        state = 'gone'
+    else:
+        try:
+            case.assertTrue(select.select([fd], [], [], 5)[0], f'pid {pid} still alive after 5s')
+        finally:
+            os.close(fd)
+        # ponytail: the orphaned child is reparented to PID 1 (python in the test container, no reaper),
+        # so a killed child stays a zombie (state Z); dead either way
+        try:
+            state = pathlib.Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[0]
+        except FileNotFoundError:
+            state = 'gone'
+    case.assertIn(state, ('gone', 'Z'))
+
+
+needs_pidfd = unittest.skipUnless(hasattr(os, 'pidfd_open'), 'needs Linux pidfd')
 
 
 class EnqueueTest(DataTestCase):
@@ -81,13 +107,16 @@ class WorkerTest(DataTestCase):
 
     def test_serial_per_kind_parallel_across(self):
         running, peak, lock = [], {'build': 0, 'ota': 0}, threading.Lock()
+        started = {'build': threading.Event(), 'ota': threading.Event()}
 
         def h(job, log):
             with lock:
                 running.append(job.kind)
                 peak[job.kind] = max(peak[job.kind], running.count(job.kind))
                 both = 'build' in running and 'ota' in running
-            time.sleep(0.3)
+            started[job.kind].set()
+            other = started['ota' if job.kind == 'build' else 'build']
+            self.assertTrue(other.wait(5), f'{job.kind} never saw the other kind start')
             with lock:
                 running.remove(job.kind)
             if both:
@@ -103,45 +132,33 @@ class WorkerTest(DataTestCase):
         logs = ''.join((db.DATA / 'logs' / f'{i}.log').read_text() for i in ids)
         self.assertIn('overlap', logs)
 
+    @needs_pidfd
     def test_cancel_kills_process_group(self):
         pidfile = self.data / 'child.pid'
+        go = threading.Event()
 
         def h(job, log):
-            log.run(['sh', '-c', f'sleep 60 & echo $! > {pidfile}; wait'])
+            log.run(['sh', '-c', f'tail -f /dev/null & echo $! > {pidfile}; echo go; wait'],
+                    on_line=lambda s: go.set() if s == 'go' else None)
 
         jobs.register('build', h)
         jid = jobs.enqueue('build', {'item_id': 1}, 'manual')
-        wait_status(jid, {'running'})
-        end = time.monotonic() + 5
-        while not pidfile.exists() and time.monotonic() < end:
-            time.sleep(0.05)
+        self.assertTrue(go.wait(5), 'child never printed go')
         self.assertEqual(jobs.cancel(jid), 'cancelling')
         j = wait_status(jid, {'cancelled'}, timeout=15)
         self.assertEqual(j['reason'], 'cancelled')
-        pid = int(pidfile.read_text())
-        time.sleep(0.2)
-        # ponytail: the orphaned sleep is reparented to PID 1 (python in the test container, no reaper),
-        # so a killed child stays a zombie (state Z); dead either way
-        try:
-            state = pathlib.Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[0]
-        except FileNotFoundError:
-            state = 'gone'
-        self.assertIn(state, ('gone', 'Z'))
+        assert_dead(self, int(pidfile.read_text()))
 
+    @needs_pidfd
     def test_success_kills_leftover_group_members(self):
         pidfile = self.data / 'child.pid'
         # the leftover ignores SIGTERM and keeps no pipe open, so only an explicit group kill ends it
         jobs.register('build', lambda job, log: log.run(
-            ['sh', '-c', f"(trap '' TERM; exec sleep 60) >/dev/null 2>&1 & echo $! > {pidfile}"]))
+            ['sh', '-c', f"(trap '' TERM; exec tail -f /dev/null) >/dev/null 2>&1 & echo $! > {pidfile}"]))
         wait_status(jobs.enqueue('build', {'item_id': 1}, 'manual'), {'success'})
-        pid = int(pidfile.read_text())
-        time.sleep(0.2)
-        try:  # same zombie note as test_cancel_kills_process_group
-            state = pathlib.Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[0]
-        except FileNotFoundError:
-            state = 'gone'
-        self.assertIn(state, ('gone', 'Z'))
+        assert_dead(self, int(pidfile.read_text()))
 
+    @needs_pidfd
     def test_on_line_raise_kills_process_group(self):
         pidfile = self.data / 'child.pid'
 
@@ -150,35 +167,31 @@ class WorkerTest(DataTestCase):
                 raise RuntimeError('callback failed')
 
         def h(job, log):
-            log.run(['sh', '-c', f'sleep 60 & echo $! > {pidfile}; echo go; wait'], on_line=boom)
+            log.run(['sh', '-c', f'tail -f /dev/null & echo $! > {pidfile}; echo go; wait'], on_line=boom)
 
         jobs.register('build', h)
         t0 = time.monotonic()
         j = wait_status(jobs.enqueue('build', {'item_id': 1}, 'manual'), {'failed'}, timeout=15)
         self.assertLess(time.monotonic() - t0, 15)
-        pid = int(pidfile.read_text())
-        try:  # same zombie note as test_cancel_kills_process_group
-            state = pathlib.Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[0]
-        except FileNotFoundError:
-            state = 'gone'
-        self.assertIn(state, ('gone', 'Z'))
+        assert_dead(self, int(pidfile.read_text()))
 
     def test_cancel_queued_never_runs(self):
         ran = []
-        gate = threading.Event()
-        jobs.register('build', lambda job, log: (ran.append(job.id), gate.wait(5)))
+        gate, running = threading.Event(), threading.Event()
+        jobs.register('build', lambda job, log: (ran.append(job.id), running.set(), gate.wait(5)))
         first = jobs.enqueue('build', {'item_id': 1}, 'manual')
-        wait_status(first, {'running'})
+        self.assertTrue(running.wait(5), 'first job never started')
         second = jobs.enqueue('build', {'item_id': 2}, 'manual')
         self.assertEqual(jobs.cancel(second), 'cancelled')
         gate.set()
         wait_status(first, {'success'})
-        time.sleep(0.3)
-        self.assertEqual(ran, [first])
+        third = jobs.enqueue('build', {'item_id': 3}, 'manual')  # claimed by id after the cancelled one
+        wait_status(third, {'success'})
+        self.assertEqual(ran, [first, third])
         self.assertEqual(jobs.get(second)['status'], 'cancelled')
 
     def test_timeout(self):
-        jobs.register('build', lambda job, log: log.run(['sleep', '30'], timeout=0.5))
+        jobs.register('build', lambda job, log: log.run(['tail', '-f', '/dev/null'], timeout=0.5))
         j = wait_status(jobs.enqueue('build', {'item_id': 1}, 'manual'), {'failed'}, timeout=15)
         self.assertEqual(j['reason'], 'timeout')
 
