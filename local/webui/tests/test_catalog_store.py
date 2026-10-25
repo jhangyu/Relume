@@ -187,6 +187,12 @@ class CrudTest(CatalogCase):
         self.call(catalog.post_item, json={"source_id": "morphe", "package": "com.tumblr"})
         self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM jobs").fetchone()[0], 0)
 
+    def test_item_create_enqueues_pull_when_upstream_never_downloaded(self):
+        for _ in range(2):  # second add dedupes against the queued pull
+            self.call(catalog.post_item, json={"source_id": "morphe", "package": f"com.new{_}"})
+        rows = db.conn().execute("SELECT target FROM jobs WHERE kind='upstream'").fetchall()
+        self.assertEqual([json.loads(r["target"]) for r in rows], [{"upstream_id": 2}])
+
     def test_item_delete(self):
         self.build.active[1] = {"job_id": 9, "status": "running"}
         self.assertEqual(self.status_of(catalog.delete_item, method="DELETE", id=1), 409)

@@ -477,9 +477,9 @@ def post_item(req):
             enabled, auto_update) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0)""", (src["id"], pkg, _default_key(pkg), dn, gid, pos, json.dumps(variants),
                                                  None if eo is None else json.dumps(eo))).lastrowid
         up = c.execute("SELECT kind, downloaded_tag FROM upstream WHERE id = ?", (src["upstream_id"],)).fetchone()
-        need_pull = bool(up["kind"] == "patches" and up["downloaded_tag"] and not c.execute(
+        need_pull = bool(up["kind"] == "patches" and (not up["downloaded_tag"] or not c.execute(
             "SELECT 1 FROM bundle_info WHERE upstream_id = ? AND tag = ? AND package = ?",
-            (src["upstream_id"], up["downloaded_tag"], pkg)).fetchone())
+            (src["upstream_id"], up["downloaded_tag"], pkg)).fetchone()))
     if need_pull:
         jobs.enqueue("upstream", {"upstream_id": src["upstream_id"]}, "manual", options={"rebuild": False})
     return 201, {"id": iid}
