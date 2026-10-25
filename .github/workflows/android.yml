@@ -22,6 +22,9 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v6.4.0
+      # the test budget times test runs, not a fresh runner's Gradle download, dependency resolution and compile
+      - name: Compile unit test sources
+        run: android/gradlew -p android compileDebugUnitTestSources --console=plain --no-watch-fs
       - run: python3 scripts/test.py --legs android
       - name: Decode signing keystore
         if: github.ref == 'refs/heads/main'
