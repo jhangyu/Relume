@@ -7,6 +7,13 @@ UNSAFE = re.compile(r'(?:innerHTML|outerHTML)\s*=(?!\s*(?:html`|\'\'|""|``))|ins
 NAV = ('href="/"', 'href="/projects.html"', 'href="/builds.html"', 'href="/schedules.html"', 'href="/devices.html"', 'href="/settings.html"')
 
 
+TEXT_SUFFIXES = {'.html', '.css', '.js', '.svg', '.webmanifest'}
+
+
+def text_assets():
+    return sorted(f for f in STATIC.iterdir() if f.suffix in TEXT_SUFFIXES)
+
+
 def violations(text):
     return [m.group(0) for m in UNSAFE.finditer(text)]
 
@@ -26,7 +33,7 @@ class StaticRulesTest(unittest.TestCase):
                 self.assertNotIn('new Safe', f.read_text(), f.name)
 
     def test_no_network_refs_or_mockup_names(self):
-        for f in sorted(STATIC.iterdir()):
+        for f in text_assets():
             t = f.read_text()
             self.assertNotRegex(t, r'(?:src|href)=["\']https?://|url\(["\']?https?://|fetch\(["\'`]https?://', f.name)
             self.assertNotRegex(t, r'href="(apps|app-detail|build-log|index)\.html', f.name)
@@ -60,7 +67,7 @@ class StaticRulesTest(unittest.TestCase):
         self.assertIn('project.signer_changed', (STATIC / 'settings.js').read_text())
 
     def test_no_dead_dependency_model_leftovers(self):
-        for f in sorted(STATIC.iterdir()):
+        for f in text_assets():
             t = f.read_text()
             for needle in ('depend' + 'ency-apps', 'depend' + 'ency_app', 'd.' + 'dependencies'):  # split so the dead-model grep skips this line
                 self.assertNotIn(needle, t, f'{f.name} {needle}')
