@@ -104,7 +104,13 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     fun logout() {
         viewModelScope.launch {
             val loggedOut = call { it.logout(); true }
-            if (loggedOut == true) signOutLocally(null)
+            if (api == null) return@launch // a 401 already signed this phone out
+            // Always sign out locally, or a phone whose server moved could never sign in again; a failure is shown on the login screen.
+            val failure = error
+            error = null
+            signOutLocally(
+                if (loggedOut == true) null else "Signed out on this phone, but the server was not told ($failure). Revoke this phone on the web Settings page.",
+            )
         }
     }
 
