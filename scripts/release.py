@@ -15,10 +15,11 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
+import shutil
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+VERIFY_DATA = ROOT / "local" / "verify"  # data dir of the verification stack, deleted after a passed check
 COMPOSE = ["docker", "compose", "-f", str(ROOT / "local" / "docker-compose.yml")]
 PROJECT = "relume-dev"
 RELEASE_WEB_PORT = "47010"  # the Portainer stack owns 47000
@@ -131,18 +132,18 @@ def main() -> None:
     os.environ["RELUME_VERSION"] = args.version  # compose reads it as the build arg
     os.environ["RELUME_WEB_PORT"] = RELEASE_WEB_PORT  # overrides local/.env
     run(*COMPOSE, "build")
-    # the verification stack gets an empty throwaway data dir: it must never share a data dir with a real stack
-    scratch = ROOT / ".claude" / "tmp"  # gitignored
-    scratch.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="release-data-", dir=scratch) as data:
-        for sub in ("work", "apk-cache", "upstream"):  # Compose does not create bind sources
-            os.mkdir(os.path.join(data, sub))
-        os.environ["RELUME_DATA_DIR"] = data  # overrides local/.env
-        os.environ["RELUME_GITHUB_TOKEN_FILE"] = "/dev/null"
-        run(*COMPOSE, "up", "-d", "--wait")
-        check_healthy()
-        check_version(args.version)
-        run(*COMPOSE, "down")
+    # the verification stack gets its own fresh data dir, never a real stack's; a failed run leaves it for
+    # inspection and the next run starts it over
+    shutil.rmtree(VERIFY_DATA, ignore_errors=True)
+    for sub in ("work", "apk-cache", "upstream"):  # Compose does not create bind sources
+        (VERIFY_DATA / sub).mkdir(parents=True)
+    os.environ["RELUME_DATA_DIR"] = str(VERIFY_DATA)  # overrides local/.env
+    os.environ["RELUME_GITHUB_TOKEN_FILE"] = "/dev/null"
+    run(*COMPOSE, "up", "-d", "--wait")
+    check_healthy()
+    check_version(args.version)
+    run(*COMPOSE, "down")
+    shutil.rmtree(VERIFY_DATA)
     remove_dangling()
     if not args.no_push:
         push(args.version, built_sha)

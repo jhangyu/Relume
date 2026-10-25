@@ -8,3 +8,4 @@ local/data.stale-*/
 __pycache__/
 local/.env.bak*
 .DS_Store
+local/verify/
