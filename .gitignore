@@ -3,6 +3,7 @@ local/work/
 src/keystore/github_token
 local/.env
 local/data/
+local/data.stale-*/
 .claude/tmp/
 __pycache__/
 local/.env.bak*

@@ -33,7 +33,7 @@ On first start, open the Web UI and create the admin account (username + passwor
 
 ### Portainer
 
-`local/docker-compose-portainer.yml` is the same stack for a Portainer web-editor stack: data lives in named volumes and the code is baked into the images `jhangyu/relume-app` and `jhangyu/relume-browser` (built from `local/Dockerfile`, published by `scripts/release.py`). Signing keystores are never in an image: set `RELUME_KEYSTORE_DIR` to a host directory holding them (see the top of that file).
+`local/docker-compose-portainer.yml` is the same stack for a Portainer web-editor stack: the data lives in host directories under `RELUME_DATA_DIR` (required; the subdirectories `work`, `apk-cache` and `upstream` must exist) and the code is baked into the images `jhangyu/relume-app` and `jhangyu/relume-browser` (built from `local/Dockerfile`, published by `scripts/release.py`). Signing keystores are never in an image: set `RELUME_KEYSTORE_DIR` to a host directory holding them (see the top of that file).
 
 ## Android app
 

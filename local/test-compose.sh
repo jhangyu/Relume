@@ -41,7 +41,7 @@ done
 [ "$fails" -eq "$before" ] && pass compose_shape
 
 # Portainer stack must not drift from the main compose file (spec core §11); only its fixed container names differ.
-pj=$(RELUME_NETWORK_MODE=bridge RELUME_KEYSTORE_DIR=/x docker compose --env-file /dev/null -f local/docker-compose-portainer.yml config --format json 2>/dev/null) || pj='{}'
+pj=$(RELUME_NETWORK_MODE=bridge RELUME_KEYSTORE_DIR=/x RELUME_DATA_DIR=/x docker compose --env-file /dev/null -f local/docker-compose-portainer.yml config --format json 2>/dev/null) || pj='{}'
 pbefore=$fails
 same() { [ "$(jq -cS "$1" <<<"$j")" = "$(jq -cS "$1" <<<"$pj")" ] || fail portainer_drift "$1"; }
 same '.services | keys'
