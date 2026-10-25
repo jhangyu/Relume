@@ -15,6 +15,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -130,10 +131,18 @@ def main() -> None:
     os.environ["RELUME_VERSION"] = args.version  # compose reads it as the build arg
     os.environ["RELUME_WEB_PORT"] = RELEASE_WEB_PORT  # overrides local/.env
     run(*COMPOSE, "build")
-    run(*COMPOSE, "up", "-d", "--wait")
-    check_healthy()
-    check_version(args.version)
-    run(*COMPOSE, "down")
+    # the verification stack gets an empty throwaway data dir: it must never share a data dir with a real stack
+    scratch = ROOT / ".claude" / "tmp"  # gitignored
+    scratch.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="release-data-", dir=scratch) as data:
+        for sub in ("work", "apk-cache", "upstream"):  # Compose does not create bind sources
+            os.mkdir(os.path.join(data, sub))
+        os.environ["RELUME_DATA_DIR"] = data  # overrides local/.env
+        os.environ["RELUME_GITHUB_TOKEN_FILE"] = "/dev/null"
+        run(*COMPOSE, "up", "-d", "--wait")
+        check_healthy()
+        check_version(args.version)
+        run(*COMPOSE, "down")
     remove_dangling()
     if not args.no_push:
         push(args.version, built_sha)
