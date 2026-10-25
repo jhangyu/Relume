@@ -117,19 +117,15 @@ class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         }
         run.steps.forEachIndexed { i, s ->
             if (!s.receiptDue) return@forEachIndexed
+            val r = InstallRun.receipt(s)
             val error = try {
-                api.receipt(InstallRun.receipt(s))
+                api.receipt(r)
                 null
             } catch (e: ApiError) {
                 e
             }
-            InstallRunStore.update(ctx) { cur ->
-                cur?.let {
-                    val stale = error?.status == HTTP_CONFLICT
-                    val done = it.steps[i].copy(receiptDue = false, receiptError = if (stale) null else error?.toString())
-                    it.copy(steps = it.steps.toMutableList().also { l -> l[i] = done }, stalePlan = it.stalePlan || stale)
-                }
-            }
+            val stale = error?.status == HTTP_CONFLICT
+            InstallRunStore.update(ctx) { cur -> cur?.let { InstallRun.receiptSent(it, i, r, stale, error?.toString()) } }
         }
     }
 

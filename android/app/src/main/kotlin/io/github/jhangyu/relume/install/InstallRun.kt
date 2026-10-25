@@ -159,11 +159,25 @@ object InstallRun {
         return run.replace(index, s.copy(downloadedBytes = bytes))
     }
 
-    /** Removes [sent] from the outbox; [error] is a refusal other than a stale plan (null = accepted or stale). */
+    /**
+     * Removes [sent] from the outbox; [error] is a refusal other than a stale plan (null = accepted or stale). [run] may
+     * be a newer run than the one [sent] was read from: it took the outbox over, or a reset dropped it (then unchanged).
+     */
     fun outboxSent(run: RunState, sent: InstallReceipt, error: String?): RunState {
         val i = run.outbox.indexOf(sent)
-        check(i >= 0) { "outbox of run ${run.revision}: receipt ${sent.kind} ${sent.refId} not found" }
+        if (i < 0) return run
         return run.copy(outbox = run.outbox.filterIndexed { j, _ -> j != i }, outboxError = error ?: run.outboxError)
+    }
+
+    /**
+     * Records the answer to [sent], the receipt of step [index]: [stale] = 409 `stale plan`, [error] = another refusal.
+     * Applied only while step [index] is still due with this receipt; a run started meanwhile (same revision possible,
+     * it is a plan hash) is left unchanged, its outbox holds the copy of [sent].
+     */
+    fun receiptSent(run: RunState, index: Int, sent: InstallReceipt, stale: Boolean, error: String?): RunState {
+        val s = run.steps.getOrNull(index)
+        if (s == null || !s.receiptDue || receipt(s) != sent) return run
+        return run.replace(index, s.copy(receiptDue = false, receiptError = if (stale) null else error)).copy(stalePlan = run.stalePlan || stale)
     }
 
     /** Replaces the error text of step [index] without changing its state or receipt. */

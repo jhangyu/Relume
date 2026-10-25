@@ -69,6 +69,24 @@ class InstallPersistenceTest {
     }
 
     @Test
+    fun aReceiptAnswerOnlyUpdatesTheRunItCameFrom() {
+        val old = InstallRun.finish(
+            InstallRun.create(plan(step(StepKind.ITEM, 1), step(StepKind.ITEM, 2)), Origin.UI, null), 1,
+            StepOutcome(StepState.FAILED, ErrorCodes.HASH_MISMATCH, "bad"),
+        )
+        val sent = InstallRun.receipt(old.steps[1])
+        // a new run started while the receipt was on its way: same plan (same revision) or a shorter one
+        for (newer in listOf(InstallRun.create(plan(step(StepKind.ITEM, 1), step(StepKind.ITEM, 2)), Origin.UI, old), InstallRun.create(plan(step(StepKind.ITEM, 3)), Origin.UI, old))) {
+            assertSame(newer, InstallRun.receiptSent(newer, 1, sent, stale = true, error = null))
+            // its outbox holds the copy: sent once, removed once
+            assertTrue(InstallRun.outboxSent(newer, sent, null).outbox.isEmpty())
+        }
+        val answered = InstallRun.receiptSent(old, 1, sent, stale = true, error = null)
+        assertFalse(answered.steps[1].receiptDue)
+        assertTrue(answered.stalePlan)
+    }
+
+    @Test
     fun passesContinuingAUiRetryNeedOnlyANetwork() {
         val run = InstallRun.create(plan(step(StepKind.ITEM, 1), step(StepKind.ITEM, 2)), Origin.BACKGROUND, null)
         assertEquals(Origin.BACKGROUND, run.passOrigin)
