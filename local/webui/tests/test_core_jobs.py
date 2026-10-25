@@ -37,6 +37,9 @@ def assert_dead(case, pid):
     case.assertIn(state, ('gone', 'Z'))
 
 
+WAKE_LIMIT_S = 0.5   # a woken worker claims in milliseconds; a lost wakeup would wait for no notify at all
+FIRST_JOB_ID = 1     # every test starts on a fresh database
+
 needs_pidfd = unittest.skipUnless(hasattr(os, 'pidfd_open'), 'needs Linux pidfd')
 
 
@@ -199,6 +202,21 @@ class WorkerTest(DataTestCase):
         wait_status(third, {'success'})
         self.assertEqual(ran, [first, third])
         self.assertEqual(jobs.get(second)['status'], 'cancelled')
+
+    def test_enqueue_during_empty_claim_is_not_lost(self):
+        """An enqueue between a worker's empty claim and its wait still wakes it (no wait for a timeout)."""
+        claim, queued = jobs._claim, []
+
+        def claim_then_enqueue(kind):
+            job = claim(kind)
+            if kind == 'build' and job is None and not queued:  # the window: claim saw nothing, wait not yet begun
+                queued.append(jobs.enqueue('build', {'item_id': 1}, 'manual'))
+            return job
+
+        with mock.patch.object(jobs, '_claim', claim_then_enqueue):
+            jobs.register('build', lambda job, log: None)  # wakes the idle worker into the patched claim
+            wait_status(FIRST_JOB_ID, {'success'}, timeout=WAKE_LIMIT_S)
+        self.assertEqual(queued, [FIRST_JOB_ID])
 
     def test_timeout(self):
         jobs.register('build', lambda job, log: log.run(['tail', '-f', '/dev/null'], timeout=0.5))

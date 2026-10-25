@@ -1,7 +1,6 @@
 """Release check and pull tests (spec catalog §5, §9, §10)."""
 import json
 import os
-import threading
 import unittest
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -10,6 +9,7 @@ from unittest import mock
 
 from webui import db, jobs, scheduler, settings, upstream
 from webui.tests.catalog_rows import CatalogCase, FakeLog
+from webui.tests.helpers import run_server
 
 FIX = Path(__file__).parent / "fixtures" / "catalog"
 API = upstream.API
@@ -258,9 +258,7 @@ class RedirectAuthTest(unittest.TestCase):
                 pass
 
         srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
-        threading.Thread(target=srv.serve_forever, daemon=True).start()
-        self.addCleanup(srv.server_close)
-        self.addCleanup(srv.shutdown)
+        run_server(self, srv)
         return srv, seen
 
     def url(self, srv, path):

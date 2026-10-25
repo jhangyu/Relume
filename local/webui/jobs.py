@@ -25,6 +25,7 @@ _running = {}
 _conds = {}
 _lock = threading.Lock()
 _wake = threading.Condition()
+_wakeups = 0  # guarded by _wake: bumped by every _notify, so a worker sees a notify sent while it was claiming
 _threads = []
 _stop = threading.Event()
 
@@ -194,6 +195,14 @@ class Log:
 
 def register(kind, handler, detail=None):
     _handlers[kind] = (handler, detail)
+    _notify()  # a worker of this kind may have skipped its queued jobs while no handler was registered
+
+
+def _notify():
+    global _wakeups
+    with _wake:
+        _wakeups += 1
+        _wake.notify_all()
 
 
 def reset():
@@ -210,8 +219,7 @@ def enqueue(kind, target, trigger, schedule_id=None, options=None):
         jid = c.execute('INSERT INTO jobs(kind,status,trigger,schedule_id,target,options,created_at) '
                         "VALUES (?,'queued',?,?,?,?,?)",
                         (kind, trigger, schedule_id, t, o, db.utcnow())).lastrowid
-    with _wake:
-        _wake.notify_all()
+    _notify()
     return jid
 
 
@@ -255,10 +263,12 @@ def _claim(kind):
 
 def _worker(kind):
     while not _stop.is_set():
+        with _wake:
+            seen = _wakeups
         job = _claim(kind) if kind in _handlers else None
         if job is None:
             with _wake:
-                _wake.wait(5)
+                _wake.wait_for(lambda: _wakeups != seen or _stop.is_set())
             continue
         _execute(job)
 
@@ -276,8 +286,7 @@ def start():
 def stop():
     """Tests only: end the worker threads (a running handler finishes first)."""
     _stop.set()
-    with _wake:
-        _wake.notify_all()
+    _notify()
     for t in _threads:
         t.join(15)
     _threads.clear()
