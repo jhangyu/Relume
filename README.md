@@ -44,6 +44,14 @@ On first start, open the Web UI and create the admin account (username + passwor
 
 `local/docker-compose-portainer.yml` is the same stack for a Portainer web-editor stack: data lives in named volumes and the code is baked into the images `jhangyu/relume-app` and `jhangyu/relume-browser` (built from `local/Dockerfile`, published by `scripts/release.py`). Signing keystores are never in an image: set `RELUME_KEYSTORE_DIR` to a host directory holding them (see the top of that file).
 
+## Android app
+
+`android/` holds the companion app (Kotlin, Compose). It talks to the Web UI with a per-device token, installs the built APKs on the phone itself and reports its inventory back. The `Android` workflow builds it, runs its unit tests, signs it with the key in the `RELUME_COMPANION_KEYSTORE_B64` secret and publishes `relume-companion.apk` to the public repo `jhangyu/relume-companion`. Local build: `ANDROID_HOME=<sdk> android/gradlew -p android assembleDebug --no-watch-fs`. The release keystore is `src/keystore/companion.keystore` (gitignored, never committed): losing it makes every phone uninstall the app once.
+
+## Tests
+
+`python3 scripts/test.py [--legs python,shell,android]` runs everything (default all three legs). The python and shell legs run on Linux in Docker: `docker build -f local/Dockerfile --target app -t relume-gate . && docker run --rm -v "$PWD:/repo" -w /repo relume-gate env -u RELUME_VERSION python3 scripts/test.py --legs python,shell`. The android leg needs `ANDROID_HOME`. The run fails when the suite takes over 90 s, a test takes over 1 s, a test source contains `sleep` or `delay(`, or a requested leg's tool is missing; skipped tests are counted per leg.
+
 ## More
 
 - [docs/superpowers/specs/2026-10-19-webui-design.md](docs/superpowers/specs/2026-10-19-webui-design.md): Web UI and build design.
