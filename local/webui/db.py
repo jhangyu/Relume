@@ -29,6 +29,7 @@ def utcnow():
 def init(data_dir=None):
     """Set DATA, create its subdirectories, drop cached connections."""
     global DATA, _gen
+    close()
     DATA = pathlib.Path(data_dir or os.environ.get('RELUME_DATA', '/data'))
     for d in SUBDIRS:
         (DATA / d).mkdir(parents=True, exist_ok=True)
@@ -46,6 +47,14 @@ def conn():
         c.execute('PRAGMA busy_timeout=5000')
         _local.c, _local.gen = c, _gen
     return c
+
+
+def close():
+    """Close and forget this thread's connection (request threads call it when they end)."""
+    c = getattr(_local, 'c', None)
+    if c is not None:
+        c.close()
+        _local.c = None
 
 
 @contextmanager
