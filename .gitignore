@@ -7,3 +7,4 @@ local/data.stale-*/
 .claude/tmp/
 __pycache__/
 local/.env.bak*
+.DS_Store

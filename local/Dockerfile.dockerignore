@@ -6,3 +6,5 @@
 local/webui/tests
 src/build/test-*
 **/__pycache__
+
+**/.DS_Store
