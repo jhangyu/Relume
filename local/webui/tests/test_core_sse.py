@@ -1,6 +1,6 @@
 import json, threading, time, urllib.request
 from webui import db, jobs
-from webui.tests.helpers import DataTestCase, serve, http, login
+from webui.tests.helpers import DataTestCase, serve, http, login, run_inline
 
 
 def read_sse(url, cookie, last_id=None):
@@ -19,7 +19,7 @@ class JobsApiTest(DataTestCase):
 
     def test_finished_job_and_resume(self):
         jobs.register('build', lambda job, log: (log.line('one'), log.line('two')))
-        jid = jobs.run_inline('build', {'item_id': 1}, 'manual')['id']
+        jid = run_inline('build', {'item_id': 1}, 'manual')['id']
         text = read_sse(f'{self.base}/api/jobs/{jid}/log', self.c)
         self.assertRegex(text, r'id: \d+\ndata: \d\d:\d\d:\d\d one\ndata: \d\d:\d\d:\d\d two\n\n')
         self.assertTrue(text.endswith('event: end\ndata: success\n\n'))
@@ -53,9 +53,9 @@ class JobsApiTest(DataTestCase):
     def test_list_filters_and_detail(self):
         jobs.register('build', lambda job, log: None, detail=lambda i: {'d': i})
         jobs.register('ota', lambda job, log: None)
-        a = jobs.run_inline('build', {'item_id': 1}, 'manual')['id']
-        b = jobs.run_inline('build', {'item_id': 2}, 'manual')['id']
-        c = jobs.run_inline('ota', {'device_id': 9}, 'manual')['id']
+        a = run_inline('build', {'item_id': 1}, 'manual')['id']
+        b = run_inline('build', {'item_id': 2}, 'manual')['id']
+        c = run_inline('ota', {'device_id': 9}, 'manual')['id']
         get = lambda q: [j['id'] for j in json.loads(http('GET', f'{self.base}/api/jobs?{q}', cookie=self.c)[2])['jobs']]
         self.assertEqual(get('kind=build'), [b, a])
         self.assertEqual(get('item_id=1'), [a])
@@ -70,7 +70,7 @@ class JobsApiTest(DataTestCase):
 
     def test_cancel_errors(self):
         jobs.register('build', lambda job, log: None)
-        jid = jobs.run_inline('build', {'item_id': 1}, 'manual')['id']
+        jid = run_inline('build', {'item_id': 1}, 'manual')['id']
         self.assertEqual(http('POST', f'{self.base}/api/jobs/{jid}/cancel', {}, cookie=self.c)[0], 409)
         self.assertEqual(http('POST', f'{self.base}/api/jobs/999/cancel', {}, cookie=self.c)[0], 404)
         self.assertEqual(http('GET', f'{self.base}/api/jobs/999', cookie=self.c)[0], 404)

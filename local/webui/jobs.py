@@ -319,16 +319,6 @@ def stop():
     _threads.clear()
 
 
-def run_inline(kind, target, trigger, options=None):
-    with db.tx() as c:
-        jid = c.execute('INSERT INTO jobs(kind,status,trigger,target,options,created_at,started_at) '
-                        "VALUES (?,'running',?,?,?,?,?)",
-                        (kind, trigger, canon(target), canon(normalize(kind, options)),
-                         db.utcnow(), db.utcnow())).lastrowid
-    _execute(Job(db.conn().execute('SELECT * FROM jobs WHERE id=?', (jid,)).fetchone()))
-    return get(jid)
-
-
 def cancel(job_id):
     with db.tx() as c:
         n = c.execute("UPDATE jobs SET status='cancelled', reason='cancelled', finished_at=? "

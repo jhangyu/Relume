@@ -1,7 +1,7 @@
 import json, os, pathlib, select, sqlite3, subprocess, tempfile, threading, time, unittest
 from unittest import mock
 from webui import db, jobs, settings
-from webui.tests.helpers import DataTestCase
+from webui.tests.helpers import DataTestCase, run_inline
 
 
 def wait_status(job_id, statuses, timeout=10):
@@ -266,7 +266,7 @@ class InlineTest(DataTestCase):
         for h, status, reason in ((ok, 'success', None), (bad, 'failed', 'patch_failed: x'),
                                   (boom, 'failed', 'ValueError: kaput')):
             jobs.register('build', h)
-            j = jobs.run_inline('build', {'item_id': 1}, 'manual')
+            j = run_inline('build', {'item_id': 1}, 'manual')
             self.assertEqual((j['status'], j['reason']), (status, reason))
 
 
@@ -283,10 +283,10 @@ class RecoveryCleanupTest(DataTestCase):
         settings.put('job_history_count', 1)
         db.conn().execute('CREATE TABLE keep (job_id INTEGER REFERENCES jobs(id) ON DELETE RESTRICT)')
         jobs.register('build', lambda job, log: log.line('x'))
-        a = jobs.run_inline('build', {'item_id': 1}, 'manual')['id']
+        a = run_inline('build', {'item_id': 1}, 'manual')['id']
         db.conn().execute('INSERT INTO keep VALUES (?)', (a,))
-        b = jobs.run_inline('build', {'item_id': 2}, 'manual')['id']
-        c = jobs.run_inline('build', {'item_id': 3}, 'manual')['id']
+        b = run_inline('build', {'item_id': 2}, 'manual')['id']
+        c = run_inline('build', {'item_id': 3}, 'manual')['id']
         ids = [r[0] for r in db.conn().execute('SELECT id FROM jobs ORDER BY id')]
         self.assertEqual(ids, [a, c])            # b deleted, a kept by RESTRICT
         self.assertFalse((db.DATA / 'logs' / f'{b}.log').exists())

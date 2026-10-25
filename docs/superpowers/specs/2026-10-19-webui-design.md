@@ -1,11 +1,11 @@
 # Web UI for the local build — Design
 
 Date: 2026-10-19. Requirements: `docs/logs/2026-10-19-webui-contract.md`. Facts: `docs/logs/2026-10-19-preflight-{build,patches,runtime}.md`. File references in the "today"/upstream fact tables describe upstream commit 9fd15dc. Most of those files are deleted, so names (functions, workflow jobs, steps), not lines, are cited.
-This file merges seven parts: Core (topology, web stack, auth, persistence, API, scheduler), Catalog (sources, apps, items, patches, upstream), Build (build orchestration), Device (wireless ADB, OTA, notifications), UI (Part 5: mockup ↔ spec mapping, frontend files), CI (Part 6: GitHub Actions builds), Xposed (Part 7: LSPatch/NPatch module items). A reference "core §N", "catalog §N", "build §N", "device §N", "ui §N", "ci §N", "xposed §N" means section N of that part below. User decisions: §0.6.
+This file merges seven parts: Core (topology, web stack, auth, persistence, API, scheduler), Catalog (sources, apps, items, patches, upstream), Build (build orchestration), Device (wireless ADB, OTA, notifications), UI (Part 5: mockup ↔ spec mapping, frontend files), Xposed (Part 7: LSPatch/NPatch module items); Part 6 (CI, GitHub Actions builds) was dropped, see §0.6 Q1. A reference "core §N", "catalog §N", "build §N", "device §N", "ui §N", "xposed §N" means section N of that part below. User decisions: §0.6.
 
 ## 0.1 Summary
 
-One Docker Compose file, five containers. The existing builder container becomes `app`: it serves a stdlib-only Python web UI on port 47000, keeps all state in SQLite plus files under `local/data/`, and runs builds, upstream pulls and `adb` installs as child processes. `app` and the three anti-Cloudflare sidecars share the network namespace of an idle anchor container `netns`; the sidecars listen on loopback only. Linux uses host networking (phone discovery by mDNS); macOS uses bridge networking (manual phone IP and port). The only platform difference is `RELUME_NETWORK_MODE` in `local/.env` (core §1). The org scripts, `src/options`, `src/patches`, `apps.json` and `local/build.sh` are replaced by catalog rows and one generic build runner (catalog §8, build §7). GitHub Actions builds stay and run the same server modules headless (ci §2). Xposed module apps (LSPatch/NPatch) are a second item type on the same runner (xposed §2). The frontend is the user-chosen "Workbench" mockup ported to static files (ui §1).
+One Docker Compose file, five containers. The existing builder container becomes `app`: it serves a stdlib-only Python web UI on port 47000, keeps all state in SQLite plus files under `local/data/`, and runs builds, upstream pulls and `adb` installs as child processes. `app` and the three anti-Cloudflare sidecars share the network namespace of an idle anchor container `netns`; the sidecars listen on loopback only. Linux uses host networking (phone discovery by mDNS); macOS uses bridge networking (manual phone IP and port). The only platform difference is `RELUME_NETWORK_MODE` in `local/.env` (core §1). The org scripts, `src/options`, `src/patches`, `apps.json` and `local/build.sh` are replaced by catalog rows and one generic build runner (catalog §8, build §7). GitHub Actions builds are dropped (§0.6 Q1). Xposed module apps (LSPatch/NPatch) are a second item type on the same runner (xposed §2). The frontend is the user-chosen "Workbench" mockup ported to static files (ui §1).
 
 ## 0.2 Requirement coverage
 
@@ -23,7 +23,7 @@ One Docker Compose file, five containers. The existing builder container becomes
 | macOS Docker Desktop (manual IP:port + code) | core §1, §12; device D4, §4.1 |
 | Single admin (username + password, created on first start), LAN | core §7 (plain HTTP, decision Q6) |
 | Web UI screens (final mockup, 7 screens) | ui §2 (every element mapped, added or dropped), ui §1 (frontend files) |
-| GitHub Actions builds kept (decision Q1) | ci §2–§9 |
+| GitHub Actions builds dropped (decision Q1) | none: the web app image is built locally, the Android companion app by its own workflow |
 | Xposed / LSPatch / NPatch items kept (decision Q2) | xposed §2–§9 |
 | Decisions Q3–Q5 (seed BiliRoamingM/Dropped-Patches, auto rebuild, seed ABIs) | catalog §8 (Q3, Q5), catalog §5.2 + core §6 (Q4) |
 | Restored mockup features (§0.6 R1–R6): group zip download, "keep me signed in", option colour picker, newer APKMirror versions, login server summary, group colour | build §3.4 (`GET /api/groups/{id}/download`); core §7, §8 (`remember`); ui §2 App detail (colour picker, client); build §3.2, §4 step 5d + catalog §3, §6 (`apkmirror_versions`); core §8 `GET /api/health` + ui §2 Login; catalog §3, §3.1, §6 (`grp.color`) + ui §2 App list |
@@ -39,7 +39,6 @@ Tables and owners (one schema file per owner, core §4):
 | build `002_build.sql` | `build_jobs` (detail of a `jobs` row, CASCADE), `artifacts` (RESTRICT) |
 | catalog `003_catalog.sql` | `upstream`, `source`, `app`, `grp`, `item`, `bundle_info`; `005_follow.sql` rebuilds `upstream` (kind `project`), `item_dependency`, `ota_installs` and adds `project`, `device_projects` (`docs/superpowers/specs/2026-10-23-follow-project-design.md` §3.1) |
 | device `004_device.sql` | `devices`, `device_assignments`, `ota_jobs` (detail of a `jobs` row, CASCADE), `ota_installs` |
-| ci | no tables (state = release asset labels, ci §4.3) |
 
 Job kinds, atomic targets, triggers: `build` `{"item_id":N}`, `upstream` `{"upstream_id":N}`, `ota` `{"device_id":N}` (all assignments) or `{"device_id":N,"item_ids":[…]}` (only these items). Triggers: `manual`, `schedule`, `upstream` (build enqueued by a pull with `rebuild`), `after_build` (OTA enqueued by `build.succeeded`). Core status values: `queued`, `running`, `success`, `failed`, `cancelled`. One serial worker per kind (core §5).
 
@@ -51,14 +50,14 @@ Events (`events.emit` / `events.subscribe`, core §5):
 
 | event | emitted by | payload | consumers |
 |---|---|---|---|
-| `upstream.new_version` | catalog (check or pull, once per new tag) | `{upstream_id, tag, item_ids, job_id}` (`job_id` = the upstream job that ran the check; null for `POST /api/upstreams/check` and the CI check) | notifier |
+| `upstream.new_version` | catalog (check or pull, once per new tag) | `{upstream_id, tag, item_ids, job_id}` (`job_id` = the upstream job that ran the check; null for `POST /api/upstreams/check`) | notifier |
 | `build.succeeded` | build | `{item_id, job_id, app_version, patches_version, artifacts}` | notifier, device (OTA after build) |
 | `build.failed` | build | `{item_id, job_id, fail_code, fail_detail}` | notifier |
 | `ota.done` | device | `{job_id, device_id, outcome}` | notifier |
 | `ota.failed` | device | `{job_id, device_id, reason}` | notifier |
 | `device.offline` | device | `{job_id, device_id}` | notifier |
 
-In-process functions between parts: `catalog.resolve_items(target)`, `catalog.resolve_upstreams(target)`, `devices.resolve_devices(target)` (schedule expansion, core §4); `catalog.job_input(item_id)` (build input, catalog §5.3, fields = build §3.1); `build.latest_artifact(item_id, abi)` (device §4.3); `build.item_status(item_ids)` and `build.needs_build(item_id)` (build §3.4; App list status, `only_changed` schedules); `build.forget_item(item_id)` (item delete, build §3.4); `catalog.set_apkmirror_versions(package, versions)` (called by the build handler, catalog §3); `jobs.run_inline(kind, target, trigger, options=None)` (core §5, used by ci §4); `projects.item_projects`, `projects.assigned_projects`, `projects.project_info`, `projects.check_assignment` (`docs/superpowers/specs/2026-10-23-follow-project-design.md` §4.2).
+In-process functions between parts: `catalog.resolve_items(target)`, `catalog.resolve_upstreams(target)`, `devices.resolve_devices(target)` (schedule expansion, core §4); `catalog.job_input(item_id)` (build input, catalog §5.3, fields = build §3.1); `build.latest_artifact(item_id, abi)` (device §4.3); `build.item_status(item_ids)` and `build.needs_build(item_id)` (build §3.4; App list status, `only_changed` schedules); `build.forget_item(item_id)` (item delete, build §3.4); `catalog.set_apkmirror_versions(package, versions)` (called by the build handler, catalog §3); `projects.item_projects`, `projects.assigned_projects`, `projects.project_info`, `projects.check_assignment` (`docs/superpowers/specs/2026-10-23-follow-project-design.md` §4.2).
 
 Settings keys: core `admin_username`, `admin_password_hash`, `job_history_count`, `base_url`; build `artifact_retention`; device `notify`.
 
@@ -110,8 +109,8 @@ Contradictions between the parts and how they were resolved (arch-core is the ti
 | Job input field names | catalog and build listed different names | build §3.1 names are canonical; catalog §5.3 maps to them | one schema |
 | Sidecar addressing | build left it to core | `FLARESOLVERR_URL` etc. = `http://127.0.0.1:<port>`, all sidecars bind loopback | shared namespace; nothing exposed on the LAN in host mode |
 | Seed file location | catalog asked core | `local/webui/catalog-seed.json` | next to the code that imports it |
-| Part numbering | ci, xposed and ui drafts each called themselves "Part 5" | UI = Part 5, CI = Part 6, Xposed = Part 7 | one reference scheme |
-| Carrier of a pull's `rebuild` flag | catalog: button flag; core: target has only `upstream_id`; ci relies on a "manual = false" default | new column `jobs.options`; `rebuild` absent = false; schedules default true; UI buttons send true (Q4); `ci-build` sends none | one place for per-job flags; dedup compares normalized options (§0.3), so a scheduled and a manual job of the same target are one job |
+| Part numbering | ci, xposed and ui drafts each called themselves "Part 5" | UI = Part 5, Xposed = Part 7 (Part 6 dropped) | one reference scheme |
+| Carrier of a pull's `rebuild` flag | catalog: button flag; core: target has only `upstream_id`; the dropped CI relied on a "manual = false" default | new column `jobs.options`; `rebuild` absent = false; schedules default true; UI buttons send true (Q4) | one place for per-job flags; dedup compares normalized options (§0.3), so a scheduled and a manual job of the same target are one job |
 | CLI upstream | catalog: one global row; xposed: one per engine | `source.cli_upstream_id`; Morphe sources share one row | LSPatch/NPatch need their own engine jars |
 | Upstream state field of an item | xposed proposed a `module` object | one `upstream` object for every item (catalog §6) | same data, one name |
 | Same package twice on one phone | xposed proposal | `PUT /api/devices/{id}/assignments` answers 400 | the second install always hits SIGNATURE_MISMATCH |
@@ -119,8 +118,8 @@ Contradictions between the parts and how they were resolved (arch-core is the ti
 | Cron schedules | mockup Cron tab; core: no cron | three spec forms only; cron editor deferred to next phase (§0.6 F1) | core §6, no parser |
 | Cross-kind ordering | mockup: "rebuild waits for check, OTA waits for builds"; core: kinds run in parallel | parallel kinds; order by schedule times and chaining | core §5; mockup text changed (ui §2) |
 | Password minimum | mockup 12, core 10 | 10 | core §8 |
-| Icon fetch timing | catalog: when an app row is created; ci: start-up must make no Play requests | background task from `catalog.start()` | seed import and CI stay offline from Play |
-| Telegram download | build: delete `telegram_dl` (Xposed only) | deleted; secret `TDL_BACKUP` retired | no caller (ci §1, xposed §1) |
+| Icon fetch timing | catalog: when an app row is created; CLI start-up must make no Play requests | background task from `catalog.start()` | seed import and CLI commands stay offline from Play |
+| Telegram download | build: delete `telegram_dl` (Xposed only) | deleted; secret `TDL_BACKUP` retired | no caller (xposed §1) |
 | Network-namespace anchor | core draft: `app` is the anchor | idle `netns` service is the anchor; `app` and the sidecars join it (core §1) | after a crash restart of an anchor `app`, the sidecars keep the old namespace |
 | Module start-up | core: one `start()` does registration and threads; CLI subcommands run "the normal start-up" | `register()` (no threads, no IO) and `start()` (threads, adb server, Play fetch); CLI calls only `register()` (core §3) | CI makes no Play requests and has no adb |
 | OTA recovery modes | device: mode and install id on the request; core `enqueue` had no slot | `options.mode` + `options.package` (§0.3) | one job shape for core and device |
@@ -130,7 +129,7 @@ Contradictions between the parts and how they were resolved (arch-core is the ti
 
 | # | question | decision | applied in |
 |---|---|---|---|
-| Q1 | GitHub Actions build path (old workflows call the deleted org scripts) | keep GitHub builds, ported to the new runner; org scripts still deleted | ci (Part 6); build §7 |
+| Q1 | GitHub Actions build path (old workflows call the deleted org scripts) | dropped: no GitHub patched-APK builds (original ruling: keep and port them; reversed 2026-10-25 when the system's build scope was fixed to the web app image and the Android companion app); org scripts deleted | build §7 |
 | Q2 | Xposed / LSPatch apps (`src/build/Xposed.sh`) | keep as a second item type in v1 | xposed (Part 7) |
 | Q3 | BiliRoamingM and Dropped-Patches sources | seed as normal items; the first build shows whether they work | catalog §8 |
 | Q4 | New upstream version | rebuild affected items automatically; phones with "install after build" get them | catalog §5.2, §5.4; core §6 |
@@ -138,7 +137,7 @@ Contradictions between the parts and how they were resolved (arch-core is the ti
 | Q6 | Transport | plain HTTP on the LAN | core §7 |
 | — | UI | mockup series `docs/superpowers/mockups/final/` ("Workbench" + merged features) | ui (Part 5) |
 | — | Auto version with no compatible version | fail `version_unresolved`; `version_mode='latest'` is the explicit alternative | §0.5 |
-| — | Spec review should-fix items S1–S10, S12 | fix in the spec now | §0.3, §0.5, core §1, §3, §5, §12, build §4, device §3.2, §4.4, ci §5 |
+| — | Spec review should-fix items S1–S10, S12 | fix in the spec now | §0.3, §0.5, core §1, §3, §5, §12, build §4, device §3.2, §4.4 |
 | R1 | Mockup "Download all (zip)" on a group | restore | build §3.4; ui §2 App list |
 | R2 | Mockup "Keep me signed in" on login | restore | core §7, §8; ui §2 Login |
 | R3 | Mockup colour picker for colour-valued patch options | restore | ui §2 App detail (client only) |
@@ -160,7 +159,6 @@ No question is open.
 - `list-patches --with-options` preset-value layout for option `values` (catalog §4.1): parsed from captured output like the other fields.
 - GitHub token `expires_at`/`scopes` depend on response headers that fine-grained tokens may not send; null then (core §8).
 - LSPatch v1.2 flags against current app versions and the NexAlloy v1.1 pin: first build shows the result (xposed §12).
-- CI: GitHub job time limit vs serial builds of a large source (ci §7).
 - APKMirror list-page titles: the version is parsed from the row title text; the exact title layout per app is checked against captured pages during implementation (build §4 step 5d).
 
 
@@ -204,7 +202,7 @@ Process user: `user: "${RELUME_UID:-0}:${RELUME_GID:-0}"`, env `HOME=/data/home`
 
 Other env on `app`: `TZ=${TZ:-UTC}` (schedules use local wall time), `RELUME_NETWORK_MODE` (shown on the Devices page, ui §2), `PYTHONDONTWRITEBYTECODE=1` (repo is read-only), `PYTHONPATH=/repo/local`, the three sidecar ports as today.
 
-CI only: `local/docker-compose.ci.yml` overrides `app` with `command: ["sleep","infinity"]` and a disabled healthcheck (ci §3). The `app` image builds on arm64 and amd64 (GitHub runners, build §2.1).
+The `app` image builds on arm64 and amd64 (build §2.1).
 
 `local/.env.example` (tracked) lists `RELUME_NETWORK_MODE`, `RELUME_WEB_PORT`, `RELUME_DATA_DIR`, `RELUME_UID`, `RELUME_GID`, `TZ`, `RELUME_GITHUB_TOKEN_FILE`. `local/.env` and `local/data/` are added to `.gitignore`.
 
@@ -221,24 +219,23 @@ Package `local/webui/`:
 
 | owner | files |
 |---|---|
-| core | `__main__.py` (start + CLI `reset-password`; it dispatches `ci-plan`, `ci-build`, `export-seed` to `ci.main(argv)`), `server.py` (HTTP server, router, static files, auth guard, SSE, file responses), `db.py`, `auth.py`, `jobs.py`, `scheduler.py`, `settings.py`, `events.py`, `schema/001_core.sql`, `tests/test_core_*.py` |
+| core | `__main__.py` (start + CLI `reset-password`; it handles `export-seed`), `server.py` (HTTP server, router, static files, auth guard, SSE, file responses), `db.py`, `auth.py`, `jobs.py`, `scheduler.py`, `settings.py`, `events.py`, `schema/001_core.sql`, `tests/test_core_*.py` |
 | build | `build.py`, `schema/002_build.sql`, `tests/test_build_*.py`; `src/build/build-item.sh`, `src/build/inspect.sh`, `src/build/utils.sh`, `src/build/test-build-item.sh` (incl. the Xposed engine branch, xposed §5.3); `local/Dockerfile` (toolchain, adb, pup, APKEditor, multi-arch); `local/docker-compose.yml`, `local/.env.example`, `.gitignore` (§1 is the input spec); `local/solver/solver.py` bind change |
 | catalog | `catalog.py`, `upstream.py`, `schema/003_catalog.sql`, `tests/test_catalog_*.py`; the one-off seed script and `catalog-seed.json` (incl. Xposed validation and seed rows, xposed §4, §5.1) |
 | device | `devices.py`, `ota.py`, `notify.py`, `schema/004_device.sql`, `tests/test_device_*.py` |
-| ci | `ci.py`, `tests/test_ci.py`, `local/docker-compose.ci.yml`, `.github/workflows/build.yml` (ci §3) |
 | frontend | `static/app.css`, `static/app.js` (one owner); `static/<page>.html` + `static/<page>.js` (one owner per page, ui §1) |
-| cleanup (round 2, after `catalog-seed.json` is committed) | every deletion: org scripts, `src/build/Xposed.sh`, `src/options/`, `src/patches/`, `src/build/helper/apps.json`, `src/etc/connection.sh`, `src/etc/ci.sh`, `local/build.sh`, old workflows and actions (build §7, catalog §8, ci §9); README download links |
+| cleanup (round 2, after `catalog-seed.json` is committed) | every deletion: org scripts, `src/build/Xposed.sh`, `src/options/`, `src/patches/`, `src/build/helper/apps.json`, `src/etc/connection.sh`, `src/etc/ci.sh`, `local/build.sh`, old workflows and actions (build §7, catalog §8); README download links |
 
 Xposed (Part 7) owns no file: its catalog rules land in catalog's files, its engine branch in build's files.
 
-Feasible 2-round split: round 1 = core; catalog + upstream + seed script; build runner (bash, `utils.sh`, Dockerfile, compose); device + notify; frontend shell (`app.css`/`app.js`, login, App list). Round 2 = build job service (`build.py`); ci; the other five pages; Xposed engine branch and validation; cleanup. Core lands the `db`/`jobs`/`events`/router interfaces first inside round 1 (an interface commit) so the other round-1 members code against them.
+Feasible 2-round split: round 1 = core; catalog + upstream + seed script; build runner (bash, `utils.sh`, Dockerfile, compose); device + notify; frontend shell (`app.css`/`app.js`, login, App list). Round 2 = build job service (`build.py`); the other five pages; Xposed engine branch and validation; cleanup. Core lands the `db`/`jobs`/`events`/router interfaces first inside round 1 (an interface commit) so the other round-1 members code against them.
 
 Module contract:
 - Each feature module exports `ROUTES = [(method, pattern, handler)]`; `server.py` imports the four owner modules by name. `pattern` uses `{name}` segments (`/api/jobs/{id}`); integer-looking values arrive as `int`.
 - `handler(req)` gets `req.method`, `req.params`, `req.query`, `req.json` (parsed body, max 1 MiB), `req.headers`. It returns one of: `(status, obj)` → JSON; `FileResponse(path, download_name)` → streamed file with `Content-Length` (APKs are 100–230 MB, `docs/logs/2026-10-19-preflight-runtime.md:20`); `StreamResponse(write_fn, download_name)` → `write_fn(fileobj)` writes the body straight to the socket, no `Content-Length`, connection closed at the end (group ZIP, build §3.4); `SSEResponse(iterator)`.
 - Errors: raise `HttpError(status, message)` → `{"error": message}`. Any other exception → 500 `{"error":"internal error"}`, traceback to stdout (visible in `docker compose logs app`).
 - Each feature module may export `register()` and `start()`. `register()` registers job handlers and event subscribers; it starts no thread and does no IO (no network, no child process). `start()` starts background work: job workers and scheduler (core), the icon fetcher (catalog §3.3), `adb start-server` (device D1), the notifier thread (device §4.4).
-- Start-up order. Server (`python3 -m webui`): DB schema → seed import (catalog §8) → every module's `register()` → restart recovery (§5) → every module's `start()` → HTTP server. CLI subcommands (`reset-password`, `ci-plan`, `ci-build`, `export-seed`): DB schema → seed import → every module's `register()` only. So CI makes no Play requests, needs no adb (`ci-plan` runs in `python:3.12-slim`, ci §5), and starts no worker, scheduler or mDNS browser; `jobs.run_inline` (§5) needs no worker.
+- Start-up order. Server (`python3 -m webui`): DB schema → seed import (catalog §8) → every module's `register()` → restart recovery (§5) → every module's `start()` → HTTP server. CLI subcommands (`reset-password`, `export-seed`): DB schema → seed import → every module's `register()` only. So they make no Play requests, need no adb, and start no worker, scheduler or mDNS browser.
 
 Input validation (one rule set in `server.py`/owner handlers, checked before any value reaches a path, argv or bash; failure → 400):
 - Slugs (`source.id`, `item.key`, variant `name`, `keystore` file name, `exclude_splits` entries): `^[A-Za-z0-9_][A-Za-z0-9._-]*$` (no leading `.` or `-`, so no `..` and no option-like value). `keystore` must also exist in `src/keystore/`.
@@ -296,7 +293,6 @@ Backup: copy `local/data/` while `app` is stopped, or `sqlite3 .backup` (not shi
 API for owners:
 - `jobs.register(kind, handler, detail=None)`. `detail(job_id) -> dict` is optional; `GET /api/jobs/{id}` adds its result as `detail` (build: versions, fail code, artifacts; ota: per-package installs).
 - `jobs.enqueue(kind, target, trigger, schedule_id=None, options=None) -> job_id`. `options` is first normalized: keys not listed for the kind in §0.3 are dropped, missing keys get their defaults. If a job with the same kind, target and normalized options is already `queued`, its id is returned and nothing is added (so a scheduled and a manual build of one item are one job; a `force_reinstall` OTA is never merged into a `normal` one). A `running` job with the same target does not block a new queued one. `POST /api/jobs/{id}/cancel` on a `queued` job sets `cancelled` at once; it never runs.
-- `jobs.run_inline(kind, target, trigger, options=None) -> job row` (CLI use, ci §4): inserts the row as `running` and runs the handler in the calling thread. The worker loop and `run_inline` share one private `_execute(job)` (same success / `JobFailed` / exception rules).
 - `handler(job, log)`: `job.id`, `job.target`, `job.cancel_event` (`threading.Event`). `log.line(text)` appends `HH:MM:SS text\n` with ANSI escapes stripped (the scripts print colour codes, `docs/logs/2026-10-19-preflight-build.md:66`). `log.run(argv, cwd, env)` starts a child in its own process group, streams stdout+stderr into the log, kills the group on cancel, returns the exit code; optional `timeout` seconds kills the group and raises `JobFailed('timeout')`; optional `on_line(text)` is called for each stripped line (build uses it for `::step::`/`::version::` markers, build §3.2). Return normally = `success`; raise `JobFailed(reason)` = `failed`; cancel = `cancelled`.
 - `events.emit(type, payload)`, `events.subscribe(type, fn)`. Subscribers run synchronously in the emitting thread (a job worker or a request thread) and must not raise (exceptions are logged and swallowed). A subscriber does no network IO itself: it enqueues a job or puts the event on its own queue (notifier, device §4.4). Event names and payloads are fixed in integration §0.3 (top of the merged spec): `upstream.new_version`, `build.succeeded`, `build.failed`, `ota.done`, `ota.failed`, `device.offline`. Chaining is done by owners: a pull with `rebuild` enqueues builds with `trigger='upstream'`; device subscribes to `build.succeeded` and enqueues OTA with `trigger='after_build'`.
 
@@ -381,7 +377,6 @@ Log SSE: `GET /api/jobs/{id}/log`. Each event carries a chunk of log lines; `id:
 - `python3 -m unittest discover -s /repo/local/webui/tests` inside `app` (stdlib `unittest`, temporary DB under `/tmp`, no network).
 - Core tests: router pattern matching and int params; auth hash verify, session expiry, 401 without cookie, 415 on non-JSON mutating request, Origin mismatch → 403, 429 after 5 failures; `remember` true → `Max-Age` cookie and 30-day expiry, false → no `Max-Age` and 12 h expiry; `GET /api/health` without a session returns exactly the four documented keys; `register()` of every module starts no thread (thread count unchanged); migration order and `user_version`; job enqueue dedup (scheduled and manual build of one item → one job; `force_reinstall` OTA not merged into `normal`; unknown option keys dropped), serial order per kind, parallel across kinds, cancel kills the child process group (child `sleep` process is gone), restart recovery; history cleanup skips RESTRICT rows; scheduler next-run for day/week/hours including a DST change in `Europe/Berlin`; missed-run single catch-up; SSE resume from `Last-Event-ID` and `end` event.
 - Compose checks: `RELUME_NETWORK_MODE=host docker compose -f local/docker-compose.yml config` and the same with `bridge` both exit 0; with the variable unset it exits non-zero.
-- `run_inline` and the CI compose override check: ci §8.
 - Smoke on each platform (user-run): `up -d --build`, open the UI, create the admin account (`POST /api/auth/setup`), `curl` login, `GET /api/jobs` → 200; `docker compose exec app curl -sf localhost:47191` → FlareSolverr answers; from another LAN machine on Linux host mode `curl <host>:47191` fails (sidecar not exposed).
 
 ### 12. Deployment
@@ -402,7 +397,7 @@ Both: memory headroom for two browser containers (`shm_size: 2g` each, `local/do
 
 ### 13. User decisions (core)
 
-Answered in §0.6: Q1 GitHub Actions kept (ci, Part 6); Q6 plain HTTP (§7).
+Answered in §0.6: Q1 GitHub Actions builds dropped; Q6 plain HTTP (§7).
 
 
 # Part 2 — Catalog: sources, apps, items, patch selection, upstream releases
@@ -489,7 +484,7 @@ Rules:
 
 #### 3.3 Icons
 - Source: Google Play `og:image` of `details?id=<package>&hl=en` (verified 2026-10-19 for `com.google.android.youtube` and HTTP 200 for `com.bilibili.app.in`). No APKMirror fetch: that path is Cloudflare-protected and rate-limited (`docs/logs/2026-10-12-apkmirror-403-investigation.md`) and must stay reserved for builds.
-- Fetched once per app row without an icon by a background task started from `catalog.start()` (not inside the seed import, so seed import and CI start-up make no Play requests, ci §2), stored as `<data>/icons/<package>` (content type from the response), served by `GET /api/apps/{pkg}/icon` with a long cache header. "Refresh icon" button: `POST /api/apps/{pkg}/icon/refresh`.
+- Fetched once per app row without an icon by a background task started from `catalog.start()` (not inside the seed import, so seed import and CLI start-up make no Play requests), stored as `<data>/icons/<package>` (content type from the response), served by `GET /api/apps/{pkg}/icon` with a long cache header. "Refresh icon" button: `POST /api/apps/{pkg}/icon/refresh`.
 - Failure (not on Play, network error): UI shows a letter tile from the display name. No upload feature in v1.
 - Known limit: the shown icon is the original app icon. Patches such as "Custom branding icon" (`src/patches/youtube-music-rve-anddea/include-patches`) change the installed icon; the UI does not reflect that.
 
@@ -527,7 +522,7 @@ For each upstream row (deduplicated):
 - `channel='stable'` → `GET /repos/{repo}/releases/latest` (GitHub docs: "the most recent non-prerelease, non-draft release", fetched 2026-10-19).
 - `channel='prerelease'` → `GET /repos/{repo}/releases?per_page=10`, newest by `published_at` among non-drafts, prerelease or not. This keeps today's meaning: `dl_gh … prerelease` takes the newest release of any kind (`utils.sh` `dl_gh`). Sorting is done by us because the docs do not state list order.
 - `channel='tag'` → `GET /repos/{repo}/releases/tags/{tag}` (only for pinned sources such as `Dropped-Patches-Revanced.sh` `v1.4.2`).
-- One upstream is checked by the plain function `upstream.check(upstream_id)`, used by the route, the pull job and `ci-plan` (ci §4.1).
+- One upstream is checked by the plain function `upstream.check(upstream_id)`, used by the route and the pull job.
 - Module rows (`kind='module'`) must match exactly one asset, else `check_error="ambiguous module asset (<n> matches)"` (xposed §9).
 - Asset filter: `asset_regex` on `assets[].name`, defaults: patches `\.mpp$`, cli `^morphe-desktop-.*-all\.jar$` (seen: `local/work/morphe-1/morphe-desktop-1.18.1-all.jar`), always skip `\.asc$`; for `stable` also skip names containing `dev` (`utils.sh` `dl_gh`).
 - Auth: the existing token file mounted read-only (`local/docker-compose.yml` at 9fd15dc, `builder` volume `github_token`); empty file = unauthenticated (60 req/h, `local/build.sh` token-file block). One check of all upstreams ≈ 18 requests (one per distinct repo+channel), within the unauthenticated budget once per hour.
@@ -542,7 +537,7 @@ For each upstream row (deduplicated):
    `java -jar <cli> list-patches --patches <files> --with-packages --with-versions --with-options -f <package>` (descriptions, option types, compatible versions; text parsed like `utils.sh` `detect_version`).
    Store the merged result in `bundle_info`. `cli`, `module` and `project` rows are not inspected (`project` rows are verified instead, `docs/superpowers/specs/2026-10-23-follow-project-design.md` §4.3).
 4. Keep the two newest tags per upstream on disk, delete older ones (a job started before the pull still has its files).
-5. Optional rebuild: if the job's `options.rebuild` is true (absent = false; schedules default true and the UI buttons send true, decision Q4; `ci-build` sends none, ci §4.2) and a new tag was downloaded, enqueue builds of the enabled items of the sources on this upstream.
+5. Optional rebuild: if the job's `options.rebuild` is true (absent = false; schedules default true and the UI buttons send true, decision Q4) and a new tag was downloaded, enqueue builds of the enabled items of the sources on this upstream.
 
 The per-item button "Update upstream" calls `POST /api/upstreams/{item.source.upstream_id}/pull {"rebuild":true}` (body stored as the job's `options`) → enqueues the pull job, returns its job id. The UI must say that this updates the source for all its items (upstream is per source, not per app). CLI upstreams are pulled the same way ("Update CLI" in Settings pulls every `cli` row; schedule targets include the sources' CLI upstreams, core §4). A new CLI tag does not trigger a rebuild.
 
@@ -559,7 +554,7 @@ The build never calls GitHub: `dl_gh`, `morphe_dl`-style functions and `src/etc/
 #### 5.4 Schedules
 The scheduler engine is core's (core §6). A pull is a core job: `kind='upstream'`, target `{"upstream_id":N}`, registered by `upstream.py` with `jobs.register('upstream', handler)`; its log shows each GitHub call, download and inspect step. Schedules of kind `upstream` target `{"source_ids":[…]}` or `{"all":true}` (expanded by `catalog.resolve_upstreams`), `options.pull` (default true) and `options.rebuild` (default true, Q4): enqueue `jobs.enqueue('build', {"item_id":N}, 'upstream')` for enabled items whose source got a new tag.
 "Check only" (no download) is the synchronous route `POST /api/upstreams/check` (≈18 GitHub requests, no job); it updates state and emits `upstream.new_version` with `job_id` null.
-Seed: one daily schedule `{"every":"day","at":"09:00"}` of kind `upstream`, target all, `rebuild=true`, matching the existing CI cadence `0 9 * * *` (`.github/workflows/ci.yml` `on.schedule`, kept by `.github/workflows/build.yml`, ci §5).
+Seed: one daily schedule `{"every":"day","at":"09:00"}` of kind `upstream`, target all, `rebuild=true`.
 
 ### 6. Interfaces summary
 
@@ -596,12 +591,12 @@ app created ──► icon fetcher (Play) → <data>/icons/<pkg>, app.display_na
 
 - During implementation, a one-off script (not kept) scans `src/build/*.sh` (`get_patches_key`/`get_apk`/`patch`/`dl_gh`/`version=` lines), `src/patches/**`, `src/options/*.json`, `src/build/helper/apps.json`, and writes one committed seed file `local/webui/catalog-seed.json` with sources, upstreams, apps, items, groups, overrides, pins, variants (in build §3.1 format), dependency links.
 - Overrides conversion: exclude line `X` → `{"X":{"enabled":false}}`; include line `X` → `{"X":{"enabled":true}}`; each options-file `patches` entry copied (enabled + options). The `|`-suffix in include lines was never applied (`utils.sh` `get_patches_key`) and is dropped.
-- The web server imports the seed only when the catalog tables are empty. After that the database is the only source of truth. The seed file is also CI's catalog input; `python3 -m webui export-seed` writes the current catalog back in seed format (ci §4.4).
+- The web server imports the seed only when the catalog tables are empty. After that the database is the only source of truth. `python3 -m webui export-seed` writes the current catalog back in seed format (`catalog.seed_text`).
 - Decision Q3: BiliRoamingM and Dropped-Patches are seeded as normal items; the first build shows whether they still patch.
 - Decision Q5: the seed keeps only variants with `abi` `universal` or `arm64-v8a` (e.g. morphe YouTube keeps 2 of 5, `src/build/morphe.sh`; anddea YouTube Music keeps arm64-v8a); an item with neither keeps all its variants and the seed script lists it. Other ABIs are added per item in the UI.
 - Xposed: the seed adds 4 upstreams, 3 sources, 8 items and group "Xposed" (xposed §4.1).
 - Not migrated: 17 unreferenced `src/patches` dirs (preflight-patches §4), `paresh.json`, `piko-x-shim.json` (no caller), the `scrazzz-patches` row (script missing, `local/build.sh` `ORGS` table), commented-out builds (Hola-VPN, TeraBox, medium, strava, GoogleNews). They can be re-added in the UI.
-- Deleted after seed: `src/options/`, `src/patches/`, `src/build/helper/apps.json` (moved into `app`), the org table in `local/build.sh`, the per-org scripts and `src/build/Xposed.sh` (build §7). The GitHub workflows are replaced by `.github/workflows/build.yml` (decision Q1, ci §5, §9). The untracked `hushfacebook.json` and `piko-newx.json` are read by the seed script, then removed with the directory.
+- Deleted after seed: `src/options/`, `src/patches/`, `src/build/helper/apps.json` (moved into `app`), the org table in `local/build.sh`, the per-org scripts and `src/build/Xposed.sh` (build §7). The old GitHub workflows are deleted and not replaced (decision Q1). The untracked `hushfacebook.json` and `piko-newx.json` are read by the seed script, then removed with the directory.
 
 ### 9. Error handling
 
@@ -631,7 +626,7 @@ app created ──► icon fetcher (Play) → <data>/icons/<pkg>, app.display_na
 - Reorder: full-order PUT yields positions 0..n-1; moving an item between groups.
 - Group colour: create and update with `#1a2B3c` stored and returned by `GET /api/catalog`; `red`, `#123` → 400; null clears it.
 - End-to-end (user-run, long): pull morphe, edit one override, build YouTube, confirm the override appears in the CLI log line for that patch.
-- Xposed and CI tests: xposed §11, ci §8.
+- Xposed tests: xposed §11.
 
 ### 11. User decisions (catalog)
 
@@ -677,7 +672,7 @@ Nothing else is added: no message broker, no separate worker container, no docke
 
 #### 2.1 Execution placement (requirement on core part)
 
-The job service spawns `bash src/build/build-item.sh <job.json>` as a **child process in the web server container**. Therefore that container image must contain today's builder toolchain (`local/Dockerfile` apt-get `RUN`: java 21, apksigner, jq, wget, curl, unzip, zip, python venv) plus pup v0.4.0 and APKEditor 1.4.9 baked in at image build (moved out of `src/build/utils.sh` top-level code). The image is multi-arch: the pup binary is chosen by the build architecture (today `uname -m`, `src/build/utils.sh` top-level code), so it also builds on amd64 GitHub runners (ci §5). The separate `builder` service and `docker compose exec` path are deleted.
+The job service spawns `bash src/build/build-item.sh <job.json>` as a **child process in the web server container**. Therefore that container image must contain today's builder toolchain (`local/Dockerfile` apt-get `RUN`: java 21, apksigner, jq, wget, curl, unzip, zip, python venv) plus pup v0.4.0 and APKEditor 1.4.9 baked in at image build (moved out of `src/build/utils.sh` top-level code). The image is multi-arch: the pup binary is chosen by the build architecture (today `uname -m`, `src/build/utils.sh` top-level code), so it also builds on amd64. The separate `builder` service and `docker compose exec` path are deleted.
 
 Solver reachability: `utils.sh` reads full URLs `FLARESOLVERR_URL`, `CFBYPASS_URL`, `APKM_SOLVER_URL` from env instead of `localhost:$PORT`. Compose sets them to `http://127.0.0.1:47191`, `http://127.0.0.1:47800`, `http://127.0.0.1:47900` (the sidecars share the `netns` network namespace with `app` and bind loopback only, core §1). `local/solver/solver.py` (the `ThreadingHTTPServer` bind) changes its bind address from `0.0.0.0` to `127.0.0.1`.
 
@@ -826,7 +821,7 @@ Restart: core marks `running` → `failed` (`server restarted`); `queued` rows a
 
 ### 7. Refactor and deletions
 
-Deleted (project is unreleased; no compatibility): `local/build.sh`; every org script `src/build/{morphe,morphe-beta,Anddea-Revanced-Extended,Anddea-Revanced-Extended-Beta,Piko,Piko-Beta,Piko-Newx,DeRevanced,HushFacebook,hoo-dles,bufferk,arandomhooman,icysymmetra,docbt,rushiranpise,BiliRoamingM,Dropped-Patches-Revanced}.sh` (their bodies become catalog variant data); `src/build/Xposed.sh` (its apps become catalog data, xposed §4.1); `src/etc/connection.sh`; the `builder` service; `local/out/`, `local/work/`; the old GitHub workflows, actions and `src/etc/ci.sh` (ci §9).
+Deleted (project is unreleased; no compatibility): `local/build.sh`; every org script `src/build/{morphe,morphe-beta,Anddea-Revanced-Extended,Anddea-Revanced-Extended-Beta,Piko,Piko-Beta,Piko-Newx,DeRevanced,HushFacebook,hoo-dles,bufferk,arandomhooman,icysymmetra,docbt,rushiranpise,BiliRoamingM,Dropped-Patches-Revanced}.sh` (their bodies become catalog variant data); `src/build/Xposed.sh` (its apps become catalog data, xposed §4.1); `src/etc/connection.sh`; the `builder` service; `local/out/`, `local/work/`; the old GitHub workflows, actions and `src/etc/ci.sh`.
 
 `src/build/utils.sh` changes:
 - Remove top-level side effects `src/build/utils.sh` top-level code (tools into image; UA into `init_ua`).
@@ -849,7 +844,7 @@ Owned by other parts: `src/options/*`, `src/patches/*`, `src/build/helper/apps.j
 
 ### 9. User decisions (build)
 
-Answered in §0.6: GitHub Actions kept (Q1, Part 6); Xposed apps kept (Q2, Part 7); seeded variants universal + arm64-v8a only (Q5, catalog §8).
+Answered in §0.6: GitHub Actions builds dropped (Q1); Xposed apps kept (Q2, Part 7); seeded variants universal + arm64-v8a only (Q5, catalog §8).
 
 ### 10. Uncertainties
 
@@ -1223,170 +1218,6 @@ Rendering rules: lists are rebuilt from JSON with template strings; every server
 | Global "Update CLI" (catalog §5.2) | Settings, GitHub token card: button "Update CLI" = pull of the CLI upstream |
 | `job_history_count`, `base_url` | Settings, Artifacts card: two number/text fields |
 | Catalog `check_error` / token rejected banner (catalog §9) | App list: amber banner under the tallies when any upstream has `check_error` |
-
-
-# Part 6 — CI: GitHub Actions builds on the generic runner
-
-Owner: arch-ci.
-Decision input: user decision Q1 = (b) keep GitHub Actions builds (`docs/logs/2026-10-19-webui-contract.md:38`). The org scripts, `src/options`, `src/patches`, `local/build.sh` stay deleted (build §7, catalog §8).
-
-### 1. Today (facts the design replaces)
-
-- `ci.yml` runs daily at `0 9 * * *` (`.github/workflows/ci.yml` `on.schedule`), runs `src/etc/ci.sh <repo> <channel> <asset name>` once per org (`ci.yml` job `check`, steps `Check new patch …`), and calls `manual-patch.yml` per org when `new_patch == 1` (`ci.yml` jobs `Patch-*`).
-- Change detection = time compare: upstream release asset `updated_at` vs our release asset `updated_at` for one hand-picked asset name (`src/etc/ci.sh` `checker`). One representative asset per org; other apps of the org are not checked.
-- `manual-patch.yml` has one job per org, each a matrix over run numbers calling `src/build/<org>.sh <run>` (`.github/workflows/manual-patch.yml` jobs `patch_*`), after a GitHub reachability probe (`manual-patch.yml` step `Check github connection`). `ci_.yml` does the same for `src/build/Xposed.sh` (`.github/workflows/ci_.yml` job `Patch-Xposed`).
-- Toolchain on the runner: `.github/actions/preparing` (JDK 21, FlareSolverr and cfbypass containers, optional usque/python/BouncyCastle, `.github/actions/preparing/action.yml` steps).
-- Publishing: `ncipollo/release-action` to the single release tag `all`, `allowUpdates: true`, files `./release/*.apk` (`.github/actions/release/action.yml` step `Release`). README links fixed names, e.g. `releases/download/all/youtube-morphe.apk` (142 links in `README.md`).
-- Secrets: `GITHUB_TOKEN` (`manual-patch.yml` top-level `env`) and `TDL_BACKUP` (`manual-patch.yml` `workflow_call` secrets and the `patch_*` job envs). `TDL_BACKUP` is read only by `telegram_dl` (`src/build/utils.sh` `telegram_dl`), which no script calls (`grep -n telegram_dl src/build/*.sh` finds only the definition). `permissions: write-all` (top-level `permissions` of `ci.yml`, `manual-patch.yml`, `ci_.yml`).
-
-### 2. Design in one paragraph
-
-CI runs the **same web-server code without the HTTP server**. A new module `local/webui/ci.py` adds three subcommands to `python3 -m webui`: `ci-plan`, `ci-build`, `export-seed`. Each one starts from an empty `/data`, runs the CLI start-up (schema + seed import from the committed `local/webui/catalog-seed.json`, catalog §8, then every module's `register()`; no `start()`, so no worker, scheduler, Play icon fetch, adb server or notifier thread, core §3), then calls the existing handlers: catalog's upstream check / pull and build's job handler, which writes `job.json` and spawns `src/build/build-item.sh` (build §3.1, §4). The only new core function is `jobs.run_inline`, which runs one job in the calling thread through the same executor the worker threads use. CI therefore has no job.json writer, no build logic and no upstream logic of its own.
-
-### 3. Components
-
-| Component | File | Owner | Responsibility |
-|---|---|---|---|
-| CI commands | `local/webui/ci.py` (new) exports `main(argv)`; core's `local/webui/__main__.py` dispatches the three subcommands to it (core §3) | ci | `ci-plan`, `ci-build`, `export-seed` (§4) |
-| Inline job run | `local/webui/jobs.py` | core | `run_inline(kind, target, trigger, options=None) -> job row` (core §5): insert a `jobs` row as `running`, call the registered handler with the same `log` object and the same success / `JobFailed` / exception rules as the worker (core §5). The worker loop and `run_inline` share one private `_execute(job)` function. |
-| CI compose override | `local/docker-compose.ci.yml` (new) | ci | `services.app.command: ["sleep","infinity"]` and `services.app.healthcheck: {disable: true}`. The server, scheduler and workers do not start; sidecars start as usual. Compose merge rule: `command` "is overridden by the latest Compose file, and not appended" (docs.docker.com/reference/compose-file/merge, fetched 2026-10-19). |
-| Workflow | `.github/workflows/build.yml` (new) | ci | Jobs `plan` and `build` (§5) |
-| Seed file | `local/webui/catalog-seed.json` | catalog | CI's catalog input. Unchanged format. |
-
-### 4. Interfaces
-
-#### 4.1 `python3 -m webui ci-plan [--source <id>|all] [--force]`
-1. Start-up on the empty `/data` (schema + seed import).
-2. For each source in scope with at least one enabled item: catalog **check only** for its upstream (catalog §5.1; same function as `POST /api/upstreams/check`; no download). An upstream with `check_error` → its sources are skipped, one warning line on stderr.
-3. Read our release: `GET /repos/{GITHUB_REPOSITORY}/releases/tags/all`, field `assets[].{name,label}` (asset objects carry `label`, docs.github.com/en/rest/releases/assets, fetched 2026-10-19).
-4. A source needs a build when `--force`, or when any enabled item of it has a variant (build §3.1 `recipe.variants[].name`) whose release asset is missing, or whose label tag (§4.3) differs from the source upstream `latest_tag`.
-5. stdout = one line, a JSON array of source ids, e.g. `["morphe","piko"]`. Everything else goes to stderr.
-Exit non-zero on GitHub 401/403/429 for our own release or for every upstream (nothing can be decided); single-upstream errors only skip that source.
-
-#### 4.2 `python3 -m webui ci-build <source_id> [--force]`
-1. Start-up on the empty `/data`.
-2. Item set = enabled items of the source; without `--force` only the items that step 4 of §4.1 marks as stale.
-3. `jobs.run_inline('upstream', {"upstream_id": source.upstream_id}, 'manual')` and the same for the source's CLI upstream `source.cli_upstream_id` (catalog §5.2 pull: download + inspect). No `options` are passed, so no rebuild chaining (`rebuild` absent = false, catalog §5.2).
-4. For each item: `jobs.run_inline('build', {"item_id": N}, 'manual')`. The build handler does all of build §4 steps 3–8 (job.json, runner, validation, artifacts rows, events). After each job, print `/data/logs/<job id>.log` to stdout so the Actions log shows it.
-5. For each succeeded item, copy every artifact of that job to `/data/release/<source_id>-<key>-<variant>.apk` and append one line `<file name>#<label>` to `/data/release/upload.list`.
-6. Exit 0 if every build succeeded, else 1 (after step 5, so successes are still published).
-
-#### 4.3 Release asset name and label
-- Name: `<source_id>-<key>-<variant>.apk` — fixed across versions, so `--clobber` replaces it and README links stay valid between builds.
-- Label: `<name> (<app_version>, patches <upstream_tag>)`. GitHub shows the label "in place of the filename" (docs.github.com/en/rest/releases/assets); download URLs use the name. `ci-plan` reads the tag back with the regex `, patches (\S+)\)$`. One function `ci.label(name, app_version, tag)` and one `ci.label_tag(label)` hold the format.
-- This label is CI's only state: no database, cache or state file survives between runs.
-
-#### 4.4 `python3 -m webui export-seed`
-Writes the current catalog tables of `/data/webui.db` to stdout in the seed format (the inverse of the seed import, catalog §8). Use: the user edits items in the web UI, runs `docker compose -f local/docker-compose.yml exec app python3 -m webui export-seed > local/webui/catalog-seed.json`, commits; the next CI run builds with those settings. The import rule "only when catalog tables are empty" (catalog §8) is unchanged, so a running server is not affected by a new seed file.
-
-### 5. Workflow `.github/workflows/build.yml`
-
-```yaml
-name: Build
-on:
-  schedule:
-    - cron: "0 9 * * *"
-  workflow_dispatch:
-    inputs:
-      source: {description: "source id or all", type: string, default: all}
-      force:  {description: "build even if up to date", type: boolean, default: false}
-permissions:
-  contents: write
-concurrency:
-  group: build
-env:
-  SOURCE: ${{ inputs.source || 'all' }}
-  FORCE: ${{ inputs.force && '--force' || '' }}
-jobs:
-  plan:
-    runs-on: ubuntu-latest
-    outputs:
-      sources: ${{ steps.plan.outputs.sources }}
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - id: plan
-        env: {GITHUB_TOKEN: "${{ github.token }}"}
-        run: |
-          printf '%s' "$GITHUB_TOKEN" > "$RUNNER_TEMP/github_token"
-          out=$(docker run --rm -e GITHUB_REPOSITORY -e PYTHONPATH=/repo/local \
-            -v "$PWD:/repo:ro" -v "$RUNNER_TEMP/github_token:/run/secrets/github_token:ro" \
-            -v "$RUNNER_TEMP/data:/data" python:3.12-slim \
-            python3 -m webui ci-plan --source "$SOURCE" $FORCE)
-          echo "sources=$out" >> "$GITHUB_OUTPUT"
-  build:
-    needs: plan
-    if: needs.plan.outputs.sources != '[]'
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        source: ${{ fromJSON(needs.plan.outputs.sources) }}
-    env:
-      RELUME_NETWORK_MODE: host
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - run: echo "RELUME_GITHUB_TOKEN_FILE=$RUNNER_TEMP/github_token" >> "$GITHUB_ENV"
-      - run: |
-          printf '%s' "$GH_TOKEN" > "$RELUME_GITHUB_TOKEN_FILE"
-          mkdir -p local/data
-          echo "RELUME_UID=$(id -u)" >> "$GITHUB_ENV"; echo "RELUME_GID=$(id -g)" >> "$GITHUB_ENV"
-      - run: docker compose -f local/docker-compose.yml -f local/docker-compose.ci.yml up -d --build
-      - run: docker compose -f local/docker-compose.yml -f local/docker-compose.ci.yml exec -T app python3 -m webui ci-build "${{ matrix.source }}" $FORCE
-      - if: ${{ !cancelled() && hashFiles('local/data/release/upload.list') != '' }}
-        working-directory: local/data/release
-        run: xargs -d '\n' -a upload.list gh release upload all --clobber
-```
-
-Notes:
-- `RELUME_GITHUB_TOKEN_FILE` is set through `$GITHUB_ENV` in a step, not in `jobs.build.env`: the `runner` context is not available in `jobs.<job_id>.env` (allowed there: `github, needs, strategy, matrix, vars, secrets, inputs`; `runner` is allowed in `steps.run`/`steps.env`; docs.github.com/en/actions/reference/workflows-and-actions/contexts, context availability table, fetched 2026-10-19). A `$GITHUB_ENV` value is visible from the next step on, so the file is written in the following step.
-- `actions/checkout@v7.0.1` = latest release (`gh api repos/actions/checkout/releases/latest`, 2026-10-19). Runner image `ubuntu-24.04` ships Docker Compose 2.38.2 and GitHub CLI 2.102.0 (actions/runner-images `Ubuntu2404-Readme.md`, 2026-10-19).
-- Matrix from a job output with `fromJSON(needs.<job>.outputs.<name>)`, `fail-fast`, `max-parallel`: docs.github.com "Running variations of jobs in a workflow" (fetched 2026-10-19). The `if` guards the empty list.
-- Matrix unit = **source**, items of one source run serially in one runner (one exit IP per source, as build §5.1 asks for one host). Sources run in parallel on separate runners, as today's per-org jobs do (`ci.yml` jobs `Patch-*`). `max-parallel` is not set (today has none).
-- `concurrency: group: build` without `cancel-in-progress`: a second run waits; a newer pending run replaces an older pending one (workflow-syntax docs: "any existing `pending` job or workflow in the same concurrency group will be canceled"). Prevents two runs uploading the same asset.
-- `gh release upload <tag> <files>... --clobber`, label by appending `#<label>` to the file argument (cli.github.com/manual/gh_release_upload, fetched 2026-10-19). `xargs -d '\n'` keeps each line (label has spaces) as one argument.
-- `permissions: contents: write` covers release upload ("allows the action to create a release", workflow-syntax docs) and replaces `write-all`.
-- Linux runner → `RELUME_NETWORK_MODE=host`, the same value as a Linux NAS (core §1). No CI-specific compose values besides the override file.
-
-### 6. Data flow
-
-```
-cron 09:00 / dispatch(source, force)
-  └─ plan (python:3.12-slim, repo ro): start-up → seed import → upstream check per source
-        → compare with release "all" asset labels → ["src", …]
-  └─ build × source (ubuntu-latest):
-        compose up (app idle + 3 sidecars) → exec ci-build <src>
-          start-up → seed import → run_inline(upstream pull: source, CLI)
-          → for stale item: run_inline(build) → job.json → build-item.sh → artifacts
-          → /data/release/*.apk + upload.list
-        → gh release upload all --clobber (files + labels)
-```
-
-### 7. Error handling
-
-| Failure | Behaviour |
-|---|---|
-| GitHub 401/403/429 on our release or all upstreams in `ci-plan` | `plan` fails red; no builds this run; next cron retries |
-| One upstream `check_error` | that source skipped with a stderr warning; others planned |
-| Release `all` missing (404) | `ci-plan` treats every asset as missing; `gh release upload` then fails because the tag has no release. The release exists today; recreating it is a one-time manual step, not code. |
-| Upstream pull fails in `ci-build` | build of each item fails `upstream_missing` (build §5); job exit 1; nothing uploaded for them |
-| One item build fails | its log is printed; other items continue; successes uploaded; job red (exit 1) |
-| Upload interrupted with `--clobber` | gh docs: "the original assets will be lost". Next `ci-plan` sees the asset missing and rebuilds that source. |
-| Runner job timeout | per-build timeout 60 min stays core's (`log.run`, build §4 step 4); GitHub's job limit applies above it. A source whose serial build exceeds it must be split in the catalog (one source per run, as today's DeRevanced 10-run matrix, `manual-patch.yml` job `patch_derv`, matrix `run`). |
-| APKMirror 429 / Cloudflare | same solver chain inside the container as locally (build §5.1); no CI-only retries |
-
-### 8. Testing
-
-- `local/webui/tests/test_ci.py` (stdlib `unittest`, no network): `label`/`label_tag` round-trip; plan decision table from fixture release JSON + fixture upstream state: asset missing → build, label tag differs → build, all labels equal → skip, upstream `check_error` → skip, `--force` → build, `--source` filter.
-- Core test for `run_inline`: same status/reason as the worker for return / `JobFailed` / other exception; worker and `run_inline` both call `_execute`.
-- Catalog test: seed import → `export-seed` → JSON equal to the seed file (keys sorted).
-- Compose check: `RELUME_NETWORK_MODE=host docker compose -f local/docker-compose.yml -f local/docker-compose.ci.yml config` exits 0 and shows `command: [sleep, infinity]` for `app`.
-- End-to-end (user-run, long): push the branch, `workflow_dispatch` with `source=hushfacebook` (one item); expect asset `hushfacebook-<key>-<variant>.apk` on release `all` with a label carrying the patches tag; rerun without `force` → `plan` outputs `[]`, `build` skipped.
-
-### 9. Deletions and one-time steps
-
-Deleted: `.github/workflows/ci.yml`, `.github/workflows/ci_.yml`, `.github/workflows/manual-patch.yml`, `.github/actions/preparing/`, `.github/actions/release/`, `.github/actions/experimental-check/`, `.github/actions/re-run/` (re-dispatches `manual-patch.yml`, `.github/actions/re-run/action.yml` `createWorkflowDispatch` call), `src/etc/ci.sh`. Secret `TDL_BACKUP` is no longer used (user may delete it in repo settings).
-One-time (user action, destructive, not automated): delete the old-name assets on release `all` after the first full run; rewrite the README download links to the new names (the seed one-off script can print the table, catalog §8).
 
 
 # Part 7 — Xposed module items (LSPatch / NPatch)

@@ -7,24 +7,15 @@
 
 ## What it does
 
-- Downloads the official APK of each app in the catalog, patches it with the configured patch source, signs it, and keeps the result as an artifact (in CI: uploaded to the release tagged `all`).
+- Downloads the official APK of each app in the catalog, patches it with the configured patch source, signs it, and keeps the result as an artifact.
 - Apps and patch sources are defined in a catalog (`local/webui/catalog-seed.json`): YouTube, YouTube Music, Reddit, TikTok, Twitter/X, Instagram, Proton Mail/VPN and many more, each tied to a patch source such as Morphe, ReVanced Extended (anddea), Piko or Dropped Patches.
-- Runs in two ways, both using the same build code (`src/build/`):
-  1. **GitHub Actions** — `.github/workflows/build.yml`.
-  2. **Local Docker build with a Web UI** — `local/`.
+- Runs as a local Docker build with a Web UI (`local/`), using the build code in `src/build/`.
+- The Android companion app is released by pushing a tag `companion-vX.Y.Z`: CI builds and publishes it.
 
 > [!NOTE]
 > For YouTube, YouTube Music or Google Photos you need [MicroG RE](https://github.com/MorpheApp/MicroG-RE) installed on the phone.
 >
 > Beta builds use development patches, not beta APKs. They share the package name of the stable build, so installing one overwrites the other.
-
-## Run with GitHub Actions
-
-1. Push this repository to your GitHub account and enable workflows in the **Actions** tab.
-2. Open the **Build** workflow and choose **Run workflow**. `source` is a source id (for example `morphe`) or `all`; tick `force` to build even when nothing changed.
-3. The workflow also runs every day at 09:00 UTC and builds only the sources whose patches changed.
-
-The workflow builds from the catalog seed committed in the repository. To make it use settings you made in the Web UI, export them (see [docs/Frequently Asked Questions.md](docs/Frequently%20Asked%20Questions.md)).
 
 ## Run locally with Docker (Web UI)
 

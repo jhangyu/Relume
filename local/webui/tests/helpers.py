@@ -95,3 +95,14 @@ def login(base_url, password='correct-horse-42', username='admin'):
     st, h, body = http('POST', base_url + '/api/auth/login', {'username': username, 'password': password, 'remember': True})
     assert st == 200, (st, body)
     return h['Set-Cookie'].split(';')[0]
+
+
+# Runs one job in the calling thread through the worker's executor (needs no worker thread).
+def run_inline(kind, target, trigger, options=None):
+    with db.tx() as c:
+        jid = c.execute('INSERT INTO jobs(kind,status,trigger,target,options,created_at,started_at) '
+                        "VALUES (?,'running',?,?,?,?,?)",
+                        (kind, trigger, jobs.canon(target), jobs.canon(jobs.normalize(kind, options)),
+                         db.utcnow(), db.utcnow())).lastrowid
+    jobs._execute(jobs.Job(db.conn().execute('SELECT * FROM jobs WHERE id=?', (jid,)).fetchone()))
+    return jobs.get(jid)

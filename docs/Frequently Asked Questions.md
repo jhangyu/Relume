@@ -14,21 +14,13 @@ The issue might be that your Android OS is preventing MicroG (GMS Core) from run
 
 ### Q: How do I use this repository for patching my own app?
 
-Push the repository to your own GitHub account, and then go to the `Action` tab
-![Click Action](../docs/image/FAQ/patching-app-1.png)
-
-Click "I understand my workflows, go ahead and enable them"
-![Click "I understand my workflows, go ahead and enable them"](../docs/image/FAQ/patching-app-2.png)
-
-Open the "Build" workflow, click "Run workflow", enter a source id (for example `morphe`) or `all` in `source`, and tick `force` to build even when nothing changed. The workflow also runs every day at 09:00 UTC and builds only the sources whose patches changed.
-
-Then download your patched apps from the release tagged `all` in your repository.
+Run the Docker stack on your own machine (see "Run locally with Docker (Web UI)" in the [README](../README.md)), open the Web UI, pick an app in the catalog and start a build. Download the patched APK from the build result.
 
 ---
 
 ### Q: How do I change patches, patch options or the app version?
 
-Patch selection, patch options and version pins live in the web UI ("Relume", `local/`): open an app, then use the Patches, Options and Version tabs. To make GitHub Actions build with the same settings, export the catalog and commit it:
+Patch selection, patch options and version pins live in the web UI ("Relume", `local/`): open an app, then use the Patches, Options and Version tabs. To keep these settings in the repository (the seed used by a fresh install), export the catalog and commit it:
 
 `docker compose -f local/docker-compose.yml exec app python3 -m webui export-seed > local/webui/catalog-seed.json`
 
@@ -42,6 +34,6 @@ I’m so sorry about this, but my repository only patches apps from “scripts�
 
 ### Q: How do I know these apps are safe to use?
 
-You can rest assured that it’s safe because my code is 100% open-source and uses GitHub Actions to patch the apps. The apk files used for patching are downloaded from the trusted site “APKMirror”.
+You can rest assured that it’s safe because my code is 100% open-source and builds the apps in your own Docker stack. The apk files used for patching are downloaded from the trusted site “APKMirror”.
 
 ----

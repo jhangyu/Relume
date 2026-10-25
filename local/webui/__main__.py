@@ -1,9 +1,9 @@
 import os
 import sys
 
-from . import auth, ci, db, jobs, scheduler, server, settings
+from . import auth, catalog, db, jobs, scheduler, server, settings
 
-USAGE = 'usage: python3 -m webui [serve|ci-plan|ci-build|export-seed]'
+USAGE = 'usage: python3 -m webui [serve|export-seed]'
 
 
 # Modes of the data subdirectories, set at every boot so an empty volume needs no host preparation. The server
@@ -17,7 +17,7 @@ def prepare_data():
         p = db.DATA / d
         p.mkdir(parents=True, exist_ok=True)
         # only dirs this process owns: a pre-existing host-owned dir keeps its mode, also when we run as root
-        # (CI ci-build: root server, workflow-made data/work 0755; 0770 would lock out the runner)
+        # (0770 would lock the runner out of a root-run server's host-made data/work 0755)
         if d in DIR_MODES and p.stat().st_uid == os.getuid():
             p.chmod(DIR_MODES[d])
 
@@ -48,9 +48,10 @@ def boot(start=False, names=None):
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     cmd = argv[0] if argv else 'serve'
-    if cmd in ('ci-plan', 'ci-build', 'export-seed'):
+    if cmd == 'export-seed':
         boot()
-        return ci.main(argv)
+        sys.stdout.write(catalog.seed_text())
+        return 0
     if cmd != 'serve':
         print(USAGE, file=sys.stderr)
         return 2

@@ -20,15 +20,10 @@ class StartupTest(DataTestCase):
         calls = []
         names = [self.fake('catalog', calls), self.fake('build', calls)]
         before = threading.active_count()
-        # patch.dict restores sys.modules afterwards; popping webui.ci makes the check
-        # independent of whether an earlier test (test_ci) already imported it
-        with mock.patch.dict('os.environ', {'RELUME_DATA': str(self.data)}), mock.patch.dict(sys.modules):
-            sys.modules.pop('webui.ci', None)
+        with mock.patch.dict('os.environ', {'RELUME_DATA': str(self.data)}):
             cli.boot(names=names)
-            ci_imported = 'webui.ci' in sys.modules
         self.assertEqual(calls, ['catalog.seed_import', 'catalog.register', 'build.register'])
         self.assertEqual(threading.active_count(), before)
-        self.assertFalse(ci_imported)
 
     def test_boot_start(self):
         calls = []
@@ -88,8 +83,8 @@ class EmptyVolumeTest(DataTestCase):
         self.assertTrue((fresh / 'webui.db').is_file())
 
     def test_foreign_owned_dir_keeps_mode(self):
-        """CI case: ci-build runs as root, the workflow made data/work as the host user (uid 1001,
-        mode 0755). boot must not tighten it, or the runner (uid 10001, gid 0) cannot enter it."""
+        """Root server, data/work made by the host user (uid 1001, mode 0755). boot must not
+        tighten it, or the runner (uid 10001, gid 0) cannot enter it."""
         if os.geteuid() != 0:
             self.skipTest('chown and setpriv need root (T_PY runs as root)')
         os.chmod(self.data, 0o755)
