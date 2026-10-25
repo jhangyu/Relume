@@ -135,8 +135,12 @@ private fun ColumnScope.RootContent() {
 @Composable
 private fun UpdateGate(model: AppModel, offered: Long, own: Long, run: io.github.jhangyu.relume.install.RunState?) {
     val c = FluentTheme.colors
-    // An old finished run stays in the run file: show it only while it is active or after "Update now" in this visit.
+    // An old finished run stays in the run file: show it only while it is active or once "Update now" started a run in this visit.
     var showRun by remember { mutableStateOf(false) }
+    val startedAtEntry = remember { model.runStarted }
+    LaunchedEffect(model.runStarted) {
+        if (model.runStarted != startedAtEntry) showRun = true
+    }
     if (run != null && (showRun || run.isActive)) {
         InstallScreen(run, model, onClose = { showRun = false })
         return
@@ -146,6 +150,6 @@ private fun UpdateGate(model: AppModel, offered: Long, own: Long, run: io.github
         Txt("The server needs a newer version of this app before it can be used.", color = c.fg2)
         Txt("installed $own\nserver offers $offered", style = FluentType.mono)
         model.error?.let { MessageBar("Update failed", Tone.Danger, detail = it, action = "Dismiss", onAction = model::dismissError) }
-        FButton("Update now", { model.updateCompanion(); showRun = true }, Modifier.fillMaxWidth(), kind = ButtonKind.Primary)
+        FButton("Update now", model::updateCompanion, Modifier.fillMaxWidth(), kind = ButtonKind.Primary)
     }
 }
