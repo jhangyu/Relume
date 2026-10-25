@@ -99,7 +99,7 @@ object InstallRunner {
                 if (waiting && (id == null || !Installer.sessionExists(context, id))) InstallRun.finish(acc, i, lostSession(context, s)) else acc
             }
         }
-        if (after != run) InstallWorker.enqueue(context, run.origin, replace = false)
+        if (after != run) InstallWorker.enqueue(context, run.passOrigin, replace = false)
     }
 
     /** Reads the run file without reconciling sessions (for the background check). */
@@ -128,7 +128,7 @@ object InstallRunner {
         Notifications.cancelStep(context, index)
         InstallRunStore.update(context) { cur -> cur?.let { InstallRun.finish(it, index, outcome) } }
         if (outcome.state == StepState.NEEDS_UNINSTALL && run.origin == Origin.BACKGROUND) Notifications.needsReinstall(context, index, name)
-        InstallWorker.enqueue(context, run.origin, replace = false)
+        InstallWorker.enqueue(context, run.passOrigin, replace = false)
     }
 
     internal fun onUninstallResult(

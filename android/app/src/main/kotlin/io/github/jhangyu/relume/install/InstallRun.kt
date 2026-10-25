@@ -77,6 +77,8 @@ data class StepRun(
 data class RunState(
     val revision: String,
     val origin: Origin,
+    /** Who triggers the next worker pass (its constraints): [origin] until a user retry makes it [Origin.UI] (spec 9.1). */
+    val passOrigin: Origin,
     val steps: List<StepRun>,
     /** A receipt got 409 `stale plan`: the UI shows the new plan, no automatic reinstall (spec 9.4). */
     val stalePlan: Boolean,
@@ -117,7 +119,7 @@ object InstallRun {
         }
         val unsent = previous?.let { p -> p.outbox + p.steps.filter { it.receiptDue }.map(::receipt) }.orEmpty()
         return RunState(
-            plan.revision, origin, steps, stalePlan = false, synced = false, syncError = null,
+            plan.revision, origin, origin, steps, stalePlan = false, synced = false, syncError = null,
             outbox = unsent, outboxError = null,
         ).propagate()
     }
@@ -174,15 +176,21 @@ object InstallRun {
             if (st.runnable || st.active) finish(acc, i, StepOutcome(StepState.CANCELLED, ErrorCodes.USER_REJECTED, "cancelled by the user")) else acc
         }
 
-    /** Re-runs step [index] (after an uninstall or a lost confirm prompt) and the dependents it blocked. */
+    /**
+     * User re-run of step [index] (after an uninstall or a lost confirm prompt) and the dependents it blocked. Their due
+     * receipts move to the outbox, so the server gets the first result and the re-run's; later passes need only a network.
+     */
     fun retry(run: RunState, index: Int): RunState {
         val target = run.steps[index]
-        val reopened = run.steps.mapIndexed { i, s ->
-            val blocked = target.step.kind == StepKind.PROJECT && s.state == StepState.DEPENDENCY_FAILED &&
-                target.step.refId in s.step.needs
-            if (i == index || blocked) s.copy(state = StepState.PENDING, errorCode = null, errorText = null, sessionId = null, receiptDue = false, downloadedBytes = 0) else s
+        val reopen = run.steps.indices.filter { i ->
+            val s = run.steps[i]
+            i == index || target.step.kind == StepKind.PROJECT && s.state == StepState.DEPENDENCY_FAILED && target.step.refId in s.step.needs
+        }.toSet()
+        val unsent = reopen.map { run.steps[it] }.filter { it.receiptDue }.map(::receipt)
+        val steps = run.steps.mapIndexed { i, s ->
+            if (i in reopen) s.copy(state = StepState.PENDING, errorCode = null, errorText = null, sessionId = null, receiptDue = false, downloadedBytes = 0) else s
         }
-        return run.copy(steps = reopened, synced = false, syncError = null).propagate()
+        return run.copy(passOrigin = Origin.UI, steps = steps, outbox = run.outbox + unsent, synced = false, syncError = null).propagate()
     }
 
     /**

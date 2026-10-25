@@ -55,6 +55,32 @@ class InstallPersistenceTest {
     }
 
     @Test
+    fun aRetriedStepKeepsItsUnsentReceiptUntilFlushed() {
+        val run = InstallRun.create(plan(step(StepKind.PROJECT, 1), step(StepKind.ITEM, 2, needs = listOf(1))), Origin.BACKGROUND, null)
+        val uninstall = InstallRun.finish(run, 0, StepOutcome(StepState.NEEDS_UNINSTALL, ErrorCodes.SIGNATURE_MISMATCH, "signer"))
+        // neither the project's nor its dependent's receipt was sent before the user retried
+        val retried = InstallRun.retry(uninstall, 0)
+        assertEquals(listOf(1 to ErrorCodes.SIGNATURE_MISMATCH, 2 to ErrorCodes.DEPENDENCY_FAILED), retried.outbox.map { it.refId to it.errorCode })
+        // the re-run's own result is due as well: the server gets both
+        val rerun = InstallRun.finish(retried, 0, installed)
+        assertTrue(rerun.steps[0].receiptDue)
+        val flushed = rerun.outbox.fold(rerun) { acc, r -> InstallRun.outboxSent(acc, r, null) }
+        assertTrue(flushed.outbox.isEmpty())
+    }
+
+    @Test
+    fun passesContinuingAUiRetryNeedOnlyANetwork() {
+        val run = InstallRun.create(plan(step(StepKind.ITEM, 1), step(StepKind.ITEM, 2)), Origin.BACKGROUND, null)
+        assertEquals(Origin.BACKGROUND, run.passOrigin)
+        val retried = InstallRun.retry(InstallRun.finish(run, 0, StepOutcome(StepState.NEEDS_UNINSTALL, ErrorCodes.SIGNATURE_MISMATCH, "signer")), 0)
+        // the session result of the re-run enqueues the next pass with passOrigin; notifications still follow origin
+        val next = InstallRun.finish(retried, 0, installed)
+        assertEquals(Origin.BACKGROUND, next.origin)
+        assertEquals(NetworkType.CONNECTED, InstallWorker.constraints(next.passOrigin).requiredNetworkType)
+        assertFalse(InstallWorker.constraints(next.passOrigin).requiresBatteryNotLow())
+    }
+
+    @Test
     fun corruptRunFileIsReportedAndResetClearsIt() {
         val path = File(tmp.root, "install-run.json")
         val file = RunFile(path)
