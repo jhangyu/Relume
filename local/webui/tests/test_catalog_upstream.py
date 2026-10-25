@@ -158,6 +158,15 @@ class PullTest(CatalogCase):
         upstream.pull(2, self.log, rebuild=True)  # same tag: no new builds
         self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM jobs WHERE kind='build'").fetchone()[0], 1)
 
+    def test_pressed_item_rebuilds_with_update_off_but_a_scheduled_one_is_skipped(self):
+        self.routes()
+        upstream.pull(2, self.log, rebuild=True, pressed=[1])  # item 1 has Update off
+        self.assertEqual(self.queued_builds(), [1])
+        db.conn().execute("DELETE FROM jobs")
+        db.conn().execute("UPDATE upstream SET downloaded_tag = NULL WHERE id = 2")
+        upstream.pull(2, self.log, rebuild=True)
+        self.assertEqual(self.queued_builds(), [])
+
     def queued_builds(self):
         return [json.loads(r[0])["item_id"] for r in db.conn().execute("SELECT target FROM jobs WHERE kind='build' ORDER BY id")]
 
@@ -294,9 +303,17 @@ class ItemUpdateTest(CatalogCase):
         opts = {"rebuild": False, "notify": True}
         sched = scheduler._app_jobs(None, {"item_ids": [1], "project_ids": []}, {"update": True, "build": False, **opts})
         self.assertEqual(len(sched), 4)
-        self.assertEqual(upstream.item_update_jobs([1], [], "manual", None, opts), sched)
-        self.assertEqual(self.call(upstream.post_item_update, json={}, id=1), (200, {"job_ids": sched}))
+        manual = upstream.item_update_jobs([1], [], "manual", None, opts)
+        self.assertEqual(len(manual), len(sched))
+        self.assertEqual(self.call(upstream.post_item_update, json={}, id=1), (200, {"job_ids": manual}))
         self.assertEqual(self.status_of(upstream.post_item_update, json={"rebuild": "yes"}, id=1), 400)
+
+    def test_only_a_manual_update_names_the_pressed_item_in_its_jobs(self):
+        manual = upstream.item_update_jobs([1], [], "manual", None, {"rebuild": True, "notify": True})
+        scheduled = upstream.item_update_jobs([1], [], "schedule", None, {"rebuild": True, "notify": True})
+        targets = lambda ids: [json.loads(db.conn().execute("SELECT target FROM jobs WHERE id=?", (i,)).fetchone()[0]) for i in ids]
+        self.assertTrue(all(t["pressed"] == [1] for t in targets(manual)))
+        self.assertTrue(all("pressed" not in t for t in targets(scheduled)))
         self.assertEqual(self.status_of(upstream.post_item_update, id=99), 404)
 
 

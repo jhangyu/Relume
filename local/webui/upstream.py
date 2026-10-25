@@ -420,7 +420,8 @@ def _fetch_row(upstream_id, log, job_id=None):
     _prune(upstream_id)
     return True
 
-def pull(upstream_id, log, rebuild=False, job_id=None):
+def pull(upstream_id, log, rebuild=False, job_id=None, pressed=()):
+    """pressed: item ids a user asked to update by hand, rebuilt even when their Update switch is off."""
     try:
         row = _row(upstream_id)
     except KeyError:
@@ -441,15 +442,17 @@ def pull(upstream_id, log, rebuild=False, job_id=None):
     if new and rebuild:
         affected = affected_items(upstream_id)
         ids = [r[0] for r in db.conn().execute(
-            f"SELECT id FROM item WHERE enabled = 1 AND auto_update = 1 AND id IN ({','.join('?' * len(affected))}) ORDER BY id",
-            affected)]
+            f"SELECT id FROM item WHERE enabled = 1 AND (auto_update = 1 OR id IN ({','.join('?' * len(pressed))})) "
+            f"AND id IN ({','.join('?' * len(affected))}) ORDER BY id",
+            [*pressed, *affected])]
         for iid in ids:
             jobs.enqueue("build", {"item_id": iid}, "upstream")
         log.line(f"[+] rebuild enqueued for {len(ids)} item(s)")
 
 
 def _handler(job, log):
-    pull(job.target["upstream_id"], log, rebuild=bool((job.options or {}).get("rebuild", False)), job_id=job.id)
+    pull(job.target["upstream_id"], log, rebuild=bool((job.options or {}).get("rebuild", False)), job_id=job.id,
+         pressed=job.target.get("pressed", ()))
 
 
 def register():
@@ -467,20 +470,26 @@ def post_pull(req):
 def item_update_jobs(item_ids, project_ids, trigger, schedule_id, options):
     """Update work for items and projects: every upstream they depend on plus one appcheck per latest-mode package."""
     c = db.conn()
-    ups = set()
-    packages = set()
+    ups = {}  # upstream id -> items that asked for it
+    packages = {}
     for iid in item_ids:
         item = c.execute("SELECT package, version_mode FROM item WHERE id = ?", (iid,)).fetchone()
         if item["version_mode"] == "latest":
-            packages.add(item["package"])
-        ups.update(c.execute("SELECT s.upstream_id, s.cli_upstream_id FROM item i JOIN source s ON s.id = i.source_id "
-                             "WHERE i.id = ?", (iid,)).fetchone())
-        ups.update(r[0] for r in c.execute("SELECT p.upstream_id FROM item_dependency d JOIN project p "
-                                           "ON p.id = d.project_id WHERE d.item_id = ?", (iid,)))
+            packages.setdefault(item["package"], set()).add(iid)
+        for u in (*c.execute("SELECT s.upstream_id, s.cli_upstream_id FROM item i JOIN source s ON s.id = i.source_id "
+                             "WHERE i.id = ?", (iid,)).fetchone(),
+                  *(r[0] for r in c.execute("SELECT p.upstream_id FROM item_dependency d JOIN project p "
+                                            "ON p.id = d.project_id WHERE d.item_id = ?", (iid,)))):
+            ups.setdefault(u, set()).add(iid)
     for pid in project_ids:
-        ups.update(r[0] for r in c.execute("SELECT upstream_id FROM project WHERE id = ?", (pid,)))
-    ids = [jobs.enqueue("upstream", {"upstream_id": u}, trigger, schedule_id, options) for u in sorted(ups)]
-    ids += [jobs.enqueue("appcheck", {"package": p}, trigger, schedule_id, options) for p in sorted(packages)]
+        for r in c.execute("SELECT upstream_id FROM project WHERE id = ?", (pid,)):
+            ups.setdefault(r[0], set())
+
+    def target(key, value, asked):
+        # only a hand-pressed Update overrides the Update switch; scheduled work keeps honoring it
+        return {key: value, "pressed": sorted(asked)} if trigger == "manual" and asked else {key: value}
+    ids = [jobs.enqueue("upstream", target("upstream_id", u, ups[u]), trigger, schedule_id, options) for u in sorted(ups)]
+    ids += [jobs.enqueue("appcheck", target("package", p, packages[p]), trigger, schedule_id, options) for p in sorted(packages)]
     return ids
 
 

@@ -10,7 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from webui import build, db, events, jobs, settings
+from webui import build, db, events, jobs, server, settings
 from webui.tests import helpers
 
 FIX = Path(__file__).parent / "fixtures" / "build"
@@ -331,6 +331,16 @@ class DownloadTest(BuildCase):
         res = build.download_artifact(helpers.fake_request("GET", params={"id": 1}))
         self.assertEqual((res.path, res.etag, res.headers), (f, "sum", {
             "X-Relume-Sha256": "sum", "X-Relume-Signer-Sha256": "sig", "X-Relume-Package": "a.b", "X-Relume-Version-Code": "7"}))
+
+    def test_artifact_download_with_null_header_field_fails_naming_the_field(self):
+        f = self.data / "a.apk"
+        f.write_bytes(b"apk")
+        with db.tx() as c:
+            jid = add_job(c, 1, "success")
+            c.execute("INSERT INTO artifacts(job_id, item_id, variant, abi, package, version_code, signer_sha256, path, sha256, created_at)"
+                      " VALUES (?, 1, 'universal', 'universal', 'a.b', 7, NULL, ?, 'sum', 'now')", (jid, str(f)))
+        with self.assertRaisesRegex(server.HttpError, "X-Relume-Signer-Sha256"):
+            build.download_artifact(helpers.fake_request("GET", params={"id": 1}))
 
 
 class RetentionTest(BuildCase):

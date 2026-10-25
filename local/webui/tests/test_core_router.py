@@ -1,4 +1,4 @@
-import pathlib, sqlite3, sys, tempfile, threading, types, unittest
+import http.client as httpclient, pathlib, sqlite3, sys, tempfile, threading, types, unittest
 from unittest import mock
 from webui import server
 from webui.tests.helpers import DataTestCase, serve, http
@@ -94,9 +94,11 @@ class FileResponseTest(PublicRoutesMixin, DataTestCase):
         f = self.data / 'app.apk'
         f.write_bytes(self.BODY)
         hdr = {'X-Relume-Sha256': 'ab' * 32}
-        route = ('GET', '/api/file', lambda req: server.FileResponse(f, 'app.apk', etag='tag1', headers=hdr))
-        self.public(route[0], route[1])
-        self.base = serve(self, [fake_module('fakefile', [route])])
+        routes = [('GET', '/api/file', lambda req: server.FileResponse(f, 'app.apk', etag='tag1', headers=hdr)),
+                  ('GET', '/api/noetag', lambda req: server.FileResponse(f, 'app.apk'))]
+        for route in routes:
+            self.public(route[0], route[1])
+        self.base = serve(self, [fake_module('fakefile', routes)])
 
     def get(self, **headers):
         return http('GET', self.base + '/api/file', headers=headers)
@@ -120,6 +122,18 @@ class FileResponseTest(PublicRoutesMixin, DataTestCase):
         self.assertNotIn('Content-Range', h)
         st, _, body = self.get(Range='bytes=0-9', **{'If-Range': '"tag1"'})
         self.assertEqual((st, body), (206, self.BODY[:10]))
+
+    def test_if_range_never_matches_without_etag(self):
+        st, h, body = http('GET', self.base + '/api/noetag', headers={'Range': 'bytes=0-9', 'If-Range': '"None"'})
+        self.assertEqual((st, body), (200, self.BODY))
+        self.assertNotIn('Content-Range', h)
+
+    def test_file_shrinking_mid_transfer_aborts_without_writing_an_error_into_the_body(self):
+        grown = mock.Mock(st_size=len(self.BODY) + 50)  # fstat saw a bigger file than the read finds
+        with mock.patch.object(server.os, 'fstat', return_value=grown), mock.patch('traceback.print_exc'):
+            with self.assertRaises(httpclient.IncompleteRead) as cm:
+                self.get()
+        self.assertEqual(cm.exception.partial, self.BODY)
 
 
 class StaticTest(DataTestCase):

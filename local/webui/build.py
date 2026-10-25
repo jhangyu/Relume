@@ -182,9 +182,11 @@ def appcheck_handler(job, log):
         raise jobs.JobFailed(f"{package}: version check failed: {m.last_err or f'runner exited {rc} without versions'}")
     log.line(f"[+] {package}: APKMirror newest {m.versions[0]} ({len(m.versions)} versions)")
     if (job.options or {}).get("rebuild"):
+        pressed = job.target.get("pressed", ())  # items a user asked to update by hand: rebuilt even with Update off
         ids = [r[0] for r in db.conn().execute(
-            "SELECT id FROM item WHERE package = ? AND version_mode = 'latest' AND enabled = 1 AND auto_update = 1 ORDER BY id",
-            (package,)) if needs_build(r[0])]
+            "SELECT id FROM item WHERE package = ? AND version_mode = 'latest' AND enabled = 1 "
+            f"AND (auto_update = 1 OR id IN ({','.join('?' * len(pressed))})) ORDER BY id",
+            (package, *pressed)) if needs_build(r[0])]
         for iid in ids:
             jobs.enqueue("build", {"item_id": iid}, "upstream")
         log.line(f"[+] rebuild enqueued for {len(ids)} item(s)")
@@ -336,8 +338,11 @@ def download_artifact(req):
         raise server.HttpError(404, "artifact not found")
     headers = {"X-Relume-Sha256": r["sha256"], "X-Relume-Signer-Sha256": r["signer_sha256"],
                "X-Relume-Package": r["package"], "X-Relume-Version-Code": r["version_code"]}
+    missing = [k for k, v in headers.items() if v is None]
+    if missing:
+        raise server.HttpError(500, f"artifact {req.params['id']} has no value for {', '.join(missing)}: the app cannot verify the download")
     return server.FileResponse(r["path"], download_name=Path(r["path"]).name, etag=r["sha256"],
-                               headers={k: str(v) for k, v in headers.items() if v is not None})
+                               headers={k: str(v) for k, v in headers.items()})
 
 
 def group_zip_files(group_id):

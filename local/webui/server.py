@@ -165,7 +165,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 traceback.print_exc()
                 self._json(500, {'error': 'internal error'})
-        except (BrokenPipeError, ConnectionResetError):
+        except ConnectionError:  # peer gone, or a started body that cannot be completed
             self.close_connection = True
         except Exception:
             traceback.print_exc()
@@ -273,7 +273,8 @@ class Handler(BaseHTTPRequestHandler):
             size = os.fstat(f.fileno()).st_size
             span, status = (0, size - 1), 200
             want = self.headers.get('Range')
-            if want and (self.headers.get('If-Range') is None or self.headers['If-Range'].strip() == f'"{res.etag}"'):
+            if want and (self.headers.get('If-Range') is None
+                         or (res.etag and self.headers['If-Range'].strip() == f'"{res.etag}"')):
                 span = byte_range(want, size)
                 if span is None:
                     return self._json(416, {'error': f'range {want!r} not satisfiable for {size} bytes'},
@@ -299,8 +300,9 @@ class Handler(BaseHTTPRequestHandler):
             while length > 0:
                 chunk = f.read(min(length, 1 << 20))
                 if not chunk:
+                    # headers are already out: a 500 here would land inside the body, so drop the connection
                     self.close_connection = True
-                    raise OSError(f'{res.path} shrank while sending: {length} of {size} bytes missing')
+                    raise ConnectionAbortedError(f'{res.path} shrank while sending: {length} of {size} bytes missing')
                 self.wfile.write(chunk)
                 length -= len(chunk)
 
