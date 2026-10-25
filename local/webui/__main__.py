@@ -8,12 +8,15 @@ USAGE = 'usage: python3 -m webui [serve|export-seed]'
 
 # Modes of the data subdirectories, set at every boot so an empty volume needs no host preparation. The server
 # creates them, so they are owned by the server uid. The isolated runner (other uid, same gid) writes work and
-# apk-cache; secrets (UI GitHub token) and home (adb key) are the server's only.
-DIR_MODES = {'secrets': 0o700, 'home': 0o700, 'work': 0o770, 'apk-cache': 0o770}
+# apk-cache. The key dir (adb key, UI GitHub token) is the server's only.
+DIR_MODES = {'work': 0o770, 'apk-cache': 0o770}
 
 
 def prepare_data():
-    for d in db.SUBDIRS + ('secrets',):
+    db.KEY.mkdir(parents=True, exist_ok=True)
+    if db.KEY.stat().st_uid == os.getuid():
+        db.KEY.chmod(0o700)
+    for d in db.SUBDIRS:
         p = db.DATA / d
         p.mkdir(parents=True, exist_ok=True)
         # only dirs this process owns: a pre-existing host-owned dir keeps its mode, also when we run as root

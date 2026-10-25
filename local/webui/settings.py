@@ -30,9 +30,9 @@ def put(key, value):
 
 
 def ui_token_path():
-    """Token entered on the Settings page. DATA sits in the root-only /private tmpfs (compose), and the
-    secrets dir is 0700 / the file 0600, so the isolated runner uid cannot read it."""
-    return db.DATA / 'secrets' / 'github_token'
+    """Token entered on the Settings page. The key dir sits in the root-only /private tmpfs (compose) and is
+    0700 / the file 0600, so the isolated runner uid cannot read it."""
+    return db.KEY / 'github_token'
 
 
 def _read(p):

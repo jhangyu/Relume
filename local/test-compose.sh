@@ -26,22 +26,24 @@ check '.services.netns.network_mode == "bridge"'
 check '.services.netns.ports[0].target == 47000'
 check '.services.flaresolverr.environment.HOST == "127.0.0.1"'
 check '.services.cfbypass.command as $c | ($c | index("--host")) as $i | $i != null and $c[$i + 1] == "127.0.0.1"'
-check '[.services.app.volumes[] | select(.target == "/private/data") | .bind.create_host_path] == [false]'
+check '[.services.app.volumes[] | select(.target == "/private/key") | .bind.create_host_path] == [false]'
+check '[.services.app.volumes[] | select(.target | startswith("/private/data") or startswith("/data/")) | .bind.create_host_path] | all(. != false)'
+check '.services.app.environment.RELUME_KEY == "/private/key"'
 check '[.services.app.volumes[] | select(.target | startswith("/repo/src/keystore/")) | .read_only] == [true, true, true]'
 check '[.services.app.volumes[] | select(.target == "/repo")] | length == 0'
 check '.services.app.healthcheck.test | join(" ") | test("curl -sf http://127.0.0.1:47000/api/health")'
-check '.services.app.environment.HOME == "/private/data/home"'
+check '.services.app.environment.HOME == "/private/key"'
 check '.services.app.environment.FLARESOLVERR_URL == "http://127.0.0.1:47191"'
 check '.services.app.environment.CFBYPASS_URL == "http://127.0.0.1:47800"'
 check '.services.app.environment.APKM_SOLVER_URL == "http://127.0.0.1:47900"'
 check '[.services[] | .restart] | all(. == "unless-stopped")'
-for name in RELUME_GITHUB_TOKEN_FILE RELUME_UID RELUME_GID RELUME_DATA_DIR RELUME_NETWORK_MODE RELUME_WEB_PORT; do
+for name in RELUME_GITHUB_TOKEN_FILE RELUME_UID RELUME_GID RELUME_DATA_DIR RELUME_KEY_DIR RELUME_NETWORK_MODE RELUME_WEB_PORT; do
 	grep -q "$name" "$f" || fail compose_shape "missing env name $name"
 done
 [ "$fails" -eq "$before" ] && pass compose_shape
 
 # Portainer stack must not drift from the main compose file (spec core §11); only its fixed container names differ.
-pj=$(RELUME_NETWORK_MODE=bridge RELUME_KEYSTORE_DIR=/x RELUME_DATA_DIR=/x docker compose --env-file /dev/null -f local/docker-compose-portainer.yml config --format json 2>/dev/null) || pj='{}'
+pj=$(RELUME_NETWORK_MODE=bridge RELUME_KEYSTORE_DIR=/x RELUME_DATA_DIR=/x RELUME_KEY_DIR=/x docker compose --env-file /dev/null -f local/docker-compose-portainer.yml config --format json 2>/dev/null) || pj='{}'
 pbefore=$fails
 same() { [ "$(jq -cS "$1" <<<"$j")" = "$(jq -cS "$1" <<<"$pj")" ] || fail portainer_drift "$1"; }
 same '.services | keys'

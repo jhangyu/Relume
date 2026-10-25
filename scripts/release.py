@@ -19,7 +19,7 @@ import shutil
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-VERIFY_DATA = ROOT / "local" / "verify"  # data dir of the verification stack, deleted after a passed check
+VERIFY_ROOT = ROOT / "local" / "verify"  # data/ and key/ of the verification stack, deleted after a passed check
 COMPOSE = ["docker", "compose", "-f", str(ROOT / "local" / "docker-compose.yml")]
 PROJECT = "relume-dev"
 RELEASE_WEB_PORT = "47010"  # the Portainer stack owns 47000
@@ -132,18 +132,19 @@ def main() -> None:
     os.environ["RELUME_VERSION"] = args.version  # compose reads it as the build arg
     os.environ["RELUME_WEB_PORT"] = RELEASE_WEB_PORT  # overrides local/.env
     run(*COMPOSE, "build")
-    # the verification stack gets its own fresh data dir, never a real stack's; a failed run leaves it for
-    # inspection and the next run starts it over
-    shutil.rmtree(VERIFY_DATA, ignore_errors=True)
-    for sub in ("work", "apk-cache", "upstream"):  # Compose does not create bind sources
-        (VERIFY_DATA / sub).mkdir(parents=True)
-    os.environ["RELUME_DATA_DIR"] = str(VERIFY_DATA)  # overrides local/.env
+    # the verification stack gets its own fresh data and key dirs, never a real stack's; a failed run leaves them
+    # for inspection and the next run starts them over
+    shutil.rmtree(VERIFY_ROOT, ignore_errors=True)
+    for sub in ("data", "key"):  # the key dir must exist (Compose does not create it), data's subdirectories are created by Compose
+        (VERIFY_ROOT / sub).mkdir(parents=True)
+    os.environ["RELUME_DATA_DIR"] = str(VERIFY_ROOT / "data")  # overrides local/.env
+    os.environ["RELUME_KEY_DIR"] = str(VERIFY_ROOT / "key")
     os.environ["RELUME_GITHUB_TOKEN_FILE"] = "/dev/null"
     run(*COMPOSE, "up", "-d", "--wait")
     check_healthy()
     check_version(args.version)
     run(*COMPOSE, "down")
-    shutil.rmtree(VERIFY_DATA)
+    shutil.rmtree(VERIFY_ROOT)
     remove_dangling()
     if not args.no_push:
         push(args.version, built_sha)

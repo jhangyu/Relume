@@ -27,13 +27,13 @@ mkdir -p local/data/work local/data/apk-cache local/data/upstream
 docker compose -f local/docker-compose.yml up -d --build
 ```
 
-Open `http://localhost:47000` (in bridge mode the port is `RELUME_WEB_PORT`). All settings are listed in `local/.env.example`; the data directory (database, logs, artifacts, caches) is `RELUME_DATA_DIR`, default `local/data`.
+Open `http://localhost:47000` (in bridge mode the port is `RELUME_WEB_PORT`). All settings are listed in `local/.env.example`; `RELUME_DATA_DIR` (default `local/data`) holds everything that regrows from an empty folder (database, logs, artifacts, caches, upstream downloads, work), so deleting it is safe. `RELUME_KEY_DIR` (default `local/key`, create it once with `mkdir local/key`) holds what must survive: the adb key and the GitHub token entered on the Settings page. Back it up. Without it every paired phone must be authorized again.
 
 On first start, open the Web UI and create the admin account (username + password). Forgot it: set `RELUME_ADMIN_PASSWORD` (at least 10 characters) in the `app` service environment and restart the container. At boot the admin password becomes that value and every browser session is signed out. Phone device tokens keep working. Remove the variable afterwards. It does nothing before the admin account exists. Web UI pages: app catalog (patches, options and version pin per app), builds, schedules, devices and settings. Helper command: `docker exec relume-app python3 -m webui export-seed`.
 
 ### Portainer
 
-`local/docker-compose-portainer.yml` is the same stack for a Portainer web-editor stack: the data lives in host directories under `RELUME_DATA_DIR` (required; the subdirectories `work`, `apk-cache` and `upstream` must exist) and the code is baked into the images `jhangyu/relume-app` and `jhangyu/relume-browser` (built from `local/Dockerfile`, published by `scripts/release.py`). Signing keystores are never in an image: set `RELUME_KEYSTORE_DIR` to a host directory holding them (see the top of that file).
+`local/docker-compose-portainer.yml` is the same stack for a Portainer web-editor stack: the data lives in host directories: `RELUME_DATA_DIR` (required, regrowable) and `RELUME_KEY_DIR` (required, must exist, the keys) and the code is baked into the images `jhangyu/relume-app` and `jhangyu/relume-browser` (built from `local/Dockerfile`, published by `scripts/release.py`). Signing keystores are never in an image: set `RELUME_KEYSTORE_DIR` to a host directory holding them (see the top of that file).
 
 ## Android app
 

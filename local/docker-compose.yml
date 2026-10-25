@@ -67,7 +67,8 @@ services:
               "--inh-caps=+setuid,+setgid,+kill,+dac_override", "--ambient-caps=+setuid,+setgid,+kill,+dac_override",
               "python3", "-m", "webui"]
     environment:
-      HOME: /private/data/home
+      HOME: /private/key
+      RELUME_KEY: /private/key
       # RELUME_ADMIN_PASSWORD: <at least 10 characters>   # uncomment, restart, then remove again: sets the admin password at boot and signs out all browser sessions
       RELUME_DATA: /private/data
       RELUME_RUNNER_UID: "10001"
@@ -91,10 +92,16 @@ services:
         target: /private
         tmpfs:
           mode: 0o700
-      # create_host_path: false: a missing dir would be created root-owned; the user creates it (.env.example)
+      # DATA regrows from an empty or missing directory: Compose creates the host paths of the data mounts (root-owned; Docker Desktop needs no chown, see .env.example for Linux)
       - type: bind
         source: ${RELUME_DATA_DIR:-./data}
         target: /private/data
+        bind:
+          create_host_path: true
+      # what must survive deleting RELUME_DATA_DIR (create_host_path: false, so a missing key dir fails loudly instead of starting without the adb key): the adb key (HOME/.android) and the GitHub token; inside the root-only /private, so the runner uid cannot reach it
+      - type: bind
+        source: ${RELUME_KEY_DIR:-./key}
+        target: /private/key
         bind:
           create_host_path: false
       # the runner's view of DATA (RELUME_RUNNER_DATA): only these three subdirectories
@@ -102,18 +109,18 @@ services:
         source: ${RELUME_DATA_DIR:-./data}/work
         target: /data/work
         bind:
-          create_host_path: false
+          create_host_path: true
       - type: bind
         source: ${RELUME_DATA_DIR:-./data}/apk-cache
         target: /data/apk-cache
         bind:
-          create_host_path: false
+          create_host_path: true
       - type: bind
         source: ${RELUME_DATA_DIR:-./data}/upstream
         target: /data/upstream
         read_only: true
         bind:
-          create_host_path: false
+          create_host_path: true
       - type: tmpfs
         target: /run/secrets
         tmpfs:

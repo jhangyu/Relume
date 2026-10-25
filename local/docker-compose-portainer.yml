@@ -1,15 +1,16 @@
 # Relume as a Portainer stack (Stacks > Add stack > Web editor: paste this file). Same services and isolation as
-# local/docker-compose.yml, but the code is in the images, data lives in host directories under
-# RELUME_DATA_DIR (bind mounts), the keystores are mounted, and the GitHub token is entered on the Settings page.
+# local/docker-compose.yml, but the code is in the images, data lives in host directories
+# (RELUME_DATA_DIR regrowable data, RELUME_KEY_DIR the keys; bind mounts), the keystores are mounted, and the GitHub token is entered on the Settings page.
 #
 # Environment variables (Portainer "Environment variables" form):
-#   RELUME_DATA_DIR      required: absolute host directory for all data (database, logs, artifacts, HOME with the adb key); its subdirectories work, apk-cache and upstream must exist (Compose does not create them)
+#   RELUME_DATA_DIR      required: absolute host directory for everything that regrows from an empty folder (database, logs, artifacts, APK outputs and caches, upstream downloads, work); Compose creates it and the subdirectories work, apk-cache and upstream if missing, so deleting it is safe
+#   RELUME_KEY_DIR       required: absolute host directory for what must survive (the adb key under .android/ and the GitHub token entered on the Settings page); must exist, Compose does not create it. Back it up, never delete it: deleting it re-authorizes every paired phone
 #   RELUME_KEYSTORE_DIR  required: host directory holding fiorenmas.ks, lspatch-signing.p12 and morphe.keystore; only these three files are mounted (never inside an image)
 #   RELUME_NETWORK_MODE  host (default; Linux hosts, mDNS phone discovery) or bridge (Docker Desktop on macOS/Windows:
 #                    host networking is not available there; add phones by IP:port)
 #   RELUME_WEB_PORT      published web port in bridge mode (default 47000; host mode always uses 47000)
 #   RELUME_UID, RELUME_GID   server uid:gid in the container (default 0:0). Docker Desktop (macOS): bind mounts need no chown, keep 0.
-#                    Linux host: RELUME_DATA_DIR must be owned by RELUME_UID:RELUME_GID (chown -R), and work and apk-cache must be
+#                    Linux host: RELUME_DATA_DIR and RELUME_KEY_DIR must be owned by RELUME_UID:RELUME_GID (chown -R; create RELUME_DATA_DIR and its work, apk-cache, upstream yourself first, otherwise Compose makes them root-owned), and work and apk-cache must be
 #                    writable by the build runner (uid 10001, same gid as the server): chmod 0770, group RELUME_GID
 #   TZ               default UTC
 #
@@ -62,7 +63,8 @@ services:
               "--inh-caps=+setuid,+setgid,+kill,+dac_override", "--ambient-caps=+setuid,+setgid,+kill,+dac_override",
               "python3", "-m", "webui"]
     environment:
-      HOME: /private/data/home
+      HOME: /private/key
+      RELUME_KEY: /private/key
       # RELUME_ADMIN_PASSWORD: <at least 10 characters>   # uncomment, restart, then remove again: sets the admin password at boot and signs out all browser sessions
       RELUME_DATA: /private/data
       RELUME_RUNNER_UID: "10001"
@@ -85,10 +87,16 @@ services:
         target: /run/secrets
         tmpfs:
           mode: 0o700
-      # create_host_path: false: a missing dir would be created root-owned; the user creates it
+      # DATA regrows from an empty or missing directory: Compose creates the host paths of the data mounts (root-owned; Linux: see the header)
       - type: bind
         source: ${RELUME_DATA_DIR:?set RELUME_DATA_DIR to the host data directory}
         target: /private/data
+        bind:
+          create_host_path: true
+      # what must survive deleting RELUME_DATA_DIR (create_host_path: false, so a missing key dir fails loudly instead of starting without the adb key): the adb key (HOME/.android) and the GitHub token; inside the root-only /private, so the runner uid cannot reach it
+      - type: bind
+        source: ${RELUME_KEY_DIR:?set RELUME_KEY_DIR to the host key directory}
+        target: /private/key
         bind:
           create_host_path: false
       # signing keystores (fiorenmas.ks, lspatch-signing.p12, morphe.keystore) are not in the image: three read-only file mounts from a host directory (other files there, e.g. a github_token, stay invisible to build children)
@@ -100,18 +108,18 @@ services:
         source: ${RELUME_DATA_DIR:?set RELUME_DATA_DIR to the host data directory}/work
         target: /data/work
         bind:
-          create_host_path: false
+          create_host_path: true
       - type: bind
         source: ${RELUME_DATA_DIR:?set RELUME_DATA_DIR to the host data directory}/apk-cache
         target: /data/apk-cache
         bind:
-          create_host_path: false
+          create_host_path: true
       - type: bind
         source: ${RELUME_DATA_DIR:?set RELUME_DATA_DIR to the host data directory}/upstream
         target: /data/upstream
         read_only: true
         bind:
-          create_host_path: false
+          create_host_path: true
     working_dir: /repo
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://127.0.0.1:47000/api/health"]

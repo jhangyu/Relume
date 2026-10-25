@@ -6,8 +6,9 @@ import threading
 from contextlib import contextmanager
 
 SCHEMA_DIR = pathlib.Path(__file__).with_name('schema')
-SUBDIRS = ('home', 'logs', 'work', 'artifacts', 'apk-cache', 'upstream', 'icons')
+SUBDIRS = ('logs', 'work', 'artifacts', 'apk-cache', 'upstream', 'icons')
 DATA = pathlib.Path(os.environ.get('RELUME_DATA', '/data'))
+KEY = pathlib.Path(os.environ.get('RELUME_KEY') or DATA / 'key')  # what must survive: adb key (HOME/.android), GitHub token
 FMT = '%Y-%m-%dT%H:%M:%SZ'
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 _local = threading.local()
@@ -27,10 +28,11 @@ def utcnow():
 
 
 def init(data_dir=None):
-    """Set DATA, create its subdirectories, drop cached connections."""
-    global DATA, _gen
+    """Set DATA and KEY, create DATA's subdirectories, drop cached connections."""
+    global DATA, KEY, _gen
     close()
     DATA = pathlib.Path(data_dir or os.environ.get('RELUME_DATA', '/data'))
+    KEY = pathlib.Path(os.environ.get('RELUME_KEY') or DATA / 'key')
     for d in SUBDIRS:
         (DATA / d).mkdir(parents=True, exist_ok=True)
     _gen += 1
