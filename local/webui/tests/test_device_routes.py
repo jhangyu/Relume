@@ -228,6 +228,7 @@ class DeviceRoutesTest(helpers.DataTestCase):
         rows = ota.list_devices(req())[1]['devices']
         self.assertEqual(len(rows), 2)
         self.assertFalse(any('token_hash' in r for r in rows))
+        self.assertEqual([r['has_token'] for r in rows], [False, True])
 
     def test_discovered_route(self):
         add_device(mdns_name='adb-ABC123-x1y2')

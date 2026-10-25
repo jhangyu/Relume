@@ -259,9 +259,10 @@ def is_app(dev):
 
 
 def device_json(dev, states):
-    """online is None for app rows: they are never reached over adb."""
-    out = {k: v for k, v in dev.items() if k != 'token_hash'}   # the token hash never leaves the server
-    return dict(out, ota_after_build=bool(dev['ota_after_build']),
+    """online is None for app rows: they are never reached over adb. has_token tells an active phone from a
+    revoked one; the token hash itself never leaves the server."""
+    out = {k: v for k, v in dev.items() if k != 'token_hash'}
+    return dict(out, ota_after_build=bool(dev['ota_after_build']), has_token=dev['token_hash'] is not None,
                 online=None if is_app(dev) else states.get(address(dev)) == 'device')
 
 
@@ -441,8 +442,8 @@ def put_assignments(req):
 
 
 def resolve_devices(target):
-    c = db.conn()
     """ADB fan-out targets: app rows never take part."""
+    c = db.conn()
     if target.get('all') is True:
         return [r['id'] for r in c.execute("SELECT id FROM devices WHERE kind='adb' ORDER BY id")]
     ids = target.get('device_ids')
