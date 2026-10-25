@@ -230,7 +230,7 @@ async function renderInstalled() {
   const { devices } = await api('GET', '/api/devices');
   const rows = devices.flatMap(d => d.assignments.filter(a => a.item_id === ID).map(a => ({ d, a })));
   $('#inst').innerHTML = html`${rows.length
-    ? rows.map(({ d, a }) => html`<span class="row sm" style="gap:.375rem"><span class="dot ${d.online ? 'on' : 'off'}" aria-hidden="true"></span>${d.name} <span class="mono ${a.pending ? 'newer' : ''}">${a.installed ? a.installed.version_name : 'not installed'}</span>${a.pending ? html`<span class="xs muted">(behind)</span>` : ''}</span>`)
+    ? rows.map(({ d, a }) => html`<span class="row sm" style="gap:.375rem"><span class="dot ${d.online ? 'on' : 'off'}" aria-hidden="true"></span>${d.name}${d.online === null ? html` <span class="xs muted">(App device)</span>` : ''} <span class="mono ${a.pending ? 'newer' : ''}">${a.installed ? a.installed.version_name : 'not installed'}</span>${a.pending ? html`<span class="xs muted">(behind)</span>` : ''}</span>`)
     : html`<span class="sm muted">Not assigned to any device</span>`}`;
 }
 

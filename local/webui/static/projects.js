@@ -29,13 +29,16 @@ function chips(p) {
   return c.map(([cls, t]) => html`<span class="badge ${cls}">${t}</span>`);
 }
 
+const isApp = d => d.online === null;
+const offNote = d => (isApp(d) ? ' (App device)' : d.online ? '' : ' (offline)');
+
 function phones(p) {
   const ds = phonesOf(p);
   if (!ds.length) return html`<span class="xs muted">none</span>`;
-  const lab = ds.map(d => `${d.name}${dpOf(d, p.id).update_available ? ' (behind)' : ''}${d.online ? '' : ' (offline)'}`).join(', ');
+  const lab = ds.map(d => `${d.name}${dpOf(d, p.id).update_available ? ' (behind)' : ''}${offNote(d)}`).join(', ');
   return html`<span class="ph" role="img" aria-label="${lab}">${ds.map(d => {
     const b = dpOf(d, p.id).update_available;
-    return html`<i class="${b ? 'behind' : ''} ${d.online ? '' : 'off'}" title="${d.name}${b ? ': older version' : ''}${d.online ? '' : ' (offline)'}">${initials(d.name)}</i>`;
+    return html`<i class="${b ? 'behind' : ''} ${d.online === false ? 'off' : ''}" title="${d.name}${b ? ': older version' : ''}${offNote(d)}">${initials(d.name)}</i>`;
   })}</span>`;
 }
 
@@ -94,7 +97,7 @@ function pane() {
 <button class="btn btn-ghost btn-icon btn-sm pane-close" type="button" data-pane-close aria-label="Close details"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
 <div class="chiprow">${chips(p)}<span class="badge b-mute plain">${p.channel === 'prerelease' ? 'Pre-release' : 'Stable'} channel</span></div>
 <div class="row"><details class="dd"><summary class="btn btn-accent btn-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>Install to phone</summary><div class="menu" style="left:0;right:auto;min-width:270px">${blocked ? html`<p class="xs danger" style="padding:.5rem">Blocked: confirm the new signer first.</p>`
-    : asg.length ? asg.map(d => { const x = dpOf(d, p.id); return html`<button type="button" data-install="${d.id}" ${d.online ? '' : html`disabled style="opacity:.5"`}><span class="dot ${d.online ? 'on' : 'off'}"></span><span class="grow">${d.name}<br><span class="xs muted mono">${x.available_abi || '—'} → ${x.available_file || 'no match'}</span></span>${d.online ? '' : html`<span class="xs muted">offline</span>`}</button>`; })
+    : asg.length ? asg.map(d => { const x = dpOf(d, p.id); return html`<button type="button" data-install="${d.id}" ${d.online ? '' : html`disabled style="opacity:.5"`}><span class="dot ${d.online ? 'on' : 'off'}"></span><span class="grow">${d.name}<br><span class="xs muted mono">${x.available_abi || '—'} → ${x.available_file || 'no match'}</span></span>${d.online ? '' : html`<span class="xs muted">${isApp(d) ? 'App device' : 'offline'}</span>`}</button>`; })
       : html`<p class="xs muted" style="padding:.5rem">No phones assigned yet. Use ⋯ → Assign phones.</p>`}</div></details>
 <button class="btn btn-outline btn-sm" type="button" data-check>Check now</button>
 <details class="dd" style="margin-left:auto"><summary class="btn btn-ghost btn-sm btn-icon" aria-label="More actions"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></summary><div class="menu"><button type="button" data-edit>Edit assets, regex &amp; channel</button><button type="button" data-assign>Assign phones</button><hr>${p.item_ids.length ? html`<button type="button" disabled style="opacity:.55" class="danger">Unfollow · used by ${p.item_ids.length} items</button>` : html`<button type="button" class="danger" data-unfollow>Unfollow</button>`}</div></details></div></div>
@@ -225,7 +228,7 @@ $('#sigAck').addEventListener('change', e => { $('#sigOk').disabled = !e.target.
 
 // ---- assign phones dialog
 const phoneList = (sel, checked) => {
-  $(sel).innerHTML = html`${S.devices.length ? S.devices.map(d => html`<label><input type="checkbox" class="cb" value="${d.id}" ${checked.includes(d.id) ? html`checked` : ''}><span>${d.name} <span class="xs muted">· ${d.online ? 'online' : 'offline'}</span></span><span></span></label>`)
+  $(sel).innerHTML = html`${S.devices.length ? S.devices.map(d => html`<label><input type="checkbox" class="cb" value="${d.id}" ${checked.includes(d.id) ? html`checked` : ''}><span>${d.name} <span class="xs muted">· ${isApp(d) ? 'App device' : d.online ? 'online' : 'offline'}</span></span><span></span></label>`)
     : html`<p class="xs muted">No paired phones. Pair one on the Devices page.</p>`}`;
 };
 async function assignDialog(p) {

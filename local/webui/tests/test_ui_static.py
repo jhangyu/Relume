@@ -117,6 +117,7 @@ class StaticServeTest(DataTestCase):
         base = serve(self)
         pages = sorted(STATIC.glob('*.html'))
         self.assertTrue(pages)
+        fetched = {}  # each shared asset is requested once, with the first page that references it
         for f in pages:
             path = '/' if f.name == 'index.html' else '/' + f.name
             st, h, _ = http('GET', base + path)
@@ -125,7 +126,9 @@ class StaticServeTest(DataTestCase):
             else:
                 self.assertEqual((st, h.get('Location')), (302, '/login.html'), f.name)
             for ref in re.findall(r'(?:src|href)="(/static/[^"]+)"', f.read_text()):
-                self.assertEqual(http('GET', base + ref)[0], 200, f'{f.name} {ref}')
+                if ref not in fetched:
+                    fetched[ref] = http('GET', base + ref)[0]
+                self.assertEqual(fetched[ref], 200, f'{f.name} {ref}')
         cookie = login(base)
         for f in pages:
             path = '/' if f.name == 'index.html' else '/' + f.name

@@ -374,6 +374,8 @@ def pair(req):
 
 def connect(req):
     dev = _dev_or_404(req.params['id'])
+    if is_app(dev):
+        raise HttpError(409, f"device {dev['id']} is kind 'app': it reports through the Relume app and has no adb connection")
     b = req.json or {}
     host = dev['host'] if b.get('host') is None else validate_host(b['host'])
     port = dev['connect_port'] if b.get('connect_port') is None else validate_port(b['connect_port'], 'connect_port')
@@ -415,6 +417,7 @@ def delete_device(req):
         except AdbTimeout:
             pass
     with db.tx() as c:
+        c.execute('DELETE FROM ota_installs WHERE device_id=?', (dev['id'],))
         c.execute('DELETE FROM devices WHERE id=?', (dev['id'],))
     return 200, {'deleted': dev['id']}
 

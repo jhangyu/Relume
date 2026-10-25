@@ -3,7 +3,7 @@ from unittest import mock
 from webui import db, devices
 from webui.server import HttpError
 from webui.tests import helpers
-from webui.tests.device_helpers import (FIXTURES, FakeAdb, add_catalog_item, add_device, add_job, add_project, assign,
+from webui.tests.device_helpers import (FIXTURES, FakeAdb, add_app_device, add_catalog_item, add_device, add_job, add_project, assign,
                                         assign_projects, req)
 
 GETPROP = (FIXTURES / 'getprop.txt').read_text()
@@ -132,7 +132,15 @@ class DeviceRoutesTest(helpers.DataTestCase):
         dev = devices.patch_device(req(params={'id': d}, body={'name': ' Phone ', 'ota_after_build': True}))[1]['device']
         self.assertEqual((dev['name'], dev['ota_after_build']), ('Phone', True))
 
-    def test_delete_disconnects_keeps_installs(self):
+    def test_connect_rejects_app_device(self):
+        d = add_app_device()
+        with self.assertRaises(HttpError) as cm:
+            devices.connect(req(params={'id': d}))
+        self.assertEqual(cm.exception.status, 409)
+        self.assertIn("kind 'app'", cm.exception.message)
+        self.assertEqual(self.fa.calls(), [])
+
+    def test_delete_disconnects_and_drops_installs(self):
         add_catalog_item(1, 'com.google.android.youtube')
         d = add_device()
         assign(d, 1)
@@ -143,7 +151,7 @@ class DeviceRoutesTest(helpers.DataTestCase):
         self.assertEqual(devices.delete_device(req(params={'id': d})), (200, {'deleted': d}))
         self.assertEqual(self.fa.calls(), [['disconnect', '192.168.1.20:37011']])
         self.assertIsNone(devices.get(d))
-        self.assertEqual(db.conn().execute('SELECT COUNT(*) FROM ota_installs').fetchone()[0], 1)
+        self.assertEqual(db.conn().execute('SELECT COUNT(*) FROM ota_installs').fetchone()[0], 0)
         with self.assertRaises(HttpError) as cm:
             devices.delete_device(req(params={'id': d}))
         self.assertEqual(cm.exception.status, 404)
