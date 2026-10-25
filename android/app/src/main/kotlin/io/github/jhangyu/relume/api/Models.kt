@@ -348,3 +348,11 @@ internal data class JobId(@SerialName("job_id") val jobId: Int)
 
 @Serializable
 internal data class JobIds(@SerialName("job_ids") val jobIds: List<Int>)
+
+/** `/api/cleanup` body: a preview (GET) or what was deleted (POST). */
+@Serializable
+data class CleanupReport(
+    val bytes: Long,
+    @SerialName("artifact_items") val artifactItems: Int,
+    @SerialName("cache_files") val cacheFiles: Int,
+)

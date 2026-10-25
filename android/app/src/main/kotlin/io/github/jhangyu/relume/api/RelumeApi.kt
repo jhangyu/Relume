@@ -69,6 +69,10 @@ class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
 
     suspend fun build(id: Int): Int = send<JobId>("POST", "/api/items/$id/build", EMPTY).jobId
 
+    suspend fun cleanupPreview(): CleanupReport = get("/api/cleanup")
+
+    suspend fun cleanup(): CleanupReport = send("POST", "/api/cleanup", EMPTY)
+
     suspend fun update(id: Int, rebuild: Boolean): List<Int> =
         send<JobIds>("POST", "/api/items/$id/update", buildJsonObject { put("rebuild", rebuild) }).jobIds
 

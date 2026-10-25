@@ -103,6 +103,15 @@ fun SettingsScreen(model: AppModel, notificationsOn: Boolean, askNotifications: 
                 }
             }
 
+            Section("Storage")
+            FCard {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Txt("Deletes builds of apps with Build off and download cache nothing needs.", style = FluentType.small, color = c.fg3)
+                    model.cleanupFreed?.let { Txt("Freed ${formatMb(it.bytes)}", color = c.ok) }
+                    FButton("Clean up", model::previewCleanup, Modifier.fillMaxWidth())
+                }
+            }
+
             Section("This device")
             FCard {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -118,6 +127,19 @@ fun SettingsScreen(model: AppModel, notificationsOn: Boolean, askNotifications: 
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Fact("App version", "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
                 }
+            }
+        }
+    }
+    model.cleanupPreview?.let { p ->
+        FDialog(model::dismissCleanup) {
+            Txt("Clean up server storage", style = FluentType.title, bold = true)
+            Txt(
+                "Deletes ${formatMb(p.bytes)}: builds of ${p.artifactItems} Build-off apps and ${p.cacheFiles} cached download files. Builds are recreated on demand.",
+                color = c.fg2,
+            )
+            DialogButtons {
+                FButton("Cancel", model::dismissCleanup, Modifier.weight(1f))
+                FButton("Clean up", model::runCleanup, Modifier.weight(1f), kind = ButtonKind.Danger)
             }
         }
     }

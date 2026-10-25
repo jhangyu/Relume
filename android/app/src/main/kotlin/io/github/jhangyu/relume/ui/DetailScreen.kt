@@ -104,7 +104,7 @@ fun DetailScreen(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FButton("Check upstream", { model.checkUpstream(item.id) }, Modifier.weight(1f), icon = Icons.Refresh)
-                    FButton("Build now", { model.build(item.id) { onOpenLog(it, item.id) } }, Modifier.weight(1f), icon = Icons.Play, enabled = f.kind != RowKind.Building)
+                    FButton("Build now", { model.build(item.id) { onOpenLog(it, item.id) } }, Modifier.weight(1f), icon = Icons.Play, enabled = f.kind != RowKind.Building && item.enabled)
                 }
             }
             RecentBuilds(f, artifacts, onOpenLog)

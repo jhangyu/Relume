@@ -10,6 +10,7 @@ import io.github.jhangyu.relume.RelumeApp
 import io.github.jhangyu.relume.api.ApiError
 import io.github.jhangyu.relume.api.Artifact
 import io.github.jhangyu.relume.api.Catalog
+import io.github.jhangyu.relume.api.CleanupReport
 import io.github.jhangyu.relume.api.DeviceView
 import io.github.jhangyu.relume.api.Health
 import io.github.jhangyu.relume.api.InstalledPackage
@@ -235,6 +236,26 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     /** "Build now": queues a build and opens its stream. */
     fun build(itemId: Int, opened: (Int) -> Unit) {
         viewModelScope.launch { call { it.build(itemId) }?.let { opened(it); refresh() } }
+    }
+
+    /** Settings "Clean up": [cleanupPreview] is the pending confirmation, [cleanupFreed] the result of the last run. */
+    var cleanupPreview by mutableStateOf<CleanupReport?>(null)
+        private set
+    var cleanupFreed by mutableStateOf<CleanupReport?>(null)
+        private set
+
+    fun previewCleanup() {
+        cleanupFreed = null
+        viewModelScope.launch { cleanupPreview = call { it.cleanupPreview() } }
+    }
+
+    fun dismissCleanup() {
+        cleanupPreview = null
+    }
+
+    fun runCleanup() {
+        cleanupPreview = null
+        viewModelScope.launch { cleanupFreed = call { it.cleanup() } }
     }
 
     /** "Check upstream": spec 6.7 per-item update trigger, no rebuild forced. */
