@@ -1,5 +1,7 @@
 package io.github.jhangyu.relume.install
 
+import io.github.jhangyu.relume.api.RelumeApi
+
 /** What to do with one download response (spec 9.2). Pure: inputs are the response facts. */
 sealed interface DownloadAction {
     /** 206 continuing the `.part` file. */
@@ -19,7 +21,8 @@ object DownloadDecision {
 
     /**
      * [offset] = bytes already in the `.part` file (the Range start sent), [contentLength] = `Content-Length` or -1,
-     * [restarted] = a 416 was already answered by a restart.
+     * [restarted] = a 416 was already answered by a restart, [location] = `Location` header (named for a 3xx, which
+     * is never followed: it could carry the bearer token to another host).
      */
     fun decide(
         status: Int,
@@ -29,6 +32,7 @@ object DownloadDecision {
         planSize: Long,
         restarted: Boolean,
         url: String,
+        location: String?,
     ): DownloadAction = when (status) {
         HTTP_PARTIAL -> partial(offset, contentRange, planSize, url)
         HTTP_OK ->
@@ -37,6 +41,7 @@ object DownloadDecision {
         HTTP_RANGE_NOT_SATISFIABLE ->
             if (restarted) DownloadAction.Fail("$url: HTTP 416 again after restarting from 0")
             else DownloadAction.Restart
+        in RelumeApi.HTTP_REDIRECTS -> DownloadAction.Fail("$url: HTTP $status, ${RelumeApi.redirectMessage(location)}")
         else -> DownloadAction.Fail("$url: HTTP $status, expected 200 or 206")
     }
 

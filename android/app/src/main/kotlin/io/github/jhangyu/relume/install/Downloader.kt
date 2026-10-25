@@ -37,7 +37,7 @@ object Downloader {
             try {
                 val action = DownloadDecision.decide(
                     conn.responseCode, offset, conn.contentLengthLong, conn.getHeaderField("Content-Range"),
-                    d.size, restarted, d.url,
+                    d.size, restarted, d.url, conn.getHeaderField("Location"),
                 )
                 when (action) {
                     is DownloadAction.Fail -> throw StepFailure(ErrorCodes.INSTALLER_ERROR, action.message)

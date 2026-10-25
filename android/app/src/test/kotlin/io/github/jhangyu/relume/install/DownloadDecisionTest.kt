@@ -5,8 +5,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DownloadDecisionTest {
-    private fun decide(status: Int, offset: Long = 0, length: Long = 100, range: String? = null, restarted: Boolean = false) =
-        DownloadDecision.decide(status, offset, length, range, planSize = 100, restarted = restarted, url = "/u")
+    private fun decide(status: Int, offset: Long = 0, length: Long = 100, range: String? = null, restarted: Boolean = false, location: String? = null) =
+        DownloadDecision.decide(status, offset, length, range, planSize = 100, restarted = restarted, url = "/u", location = location)
 
     private fun assertFail(action: DownloadAction, part: String) {
         assertTrue("$action", action is DownloadAction.Fail && action.message.contains(part))
@@ -28,5 +28,9 @@ class DownloadDecisionTest {
 
         assertFail(decide(404), "HTTP 404")
         assertFail(decide(409), "/u: HTTP 409")
+
+        // a redirect is never followed (bearer token); the failure names where it pointed
+        assertFail(decide(302, location = "https://other.example/x.apk"), "/u: HTTP 302, redirect not followed, Location: https://other.example/x.apk")
+        assertFail(decide(307), "Location: (none)")
     }
 }
