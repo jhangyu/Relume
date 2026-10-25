@@ -32,7 +32,7 @@ private val LightColors = FluentColors(
     bg = Color(0xFFFAFAFA), bg2 = Color(0xFFFFFFFF), card = Color(0xFFFFFFFF),
     stroke = Color(0xFFE0E0E0), stroke2 = Color(0xFFD1D1D1),
     fg = Color(0xFF242424), fg2 = Color(0xFF424242), fg3 = Color(0xFF707070),
-    accent = Color(0xFF0E7A56), onAccent = Color(0xFFFFFFFF),
+    accent = Color(0xFF2B6AE8), onAccent = Color(0xFFFFFFFF),
     ok = Color(0xFF107C10), warn = Color(0xFFBC4B09), danger = Color(0xFFB10E1C), info = Color(0xFF0F6CBD),
     dark = false,
 )
@@ -41,7 +41,7 @@ private val DarkColors = FluentColors(
     bg = Color(0xFF141414), bg2 = Color(0xFF1F1F1F), card = Color(0xFF292929),
     stroke = Color(0xFF3D3D3D), stroke2 = Color(0xFF525252),
     fg = Color(0xFFFFFFFF), fg2 = Color(0xFFD6D6D6), fg3 = Color(0xFFA3A3A3),
-    accent = Color(0xFF3DBF8D), onAccent = Color(0xFF06231A),
+    accent = Color(0xFF5FB8FF), onAccent = Color(0xFF09090B),
     ok = Color(0xFF54B054), warn = Color(0xFFFAA06B), danger = Color(0xFFDC626D), info = Color(0xFF479EF5),
     dark = true,
 )
