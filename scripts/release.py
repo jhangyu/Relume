@@ -4,7 +4,9 @@
 Steps: preflight -> compose build -> verification stack (project relume-dev) up --wait -> all containers healthy and
 /api/health reports the version -> stack down -> delete unused dangling Relume images -> arch check -> tag + push ->
 local git tag v<version>. The verification stack publishes RELEASE_WEB_PORT so it runs next to the Portainer stack.
-Usage: python3 scripts/release.py MAJOR.MINOR.PATCH [--no-push]
+Usage: python3 scripts/release.py [MAJOR.MINOR.PATCH] [--no-push]
+Without a version it re-releases the newest local v* git tag. A version that was released before is pushed again:
+its image tags on Docker Hub and the local git tag are overwritten.
 """
 import argparse
 import json
@@ -45,6 +47,14 @@ def parse_version(text: str) -> str:
     return text
 
 
+def current_version() -> str:
+    tags = run("git", "tag", "--list", "v*", "--sort=-v:refname", capture=True).split()
+    versions = [t[1:] for t in tags if VERSION_PATTERN.fullmatch(t[1:])]
+    if not versions:
+        fail(f"no version given and no vMAJOR.MINOR.PATCH git tag found: expected one, got tags {tags}")
+    return versions[0]
+
+
 def build_context_dirty() -> str:
     return run("git", "status", "--porcelain", "--", *BUILD_CONTEXT, capture=True).strip()
 
@@ -62,8 +72,6 @@ def check_tree_unchanged(built_sha: str, current_sha: str, dirty: str) -> None:
 
 def preflight(version: str, push: bool) -> str:
     run("docker", "info", "--format", "{{.ServerVersion}}", capture=True)  # non-zero when the daemon is down
-    if run("git", "tag", "--list", f"v{version}", capture=True).strip():
-        fail(f"git tag v{version} already exists: expected an unused version, pick a new one or delete the local tag")
     if push:
         auths = json.loads(DOCKER_CONFIG.read_text()).get("auths", {})
         if HUB_AUTH_KEY not in auths:
@@ -119,14 +127,17 @@ def push(version: str, built_sha: str) -> None:
         for image in IMAGES:
             run("docker", "push", f"{image}:{tag}")
     check_tree_unchanged(built_sha, head_sha(), build_context_dirty())
-    run("git", "tag", "-a", f"v{version}", built_sha, "-m", f"Relume {version}")  # local only, git is never pushed
+    run("git", "tag", "-a", "-f", f"v{version}", built_sha, "-m", f"Relume {version}")  # local only, git is never pushed
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("version", type=parse_version, help="MAJOR.MINOR.PATCH, baked into the app and used as the image tag")
+    parser.add_argument("version", nargs="?", type=parse_version,
+                        help="MAJOR.MINOR.PATCH, baked into the app and used as the image tag; default: newest v* git tag")
     parser.add_argument("--no-push", action="store_true", help="build, deploy and clean up, but do not push")
     args = parser.parse_args()
+    args.version = args.version or current_version()
+    print(f"release.py: version {args.version}", flush=True)
     built_sha = preflight(args.version, push=not args.no_push)
     os.environ["RELUME_VERSION"] = args.version  # compose reads it as the build arg
     os.environ["RELUME_WEB_PORT"] = RELEASE_WEB_PORT  # overrides local/.env
