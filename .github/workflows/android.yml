@@ -1,0 +1,46 @@
+name: Android
+on:
+  push:
+    branches: [main]
+    paths:
+      - "android/**"
+      - "scripts/test.py"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  companion:
+    runs-on: ubuntu-latest
+    env:
+      RELUME_COMPANION_VERSION_CODE: ${{ github.run_number }}
+      RELUME_COMPANION_VERSION_NAME: 1.0.${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.1.0
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v6.4.0
+      - run: python3 scripts/test.py --legs android
+      - name: Decode signing keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.RELUME_COMPANION_KEYSTORE_B64 }}
+        run: |
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/companion.keystore"
+          echo "RELUME_COMPANION_KEYSTORE=$RUNNER_TEMP/companion.keystore" >> "$GITHUB_ENV"
+      - name: Assemble release
+        env:
+          RELUME_COMPANION_KEYSTORE_PASSWORD: ${{ secrets.RELUME_COMPANION_KEYSTORE_PASSWORD }}
+          RELUME_COMPANION_KEY_ALIAS: ${{ secrets.RELUME_COMPANION_KEY_ALIAS }}
+          RELUME_COMPANION_KEY_PASSWORD: ${{ secrets.RELUME_COMPANION_KEY_PASSWORD }}
+        run: android/gradlew -p android assembleRelease --no-watch-fs
+      - name: Publish to jhangyu/relume-companion
+        env:
+          GH_TOKEN: ${{ secrets.RELUME_COMPANION_RELEASE_TOKEN }}
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk relume-companion.apk
+          gh release create "v$RELUME_COMPANION_VERSION_NAME" relume-companion.apk \
+            --repo jhangyu/relume-companion \
+            --title "Relume companion $RELUME_COMPANION_VERSION_NAME" \
+            --notes "${{ github.sha }}"
