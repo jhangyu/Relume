@@ -294,6 +294,12 @@ class AppPlanTest(helpers.DataTestCase):
         last = self.plan()['steps'][-1]
         self.assertEqual((last['kind'], last['action'], last['download']), ('companion', 'up_to_date', None))
 
+    def test_incomplete_artifact_becomes_error_step(self):
+        seams(self, latest=lambda i, abi: dict(art(1, 5), sha256=None, size=None))
+        item = self.plan()['steps'][0]
+        self.assertEqual((item['action'], item['download']), ('error', None))
+        self.assertEqual(item['reason'], 'ARTIFACT_INCOMPLETE: artifact 50 has no size, sha256')
+
     def test_not_downloaded_enqueues_one_pull(self):
         seams(self, deps={1: [1]}, infos={1: pinfo(tag=None)}, latest=lambda i, abi: art(1, 5))
         first, second = self.plan(), self.plan()

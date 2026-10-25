@@ -226,6 +226,23 @@ RECEIPT_RESULTS = ('installed', 'failed')
 ERROR_TEXT_MAX = 2048
 
 
+ARTIFACT_APP_FIELDS = ('size', 'sha256', 'signer_sha256', 'version_code')   # nullable in the schema, required by the app
+
+
+def _item_step(s, name):
+    """Plan step of a catalog item. An install whose artifact lacks a field the app needs becomes an error step."""
+    step = {'kind': 'item', 'ref_id': s['ref_id'], 'package': s['package'], 'display_name': name,
+            'action': s['action'], 'reason': s['reason'], 'needs': s['needs'], 'pull_job_id': None,
+            'signer_change': None, 'download': None}
+    if s['action'] != 'install':
+        return step
+    a = s['artifact']
+    missing = [f for f in ARTIFACT_APP_FIELDS if a[f] is None]
+    if missing:
+        return dict(step, action='error', reason=f"ARTIFACT_INCOMPLETE: artifact {a['id']} has no {', '.join(missing)}")
+    return dict(step, download=_item_download(a))
+
+
 def _item_download(a):
     return {'url': f"/api/artifacts/{a['id']}/download", 'file_name': os.path.basename(a['path']), 'size': a['size'],
             'sha256': a['sha256'], 'signer_sha256': a['signer_sha256'], 'version_code': a['version_code'],
@@ -284,10 +301,7 @@ def app_plan(dev, item_ids=None, project_ids=None):
     steps = []
     for s in v['steps']:
         if s['kind'] == 'item':
-            steps.append({'kind': 'item', 'ref_id': s['ref_id'], 'package': s['package'],
-                          'display_name': names[s['ref_id']], 'action': s['action'], 'reason': s['reason'],
-                          'needs': s['needs'], 'pull_job_id': None, 'signer_change': None,
-                          'download': _item_download(s['artifact']) if s['action'] == 'install' else None})
+            steps.append(_item_step(s, names[s['ref_id']]))
         elif s['package'] != projects.COMPANION_PACKAGE:
             steps.append(_app_project_step('project', infos[s['ref_id']], s['action'], s['reason']))
     comp = projects.companion_info(abis_of(dev))
