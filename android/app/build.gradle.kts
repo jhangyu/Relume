@@ -14,6 +14,9 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+// APKs are named relume-<buildType>.apk.
+base.archivesName = "relume"
+
 val SIGNING_STORE_PASSWORD = "morphe"
 val SIGNING_KEY_ALIAS = "fiorenmas"
 val SIGNING_KEY_PASSWORD = "morphe"

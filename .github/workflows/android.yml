@@ -30,7 +30,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp android/app/build/outputs/apk/release/app-release.apk relume-companion.apk
+          cp android/app/build/outputs/apk/release/relume-release.apk relume-companion.apk
           gh release create "$GITHUB_REF_NAME" relume-companion.apk \
             --title "Relume companion $RELUME_COMPANION_VERSION_NAME" \
             --notes "${{ github.sha }}"
