@@ -57,6 +57,17 @@ class StaticRulesTest(unittest.TestCase):
             self.assertIn('<aside class="side" aria-label="Primary"></aside>', t, f.name)
             self.assertIn('id="toast"', t, f.name)
 
+    def test_every_page_links_manifest(self):
+        pages = sorted(STATIC.glob('*.html'))
+        self.assertEqual(len(pages), 8)
+        for f in pages:
+            self.assertEqual(f.read_text().count('<link rel="manifest" href="/static/manifest.webmanifest">'), 1, f.name)
+
+    def test_no_dialog_form_min_width(self):
+        for f in sorted(STATIC.glob('*.html')):
+            for dlg in re.findall(r'<dialog\b.*?</dialog>', f.read_text(), re.S):
+                self.assertNotRegex(dlg, r'style="[^"]*min-width', f.name)
+
     def test_projects_page_uses_project_api(self):
         js = (STATIC / 'projects.js').read_text()
         for needle in ("'/api/projects'", '/api/projects/assets', '/signer/accept', '/install', '/api/upstreams/', "'/api/devices'", 'kind=ota'):

@@ -1,5 +1,5 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Builds · Relume</title><link rel="stylesheet" href="/static/app.css">
+<title>Builds · Relume</title><link rel="stylesheet" href="/static/app.css"><link rel="manifest" href="/static/manifest.webmanifest"><meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff"><meta name="theme-color" media="(prefers-color-scheme: dark)" content="#09090b"><link rel="apple-touch-icon" href="/static/icon-192.png">
 <style>
 .facts{display:flex;flex-wrap:wrap;gap:.25rem 1.5rem;margin:.75rem 0 0}.facts dt{font-size:.6875rem}.facts dd{margin:0}
 .steps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.5rem;list-style:none;padding:0;margin:1rem 0 0}
@@ -12,6 +12,7 @@
 .log div::before{content:counter(ln);display:inline-block;min-width:2rem;margin-right:.75rem;text-align:right;color:#52525b;user-select:none}
 .log.nowrap div{white-space:pre;word-break:normal}
 .log div.hit{background:rgb(250 204 21/.2)}
+@media (max-width:768px){.steps{grid-template-columns:minmax(0,1fr)}.steps li{display:flex;justify-content:space-between;gap:.5rem}#find{width:100%!important;flex:1 1 100%}}
 .tbl tr[aria-current=true] td{background:hsl(var(--accent)/.06)}.tbl tr[aria-current=true] td:first-child{box-shadow:inset 3px 0 0 hsl(var(--accent))}
 </style>
 <script>document.documentElement.dataset.theme=localStorage.getItem('relume-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')</script>

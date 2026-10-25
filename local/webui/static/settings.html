@@ -1,8 +1,9 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Settings · Relume</title><link rel="stylesheet" href="/static/app.css">
+<title>Settings · Relume</title><link rel="stylesheet" href="/static/app.css"><link rel="manifest" href="/static/manifest.webmanifest"><meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff"><meta name="theme-color" media="(prefers-color-scheme: dark)" content="#09090b"><link rel="apple-touch-icon" href="/static/icon-192.png">
 <style>
 .disk{display:flex;height:.625rem;border-radius:999px;background:hsl(var(--muted));overflow:hidden;margin-top:.25rem}.disk i{display:block;height:100%}
 .legend{display:flex;flex-wrap:wrap;gap:.375rem 1rem;list-style:none;padding:0;margin:.5rem 0 0}.legend li{display:flex;align-items:center;gap:.375rem}.legend i{width:10px;height:10px;border-radius:3px;border-width:1px}
+.alist{list-style:none;padding:0}.alist li{display:flex;gap:.75rem;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:.75rem 1rem;border-top-width:1px}.alist li:first-child{border-top-width:0}
 </style>
 <script>document.documentElement.dataset.theme=localStorage.getItem('relume-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')</script>
 <script type="module" src="/static/settings.js"></script></head><body><a class="skip" href="#main">Skip to content</a>
@@ -30,9 +31,11 @@
 <section class="card"><div class="card-h"><h2>GitHub token</h2><p class="sm muted">Raises API rate limits for patch release downloads.</p></div>
 <div class="card-c stack"><div class="row" style="padding:.75rem 1rem;border-width:1px;border-radius:var(--radius);flex-wrap:nowrap"><span class="badge b-mute" id="gh-state"></span><div><div class="sm" id="gh-hint" style="font-weight:500"></div><div class="xs muted mono"><span id="gh-path"></span> · expires <span id="gh-exp"></span> · scopes <span id="gh-scopes"></span></div></div></div>
 <div><div class="row between xs muted"><span>API rate limit</span><span class="mono" id="gh-reset"></span></div><div class="progress" style="margin-top:.375rem"><i id="gh-gauge" style="width:0"></i></div><p class="hint" id="gh-60" hidden>Without a token GitHub allows only 60 requests per hour.</p></div>
-<div class="field"><label class="lbl" for="gh-token">Token <span class="badge b-mute" id="gh-src"></span></label><div class="row" style="flex-wrap:nowrap"><input class="input mono" id="gh-token" type="password" autocomplete="off" placeholder="Paste a new token to replace"><button class="btn" type="button" id="gh-save">Save</button><button class="btn btn-outline" type="button" id="gh-clear">Remove</button></div><p class="hint">Write-only: the stored token is never shown again. Remove falls back to the mounted secret file, if any.</p></div>
+<div class="field"><label class="lbl" for="gh-token">Token <span class="badge b-mute" id="gh-src"></span></label><div class="row" style="flex-wrap:wrap"><input class="input mono" id="gh-token" type="password" autocomplete="off" placeholder="Paste a new token to replace"><button class="btn" type="button" id="gh-save">Save</button><button class="btn btn-outline" type="button" id="gh-clear">Remove</button></div><p class="hint">Write-only: the stored token is never shown again. Remove falls back to the mounted secret file, if any.</p></div>
 <div class="alert warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><span>A token saved here takes precedence over the optional mounted secret file. Neither is ever shown in full.</span></div></div>
 <div class="card-f"><button class="btn btn-outline" type="button" id="gh-cli">Update CLI</button><button class="btn btn-outline" type="button" id="gh-recheck">Re-check</button></div></section>
+<section class="card"><div class="card-h"><h2>Phones with the Relume app</h2><p class="sm muted">Revoking signs the phone out. The device row and its history stay.</p></div>
+<ul class="alist" id="app-devs" style="margin:0;border-width:0"></ul></section>
 <section class="card"><div class="card-h"><h2>Change password</h2></div>
 <div class="card-c stack">
 <div class="field"><label class="lbl" for="pw-old">Current password</label><input class="input" id="pw-old" type="password" autocomplete="current-password"></div>

@@ -19,7 +19,20 @@ function wireOtp(g) {
   });
 }
 
+const reported = r => (r ? `${r.version_name} (${r.version_code})` : 'not reported');
+
+function appCard(d) {
+  const reports = [...d.assignments, ...d.projects].map(x => x.installed_reported && x.installed_reported.reported_at).filter(Boolean).sort();
+  const lastReport = reports.length ? reports[reports.length - 1] : null;
+  return html`<section class="card" data-dev="${d.id}"><div class="card-h"><div class="row between"><div class="row"><h2><span contenteditable="true" spellcheck="false" data-rename role="textbox" aria-label="Device name" title="Click to rename">${d.name}</span></h2><span class="badge b-mute plain">Relume app</span></div></div>
+<p class="xs muted">${d.model} · Android ${d.android_release} · app version ${d.app_version_code == null ? 'not reported' : d.app_version_code} · last report ${fmt.rel(lastReport || d.last_seen_at)}</p></div>
+<div class="card-c stack-sm"><ul class="alist">${d.assignments.map(a => html`<li><span></span><span>${label(a.item_id)} <span class="xs muted mono">${reported(a.installed_reported)}${a.available ? ` → ${a.available.version_name}` : ''}</span></span><span class="xs ${a.pending ? 'newer' : 'muted'}">${a.pending ? 'pending' : 'current'}</span></li>`)}</ul>
+${d.projects.length ? html`<ul class="alist">${d.projects.map(x => html`<li><span></span><span>${x.display_name} <span class="xs muted mono">${reported(x.installed_reported)} → ${x.available_tag || '—'}</span></span><span class="xs ${x.pending ? 'newer' : 'muted'}">${x.pending ? 'pending' : 'current'}</span></li>`)}</ul>` : ''}</div>
+<div class="card-f"><button class="btn btn-ghost" type="button" data-assign>Edit apps…</button><a class="btn btn-ghost danger" href="/settings.html" style="margin-left:auto">Revoke in Settings</a></div></section>`;
+}
+
 function card(d) {
+  if (d.kind === 'app') return appCard(d);
   const pending = d.assignments.filter(a => a.pending).length + d.projects.filter(x => x.pending).length;
   const last = D.last.get(d.id);
   return html`<section class="card" data-dev="${d.id}"><div class="card-h"><div class="row between"><div class="row"><span class="dot ${d.online ? 'on' : 'off'}" aria-hidden="true"></span><h2><span contenteditable="true" spellcheck="false" data-rename role="textbox" aria-label="Device name" title="Click to rename">${d.name}</span></h2><span class="xs muted">${d.model} · Android ${d.android_release}</span></div>
@@ -34,7 +47,7 @@ ${d.projects.length ? html`<ul class="alist">${d.projects.map(x => html`<li><spa
 async function loadDevices() {
   const { devices } = await api('GET', '/api/devices');
   D.devices = devices;
-  await Promise.all(devices.map(async d => {
+  await Promise.all(devices.filter(d => d.kind !== 'app').map(async d => {
     const { jobs } = await api('GET', `/api/jobs?kind=ota&device_id=${d.id}&limit=1`);
     D.last.set(d.id, jobs[0]);
   }));
@@ -162,7 +175,7 @@ $('#man').addEventListener('submit', e => {
   pair(body);
 });
 $('#ota-all').addEventListener('click', async () => {
-  const online = D.devices.filter(d => d.online);
+  const online = D.devices.filter(d => d.kind !== 'app' && d.online);
   for (const d of online) await act('POST', `/api/devices/${d.id}/ota`, {}).catch(() => {});
   toast(`OTA queued on ${online.length} device${online.length === 1 ? '' : 's'}`);
 });

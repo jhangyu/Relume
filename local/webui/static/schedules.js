@@ -40,6 +40,7 @@ function renderTimeline(now) {
   const t0 = Date.parse(now), span = 86400000;
   const ticks = R.list.filter(s => s.enabled).flatMap(s => s.next_runs.filter(r => Date.parse(r) - t0 < span).map(r => ({ s, r })));
   $('#tl').innerHTML = html`<span class="now-m">now</span>${ticks.map(({ s, r }) => html`<i class="ev k-${s.kind}" style="left:${Number(((Date.parse(r) - t0) / span) * 100).toFixed(2)}%" title="${s.name} ${fmt.abs(r)}"></i>`)}`;
+  $('#tlist').innerHTML = html`${ticks.sort((a, b) => Date.parse(a.r) - Date.parse(b.r)).map(({ s, r }) => html`<li><i class="k-${s.kind}"></i><span class="grow">${s.name}</span><span class="mono xs muted">${fmt.abs(r)}</span></li>`)}`;
   $('#tll').innerHTML = html`${R.list.filter(s => s.enabled).map(s => html`<li><i class="k-${s.kind}"></i>${s.name}</li>`)}`;
 }
 
