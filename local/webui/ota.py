@@ -261,10 +261,10 @@ def _project_download(p):
             'version_code': p['version_code'], 'version_name': p['version_name'], 'tag': p['tag']}
 
 
-def _app_project_step(kind, p, action, reason):
-    """Plan step of a project or the companion. 'not downloaded' becomes an error with a server-enqueued pull
+def _app_project_step(p, action, reason):
+    """Plan step of a project. 'not downloaded' becomes an error with a server-enqueued pull
     (jobs.enqueue dedups a still-queued pull, so repeated plans add no job)."""
-    step = {'kind': kind, 'ref_id': p['project_id'], 'package': p['package'], 'display_name': p['display_name'],
+    step = {'kind': 'project', 'ref_id': p['project_id'], 'package': p['package'], 'display_name': p['display_name'],
             'needs': [], 'pull_job_id': None, 'signer_change': None, 'download': None}
     if reason == 'not downloaded':
         action, reason = 'error', 'NOT_DOWNLOADED'
@@ -282,23 +282,6 @@ def _app_project_step(kind, p, action, reason):
     return dict(step, action=action, reason=reason)
 
 
-def _companion_action(p, dev):
-    if p['signer_alert']:
-        return 'error', 'SIGNER_CHANGED'
-    if p['tag'] is None:
-        return 'install', 'not downloaded'
-    if p['path'] is None:
-        return 'error', 'NO_MATCHING_ABI'
-    bad = _incomplete(p, f"project {p['project_id']}")
-    if bad:
-        return 'error', bad
-    if dev['app_version_code'] is None:
-        return 'up_to_date', 'app version not reported'
-    if p['version_code'] > dev['app_version_code']:
-        return 'install', 'new release'
-    return 'up_to_date', 'same version installed'
-
-
 def _flags(step, present):
     r, d = present.get(step['package']), step['download']
     return dict(step, signer_conflict=bool(r and d and r['signer_sha256'] and r['signer_sha256'] != d['signer_sha256']),
@@ -306,7 +289,7 @@ def _flags(step, present):
 
 
 def app_plan(dev, item_ids=None, project_ids=None):
-    """{revision, steps}: ota.plan() order on the phone's report, then the companion step last."""
+    """{revision, steps}: ota.plan() order on the phone's report."""
     present = reported_packages(dev['id'])
     v = _plan_for(dev, item_ids, project_ids, present)
     infos = {p['project_id']: p for p in [*v['projects'], *(p for ps in v['deps'].values() for p in ps)]}
@@ -315,11 +298,8 @@ def app_plan(dev, item_ids=None, project_ids=None):
     for s in v['steps']:
         if s['kind'] == 'item':
             steps.append(_item_step(s, names[s['ref_id']]))
-        elif s['package'] != projects.COMPANION_PACKAGE:
-            steps.append(_app_project_step('project', infos[s['ref_id']], s['action'], s['reason']))
-    comp = projects.companion_info(abis_of(dev))
-    if comp is not None:
-        steps.append(_app_project_step('companion', comp, *_companion_action(comp, dev)))
+        else:
+            steps.append(_app_project_step(infos[s['ref_id']], s['action'], s['reason']))
     steps = [_flags(s, present) for s in steps]
     revision = hashlib.sha256(json.dumps(steps, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     return {'revision': revision, 'steps': steps}

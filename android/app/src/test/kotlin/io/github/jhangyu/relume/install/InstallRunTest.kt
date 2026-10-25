@@ -79,18 +79,15 @@ class InstallRunTest {
     fun serverErrorStepsAreSkipped() {
         val run = InstallRun.create(plan(
             step(StepKind.PROJECT, 5, action = PlanAction.ERROR), step(StepKind.ITEM, 1, needs = listOf(5)),
-            step(StepKind.ITEM, 2, action = PlanAction.UP_TO_DATE), step(StepKind.ITEM, 3), step(StepKind.COMPANION, 9),
+            step(StepKind.ITEM, 2, action = PlanAction.UP_TO_DATE), step(StepKind.ITEM, 3),
         ), Origin.BACKGROUND, null)
         assertEquals(listOf(StepState.SERVER_ERROR, StepState.DEPENDENCY_FAILED, StepState.UP_TO_DATE,
-            StepState.PENDING, StepState.PENDING), states(run))
+            StepState.PENDING), states(run))
         assertEquals("NOT_DOWNLOADED", run.steps[0].errorText)
         assertFalse(run.steps[0].receiptDue)
-        assertEquals(listOf(5, 1, 2, 3, 9), run.steps.map { it.step.refId })
+        assertEquals(listOf(5, 1, 2, 3), run.steps.map { it.step.refId })
         assertEquals(3, run.nextRunnable())
 
-        // the companion step never gets a receipt
-        val companion = InstallRun.finish(run, 4, StepOutcome(StepState.INSTALLED, null, null))
-        assertFalse(companion.steps[4].receiptDue)
         val item = InstallRun.finish(run, 3, StepOutcome(StepState.INSTALLED, null, null))
         assertEquals(103, InstallRun.receipt(item.steps[3]).artifactId)
     }

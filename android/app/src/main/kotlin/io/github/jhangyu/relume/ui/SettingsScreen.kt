@@ -117,7 +117,6 @@ fun SettingsScreen(model: AppModel, notificationsOn: Boolean, askNotifications: 
             FCard {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Fact("App version", "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
-                    Fact("Server offers", model.health?.companionVersionCode?.toString() ?: "none")
                 }
             }
         }

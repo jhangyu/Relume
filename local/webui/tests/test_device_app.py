@@ -115,8 +115,8 @@ class AppTest(helpers.DataTestCase):
             with self.assertRaises(HttpError) as cm:
                 self.call(ota.post_install, body)
             self.assertEqual((cm.exception.status, cm.exception.message), (409, 'stale plan'))
-        for body, msg in (({'kind': 'companion', 'ref_id': 9, 'tag': 'v1', 'result': 'installed'},
-                           "kind must be item or project, got 'companion'"),
+        for body, msg in (({'kind': 'other', 'ref_id': 9, 'tag': 'v1', 'result': 'installed'},
+                           "kind must be item or project, got 'other'"),
                           ({'kind': 'item', 'ref_id': 1, 'artifact_id': 50, 'result': 'failed', 'error_code': 'NOPE'},
                            'error_code must be one of')):
             with self.assertRaises(HttpError) as cm:

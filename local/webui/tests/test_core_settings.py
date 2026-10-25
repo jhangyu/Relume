@@ -1,6 +1,6 @@
 import contextlib, io, json, os, pathlib, subprocess, sys, tempfile, types
 from unittest import mock
-from webui import build, db, projects, settings, upstream
+from webui import build, settings
 from webui.tests.helpers import DataTestCase, serve, http, login
 
 
@@ -26,25 +26,8 @@ class SettingsTest(DataTestCase):
         st, _, body = http('GET', self.base + '/api/health')
         self.assertEqual(st, 200)
         d = json.loads(body)
-        self.assertEqual(sorted(d), ['app', 'companion_version_code', 'ok', 'started_at', 'version'])
+        self.assertEqual(sorted(d), ['app', 'ok', 'started_at', 'version'])
         self.assertEqual((d['ok'], d['app'], d['version']), (True, 'Relume', 'dev'))
-
-    def test_health_companion_version_code(self):
-        def code():
-            return json.loads(http('GET', self.base + '/api/health')[2])['companion_version_code']
-        self.assertIsNone(code())                                   # Relume app not followed
-        c = db.conn()
-        c.execute("INSERT INTO upstream(id,kind,repo,channel,asset_regex) VALUES (50,'project','jhangyu/relume-companion',"
-                  "'stable','^relume-companion\\.apk$')")
-        c.execute('INSERT INTO project(id,upstream_id,package) VALUES (5,50,?)', (projects.COMPANION_PACKAGE,))
-        self.assertIsNone(code())                                   # followed, nothing downloaded yet
-        d = upstream.tag_dir(50, 'v1.2.0')
-        d.mkdir(parents=True)
-        (d / 'apks.json').write_text(json.dumps([{
-            'file': 'relume-companion.apk', 'abi': 'universal', 'package': projects.COMPANION_PACKAGE, 'version_code': 12,
-            'version_name': '1.2.0', 'sha256': 'aa' * 32, 'signer_sha256': 'bb' * 32, 'size': 3}]))
-        c.execute("UPDATE upstream SET downloaded_tag='v1.2.0' WHERE id=50")
-        self.assertEqual(code(), 12)
 
     def test_defaults_and_put(self):
         s = self.get()

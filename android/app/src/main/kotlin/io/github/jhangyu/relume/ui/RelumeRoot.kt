@@ -6,13 +6,10 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
@@ -26,12 +23,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
-import io.github.jhangyu.relume.BuildConfig
 import io.github.jhangyu.relume.install.InstallRunner
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -96,13 +91,6 @@ private fun ColumnScope.RootContent() {
         }
         return
     }
-    val gate = model.versionGate
-    if (gate != null) {
-        UpdateGate(model, gate.first, gate.second, run)
-        InstallPrompts(model)
-        return
-    }
-
     val current = stack.last()
     Column(Modifier.weight(1f)) {
         when (current) {
@@ -133,27 +121,4 @@ private fun ColumnScope.RootContent() {
         BottomNav(TABS.map { it.first }, TABS.indexOfFirst { it.second == current }) { stack = listOf(TABS[it].second) }
     }
     InstallPrompts(model)
-}
-
-/** Spec 7.4: every screen is blocked except the companion update. */
-@Composable
-private fun UpdateGate(model: AppModel, offered: Long, own: Long, run: io.github.jhangyu.relume.install.RunState?) {
-    val c = FluentTheme.colors
-    // An old finished run stays in the run file: show it only while it is active or once "Update now" started a run in this visit.
-    var showRun by remember { mutableStateOf(false) }
-    val startedAtEntry = remember { model.runStarted }
-    LaunchedEffect(model.runStarted) {
-        if (model.runStarted != startedAtEntry) showRun = true
-    }
-    if (run != null && (showRun || run.isActive)) {
-        InstallScreen(run, model, onClose = { showRun = false })
-        return
-    }
-    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Txt("Update the Relume app", style = FluentType.headline)
-        Txt("The server needs a newer version of this app before it can be used.", color = c.fg2)
-        Txt("installed $own\nserver offers $offered", style = FluentType.mono)
-        model.error?.let { MessageBar("Update failed", Tone.Danger, detail = it, action = "Dismiss", onAction = model::dismissError) }
-        FButton("Update now", model::updateCompanion, Modifier.fillMaxWidth(), kind = ButtonKind.Primary)
-    }
 }

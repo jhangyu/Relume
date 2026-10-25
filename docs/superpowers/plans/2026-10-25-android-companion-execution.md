@@ -11,13 +11,13 @@ then the user's steps.
 
 **In scope.**
 1. Server: migration 008, device tokens, `/api/me/*`, Range downloads, followed-project APK route, per-item update
-   route, ADB exclusion of app devices, health `companion_version_code` (spec §3–§7).
+   route, ADB exclusion of app devices (spec §3–§7).
 2. Android app under `android/` (spec §8–§11.1).
 3. Mobile web phone layer + PWA manifest (spec §14).
 4. `scripts/test.py`, `.github/workflows/android.yml`, project `CLAUDE.md`, `.gitignore`, README sections (spec §11.2, §12).
 5. `tests/test_core_jobs.py` sleep rewrite (spec §12.4).
 
-**Out of scope.** Spec §1 out-of-scope list; spec §16 parking lot; the first companion release and GitHub secrets
+**Out of scope.** Spec §1 out-of-scope list; spec §16 parking lot; the first companion release
 (user, decision 11); on-device checks (spec §13, user with the lead after merge); release of a new server image.
 
 **Acceptance (all mechanical; run on main after round 2 or 3).**
@@ -27,7 +27,7 @@ then the user's steps.
 4. `grep -rnE "SDK_INT *[<>=!]" android/app/src/main | wc -l` → `2`.
 5. `grep -n "sleep" local/webui/tests/test_core_jobs.py` → no hit (exit 1).
 6. Local boot smoke (scratch, gate-runner; commands in §3): manifest served without cookie as `application/manifest+json`; `POST /api/auth/device` → 200 with `token`; `POST /api/me/sync` with that token → 200 with `plan.revision`; cookie on `/api/me` → 403; artifact download with `Range: bytes=0-9` → 206 and 10 bytes.
-7. `ruby -ryaml -e 'YAML.load_file(".github/workflows/android.yml")'` → exit 0 (macOS ships Ruby with YAML; checked 2026-10-25), and `grep -n "relume-companion" .github/workflows/android.yml` → hits for the repo and the asset name.
+7. `ruby -ryaml -e 'YAML.load_file(".github/workflows/android.yml")'` → exit 0 (macOS ships Ruby with YAML; checked 2026-10-25), and `grep -n "secrets\." .github/workflows/android.yml` → no hit.
 8. Round reviewer (fresh, opus): 0 blockers for the round's commits.
 
 **Round budget.** 3 rounds (round 1, round 2, round 3 = fixes only). Budget spent with acceptance open → stop and
@@ -38,11 +38,11 @@ report the failure trail to the user.
 | Round | Slice | Name | Model | Scope (one line) |
 |---|---|---|---|---|
 | 1 | A | Server core, auth, migration | opus | migration 008, bearer auth, token issue/logout/revoke, `SESSION_ONLY`, Range `FileResponse`, PWA static types |
-| 1 | B | Server downloads and checks | sonnet | artifact download headers, project APK route + sha256, `companion_info`, `item_update_jobs` + `POST /api/items/{id}/update`, auto-push ADB filter |
+| 1 | B | Server downloads and checks | sonnet | artifact download headers, project APK route + sha256, `item_update_jobs` + `POST /api/items/{id}/update`, auto-push ADB filter |
 | 1 | C | Job tests without sleep | sonnet | rewrite `test_core_jobs.py` to state signals (spec §12.4) |
 | 1 | D | Android skeleton and API layer | opus | Gradle project, manifest, resources, `RelumeApp`, `api/` (HTTP, models, `ServerUrl`, token store, SSE parser) + tests |
 | 1 | E | Mobile web shell and PWA | sonnet | manifest + icons, `app.css`/`app.js` phone layer and overflow menu, index/item/login pages |
-| 2 | F | Server devices, OTA, app endpoints | opus | `/api/me/*` (except logout), planner dict `present` + rule 4, companion step, ADB exclusion, `device_packages`, health field |
+| 2 | F | Server devices, OTA, app endpoints | opus | `/api/me/*` (except logout), planner dict `present` + rule 4, ADB exclusion, `device_packages` |
 | 2 | G | Test entry, CI, docs | sonnet | `scripts/test.py`, `android.yml`, project `CLAUDE.md`, `.gitignore`, README |
 | 2 | H | Android install, inventory, background | opus | install run, downloader, verifier, PackageInstaller session + receiver, inventory, `CheckWorker`, notifications + tests |
 | 2 | I | Android UI | sonnet | Fluent theme, navigation, all screens, `MainActivity` |
@@ -121,10 +121,9 @@ local/webui/tests/fixtures/ci/
 Inputs: spec §5 (download, project APK, item update rows), §6.5 (header names), §6.6, §6.7, §6.2 row
 `projects.project_devices`, §12.1 items 6–7.
 Work, commit order: (1) `item_update_jobs` + route; (2) after A's first commit: `download_artifact` headers + etag,
-`download_apk`; (3) `verify_release` sha256, `_apks` rule, `project_info` fields, `COMPANION_PACKAGE`,
-`companion_info`; (4) after A's migration commit: `project_devices` ADB filter.
+`download_apk`; (3) `verify_release` sha256, `_apks` rule, `project_info` fields; (4) after A's migration commit: `project_devices` ADB filter.
 Required tests: `test_projects.py`: `test_apk_route_membership_and_traversal`, `test_apk_route_signer_alert_409`,
-`test_verify_release_writes_sha256`, `test_apks_without_sha256_unreadable`, `test_companion_info`;
+`test_verify_release_writes_sha256`, `test_apks_without_sha256_unreadable`;
 `test_catalog_upstream.py`: `test_item_update_jobs_matches_scheduler_update`; `test_build_service.py`:
 `test_artifact_download_headers`.
 Acceptance: `cd local && python3 -m unittest webui.tests.test_projects webui.tests.test_catalog_upstream webui.tests.test_build_service webui.tests.test_build_zip webui.tests.test_catalog_store webui.tests.test_core_scheduler` → OK; required tests present.
@@ -216,17 +215,16 @@ local/webui/tests/test_core_scheduler.py
 local/webui/tests/test_core_settings.py
 local/webui/tests/fixtures/device/
 ```
-Inputs: spec §5 (ota/settings rows), §5.1, §6.1–§6.4, §6.8, §12.1 items 8–11.
+Inputs: spec §5 (ota rows), §5.1, §6.1–§6.4, §12.1 items 8–10.
 Work: `/api/me`, `/api/me/sync`, `/api/me/plan`, `/api/me/installs`, `/api/me/adopt` in `ota.py`; planner `present`
-dict + rule 4; flags; companion step; `NOT_DOWNLOADED` pull; `last_installs` on `at`; `_present` with
+dict + rule 4; flags; `NOT_DOWNLOADED` pull; `last_installs` on `at`; `_present` with
 `--show-versioncode` + `device_packages` write; `GET /api/devices` additions; §6.2 table rows in `devices.py`,
 `ota.py`, `scheduler.py`; `devices.APP_ERROR_CODES`; scheduler `_app_jobs` update branch calls
-`upstream.item_update_jobs`; health field.
+`upstream.item_update_jobs`.
 Required tests: `test_device_ota.py`: `test_plan_changed_on_phone`, `test_plan_signer_conflict_and_downgrade_flags`,
-`test_companion_step_last_and_gated`, `test_not_downloaded_enqueues_one_pull`; `test_device_otajob.py`:
+`test_not_downloaded_enqueues_one_pull`; `test_device_otajob.py`:
 `test_app_devices_excluded_from_adb_fanout`; `test_device_app.py`: `test_sync_stores_tracked_only`,
-`test_sync_rejects_malformed_entry`, `test_adopt_keeps_history_and_one_row`, `test_install_receipt_stale_and_valid`;
-`test_core_settings.py`: `test_health_companion_version_code`.
+`test_sync_rejects_malformed_entry`, `test_adopt_keeps_history_and_one_row`, `test_install_receipt_stale_and_valid`.
 Acceptance: after G's first commit, Linux gate `... scripts/test.py --legs python` → exit 0 (whole Python suite: F
 touches the shared planner); required tests present.
 Red lines: `server.py`, `auth.py`, `projects.py`, `upstream.py` not edited (round-1 owners; request changes through
@@ -273,7 +271,7 @@ sleep/delay/polling; manifest/build file changes go to the lead (slice D owns th
 ```owner
 android/app/src/main/kotlin/io/github/jhangyu/relume/ui/
 ```
-Inputs: spec §8.1 branch 2, §10, §7.4, mockup `docs/superpowers/mockups/android-app/fluent-a.html` + `fluent-alt-NOTES.md`,
+Inputs: spec §8.1 branch 2, §10, mockup `docs/superpowers/mockups/android-app/fluent-a.html` + `fluent-alt-NOTES.md`,
 §5 of this plan.
 Acceptance: android gate → BUILD SUCCESSFUL (compiles with H); `grep -rnE "SDK_INT *[<>=!]" android/app/src/main/kotlin/io/github/jhangyu/relume/ui` → exactly 1 hit (API 33 notification permission);
 `grep -rn "MainActivity" android/app/src/main/AndroidManifest.xml` names `.ui.MainActivity`. No UI tests (policy).
@@ -339,11 +337,7 @@ Items for the user (before round 1 starts, R3: they change what round 1 can veri
    Options: (a) allow both downloads (Gradle fetches the platform itself because the licenses are already accepted);
    (b) no downloads: Kotlin slices are verified only by `android.yml` on GitHub, which exists from round 2 and needs a
    push of main to `jhangyu/Relume` per check. Recommendation (a).
-2. **Companion release repo and fifth secret.** Create the public repo `jhangyu/relume-companion` and the secret
-   `RELUME_COMPANION_RELEASE_TOKEN` (fine-grained token, contents write on that repo) in addition to the four keystore
-   secrets of decision 11. Needed only for the first release, not for the rounds.
-3. After merge: follow `jhangyu/relume-companion` on the Followed projects page (spec §7.1); run the on-device list
-   (spec §13).
+2. After merge: run the on-device list (spec §13).
 
 ## 5. Binding Kotlin entry points between slices
 

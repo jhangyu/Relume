@@ -4,9 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.util.Log
-import io.github.jhangyu.relume.BuildConfig
 import io.github.jhangyu.relume.api.InstallPlan
-import io.github.jhangyu.relume.api.StepKind
 import io.github.jhangyu.relume.inventory.Inventory
 import io.github.jhangyu.relume.sync.CheckScheduler
 import io.github.jhangyu.relume.sync.Notifications
@@ -176,12 +174,8 @@ object InstallRunner {
     /** A committed step whose session vanished: installed if the phone now has the target, else `session lost`. */
     private fun lostSession(context: Context, s: StepRun): StepOutcome {
         val d = checkNotNull(s.step.download) { "step ${s.step.displayName}: committed without a download" }
-        val done = if (s.step.kind == StepKind.COMPANION) {
-            BuildConfig.VERSION_CODE >= d.versionCode
-        } else {
-            Inventory.installed(context, s.step.packageName)
-                ?.let { it.versionCode == d.versionCode && VerifyRules.hexEquals(it.signerSha256, d.signerSha256) } == true
-        }
+        val done = Inventory.installed(context, s.step.packageName)
+            ?.let { it.versionCode == d.versionCode && VerifyRules.hexEquals(it.signerSha256, d.signerSha256) } == true
         return if (done) StepOutcome(StepState.INSTALLED, null, null)
         else StepOutcome(StepState.FAILED, ErrorCodes.INSTALLER_ERROR, "session lost")
     }

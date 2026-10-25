@@ -226,7 +226,6 @@ object InstallRun {
         val kind = when (s.step.kind) {
             StepKind.ITEM -> ReceiptKind.ITEM
             StepKind.PROJECT -> ReceiptKind.PROJECT
-            StepKind.COMPANION -> error("companion step ${s.step.refId} has no receipt (spec 5.1)")
         }
         val ok = s.state == StepState.INSTALLED
         return InstallReceipt(
@@ -248,7 +247,7 @@ object InstallRun {
     )
 
     private fun receipted(step: PlanStep, state: StepState) =
-        step.kind != StepKind.COMPANION && step.download != null && state in RECEIPTED
+        step.download != null && state in RECEIPTED
 
     private fun RunState.replace(index: Int, s: StepRun) = copy(steps = steps.toMutableList().also { it[index] = s })
 

@@ -11,7 +11,6 @@ from pathlib import Path
 from . import catalog, db, events, jobs, server, upstream
 
 ABI_TOKENS = ("arm64-v8a", "armeabi-v7a", "x86_64", "aarch64", "armeabi", "arm64", "armv7", "x86")
-COMPANION_PACKAGE = "io.github.jhangyu.relume"
 APKSIGNER = ["apksigner"]
 APKEDITOR = ["java", "-jar", os.environ.get("RELUME_APKEDITOR", "/opt/APKEditor.jar")]
 _ABI_SPLIT = re.compile("(" + "|".join(map(re.escape, ABI_TOKENS)) + ")")
@@ -143,11 +142,6 @@ def project_info(project_id, abis):
             **{k: pick[k] if pick else None for k in ("file", "abi", "version_name", "version_code", "sha256", "size",
                                                       "signer_sha256")},
             "signer_alert": _alert(r, facts), "auto_push": bool(r["auto_push"])}
-
-
-def companion_info(abis):
-    r = db.conn().execute("SELECT id FROM project WHERE package = ?", (COMPANION_PACKAGE,)).fetchone()
-    return project_info(r["id"], abis) if r else None
 
 
 def check_assignment(item_ids, project_ids):

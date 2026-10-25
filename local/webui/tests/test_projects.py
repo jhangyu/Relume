@@ -523,12 +523,6 @@ class ReleaseTest(ProjectCase):
         self.assertIsNone(projects._apks(9, "v1"))
         self.assertIsNone(projects.project_info(1, ["arm64-v8a"])["tag"])
 
-    def test_companion_info(self):
-        self.assertIsNone(projects.companion_info(["universal"]))
-        with db.tx() as c:
-            c.execute("UPDATE project SET package = ?", (projects.COMPANION_PACKAGE,))
-        self.assertEqual(projects.companion_info(["universal"])["package"], projects.COMPANION_PACKAGE)
-
     def test_apk_route_membership_and_traversal(self):
         self.pull("v1", {"microg-1.apk": ()})
         d = self.data / "upstream" / "9" / "v1"

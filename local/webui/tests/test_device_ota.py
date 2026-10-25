@@ -251,8 +251,6 @@ class AppPlanTest(helpers.DataTestCase):
         add_catalog_item(1, YT)
         self.d = add_app_device(app_version_code=5)
         assign(self.d, 1)
-        self.comp = None
-        self.enterContext(mock.patch.object(projects, 'companion_info', side_effect=lambda abis: self.comp))
 
     def plan(self):
         return ota.app_plan(ota.devices.get(self.d))
@@ -276,33 +274,11 @@ class AppPlanTest(helpers.DataTestCase):
                                             'version_name': '19.47.53', 'artifact_id': 50})
         self.assertEqual(step['display_name'], f'{YT} · src')
 
-    def test_companion_step_last_and_gated(self):
-        comp = pinfo(9, projects.COMPANION_PACKAGE, tag='v6', path='/u/9/v6/relume companion.apk', upstream_id=90,
-                     display_name='Relume')
-        seams(self, deps={1: [1]}, assigned=[9], infos={1: pinfo(), 9: comp}, latest=lambda i, abi: art(1, 5))
-        self.assertEqual([s['kind'] for s in self.plan()['steps']], ['project', 'item'])   # not followed: absent
-        self.comp = comp
-        steps = self.plan()['steps']
-        self.assertEqual([(s['kind'], s['package']) for s in steps],
-                         [('project', GMS), ('item', YT), ('companion', projects.COMPANION_PACKAGE)])
-        last = steps[-1]
-        self.assertEqual((last['action'], last['reason'], last['ref_id']), ('install', 'new release', 9))
-        self.assertEqual((last['download']['tag'], last['download']['url'], last['download']['version_code']),
-                         ('v6', '/api/projects/9/apks/relume%20companion.apk', 255070218))
-        with db.tx() as c:
-            c.execute('UPDATE devices SET app_version_code = 255070218 WHERE id = ?', (self.d,))
-        last = self.plan()['steps'][-1]
-        self.assertEqual((last['kind'], last['action'], last['download']), ('companion', 'up_to_date', None))
-
-    def test_incomplete_companion_and_project_become_error_steps(self):
-        comp = dict(pinfo(9, projects.COMPANION_PACKAGE, tag='v6', path='/u/9/v6/c.apk', upstream_id=90), version_code=None)
-        seams(self, assigned=[1, 9], infos={1: dict(pinfo(), sha256=None), 9: comp})
-        self.comp = comp
-        steps = self.plan()['steps']
-        proj, companion = steps[1], steps[-1]
+    def test_incomplete_project_becomes_error_step(self):
+        seams(self, assigned=[1], infos={1: dict(pinfo(), sha256=None)})
+        proj = self.plan()['steps'][1]
         self.assertEqual((proj['action'], proj['download'], proj['reason']), ('error', None,
                                                                           'ARTIFACT_INCOMPLETE: project 1 has no sha256'))
-        self.assertEqual((companion['action'], companion['reason']), ('error', 'ARTIFACT_INCOMPLETE: project 9 has no version_code'))
 
     def test_incomplete_artifact_becomes_error_step(self):
         seams(self, latest=lambda i, abi: dict(art(1, 5), sha256=None, size=None))

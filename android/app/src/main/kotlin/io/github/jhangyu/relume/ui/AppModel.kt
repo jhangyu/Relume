@@ -6,7 +6,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import io.github.jhangyu.relume.BuildConfig
 import io.github.jhangyu.relume.RelumeApp
 import io.github.jhangyu.relume.api.ApiError
 import io.github.jhangyu.relume.api.Artifact
@@ -64,14 +63,6 @@ class AppModel(application: Application) : AndroidViewModel(application) {
 
     /** Job ids with an open event stream; a stream ends on `event: end` or on its first error. */
     private val watching = mutableMapOf<Int, Job>()
-
-    /** Spec 7.4: the server offers a newer companion than this build. */
-    val versionGate: Pair<Long, Long>?
-        get() {
-            val offered = health?.companionVersionCode ?: return null
-            val own = BuildConfig.VERSION_CODE.toLong()
-            return if (offered > own) offered to own else null
-        }
 
     val items: List<Item>
         get() = catalog?.let { c -> c.groups.flatMap { it.items } + c.ungrouped }.orEmpty()
@@ -147,10 +138,6 @@ class AppModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun load() {
         health = call { it.health() } ?: return
-        if (versionGate != null) {
-            loadDeviceState()
-            return
-        }
         catalog = call { it.catalog() } ?: return
         loadDeviceState()
         watchActiveJobs()
@@ -224,16 +211,6 @@ class AppModel(application: Application) : AndroidViewModel(application) {
             val fresh = call { it.plan(listOf(p.itemId), null) } ?: return@launch
             evaluate(p.itemId, fresh)
         }
-    }
-
-    /** Spec 7.4: runs the plan's companion step. */
-    fun updateCompanion() {
-        val steps = plan?.steps?.filter { it.kind == StepKind.COMPANION }.orEmpty()
-        if (steps.isEmpty()) {
-            error = "companion update: the server offers version ${versionGate?.first} but its plan has no companion step"
-            return
-        }
-        start(InstallPlan(checkNotNull(plan).revision, steps))
     }
 
     private fun start(p: InstallPlan) {

@@ -135,10 +135,7 @@ def _payload(recheck=False):
 
 
 def health(req):
-    """companion_version_code: versionCode of the followed Relume app release, null when not followed or not downloaded."""
-    comp = projects.companion_info(['universal'])
-    return 200, {'ok': True, 'app': 'Relume', 'version': server.VERSION, 'started_at': server.STARTED_AT,
-                 'companion_version_code': comp and comp['version_code']}
+    return 200, {'ok': True, 'app': 'Relume', 'version': server.VERSION, 'started_at': server.STARTED_AT}
 
 
 def get_route(req):

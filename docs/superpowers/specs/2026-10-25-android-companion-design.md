@@ -34,13 +34,13 @@ Android UI tests and screenshots; a global job-status push stream; per-device no
 | 2 | minSdk 29; exactly two version branches: `setRequireUserAction(USER_ACTION_NOT_REQUIRED)` only on API ≥ 31, `POST_NOTIFICATIONS` request only on API ≥ 33 | §8.1, §9.4 |
 | 3 | Password reset keeps device tokens; revoke only from Settings page or app logout | §4.4 |
 | 4 | Cleartext HTTP only for LAN private ranges, Tailscale (100.64.0.0/10, `*.ts.net`) and localhost | §8.5 |
-| 5 | Companion self-update = followed project, GitHub releases in a separate public repo | §7.4, §11.2 |
+| 5 | No self-update through the server: the user installs and updates the app by hand from this repo's GitHub release | §11.2 |
 | 6 | PWA HTTPS from the user's reverse proxy, no server/code work for TLS | §6 |
 | 7 | Followed-project signer accept is also allowed from the app | §4.3, §9.3 |
 | 8 | Background: new build found → app runs download, verify, PackageInstaller session in the background; prompt via notification | §9 |
 | 9 | Full suite ≤ 90 s, reason written in a project `CLAUDE.md` | §12 |
 | 10 | `tests/test_core_jobs.py` sleep rewrite is one round-1 slice | §12.4 |
-| 11 | Release is signed with the committed `src/keystore/lspatch-signing.p12`; the only GitHub secret is `RELUME_COMPANION_RELEASE_TOKEN` | §11.3 |
+| 11 | Release is signed with the committed `src/keystore/lspatch-signing.p12`; CI uses no GitHub secret | §11.2, §11.3 |
 
 ## 3. Data model — migration `schema/008_android.sql`
 
@@ -80,7 +80,7 @@ reported_at TEXT NOT NULL, PRIMARY KEY (device_id, package)
 ### 3.4 Followed-project re-download
 `UPDATE upstream SET downloaded_tag = NULL WHERE kind = 'project'`. The next pull re-downloads
 (`upstream._fetch_row` compares `latest_tag` with `downloaded_tag`, `upstream.py:408`) and `projects.verify_release`
-writes the new per-file `sha256` (§7.3). No permanent backfill code.
+writes the new per-file `sha256` (§7.2). No permanent backfill code.
 
 ## 4. Auth
 
@@ -130,11 +130,10 @@ errors `{"error": msg}`. Auth: P public, S session cookie, T device token, S|T e
 | GET | /api/me | T | – | `{device, tracked_packages[]}` | 401 | ota |
 | POST | /api/me/sync | T | `device{model, sdk, android_release, abi_list[], app_version_code}`, `packages[{package, version_code, version_name, signer_sha256}]` | `{device, tracked_packages[], plan{revision, steps[]}}` | 400 names field and index, 401 | ota |
 | GET | /api/me/plan | T | `?items=1,2&projects=3` (optional, ids must be assigned) | `{plan{revision, steps[]}}` | 400 `item not assigned to this device`, 401 | ota |
-| POST | /api/me/installs | T | `{kind: item\|project, ref_id, artifact_id\|tag, result: installed\|failed, error_code?, error_text?}` | `{ok}` | 400 field/code (incl. `kind: companion`), 409 `stale plan` | ota |
-| GET | /api/artifacts/{id}/download | S\|T | `Range`, `If-Range` | APK bytes + headers §7.2; 206 + `Content-Range` | 404, 416 | build + server |
-| GET | /api/projects/{id}/apks/{file} | S\|T | `Range`, `If-Range` | APK bytes + headers §7.2 | 404 project/file, 409 `signer changed: confirm on the Followed projects page`, 416 | projects + server |
+| POST | /api/me/installs | T | `{kind: item\|project, ref_id, artifact_id\|tag, result: installed\|failed, error_code?, error_text?}` | `{ok}` | 400 field/code, 409 `stale plan` | ota |
+| GET | /api/artifacts/{id}/download | S\|T | `Range`, `If-Range` | APK bytes + headers §7.1; 206 + `Content-Range` | 404, 416 | build + server |
+| GET | /api/projects/{id}/apks/{file} | S\|T | `Range`, `If-Range` | APK bytes + headers §7.1 | 404 project/file, 409 `signer changed: confirm on the Followed projects page`, 416 | projects + server |
 | POST | /api/items/{id}/update | S\|T | `{rebuild?: bool}` (default false) | `{job_ids[]}` | 400 `rebuild must be a boolean`, 404 item | upstream |
-| GET | /api/health | P | – | adds `companion_version_code` (int or null) | – | settings |
 | GET | /api/devices | S\|T | – | each device adds `kind`, `created_at`, `last_seen_at`, `app_version_code`; `online` is null for app rows; each assignment and project adds `installed_reported{version_code, version_name, signer_sha256, reported_at}` or null | – | ota |
 | PUT | /api/items/{id} | S\|T | `enabled`, `auto_update` | item detail | as today | catalog (unchanged) |
 | POST | /api/items/{id}/build | S\|T | – | `{job_id}` | as today | build (unchanged) |
@@ -149,13 +148,13 @@ errors `{"error": msg}`. Auth: P public, S session cookie, T device token, S|T e
 
 ### 5.1 Plan step object (`/api/me/sync`, `/api/me/plan`)
 ```
-kind: item | project | companion        ref_id: int        package: str        display_name: str
+kind: item | project        ref_id: int        package: str        display_name: str
 action: install | up_to_date | error    reason: str        needs: [project ids]
 signer_conflict: bool    downgrade: bool    pull_job_id: int | null    signer_change: {pinned, offered} | null
-download: null | {url, file_name, size, sha256, signer_sha256, version_code, version_name, artifact_id (item) | tag (project, companion)}
+download: null | {url, file_name, size, sha256, signer_sha256, version_code, version_name, artifact_id (item) | tag (project)}
 ```
 - Order = `ota.plan()` order (dependency projects before the item that needs them, direct projects after items,
-  `ota.py:96-101`), then the `companion` step last.
+  `ota.py:96-101`).
 - `download` is non-null iff `action == install`.
 - `signer_conflict`: reported signer present and ≠ `download.signer_sha256`. `downgrade`: reported version_code >
   `download.version_code`. Both false when the package is not reported.
@@ -170,10 +169,6 @@ download: null | {url, file_name, size, sha256, signer_sha256, version_code, ver
   `error_code` ∈ `devices.ERROR_CODES` values ∪ `{HASH_MISMATCH, SIGNER_MISMATCH_FILE, INSTALLER_ERROR, USER_REJECTED,
   DEPENDENCY_FAILED}` (one list `devices.APP_ERROR_CODES`). User cancel = `failed` + `USER_REJECTED`. A receipt inserts
   one `ota_installs` row (`job_id NULL`, `build_job_id`/`upstream_tag`, package, version, result).
-- `companion` step (no receipt, 400 for `kind: companion`): built from the followed project whose package equals
-  `projects.COMPANION_PACKAGE = 'io.github.jhangyu.relume'` (no assignment needed): `install` when its downloaded APK
-  `version_code` > the device's stored `app_version_code`, `error SIGNER_CHANGED` / `NOT_DOWNLOADED` as for projects,
-  absent when no such project is followed. A normal project step with that package is dropped from app plans.
 
 ## 6. Server behavior
 
@@ -226,7 +221,6 @@ hex or null, `abi_list` values in `catalog.ABIS`; error names field and index. S
 - `project_info` adds `sha256`, `size`, `signer_sha256` of the picked APK.
 - New `download_apk` route: serves `file` only if listed in the downloaded tag's `apks.json` (membership = no path
   traversal); 409 while a signer alert exists.
-- New `companion_info(abis)`: `project_info` of the project with `package = COMPANION_PACKAGE`, or None.
 
 ### 6.7 Per-item update trigger (`upstream.py`)
 - New `upstream.item_update_jobs(item_ids, project_ids, trigger, schedule_id, options) -> [job_id]`: the update branch
@@ -236,27 +230,14 @@ hex or null, `abi_list` values in `catalog.ABIS`; error names field and index. S
 - `POST /api/items/{id}/update {rebuild?}` → `item_update_jobs([id], [], 'manual', None, {'rebuild': rebuild,
   'notify': True})`; no `auto_update` filter (explicit user action).
 
-### 6.8 Health
-`settings.health` adds `companion_version_code` = `projects.companion_info(['universal'])['version_code']` or null.
-
 ## 7. Delivery details
 
-### 7.1 Self-update model (decision 5)
-The companion is a followed project in the web UI's Followed projects page: repo `jhangyu/relume-companion` (public),
-channel stable, asset regex `^relume-companion\.apk$`. Existing follow code downloads it, pins its signer and
-offers it as the `companion` plan step. No server download change, no image baking, no `companion.py`.
-
-### 7.2 Download headers
+### 7.1 Download headers
 See §6.5. The app compares `X-Relume-Sha256` and `X-Relume-Signer-Sha256` with the plan; a mismatch = stale plan.
 
-### 7.3 Integrity chain
+### 7.2 Integrity chain
 Server: artifact `sha256`/`signer_sha256` from the build runner (`build.py:98-101`); project `sha256` from
 `verify_release`, signer from `apksigner` (pinned, alert on change). App: recomputes both before opening a session (§8.3).
-
-### 7.4 Version gate
-`GET /api/health.companion_version_code` non-null and > `BuildConfig.VERSION_CODE` → the app blocks every screen
-except "Update the Relume app" (runs the plan's companion step) and shows both codes. Checked at start and on every
-`ON_START`. No compatibility shims.
 
 ## 8. App — platform rules at minSdk 29
 
@@ -287,7 +268,7 @@ A mechanical check enforces this: `grep -rnE "SDK_INT *[<>=!]" android/app/src/m
 
 ### 8.3 Install rules
 - No prompt happens only when (a) API ≥ 31 and `USER_ACTION_NOT_REQUIRED` set, (b) the installed app's own
-  targetSdk meets Android's floor for that OS version, (c) this app is installer of record (or updates itself).
+  targetSdk meets Android's floor for that OS version, (c) this app is installer of record.
   On API 29/30 every install/update prompts. The code always handles `STATUS_PENDING_USER_ACTION`.
 - First install of a package through the app always prompts. Packages installed earlier by ADB need one confirmed
   handover install; the step shows "one confirmation needed" when `getInstallerPackageName(pkg)` ≠ own package.
@@ -297,7 +278,7 @@ A mechanical check enforces this: `grep -rnE "SDK_INT *[<>=!]" android/app/src/m
 - Manifest components: application `.RelumeApp` (`allowBackup="false"`, `networkSecurityConfig`), activity
   `.ui.MainActivity` (launcher, exported), receiver `.install.InstallResultReceiver` (`exported="false"`).
   WorkManager uses its default `androidx.startup` initializer. `buildFeatures { buildConfig = true }` (AGP 9 default
-  is off; §7.4 and §9.4 read `BuildConfig.VERSION_CODE`).
+  is off; the sync report and Settings read `BuildConfig.VERSION_CODE`).
 
 ### 8.4 Package visibility
 API 29 has no visibility filtering; API 30+ uses the declared `QUERY_ALL_PACKAGES` (tracked packages come from the
@@ -363,12 +344,11 @@ Failed verification deletes the file.
   `EXTRA_INTENT` (VoD); `STATUS_SUCCESS` → `installed`; `STATUS_FAILURE_ABORTED` → `cancelled` (`USER_REJECTED`);
   `STATUS_FAILURE_CONFLICT` → `needs_uninstall`; every other `STATUS_FAILURE*` → `failed` `INSTALLER_ERROR` with the
   constant name + `EXTRA_STATUS_MESSAGE`. No automatic retry.
-- Receipts: `InstallWorker` sends `POST /api/me/installs` for each terminal item/project step (not companion) and
+- Receipts: `InstallWorker` sends `POST /api/me/installs` for each terminal item/project step and
   then `POST /api/me/sync`. 409 `stale plan` → re-sync, show the new plan, no automatic reinstall.
 - Process start (`InstallRunner.reconcileOnStart`): abandons own sessions not referenced by the run file; a
   `committed`/`awaiting_user` step whose session is gone becomes `installed` if the installed version code and signer
-  equal the target, else `failed INSTALLER_ERROR "session lost"`. A `companion` step is `installed` when
-  `BuildConfig.VERSION_CODE >= download.version_code`.
+  equal the target, else `failed INSTALLER_ERROR "session lost"`.
 - `needs_uninstall`: dialog with both signers (short hex) or both version codes and "Uninstalling deletes this app's
   data on the phone (logins, downloads, settings). This cannot be undone." → `PackageInstaller.uninstall(
   VersionedPackage, IntentSender)` (system confirmation, VoD) → the step is re-run. In a background run the step
@@ -419,7 +399,7 @@ Sync triggers: after login, after each install result, on `ON_START`, in `CheckW
 | Dependency dialog (5d) | step `needs` | – |
 | Signer change dialog (same component as 5c) | `signer_change` | `POST /api/projects/{id}/signer/accept {signer_sha256: offered}` after "Accepting trusts a new signing key for <name>" confirmation |
 | Builds | jobs page | `GET /api/jobs?kind=build&before_id=&limit=` |
-| Settings (6) | server, device, check interval, notifications status, last check, about (both version codes), logout | `GET /api/me`, `POST /api/me/logout` |
+| Settings (6) | server, device, check interval, notifications status, last check, about (app version), logout | `GET /api/me`, `POST /api/me/logout` |
 
 Live state without polling: SSE per job the app started or saw active; on `event: end` refresh the item and plan.
 Jobs started elsewhere are found on screen load and pull-to-refresh only. Errors show HTTP status + server `error`
@@ -445,10 +425,10 @@ fails the release task naming it. `android/.gitignore`:
 - Trigger: `push` of a tag `companion-vMAJOR.MINOR.PATCH` only. CI never runs tests (`scripts/ci_guard.py` fails any
   workflow that does). Version name = `MAJOR.MINOR.PATCH`, version code = `MAJOR*1000000 + MINOR*1000 + PATCH`
   (monotonic; the plan's `downgrade` flag compares version codes).
-- One job on `ubuntu-latest`, `permissions: contents: read`: checkout → guard → derive version from the tag →
+- One job on `ubuntu-latest`, `permissions: contents: write`: checkout → guard → derive version from the tag →
   setup-java (temurin 17) → setup-gradle → `android/gradlew -p android assembleRelease --no-watch-fs` → copy
-  `app-release.apk` to `relume-companion.apk` → `gh release create "v<version>" ... --repo jhangyu/relume-companion`
-  with `GH_TOKEN` = secret `RELUME_COMPANION_RELEASE_TOKEN` (fine-grained token, contents write on that repo only).
+  `app-release.apk` to `relume-companion.apk` → `gh release create "$GITHUB_REF_NAME" relume-companion.apk` on this
+  repo with `GH_TOKEN` = the workflow's built-in `github.token`. No secrets.
 - Local gate: `.githooks/pre-push` runs `scripts/ci_local.py` (guard + the same Gradle build).
 
 ### 11.3 Signing key
@@ -467,14 +447,12 @@ The committed `src/keystore/lspatch-signing.p12` (alias `fiorenmas`, public cred
 6. Project APK route: file not in `apks.json` (incl. `..%2F`) 404; signer alert 409; `verify_release` writes sha256;
    `_apks` without sha256 → None. (test_projects)
 7. `item_update_jobs`: scheduler update and `POST /api/items/{id}/update` give the same job set. (test_catalog_upstream)
-8. `plan()` with a `present` dict: rule 4; `signer_conflict` and `downgrade` flags; companion step last and gated by
-   `app_version_code`; dependency-before-item order; `NOT_DOWNLOADED` enqueues one pull. (test_device_ota)
+8. `plan()` with a `present` dict: rule 4; `signer_conflict` and `downgrade` flags; dependency-before-item order; `NOT_DOWNLOADED` enqueues one pull. (test_device_ota)
 9. App rows excluded from ADB fan-out (`resolve_devices`, `on_build_succeeded`, auto-push, `ota_now` 409,
    `ota.handle` fails) with `FakeAdb` asserting zero adb calls. (test_device_otajob)
 10. `/api/me/sync` stores only tracked packages, rejects a malformed entry with a field-naming 400; adopt keeps
     assignments and history on the ADB id and leaves one row; installs receipt stale → 409, valid → next plan
     up_to_date. (test_device_app, new)
-11. Health `companion_version_code` null without the project, set with it. (test_core_settings)
 
 ### 12.2 Committed Kotlin JVM unit tests (plain JUnit, no Robolectric, no Android types in tested code)
 api/: plan parsing (missing field → error naming it; unknown action → error), `ServerUrl` rule at every range edge
@@ -539,14 +517,13 @@ DB; every item of §13.
    SHA-256 equals the server's apksigner digest.
 6. `STATUS_PENDING_USER_ACTION` while backgrounded: notification tap opens the system prompt; foreground start works.
 7. `PackageInstaller.uninstall` shows a system confirmation and its result arrives.
-8. Self-update: prompt on Android 10/11, none on 12+; WorkManager periodic work survives the update.
-9. A download worker stopped by the system resumes from `.part` via Range.
-10. Cleartext to a `100.x` address and a `.ts.net` name works; a public `http://` URL is rejected in the app.
-11. Keystore key readable from `CheckWorker` while the phone is locked.
-12. Lower versionCode over an installed app is refused (justifies the uninstall dialog).
-13. `REQUEST_INSTALL_PACKAGES` via "Install unknown apps"; `canRequestPackageInstalls()` reflects it after return.
-14. `QUERY_ALL_PACKAGES` makes the patched apps and MicroG visible on API 30+.
-15. PWA install from Chrome over the reverse-proxy HTTPS URL without a service worker.
+8. A download worker stopped by the system resumes from `.part` via Range.
+9. Cleartext to a `100.x` address and a `.ts.net` name works; a public `http://` URL is rejected in the app.
+10. Keystore key readable from `CheckWorker` while the phone is locked.
+11. Lower versionCode over an installed app is refused (justifies the uninstall dialog).
+12. `REQUEST_INSTALL_PACKAGES` via "Install unknown apps"; `canRequestPackageInstalls()` reflects it after return.
+13. `QUERY_ALL_PACKAGES` makes the patched apps and MicroG visible on API 30+.
+14. PWA install from Chrome over the reverse-proxy HTTPS URL without a service worker.
 
 ## 14. Mobile web
 
@@ -591,8 +568,8 @@ and no inline `min-width` on dialog forms; `100dvh` and `env(safe-area-inset-bot
 | 3 | App design: download worker as `dataSync` foreground service | No foreground service (§8.7); stopping is handled by Range resume. Avoids the API 31+ background start ban |
 | 4 | App design: background job downloads only, install starts from a tap | Decision 8: background run does download, verify and commit; prompts via notification (§9) |
 | 5 | App design §12.4: signer accept web-only | Decision 7: app can accept; route not session-only (§4.3, §10) |
-| 6 | Server design: companion option A or B; layout plan default A | Decision 5: B with public repo `jhangyu/relume-companion`; no `companion.py`, no `/api/companion` routes |
-| 7 | Server design: `device.app_package` field to place the self step last | Constant `projects.COMPANION_PACKAGE`; field dropped |
+| 6 | Server design: companion option A or B; layout plan default A | Decision 5: neither; no self-update, no `companion.py`, no `/api/companion` routes |
+| 7 | Server design: `device.app_package` field to place the self step last | Dropped: no self-update (decision 5) |
 | 8 | Server design: `GET /api/me/plan` ETag/304 | Dropped: the app never sends `If-None-Match`; `revision` stays |
 | 9 | Server design: cookie `Secure` from `X-Forwarded-Proto` | Dropped: decision 6 says no server work for TLS |
 | 10 | Server design: `SESSION_ONLY` lacks `DELETE /api/devices/{id}` | Added: deleting a row revokes another phone, same reason as the token route |
@@ -606,7 +583,7 @@ and no inline `min-width` on dialog forms; `100dvh` and `env(safe-area-inset-bot
 | 18 | Per-app spec cites `schema/006_app_schedule.sql`; the tree has `006_item_auto_update.sql` and `007_app_schedule.sql` | Code wins: next migration is 008 |
 | 19 | Layout plan: `.ts.net`, `.local`, `.lan` names allowed over http (app design option a) | Decision 4: only `.ts.net` names, localhost and private/Tailscale IP ranges |
 | 20 | Server design §7: `projects.html` "Check all now" not in the overflow list | Added (§14.3); found by grep of `hide-m` |
-| 21 | Decision 11 counts 4 GitHub secrets | The only GitHub secret is `RELUME_COMPANION_RELEASE_TOKEN` (publish to a separate public repo) |
+| 21 | Decision 11 counts 4 GitHub secrets | No GitHub secret: the release is published on this repo with `github.token` |
 
 ## 16. Parking lot (not in this work)
 - Existing 1 s polling in `ota._pull_project` (`ota.py:222-232`).

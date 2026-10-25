@@ -18,7 +18,6 @@ internal val ApiJson = Json { ignoreUnknownKeys = true }
 enum class StepKind {
     @SerialName("item") ITEM,
     @SerialName("project") PROJECT,
-    @SerialName("companion") COMPANION,
 }
 
 @Serializable
@@ -71,7 +70,7 @@ data class Download(
     @SerialName("version_name") val versionName: String?,
     /** Present for item steps; [PlanStep] init checks it. */
     @SerialName("artifact_id") val artifactId: Int? = null,
-    /** Present for project and companion steps; [PlanStep] init checks it. */
+    /** Present for project steps; [PlanStep] init checks it. */
     val tag: String? = null,
 ) {
     init {
@@ -229,7 +228,6 @@ data class SyncResponse(
 data class Health(
     val ok: Boolean,
     val version: String,
-    @SerialName("companion_version_code") val companionVersionCode: Long?,
 )
 
 // ---- catalog, items, artifacts ----

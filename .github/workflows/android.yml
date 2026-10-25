@@ -3,7 +3,7 @@ on:
   push:
     tags: ["companion-v*"]
 permissions:
-  contents: read
+  contents: write
 jobs:
   companion:
     runs-on: ubuntu-latest
@@ -26,13 +26,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6.4.0
       - name: Assemble release
         run: android/gradlew -p android assembleRelease --no-watch-fs
-      - name: Publish to jhangyu/relume-companion
+      - name: Publish release
         env:
-          GH_TOKEN: ${{ secrets.RELUME_COMPANION_RELEASE_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          : "${GH_TOKEN:?secret RELUME_COMPANION_RELEASE_TOKEN is empty}"
           cp android/app/build/outputs/apk/release/app-release.apk relume-companion.apk
-          gh release create "v$RELUME_COMPANION_VERSION_NAME" relume-companion.apk \
-            --repo jhangyu/relume-companion \
+          gh release create "$GITHUB_REF_NAME" relume-companion.apk \
             --title "Relume companion $RELUME_COMPANION_VERSION_NAME" \
             --notes "${{ github.sha }}"
