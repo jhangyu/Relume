@@ -229,6 +229,12 @@ ERROR_TEXT_MAX = 2048
 ARTIFACT_APP_FIELDS = ('size', 'sha256', 'signer_sha256', 'version_code')   # nullable in the schema, required by the app
 
 
+def _incomplete(row, label):
+    """Error reason naming the facts a downloadable file lacks, or None when the app can verify it."""
+    missing = [f for f in ARTIFACT_APP_FIELDS if row[f] is None]
+    return f"ARTIFACT_INCOMPLETE: {label} has no {', '.join(missing)}" if missing else None
+
+
 def _item_step(s, name):
     """Plan step of a catalog item. An install whose artifact lacks a field the app needs becomes an error step."""
     step = {'kind': 'item', 'ref_id': s['ref_id'], 'package': s['package'], 'display_name': name,
@@ -237,9 +243,9 @@ def _item_step(s, name):
     if s['action'] != 'install':
         return step
     a = s['artifact']
-    missing = [f for f in ARTIFACT_APP_FIELDS if a[f] is None]
-    if missing:
-        return dict(step, action='error', reason=f"ARTIFACT_INCOMPLETE: artifact {a['id']} has no {', '.join(missing)}")
+    bad = _incomplete(a, f"artifact {a['id']}")
+    if bad:
+        return dict(step, action='error', reason=bad)
     return dict(step, download=_item_download(a))
 
 
@@ -268,7 +274,11 @@ def _app_project_step(kind, p, action, reason):
         pinned = db.conn().execute('SELECT signer_sha256 FROM project WHERE id = ?', (p['project_id'],)).fetchone()[0]
         step['signer_change'] = {'pinned': pinned, 'offered': p['signer_alert']}
     elif action == 'install':
-        step['download'] = _project_download(p)
+        bad = _incomplete(p, f"project {p['project_id']}")
+        if bad:
+            action, reason = 'error', bad
+        else:
+            step['download'] = _project_download(p)
     return dict(step, action=action, reason=reason)
 
 
@@ -279,6 +289,9 @@ def _companion_action(p, dev):
         return 'install', 'not downloaded'
     if p['path'] is None:
         return 'error', 'NO_MATCHING_ABI'
+    bad = _incomplete(p, f"project {p['project_id']}")
+    if bad:
+        return 'error', bad
     if dev['app_version_code'] is None:
         return 'up_to_date', 'app version not reported'
     if p['version_code'] > dev['app_version_code']:

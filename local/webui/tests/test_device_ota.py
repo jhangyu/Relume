@@ -294,6 +294,16 @@ class AppPlanTest(helpers.DataTestCase):
         last = self.plan()['steps'][-1]
         self.assertEqual((last['kind'], last['action'], last['download']), ('companion', 'up_to_date', None))
 
+    def test_incomplete_companion_and_project_become_error_steps(self):
+        comp = dict(pinfo(9, projects.COMPANION_PACKAGE, tag='v6', path='/u/9/v6/c.apk', upstream_id=90), version_code=None)
+        seams(self, assigned=[1, 9], infos={1: dict(pinfo(), sha256=None), 9: comp})
+        self.comp = comp
+        steps = self.plan()['steps']
+        proj, companion = steps[1], steps[-1]
+        self.assertEqual((proj['action'], proj['download'], proj['reason']), ('error', None,
+                                                                          'ARTIFACT_INCOMPLETE: project 1 has no sha256'))
+        self.assertEqual((companion['action'], companion['reason']), ('error', 'ARTIFACT_INCOMPLETE: project 9 has no version_code'))
+
     def test_incomplete_artifact_becomes_error_step(self):
         seams(self, latest=lambda i, abi: dict(art(1, 5), sha256=None, size=None))
         item = self.plan()['steps'][0]
