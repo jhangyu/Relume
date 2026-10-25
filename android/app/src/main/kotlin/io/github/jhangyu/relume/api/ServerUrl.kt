@@ -50,6 +50,7 @@ class ServerUrl private constructor(val scheme: String, val host: String, val po
             if (uri.rawFragment != null) throw InvalidServerUrl("fragment", "remove '#${uri.rawFragment}'")
             val rawHost = uri.host ?: throw InvalidServerUrl("host", "missing or invalid in '$trimmed'")
             val host = rawHost.removePrefix("[").removeSuffix("]").lowercase()
+            if ('%' in host) throw InvalidServerUrl("host", "IPv6 zone/interface name is not supported, got '$host'")
             if (scheme == HTTP && !isPrivateHost(host)) {
                 throw InvalidServerUrl("host", "use https:// for public addresses ('$host' is not a private address)")
             }

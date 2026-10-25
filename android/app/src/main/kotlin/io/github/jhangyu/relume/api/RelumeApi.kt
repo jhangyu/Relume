@@ -88,6 +88,10 @@ class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
 
     suspend fun job(id: Int): Job = get("/api/jobs/$id")
 
+    suspend fun cancelJob(id: Int) {
+        send<JsonObject>("POST", "/api/jobs/$id/cancel", EMPTY)
+    }
+
     suspend fun projects(): List<Project> = get<ProjectList>("/api/projects").projects
 
     suspend fun acceptSigner(projectId: Int, signerSha256: String): Project =
@@ -168,6 +172,7 @@ class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
     private fun open(path: String, method: String): HttpURLConnection {
         val conn = url.resolve(path).openConnection() as HttpURLConnection
         conn.requestMethod = method
+        conn.instanceFollowRedirects = false // a redirect could carry the bearer token to another host
         conn.connectTimeout = CONNECT_TIMEOUT_MS
         conn.readTimeout = READ_TIMEOUT_MS
         conn.setRequestProperty("Accept", JSON_TYPE)
@@ -176,12 +181,18 @@ class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
     }
 
     private fun errorOf(conn: HttpURLConnection, status: Int, path: String): ApiError {
+        if (status in HTTP_REDIRECTS) {
+            return ApiError(status, redirectMessage(conn.getHeaderField("Location")), path)
+        }
         val text = conn.errorStream?.use { it.readBytes().toString(Charsets.UTF_8) }.orEmpty()
         return ApiError(status, errorMessage(text), path)
     }
 
     internal companion object {
         /** Server `{"error": msg, ...}` → "msg (key: value, ...)" so `attempts_left`/`retry_after` reach the UI. */
+        internal fun redirectMessage(location: String?): String =
+            "redirect not followed, Location: ${location ?: "(none)"}"
+
         internal fun errorMessage(body: String): String {
             val obj = try {
                 ApiJson.parseToJsonElement(body) as? JsonObject
@@ -202,6 +213,7 @@ class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
         const val READ_TIMEOUT_MS = 60_000
         const val ERROR_BODY_PREVIEW = 200
         val HTTP_SUCCESS = 200..299
+        val HTTP_REDIRECTS = 300..399
         val EMPTY = JsonObject(emptyMap())
     }
 }

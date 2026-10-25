@@ -43,4 +43,9 @@ class ServerUrlTest {
             ServerUrl.parse("https://relume.example.com").resolve("/api/jobs?status=running").toString(),
         )
     }
+
+    @Test
+    fun rejectsIpv6ZoneName() {
+        assertThrows(InvalidServerUrl::class.java) { ServerUrl.parse("http://[fe80::1%wlan0]:8080") }
+    }
 }

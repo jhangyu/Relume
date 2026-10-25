@@ -75,7 +75,11 @@ private fun ColumnScope.RootContent() {
     }
 
     LifecycleEventEffect(Lifecycle.Event.ON_START) { model.refresh() }
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { notificationsOn = NotificationManagerCompat.from(ctx).areNotificationsEnabled() }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        notificationsOn = NotificationManagerCompat.from(ctx).areNotificationsEnabled()
+        // Back from system settings: a granted install permission closes the "allow installs" prompt.
+        if (model.prompt == AppModel.InstallPrompt.NeedPermission && InstallRunner.canInstall(ctx)) model.dismissPrompt()
+    }
     LaunchedEffect(model.runStarted) {
         if (model.runStarted > 0 && stack.last() != Screen.Install) stack = stack + Screen.Install
     }

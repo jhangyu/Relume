@@ -76,7 +76,7 @@ android {
 androidComponents {
     onVariants(selector().withBuildType("release")) { variant ->
         variant.outputs.forEach { output ->
-            output.versionCode.set(providers.environmentVariable("RELUME_COMPANION_VERSION_CODE").map { it.toInt() })
+            output.versionCode.set(providers.environmentVariable("RELUME_COMPANION_VERSION_CODE").map { v -> v.toIntOrNull() ?: error("RELUME_COMPANION_VERSION_CODE: expected an integer, got '$v'") })
             output.versionName.set(providers.environmentVariable("RELUME_COMPANION_VERSION_NAME"))
         }
     }

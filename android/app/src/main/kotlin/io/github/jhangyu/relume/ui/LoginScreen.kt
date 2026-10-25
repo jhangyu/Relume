@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -43,6 +44,21 @@ private val LOGO_SIZE = 52.dp
 /** Registration answer held until the user decides about adopting an ADB row (token is stored only after that). */
 private class Pending(val url: ServerUrl, val token: String, val adb: List<AdbDevice>)
 
+/** Flat strings: url, token, then id/name/model per ADB row ("" model = none). Survives rotation. */
+private val PendingSaver = listSaver<Pending?, String>(
+    save = { p ->
+        if (p == null) emptyList()
+        else listOf(p.url.toString(), p.token) + p.adb.flatMap { listOf(it.id.toString(), it.name, it.model.orEmpty()) }
+    },
+    restore = { l ->
+        if (l.isEmpty()) null
+        else Pending(
+            ServerUrl.parse(l[0]), l[1],
+            l.drop(2).chunked(3).map { (id, name, model) -> AdbDevice(id.toInt(), name, model.ifEmpty { null }) },
+        )
+    },
+)
+
 /**
  * Frames 1 and 1b plus the ADB adopt choice. [notice] is shown on top (e.g. "This device was signed out by the server").
  * [onSignedIn] runs after the token is stored.
@@ -58,7 +74,7 @@ fun LoginScreen(app: RelumeApp, notice: String?, onSignedIn: () -> Unit) {
     var unreachable by remember { mutableStateOf<Pair<String, String>?>(null) }
     var formError by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
-    var pending by remember { mutableStateOf<Pending?>(null) }
+    var pending by rememberSaveable(stateSaver = PendingSaver) { mutableStateOf<Pending?>(null) }
 
     fun finish(url: ServerUrl, token: String, adopt: Int?) {
         scope.launch {

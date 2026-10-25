@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -21,6 +22,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,6 +34,7 @@ import io.github.jhangyu.relume.api.ApiError
 import io.github.jhangyu.relume.api.Job
 import io.github.jhangyu.relume.api.RelumeApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
@@ -89,10 +92,12 @@ fun LogScreen(api: RelumeApi, jobId: Int, active: ActiveJob?, label: String?, on
     val lines = remember(jobId) { mutableStateListOf<String>() }
     var job by remember(jobId) { mutableStateOf<Job?>(null) }
     var error by remember(jobId) { mutableStateOf<String?>(null) }
+    var cancelError by remember(jobId) { mutableStateOf<String?>(null) }
     var lastId by remember(jobId) { mutableStateOf<String?>(null) }
     var attempt by remember(jobId) { mutableIntStateOf(0) }
     var follow by remember(jobId) { mutableStateOf(true) }
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(jobId, attempt) {
         error = null
@@ -132,6 +137,7 @@ fun LogScreen(api: RelumeApi, jobId: Int, active: ActiveJob?, label: String?, on
                     Box(Modifier.fillMaxWidth(active.stepIndex.toFloat() / active.stepCount).heightIn(min = 3.dp).background(c.accent))
                 }
             }
+            cancelError?.let { MessageBar("Cancel failed", Tone.Danger, detail = it) }
             error?.let { MessageBar("Log stream stopped", Tone.Danger, detail = it, action = "Resume", onAction = { attempt++ }) }
             LazyColumn(
                 state = listState,
@@ -143,6 +149,21 @@ fun LogScreen(api: RelumeApi, jobId: Int, active: ActiveJob?, label: String?, on
         Hairline()
         Row(Modifier.fillMaxWidth().background(c.bg2).padding(horizontal = ScreenPadding, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             ToggleLabel("Follow", follow, true) { follow = it }
+            Spacer(Modifier.weight(1f))
+            job?.takeIf { isActive(it.status) }?.let {
+                FButton("Cancel build", {
+                    scope.launch {
+                        try {
+                            api.cancelJob(jobId)
+                            job = api.job(jobId)
+                        } catch (e: ApiError) {
+                            cancelError = describe(e)
+                        } catch (e: IOException) {
+                            cancelError = describe(e)
+                        }
+                    }
+                })
+            }
         }
     }
 }
