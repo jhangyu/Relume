@@ -202,6 +202,10 @@ class HandlerFailTest(BuildCase):
         self.assertEqual(self.cat.versions, [(YT, ["20.2.0", "20.1.0"])])
         m.feed("::step::patch::2/3")
         self.assertEqual(build._steps[job.id], {"step": "patch", "step_index": 2, "step_count": 3})
+        self.assertEqual(m.failed_patches, [])
+        m.feed("INFO: Applied: Change app name")
+        m.feed("ERROR: FAILED: Hide ads")
+        self.assertEqual(m.failed_patches, ["Hide ads"])
         m.feed("::fail::bogus::x")
         self.assertEqual(m.fail_code, "internal")
 

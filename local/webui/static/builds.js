@@ -103,7 +103,7 @@ async function select(id) {
   $('#cancel').disabled = !live;
   let full = null;
   try { full = await api('GET', `/api/items/${j.target.item_id}`); } catch (_) { /* item deleted */ }
-  $('#facts').innerHTML = html`<div><dt class="muted">Patches</dt><dd class="mono">${d.patches_version || '—'}</dd></div><div><dt class="muted">App</dt><dd class="mono">${d.app_version || '—'}</dd></div><div><dt class="muted">Arch</dt><dd class="mono">${(it.abis || []).join(', ') || '—'}</dd></div><div><dt class="muted">CLI</dt><dd class="mono">${d.cli_version || '—'}</dd></div><div><dt class="muted">APK source</dt><dd class="mono">${full && full.variants.length && full.variants[0].download ? full.variants[0].download.kind : '—'}</dd></div>`;
+  $('#facts').innerHTML = html`<div><dt class="muted">Patches</dt><dd class="mono">${d.patches_version || '—'}</dd></div><div><dt class="muted">App</dt><dd class="mono">${d.app_version || '—'}</dd></div><div><dt class="muted">Arch</dt><dd class="mono">${(it.abis || []).join(', ') || '—'}</dd></div><div><dt class="muted">CLI</dt><dd class="mono">${d.cli_version || '—'}</dd></div><div><dt class="muted">APK source</dt><dd class="mono">${full && full.variants.length && full.variants[0].download ? full.variants[0].download.kind : '—'}</dd></div>${warnPatches(j)}`;
   renderSteps();
   B.es = logStream(id, appendLines, status => {
     B.last = { ...B.last, status };
@@ -117,6 +117,7 @@ async function select(id) {
 }
 
 let oldest = null;
+const warnPatches = j => (j.detail && j.detail.failed_patches || []).length ? html`<div class="xs danger">Warning: patch failed: ${j.detail.failed_patches.join(', ')}</div>` : '';
 function fixFor(j) {
   const code = j.detail && j.detail.fail_code, it = itemOf(j);
   if (code === 'version_unresolved' || code === 'patch_failed') return html`<a class="xs" href="/item.html?id=${j.target.item_id}#version">Pin a version</a>`;
@@ -135,7 +136,7 @@ async function renderHistory(append) {
   if (jobs.length) oldest = jobs[jobs.length - 1].id;
   const rows = html`${done.map(j => {
     const it = itemOf(j), [cls, label] = JOB_BADGE[j.status], size = ((j.detail && j.detail.artifacts) || []).reduce((n, a) => n + a.size, 0);
-    return html`<tr data-id="${j.id}" ${j.id === B.sel ? html`aria-current="true"` : ''}><td class="mono">#${j.id}</td><td><div class="row" style="flex-wrap:nowrap">${iconTile(it, 'ico-sm')}<span>${it.label}</span></div></td><td class="hide-m sm muted">${triggerText(j)}</td><td><span class="badge ${cls}">${label}</span>${j.status === 'failed' ? html`<div class="xs danger">${j.reason || ''}</div>${fixFor(j)}` : ''}</td><td class="hide-m">${fmt.abs(j.started_at)}</td><td class="hide-m">${fmt.duration(j.started_at, j.finished_at)}</td><td class="hide-m">${size ? fmt.bytes(size) : '—'}</td><td><button class="btn btn-ghost btn-sm" type="button" data-sel="${j.id}">View log</button></td></tr>`;
+    return html`<tr data-id="${j.id}" ${j.id === B.sel ? html`aria-current="true"` : ''}><td class="mono">#${j.id}</td><td><div class="row" style="flex-wrap:nowrap">${iconTile(it, 'ico-sm')}<span>${it.label}</span></div></td><td class="hide-m sm muted">${triggerText(j)}</td><td><span class="badge ${cls}">${label}</span>${warnPatches(j)}${j.status === 'failed' ? html`<div class="xs danger">${j.reason || ''}</div>${fixFor(j)}` : ''}</td><td class="hide-m">${fmt.abs(j.started_at)}</td><td class="hide-m">${fmt.duration(j.started_at, j.finished_at)}</td><td class="hide-m">${size ? fmt.bytes(size) : '—'}</td><td><button class="btn btn-ghost btn-sm" type="button" data-sel="${j.id}">View log</button></td></tr>`;
   })}`;
   if (append) $('#hist tbody').insertAdjacentHTML('beforeend', html`${rows}`);
   else $('#hist tbody').innerHTML = html`${rows}`;

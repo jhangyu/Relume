@@ -18,6 +18,7 @@ FAIL_CODES = ("upstream_missing", "version_unresolved", "apk_not_listed", "downl
 CHECK_VERSIONS = str(db.REPO_ROOT / "src" / "build" / "check-versions.sh")
 CHECK_TIMEOUT = 300  # one list-page request with solver retries
 SOLVER_ENV = ("FLARESOLVERR_URL", "CFBYPASS_URL", "APKM_SOLVER_URL")  # passed to the isolated runner
+FAILED_PATCH_PREFIX = "ERROR: FAILED: "  # patcher CLI line for a patch that did not apply
 _steps = {}
 _steps_lock = threading.Lock()
 
@@ -28,6 +29,7 @@ class _Markers:
     def __init__(self, job_id, package):
         self.job_id, self.package = job_id, package
         self.fail_code = self.fail_detail = self.last_err = self.versions = None
+        self.failed_patches = []
 
     def feed(self, text):
         if text.startswith("::step::"):
@@ -50,6 +52,8 @@ class _Markers:
             code, _, detail = text[8:].partition("::")
             self.fail_code = code if code in FAIL_CODES else "internal"
             self.fail_detail = detail.strip()
+        elif text.startswith(FAILED_PATCH_PREFIX):  # the CLI runs with --continue-on-error: the build still succeeds
+            self.failed_patches.append(text[len(FAILED_PATCH_PREFIX):].strip())
         elif text.startswith("[-]"):
             self.last_err = text.strip()
 
@@ -84,7 +88,7 @@ def artifact_name(source_id, key, variant, app_version, upstream_tag):
     return f"{source_id}-{key}-{variant}-{server.safe_remote(app_version)}-{server.safe_remote(upstream_tag)}.apk"
 
 
-def _register(job, item_id, inp, work, result):
+def _register(job, item_id, inp, work, result, failed_patches):
     dest = db.DATA / "artifacts" / str(item_id) / str(job.id)
     dest.mkdir(parents=True, exist_ok=True)
     now, ids = db.utcnow(), []
@@ -99,8 +103,8 @@ def _register(job, item_id, inp, work, result):
                                  (job.id, item_id, v["name"], v["abi"], v.get("package"), v.get("version_name"),
                                   v.get("version_code"), inp["upstream_tag"], v.get("signer_sha256"), str(target),
                                   target.stat().st_size, v.get("sha256"), now)).lastrowid)
-        c.execute("UPDATE build_jobs SET app_version = ?, patches_version = ?, cli_version = ? WHERE job_id = ?",
-                  (result["app_version"], inp["upstream_tag"], inp["cli_tag"], job.id))
+        c.execute("UPDATE build_jobs SET app_version = ?, patches_version = ?, cli_version = ?, failed_patches = ? WHERE job_id = ?",
+                  (result["app_version"], inp["upstream_tag"], inp["cli_tag"], json.dumps(failed_patches) if failed_patches else None, job.id))
     run_retention(item_id)
     events.emit("build.succeeded", {"item_id": item_id, "job_id": job.id, "app_version": result["app_version"],
                                     "patches_version": inp["upstream_tag"], "artifacts": ids})
@@ -146,7 +150,7 @@ def handler(job, log):
                 _fail(job, item_id, m.fail_code, m.fail_detail or "")
             _fail(job, item_id, "internal", m.last_err or f"runner exited {rc} without result.json")
         try:
-            _register(job, item_id, inp, work, result)
+            _register(job, item_id, inp, work, result, m.failed_patches)
         except OSError as e:
             shutil.rmtree(db.DATA / "artifacts" / str(item_id) / str(job.id), ignore_errors=True)
             _fail(job, item_id, "internal", f"artifact rejected: {e}")
@@ -204,7 +208,9 @@ def detail(job_id):
     arts = [_artifact_obj(r) for r in db.conn().execute("SELECT * FROM artifacts WHERE job_id = ? ORDER BY id", (job_id,))]
     with _steps_lock:
         st = dict(_steps.get(job_id, {}))
-    return {**(dict(b) if b else {}), "step": st.get("step"), "step_index": st.get("step_index"),
+    b = dict(b) if b else {}
+    b["failed_patches"] = json.loads(b.get("failed_patches") or "[]")
+    return {**b, "step": st.get("step"), "step_index": st.get("step_index"),
             "step_count": st.get("step_count"), "artifacts": arts}
 
 
