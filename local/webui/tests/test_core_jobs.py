@@ -108,15 +108,19 @@ class WorkerTest(DataTestCase):
     def test_serial_per_kind_parallel_across(self):
         running, peak, lock = [], {'build': 0, 'ota': 0}, threading.Lock()
         started = {'build': threading.Event(), 'ota': threading.Event()}
+        hold, entered = threading.Event(), []
 
         def h(job, log):
             with lock:
                 running.append(job.kind)
+                entered.append(job.id)
                 peak[job.kind] = max(peak[job.kind], running.count(job.kind))
                 both = 'build' in running and 'ota' in running
             started[job.kind].set()
             other = started['ota' if job.kind == 'build' else 'build']
             self.assertTrue(other.wait(5), f'{job.kind} never saw the other kind start')
+            if job.target.get('item_id') == 1:
+                self.assertTrue(hold.wait(5), 'first build never released')
             with lock:
                 running.remove(job.kind)
             if both:
@@ -124,11 +128,17 @@ class WorkerTest(DataTestCase):
 
         jobs.register('build', h)
         jobs.register('ota', h)
-        ids = [jobs.enqueue('build', {'item_id': i}, 'manual') for i in (1, 2)]
-        ids.append(jobs.enqueue('ota', {'device_id': 1}, 'manual'))
+        first = jobs.enqueue('build', {'item_id': 1}, 'manual')
+        ota = jobs.enqueue('ota', {'device_id': 1}, 'manual')
+        self.assertTrue(started['build'].wait(5) and started['ota'].wait(5), 'build and ota never ran together')
+        second = jobs.enqueue('build', {'item_id': 2}, 'manual')
+        self.assertEqual(jobs.get(second)['status'], 'queued')  # first build is held, so the build queue is blocked
+        hold.set()
+        ids = [first, ota, second]
         for i in ids:
             wait_status(i, {'success'})
         self.assertEqual(peak['build'], 1)
+        self.assertEqual([x for x in entered if x != ota], [first, second])
         logs = ''.join((db.DATA / 'logs' / f'{i}.log').read_text() for i in ids)
         self.assertIn('overlap', logs)
 
