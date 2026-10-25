@@ -24,6 +24,7 @@ APP_ERROR_CODES = frozenset(ERROR_CODES.values()) | {'HASH_MISMATCH', 'SIGNER_MI
                                                     'USER_REJECTED', 'DEPENDENCY_FAILED'}
 APP_ONLY = 'device installs through the Relume app'
 _PROP = re.compile(r'^\[([^\]]+)\]: \[(.*)\]$')
+_PKG_LINE = re.compile(r'^package:(\S+) versionCode:(\d+)$')
 
 
 def parse_devices(text):
@@ -40,7 +41,16 @@ def parse_getprop(text):
 
 
 def parse_packages(text):
-    return {line[8:].strip() for line in text.splitlines() if line.startswith('package:')}
+    """`pm list packages --show-versioncode` -> {package: {version_code, version_name: None, signer_sha256: None}}."""
+    out = {}
+    for line in text.splitlines():
+        if not line.startswith('package:'):
+            continue
+        m = _PKG_LINE.match(line.strip())
+        if m is None:
+            raise ValueError(f'pm list packages: expected "package:<name> versionCode:<n>", got {line!r}')
+        out[m[1]] = {'version_code': int(m[2]), 'version_name': None, 'signer_sha256': None}
+    return out
 
 
 def install_error(text):
@@ -54,6 +64,7 @@ def install_error(text):
 
 ADB = ['adb']
 _CRASH = ('cannot connect to daemon', 'daemon not running')
+CANCEL_CHECK_S = 1   # a running adb command looks at its cancel_event this often
 _locks = {}
 _locks_guard = threading.Lock()
 
@@ -76,7 +87,7 @@ def _exec(argv, timeout, cancel_event):
     deadline = time.monotonic() + timeout
     while True:
         try:
-            out, _ = p.communicate(timeout=1)
+            out, _ = p.communicate(timeout=max(0, min(CANCEL_CHECK_S, deadline - time.monotonic())))
             return p.returncode, out
         except subprocess.TimeoutExpired:
             if time.monotonic() > deadline or (cancel_event is not None and cancel_event.is_set()):

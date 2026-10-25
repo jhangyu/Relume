@@ -118,7 +118,9 @@ def pinfo(project_id=1, package='app.revanced.android.gms', tag='7.2.1', path='/
     return {'project_id': project_id, 'upstream_id': upstream_id, 'package': package, 'display_name': display_name,
             'tag': tag, 'path': path if picked else None, 'file': os.path.basename(path) if picked else None,
             'abi': abi if picked else None, 'version_name': tag if picked else None,
-            'version_code': 255070218 if picked else None, 'signer_alert': signer_alert, 'auto_push': False}
+            'version_code': 255070218 if picked else None, 'sha256': 'ee' * 32 if picked else None,
+            'size': 3 if picked else None, 'signer_sha256': 'aa' * 32 if picked else None, 'signer_alert': signer_alert,
+            'auto_push': False}
 
 
 class FakeAdb:
@@ -141,10 +143,10 @@ class FakeAdb:
                 os.environ['FAKE_ADB_DIR'] = old_env
         tc.addCleanup(restore)
 
-    def rule(self, *match, out='', rc=0, times=None, hang=False, delay=0):
+    def rule(self, *match, out='', rc=0, times=None, hang=False):
         p = self.dir / 'rules.json'
         rules = json.loads(p.read_text())
-        rules.append({'match': list(match), 'out': out, 'rc': rc, 'times': times, 'hang': hang, 'delay': delay})
+        rules.append({'match': list(match), 'out': out, 'rc': rc, 'times': times, 'hang': hang})
         p.write_text(json.dumps(rules))
         return self
 

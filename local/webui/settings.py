@@ -8,7 +8,7 @@ import shutil
 import threading
 import time
 
-from . import build, db, server, upstream
+from . import build, db, projects, server, upstream
 
 TOKEN_PATH = pathlib.Path('/run/secrets/github_token')
 RATE_URL = 'https://api.github.com/rate_limit'
@@ -135,7 +135,10 @@ def _payload(recheck=False):
 
 
 def health(req):
-    return 200, {'ok': True, 'app': 'Relume', 'version': server.VERSION, 'started_at': server.STARTED_AT}
+    """companion_version_code: versionCode of the followed Relume app release, null when not followed or not downloaded."""
+    comp = projects.companion_info(['universal'])
+    return 200, {'ok': True, 'app': 'Relume', 'version': server.VERSION, 'started_at': server.STARTED_AT,
+                 'companion_version_code': comp and comp['version_code']}
 
 
 def get_route(req):

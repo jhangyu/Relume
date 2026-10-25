@@ -1,3 +1,4 @@
+import json
 from unittest import mock
 
 from webui import build, db, ota, projects
@@ -13,6 +14,15 @@ def art(item_id, job_id, abi='arm64-v8a', path='/x.apk'):
     return {'id': job_id * 10, 'job_id': job_id, 'item_id': item_id, 'variant': abi, 'abi': abi, 'package': YT,
             'version_name': '19.47.53', 'version_code': 1, 'patches_version': 'v1', 'signer_sha256': 'aa',
             'path': path, 'size': 1, 'sha256': 'bb', 'created_at': '2026-10-19T04:00:00Z'}
+
+
+def have(*pkgs, version_code=1):
+    """A present/report dict: every package reported with this versionCode."""
+    return {p: {'version_code': version_code, 'version_name': None, 'signer_sha256': None} for p in pkgs}
+
+
+def inst(build_job_id, version_code=1):
+    return {'build_job_id': build_job_id, 'version_code': version_code}
 
 
 def seams(tc, deps=None, assigned=None, infos=None, latest=None):
@@ -40,13 +50,22 @@ class PlanTest(helpers.DataTestCase):
         return [(s['kind'], s['ref_id'], s['action'], s['reason']) for s in steps]
 
     def test_plan_d7_build_job(self):
-        steps = ota.plan(self.items()[:1], {1: art(1, 5)}, {1: []}, [], {1: {'build_job_id': 5}}, {}, {YT})
+        steps = ota.plan(self.items()[:1], {1: art(1, 5)}, {1: []}, [], {1: inst(5)}, {}, have(YT))
         self.assertEqual([s['action'] for s in steps], ['up_to_date'])
-        steps = ota.plan(self.items()[:1], {1: art(1, 6)}, {1: []}, [], {1: {'build_job_id': 5}}, {}, {YT})
+        steps = ota.plan(self.items()[:1], {1: art(1, 6)}, {1: []}, [], {1: inst(5)}, {}, have(YT))
         self.assertEqual((steps[0]['action'], steps[0]['reason']), ('install', 'new build'))
 
+    def test_plan_changed_on_phone(self):
+        one = self.items()[:1]
+        steps = ota.plan(one, {1: art(1, 5)}, {1: []}, [], {1: inst(5, 1)}, {}, have(YT, version_code=2))
+        self.assertEqual((steps[0]['action'], steps[0]['reason']), ('install', 'changed on phone'))
+        for installs, present in (({1: inst(5, 1)}, have(YT, version_code=1)), ({1: inst(5, 1)}, None),
+                                  ({1: inst(5, None)}, have(YT, version_code=2))):
+            steps = ota.plan(one, {1: art(1, 5)}, {1: []}, [], installs, {}, present)
+            self.assertEqual(steps[0]['action'], 'up_to_date', (installs, present))
+
     def test_plan_missing_on_phone(self):
-        steps = ota.plan(self.items()[:1], {1: art(1, 5)}, {1: []}, [], {1: {'build_job_id': 5}}, {}, set())
+        steps = ota.plan(self.items()[:1], {1: art(1, 5)}, {1: []}, [], {1: inst(5)}, {}, {})
         self.assertEqual((steps[0]['action'], steps[0]['reason']), ('install', 'missing on phone'))
 
     def test_plan_no_artifact_error(self):
@@ -55,7 +74,7 @@ class PlanTest(helpers.DataTestCase):
 
     def test_dependency_project_before_item(self):
         arts, deps = {1: art(1, 5), 2: art(2, 6)}, {1: [pinfo()], 2: [pinfo()]}
-        steps = ota.plan(self.items(), arts, deps, [], {}, {}, {YT})
+        steps = ota.plan(self.items(), arts, deps, [], {}, {}, have(YT))
         self.assertEqual(self.kinds(steps), [('project', 1, 'install', 'missing on phone'),
                                              ('item', 1, 'install', 'new build'),
                                              ('item', 2, 'install', 'missing on phone')])
@@ -64,27 +83,27 @@ class PlanTest(helpers.DataTestCase):
                                     'path': '/data/upstream/23/7.2.1/microg.apk', 'file': 'microg.apk',
                                     'abi': 'universal', 'tag': '7.2.1', 'version_name': '7.2.1',
                                     'version_code': 255070218, 'action': 'install', 'reason': 'missing on phone'})
-        same = ota.plan(self.items(), arts, deps, [], {}, {1: {'upstream_tag': '7.2.1'}}, {YT, GMS})
+        same = ota.plan(self.items(), arts, deps, [], {}, {1: {'upstream_tag': '7.2.1'}}, have(YT, GMS))
         self.assertEqual([s['kind'] for s in same], ['item', 'item'])
         newer = ota.plan(self.items(), arts, {1: [pinfo(tag='7.2.2')]}, [], {}, {1: {'upstream_tag': '7.2.1'}},
-                         {YT, GMS})
+                         have(YT, GMS))
         self.assertEqual(self.kinds(newer)[0], ('project', 1, 'install', 'new release'))
 
     def test_direct_project_install_and_up_to_date(self):
-        steps = ota.plan([], {}, {}, [pinfo()], {}, {}, {GMS})
+        steps = ota.plan([], {}, {}, [pinfo()], {}, {}, have(GMS))
         self.assertEqual(self.kinds(steps), [('project', 1, 'install', 'new release')])
-        steps = ota.plan([], {}, {}, [pinfo()], {}, {1: {'upstream_tag': '7.2.1'}}, {GMS})
+        steps = ota.plan([], {}, {}, [pinfo()], {}, {1: {'upstream_tag': '7.2.1'}}, have(GMS))
         self.assertEqual(self.kinds(steps), [('project', 1, 'up_to_date', 'same release installed')])
 
     def test_project_missing_on_phone(self):
-        steps = ota.plan([], {}, {}, [pinfo()], {}, {1: {'upstream_tag': '7.2.1'}}, set())
+        steps = ota.plan([], {}, {}, [pinfo()], {}, {1: {'upstream_tag': '7.2.1'}}, {})
         self.assertEqual(self.kinds(steps), [('project', 1, 'install', 'missing on phone')])
 
     def test_assigned_and_dependency_planned_once(self):
         steps = ota.plan(self.items()[:1], {1: art(1, 5)}, {1: [pinfo()]}, [pinfo(), pinfo(2, OTHER)], {}, {}, None)
         self.assertEqual([(s['kind'], s['ref_id']) for s in steps], [('project', 1), ('item', 1), ('project', 2)])
         # item up to date: the dependency is not planned for it, but the direct assignment still lists it
-        steps = ota.plan(self.items()[:1], {1: art(1, 5)}, {1: [pinfo()]}, [pinfo()], {1: {'build_job_id': 5}},
+        steps = ota.plan(self.items()[:1], {1: art(1, 5)}, {1: [pinfo()]}, [pinfo()], {1: inst(5)},
                          {1: {'upstream_tag': '7.2.1'}}, None)
         self.assertEqual(self.kinds(steps), [('item', 1, 'up_to_date', 'same build installed'),
                                              ('project', 1, 'up_to_date', 'same release installed')])
@@ -102,7 +121,7 @@ class PlanTest(helpers.DataTestCase):
         self.assertEqual((steps[0]['tag'], steps[0]['path']), ('7.2.1', None))
 
     def test_not_downloaded_install_without_path(self):
-        steps = ota.plan([], {}, {}, [pinfo(tag=None)], {}, {}, {GMS})
+        steps = ota.plan([], {}, {}, [pinfo(tag=None)], {}, {}, have(GMS))
         self.assertEqual(self.kinds(steps), [('project', 1, 'install', 'not downloaded')])
         self.assertIsNone(steps[0]['path'])
 
@@ -224,3 +243,64 @@ class PlanTest(helpers.DataTestCase):
         dps = ota.list_devices(req(method='GET'))[1]['devices'][0]['projects']
         self.assertEqual([(p['installed_tag'], p['available_tag'], p['update_available']) for p in dps],
                          [('v1.9', 'v2.0', True), ('v2.0', 'v1.9', False)])
+
+
+class AppPlanTest(helpers.DataTestCase):
+    def setUp(self):
+        super().setUp()
+        add_catalog_item(1, YT)
+        self.d = add_app_device(app_version_code=5)
+        assign(self.d, 1)
+        self.comp = None
+        self.enterContext(mock.patch.object(projects, 'companion_info', side_effect=lambda abis: self.comp))
+
+    def plan(self):
+        return ota.app_plan(ota.devices.get(self.d))
+
+    def test_plan_signer_conflict_and_downgrade_flags(self):
+        seams(self, latest=lambda i, abi: art(1, 5))   # artifact versionCode 1, signer 'aa'
+
+        def flags():
+            s = self.plan()['steps'][0]
+            return s['action'], s['signer_conflict'], s['downgrade']
+        self.assertEqual(flags(), ('install', False, False))       # not reported
+        report(self.d, YT, 3, signer_sha256='bb')
+        self.assertEqual(flags(), ('install', True, True))
+        report(self.d, YT, 1, signer_sha256='aa')
+        self.assertEqual(flags(), ('install', False, False))
+        report(self.d, YT, 1)                                      # signer not reported: no conflict
+        self.assertEqual(flags(), ('install', False, False))
+        step = self.plan()['steps'][0]
+        self.assertEqual(step['download'], {'url': '/api/artifacts/50/download', 'file_name': 'x.apk', 'size': 1,
+                                            'sha256': 'bb', 'signer_sha256': 'aa', 'version_code': 1,
+                                            'version_name': '19.47.53', 'artifact_id': 50})
+        self.assertEqual(step['display_name'], f'{YT} · src')
+
+    def test_companion_step_last_and_gated(self):
+        comp = pinfo(9, projects.COMPANION_PACKAGE, tag='v6', path='/u/9/v6/relume companion.apk', upstream_id=90,
+                     display_name='Relume')
+        seams(self, deps={1: [1]}, assigned=[9], infos={1: pinfo(), 9: comp}, latest=lambda i, abi: art(1, 5))
+        self.assertEqual([s['kind'] for s in self.plan()['steps']], ['project', 'item'])   # not followed: absent
+        self.comp = comp
+        steps = self.plan()['steps']
+        self.assertEqual([(s['kind'], s['package']) for s in steps],
+                         [('project', GMS), ('item', YT), ('companion', projects.COMPANION_PACKAGE)])
+        last = steps[-1]
+        self.assertEqual((last['action'], last['reason'], last['ref_id']), ('install', 'new release', 9))
+        self.assertEqual((last['download']['tag'], last['download']['url'], last['download']['version_code']),
+                         ('v6', '/api/projects/9/apks/relume%20companion.apk', 255070218))
+        with db.tx() as c:
+            c.execute('UPDATE devices SET app_version_code = 255070218 WHERE id = ?', (self.d,))
+        last = self.plan()['steps'][-1]
+        self.assertEqual((last['kind'], last['action'], last['download']), ('companion', 'up_to_date', None))
+
+    def test_not_downloaded_enqueues_one_pull(self):
+        seams(self, deps={1: [1]}, infos={1: pinfo(tag=None)}, latest=lambda i, abi: art(1, 5))
+        first, second = self.plan(), self.plan()
+        p, item = first['steps']
+        self.assertEqual((p['kind'], p['action'], p['reason'], p['download']), ('project', 'error', 'NOT_DOWNLOADED', None))
+        self.assertEqual((item['action'], item['needs']), ('install', [1]))
+        self.assertEqual(second, first)
+        rows = db.conn().execute("SELECT id, target, trigger, options FROM jobs WHERE kind = 'upstream'").fetchall()
+        self.assertEqual([(r['id'], r['target'], r['trigger']) for r in rows], [(p['pull_job_id'], '{"upstream_id":23}', 'manual')])
+        self.assertEqual(json.loads(rows[0]['options'])['rebuild'], False)

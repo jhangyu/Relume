@@ -6,7 +6,7 @@ import threading
 import traceback
 from zoneinfo import ZoneInfo
 
-from . import build, db, devices, jobs
+from . import build, db, devices, jobs, upstream
 from .server import HttpError, is_int
 
 UTC = dt.timezone.utc
@@ -80,6 +80,10 @@ def _check_target(kind, t):
     for ids in t.values():
         if not isinstance(ids, list) or not ids or not all(is_int(v) and v >= 1 for v in ids):
             raise HttpError(400, 'invalid target')
+    for i in t.get('device_ids', ()):
+        dev = devices.get(i)
+        if dev is not None and devices.is_app(dev):
+            raise HttpError(400, f'device {i} installs through the Relume app')
     return t
 
 
@@ -138,27 +142,16 @@ def create(name, kind, target, spec, options=None, enabled=True):
 def _app_jobs(sid, t, o):
     """Spec 4.1 fire table. Update work: items with Update on and targeted projects. Build work: items with Build on."""
     c = db.conn()
-    items = c.execute('SELECT id, package, version_mode, enabled, auto_update FROM item ORDER BY id').fetchall()
+    items = c.execute('SELECT id, enabled, auto_update FROM item ORDER BY id').fetchall()
     if t.get('all'):
         iids, pids = {r['id'] for r in items}, {r[0] for r in c.execute('SELECT id FROM project')}
     else:
         iids, pids = set(t.get('item_ids', ())), set(t.get('project_ids', ()))
     targeted = [r for r in items if r['id'] in iids]
-    job_opts = {'rebuild': o['build'], 'notify': o['notify']}
     ids = []
     if o['update']:
-        updating = [r['id'] for r in targeted if r['auto_update']]
-        ups = set()
-        for iid in updating:
-            ups.update(c.execute('SELECT s.upstream_id, s.cli_upstream_id FROM item i JOIN source s ON s.id = i.source_id '
-                                 'WHERE i.id = ?', (iid,)).fetchone())
-            ups.update(r[0] for r in c.execute('SELECT p.upstream_id FROM item_dependency d JOIN project p '
-                                               'ON p.id = d.project_id WHERE d.item_id = ?', (iid,)))
-        for pid in pids:
-            ups.update(r[0] for r in c.execute('SELECT upstream_id FROM project WHERE id = ?', (pid,)))
-        packages = {r['package'] for r in targeted if r['auto_update'] and r['version_mode'] == 'latest'}
-        ids += [jobs.enqueue('upstream', {'upstream_id': u}, 'schedule', sid, job_opts) for u in sorted(ups)]
-        ids += [jobs.enqueue('appcheck', {'package': p}, 'schedule', sid, job_opts) for p in sorted(packages)]
+        ids = upstream.item_update_jobs([r['id'] for r in targeted if r['auto_update']], sorted(pids), 'schedule', sid,
+                                        {'rebuild': o['build'], 'notify': o['notify']})
     elif o['build']:
         for r in targeted:
             if r['enabled'] and (o['force'] or build.needs_build(r['id'])):

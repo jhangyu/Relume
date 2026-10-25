@@ -21,8 +21,6 @@ for i, r in enumerate(rules):
                 json.dump(rules, f)
         if r.get('hang'):
             threading.Event().wait(60)
-        if r.get('delay'):
-            threading.Event().wait(r['delay'])
         sys.stdout.write(r.get('out', ''))
         sys.exit(r.get('rc', 0))
 sys.exit(0)

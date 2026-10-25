@@ -1,5 +1,5 @@
 import threading
-import time
+from unittest import mock
 
 from webui import db, devices
 from webui.tests import helpers
@@ -19,8 +19,13 @@ class ParserTest(helpers.DataTestCase):
         self.assertEqual(p['ro.build.version.sdk'], '35')
 
     def test_parse_packages(self):
-        self.assertEqual(devices.parse_packages((FIXTURES / 'pm-list.txt').read_text()),
-                         {'com.google.android.youtube', 'app.revanced.android.gms', 'com.android.settings'})
+        got = devices.parse_packages((FIXTURES / 'pm-list.txt').read_text())
+        self.assertEqual({k: v['version_code'] for k, v in got.items()},
+                         {'com.google.android.youtube': 1547053504, 'app.revanced.android.gms': 255070218,
+                          'com.android.settings': 35})
+        self.assertEqual(got['com.android.settings'], {'version_code': 35, 'version_name': None, 'signer_sha256': None})
+        with self.assertRaisesRegex(ValueError, "got 'package:a.b'"):
+            devices.parse_packages('package:a.b\n')
 
     def test_install_error_codes(self):
         cases = {
@@ -73,17 +78,17 @@ class RunnerTest(helpers.DataTestCase):
 
     def test_adb_timeout_kills(self):
         fa = FakeAdb(self)
-        fa.rule('install', hang=True)
-        t = time.monotonic()
+        fa.rule('install', hang=True)   # hangs 60 s: only the kill can end it within the test budget
         with self.assertRaises(devices.AdbTimeout):
-            devices.adb(['install', '-r', 'x.apk'], timeout=1)
-        self.assertLess(time.monotonic() - t, 3)
+            devices.adb(['install', '-r', 'x.apk'], timeout=0)
 
     def test_adb_cancel_kills(self):
         fa = FakeAdb(self)
         fa.rule('install', hang=True)
+        self.addCleanup(setattr, devices, 'CANCEL_CHECK_S', devices.CANCEL_CHECK_S)
+        devices.CANCEL_CHECK_S = 0      # look at the cancel flag at once instead of once a second
         ev = threading.Event()
-        threading.Timer(0.3, ev.set).start()
+        ev.set()
         with self.assertRaises(devices.AdbTimeout):
             devices.adb(['install', 'x.apk'], timeout=60, cancel_event=ev)
 
@@ -95,20 +100,17 @@ class RunnerTest(helpers.DataTestCase):
         self.assertEqual(log.lines, ['adb: Performing Streamed Install', 'adb: Success'])
 
     def test_adb_serialized_per_device(self):
-        fa = FakeAdb(self)
-        fa.rule('shell', delay=0.6)
+        held = []
 
-        def two(serial_a, serial_b):
-            ts = [threading.Thread(target=devices.adb, args=(['shell', 'x'],), kwargs={'serial': s})
-                  for s in (serial_a, serial_b)]
-            t = time.monotonic()
-            for th in ts:
-                th.start()
-            for th in ts:
-                th.join()
-            return time.monotonic() - t
-        self.assertGreaterEqual(two('1.2.3.4:5555', '1.2.3.4:5555'), 1.2)
-        self.assertLess(two('1.2.3.4:5555', '5.6.7.8:5555'), 1.15)
+        def fake_exec(argv, timeout, cancel_event):
+            held.append((argv[-1], devices._lock('1.2.3.4:5555').locked(), devices._lock('5.6.7.8:5555').locked()))
+            return 0, ''
+        with mock.patch.object(devices, '_exec', side_effect=fake_exec):
+            devices.adb(['shell', 'a'], serial='1.2.3.4:5555')
+            devices.adb(['shell', 'b'], serial='5.6.7.8:5555')
+        # each adb run holds exactly its own serial's lock: same serial waits, other serials run in parallel
+        self.assertEqual(held, [('a', True, False), ('b', False, True)])
+        self.assertIs(devices._lock('1.2.3.4:5555'), devices._lock('1.2.3.4:5555'))
 
     def test_adb_missing_binary(self):
         old = devices.ADB

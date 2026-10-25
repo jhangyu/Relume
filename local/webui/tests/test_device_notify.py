@@ -10,17 +10,22 @@ from webui.tests import helpers
 from webui.tests.device_helpers import add_catalog_item, add_job, req
 
 
+SHUTDOWN_CHECK_S = 0.01   # serve_forever notices shutdown() this fast (stdlib default 0.5 s per test)
+
+
 class Stub:
     """Local HTTP endpoint: records requests, answers from `responses` (the last one repeats)."""
 
     def __init__(self, tc, responses=((200, {}, b'{"ok":true}'),)):
         self.requests, self.responses, self.gate = [], list(responses), None
+        self.arrived = threading.Event()
         outer = self
 
         class H(BaseHTTPRequestHandler):
             def do_POST(self):
                 n = int(self.headers.get('Content-Length') or 0)
                 outer.requests.append((self.path, dict(self.headers), self.rfile.read(n)))
+                outer.arrived.set()
                 if outer.gate is not None:
                     outer.gate.wait(30)
                 st, hd, body = outer.responses.pop(0) if len(outer.responses) > 1 else outer.responses[0]
@@ -38,7 +43,7 @@ class Stub:
 
         self.srv = ThreadingHTTPServer(('127.0.0.1', 0), H)
         self.srv.daemon_threads = True
-        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        threading.Thread(target=self.srv.serve_forever, kwargs={'poll_interval': SHUTDOWN_CHECK_S}, daemon=True).start()
         tc.addCleanup(self.srv.server_close)
         tc.addCleanup(self.srv.shutdown)
         tc.addCleanup(lambda: self.gate and self.gate.set())
@@ -137,9 +142,7 @@ class NotifyTest(helpers.DataTestCase):
         t = time.monotonic()
         events.emit('ota.done', {'job_id': None, 'device_id': 1, 'outcome': 'done'})
         self.assertLess(time.monotonic() - t, 0.1)
-        deadline = time.monotonic() + 5
-        while not stub.requests and time.monotonic() < deadline:
-            threading.Event().wait(0.05)
+        self.assertTrue(stub.arrived.wait(5))   # fail-fast bound, the worker posts at once
         self.assertEqual(len(stub.requests), 1)
 
     def test_skip_notify_false_job(self):

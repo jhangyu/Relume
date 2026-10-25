@@ -1,10 +1,10 @@
 from unittest import mock
 
-from webui import build, db, events, jobs, ota, projects
+from webui import build, db, devices, events, jobs, ota, projects, scheduler
 from webui.server import HttpError
 from webui.tests import helpers
-from webui.tests.device_helpers import (FakeAdb, FakeLog, add_catalog_item, add_device, add_job, add_project, assign,
-                                        assign_projects, job, pinfo, req)
+from webui.tests.device_helpers import (FakeAdb, FakeLog, add_app_device, add_catalog_item, add_device, add_job,
+                                        add_project, assign, assign_projects, job, pinfo, req)
 
 YT, YTM, GMS = 'com.google.android.youtube', 'com.google.android.apps.youtube.music', 'app.revanced.android.gms'
 ADDR = '192.168.1.20:37011'
@@ -44,7 +44,7 @@ class OtaJobTest(helpers.DataTestCase):
             self.addCleanup(setattr, ota, name, getattr(ota, name))
             setattr(ota, name, value)
 
-    def online(self, pm='package:com.android.settings\n'):
+    def online(self, pm='package:com.android.settings versionCode:35\n'):
         self.fa.rule('devices', out=ONLINE)
         self.fa.rule('pm', out=pm)
 
@@ -233,7 +233,7 @@ class OtaJobTest(helpers.DataTestCase):
 
     def test_project_install_records_tag_and_version(self):
         self.deps, self.assigned = {}, [1]
-        self.online(pm=f'package:{GMS}\n')
+        self.online(pm=f'package:{GMS} versionCode:255070218\n')
         self.fa.rule('install', out='Success\n')
         jid, err = self.run_job(target={'device_id': self.d, 'project_ids': [1]})
         self.assertIsNone(err)
@@ -352,7 +352,7 @@ class OtaJobTest(helpers.DataTestCase):
 
     def test_install_timeout_code(self):
         self.deps = {}
-        ota.INSTALL_TIMEOUT = 1
+        ota.INSTALL_TIMEOUT = 0   # deadline already passed: the hung install is killed at its first wait
         self.online()
         self.fa.rule('install', hang=True)
         jid, err = self.run_job(target={'device_id': self.d, 'item_ids': [1]})
@@ -369,3 +369,30 @@ class OtaJobTest(helpers.DataTestCase):
         self.assertEqual(jobs.get(body['job_id'])['target'], {'device_id': self.d, 'item_ids': [2]})
         st, body = ota.ota_now(req(params={'id': self.d}))
         self.assertEqual(jobs.get(body['job_id'])['target'], {'device_id': self.d})
+
+    def test_app_devices_excluded_from_adb_fanout(self):
+        a = add_app_device()
+        assign(a, 1)
+        add_project(1, GMS, 23)
+        assign_projects(a, 1)
+        self.assertEqual(devices.resolve_devices({'all': True}), [self.d])
+        self.assertEqual(devices.resolve_devices({'device_ids': [a, self.d]}), [self.d])
+        ota.on_build_succeeded({'item_id': 1, 'job_id': 5, 'app_version': 'x', 'patches_version': 'v', 'artifacts': []})
+        self.assertEqual(projects.enqueue_auto_push(1), [])
+        self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM jobs WHERE kind='ota'").fetchone()[0], 0)
+        jid = add_job(target={'device_id': a}, status='failed')
+        with db.tx() as c:
+            iid = c.execute("INSERT INTO ota_installs(job_id,device_id,kind,ref_id,package,result) "
+                            "VALUES (?,?,'item',1,?,'failed')", (jid, a, YT)).lastrowid
+        for call in (lambda: ota.ota_now(req(params={'id': a})),
+                     lambda: ota.install_project(req(params={'id': 1}, body={'device_ids': [a]})),
+                     lambda: ota.force_reinstall(req(params={'job_id': jid}, body={'install_id': iid}))):
+            with self.assertRaises(HttpError) as cm:
+                call()
+            self.assertEqual((cm.exception.status, cm.exception.message), (409, 'device installs through the Relume app'))
+        with self.assertRaises(HttpError) as cm:
+            scheduler.create('x', 'ota', {'device_ids': [a]}, {'every': 'hours', 'hours': 1}, {})
+        self.assertEqual((cm.exception.status, cm.exception.message), (400, f'device {a} installs through the Relume app'))
+        _, err = self.run_job(target={'device_id': a})
+        self.assertEqual(err, 'device installs through the Relume app')
+        self.assertEqual(self.fa.calls(), [])
