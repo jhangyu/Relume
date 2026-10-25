@@ -1,6 +1,18 @@
 package io.github.jhangyu.relume.ui
 
+import android.graphics.BitmapFactory
+import android.util.Log
+import android.util.LruCache
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import io.github.jhangyu.relume.api.ApiError
+import io.github.jhangyu.relume.api.RelumeApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.IOException
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -480,14 +492,46 @@ fun DialogButtons(content: @Composable RowScope.() -> Unit) {
     Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), content = content)
 }
 
-/** Round app tile with initials; colour is derived from the label so each app keeps its colour. */
+/**
+ * Round app tile. Shows the server icon at [iconUrl] when there is one, the initials tile (colour derived from
+ * the label) while it loads, when [iconUrl] is null and when the fetch fails (logged with package path and status).
+ */
 @Composable
-fun AppTile(label: String, size: Dp = 40.dp) {
+fun AppTile(label: String, iconUrl: String?, api: RelumeApi?, size: Dp = 40.dp) {
     val hue = (label.hashCode().mod(TILE_HUES)) * (360f / TILE_HUES)
     val bg = Color.hsv(hue, 0.65f, 0.75f)
+    val icon by produceState<ImageBitmap?>(null, iconUrl, api) { value = if (iconUrl != null && api != null) loadIcon(api, iconUrl) else null }
     Box(Modifier.size(size).clip(RoundedCornerShape(size / 4)).background(bg), contentAlignment = Alignment.Center) {
-        Txt(initials(label), style = FluentType.label.copy(fontSize = if (size > 48.dp) 18.sp else 13.sp), color = Color.White, bold = true)
+        val bmp = icon
+        if (bmp != null) {
+            Image(bmp, contentDescription = label, modifier = Modifier.size(size))
+        } else {
+            Txt(initials(label), style = FluentType.label.copy(fontSize = if (size > 48.dp) 18.sp else 13.sp), color = Color.White, bold = true)
+        }
     }
+}
+
+private const val ICON_CACHE_ENTRIES = 128
+private const val ICON_TAG = "AppTile"
+
+// ponytail: count-bounded (not byte-bounded) cache; icons are small. Key includes the server so a re-login elsewhere cannot show stale icons.
+private val iconCache = LruCache<String, ImageBitmap>(ICON_CACHE_ENTRIES)
+
+private suspend fun loadIcon(api: RelumeApi, path: String): ImageBitmap? {
+    val key = api.url.resolve(path).toString()
+    iconCache.get(key)?.let { return it }
+    val bmp = try {
+        val bytes = api.bytes(path)
+        withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
+            ?: run { Log.w(ICON_TAG, "icon $path: ${bytes.size} bytes are not a decodable image"); return null }
+    } catch (e: ApiError) {
+        Log.w(ICON_TAG, "icon $path: HTTP ${e.status}: ${e.message}")
+        return null
+    } catch (e: IOException) {
+        Log.w(ICON_TAG, "icon $path: ${e.javaClass.simpleName}: ${e.message}")
+        return null
+    }
+    return bmp.asImageBitmap().also { iconCache.put(key, it) }
 }
 
 private const val TILE_HUES = 12

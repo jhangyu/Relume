@@ -70,7 +70,7 @@ fun DetailScreen(
         ) {
             model.error?.let { MessageBar("Request failed", Tone.Danger, detail = it, action = "Dismiss", onAction = model::dismissError) }
             Row(Modifier.padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                AppTile(item.label, 56.dp)
+                AppTile(item.label, item.iconUrl, model.api, 56.dp)
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Txt(item.packageName, style = FluentType.mono.copy(fontSize = 12.sp), maxLines = 1)
                     Chip(f.kind.label, f.kind.color())

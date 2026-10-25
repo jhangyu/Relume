@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.jhangyu.relume.api.PlanAction
 import io.github.jhangyu.relume.api.PlanStep
+import io.github.jhangyu.relume.api.StepKind
 import io.github.jhangyu.relume.install.InstallRunner
 import io.github.jhangyu.relume.install.RunState
 import io.github.jhangyu.relume.install.StepRun
@@ -120,7 +121,7 @@ fun InstallScreen(run: RunState?, model: AppModel, onClose: () -> Unit) {
             }
             run.syncError?.let { MessageBar("Could not report to the server", Tone.Danger, detail = it) }
             run.outboxError?.let { MessageBar("Could not send an earlier result to the server", Tone.Danger, detail = it) }
-            run.steps.forEachIndexed { i, s -> StepBlock(s, i, ctx) { uninstallIndex = i } }
+            run.steps.forEachIndexed { i, s -> StepBlock(s, i, ctx, model) { uninstallIndex = i } }
         }
         Hairline()
         Column(Modifier.fillMaxWidth().background(c.bg2).padding(horizontal = ScreenPadding, vertical = 10.dp)) {
@@ -142,12 +143,13 @@ fun InstallScreen(run: RunState?, model: AppModel, onClose: () -> Unit) {
 }
 
 @Composable
-private fun StepBlock(s: StepRun, index: Int, ctx: Context, onUninstall: () -> Unit) {
+private fun StepBlock(s: StepRun, index: Int, ctx: Context, model: AppModel, onUninstall: () -> Unit) {
     val c = FluentTheme.colors
     val step = s.step
+    val icon = if (step.kind == StepKind.ITEM) model.item(step.refId)?.iconUrl else null // project steps have no icon
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            AppTile(step.displayName, 56.dp)
+            AppTile(step.displayName, icon, model.api, 56.dp)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Txt(step.displayName, style = STEP_NAME, bold = true)
                 step.download?.let { d -> Txt("${d.versionName ?: d.versionCode} · ${formatMb(d.size)}", style = FluentType.mono, color = c.fg3) }

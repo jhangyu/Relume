@@ -86,7 +86,7 @@ private fun AppCard(f: AppFacts, model: AppModel, onOpenDetail: (Int) -> Unit, o
     FCard(Modifier.clickable { onOpenDetail(item.id) }) {
         Column(Modifier.padding(12.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
-                AppTile(item.label)
+                AppTile(item.label, item.iconUrl, model.api)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Txt(item.label, bold = true, maxLines = 1)
                     VersionLine(f)

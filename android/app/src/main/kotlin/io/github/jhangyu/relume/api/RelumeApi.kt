@@ -115,6 +115,18 @@ class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
         return conn
     }
 
+    /** Raw bytes of an authenticated GET (app icon). Non-2xx throws [ApiError]. */
+    suspend fun bytes(path: String): ByteArray = withContext(Dispatchers.IO) {
+        val conn = open(path, "GET")
+        try {
+            val status = conn.responseCode
+            if (status !in HTTP_SUCCESS) throw errorOf(conn, status, path)
+            conn.inputStream.use { it.readBytes() }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
     /** Blocking SSE read of a job log; returns after the `end` event. Call from a worker thread. */
     fun jobLog(id: Int, lastEventId: String?, onEvent: (SseEvent) -> Unit) {
         val path = "/api/jobs/$id/log"
