@@ -143,16 +143,14 @@ $('#pw-save').addEventListener('click', async () => {
 async function loadAppDevices() {
   const { devices } = await api('GET', '/api/devices');
   const apps = devices.filter(d => d.kind === 'app');
-  $('#app-devs').innerHTML = html`${apps.length ? apps.map(d => html`<li data-app-dev="${d.id}"><div><div class="sm" style="font-weight:500">${d.name}</div><div class="xs muted">${d.model} · Android ${d.android_release} · created ${fmt.abs(d.created_at)} · last seen ${fmt.rel(d.last_seen_at)}</div></div><button class="btn btn-outline btn-sm danger" type="button" data-revoke="${d.id}">Revoke</button></li>`) : html`<li><span class="sm muted">No phones have signed in with the app.</span></li>`}`;
+  $('#app-devs').innerHTML = html`${apps.length ? apps.map(d => html`<li data-app-dev="${d.id}"><div><div class="sm" style="font-weight:500">${d.name}</div><div class="xs muted">${d.model} · Android ${d.android_release} · created ${fmt.abs(d.created_at)} · last seen ${fmt.rel(d.last_seen_at)}</div></div>${d.has_token ? html`<button class="btn btn-outline btn-sm danger" type="button" data-revoke="${d.id}">Revoke</button>` : html`<span class="badge b-mute plain">revoked</span>`}</li>`) : html`<li><span class="sm muted">No phones have signed in with the app.</span></li>`}`;
 }
 
 $('#app-devs').addEventListener('click', async e => {
   const b = e.target.closest('[data-revoke]');
   if (!b || !confirm('Revoke this phone? The app is signed out and must log in again.')) return;
-  try {
-    await act('DELETE', `/api/devices/${b.dataset.revoke}/token`, {}, 'Token revoked');
-    await loadAppDevices();
-  } catch (_) { /* act() showed it */ }
+  await act('DELETE', `/api/devices/${b.dataset.revoke}/token`, {}, 'Token revoked');   // act() toasts a failure and rethrows
+  await loadAppDevices();
 });
 
 (async () => {
