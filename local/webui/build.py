@@ -330,10 +330,14 @@ def list_item_artifacts(req):
 
 
 def download_artifact(req):
-    r = db.conn().execute("SELECT path FROM artifacts WHERE id = ?", (req.params["id"],)).fetchone()
+    r = db.conn().execute("SELECT path, sha256, signer_sha256, package, version_code FROM artifacts WHERE id = ?",
+                          (req.params["id"],)).fetchone()
     if r is None or not Path(r["path"]).is_file():
         raise server.HttpError(404, "artifact not found")
-    return server.FileResponse(r["path"], download_name=Path(r["path"]).name)
+    headers = {"X-Relume-Sha256": r["sha256"], "X-Relume-Signer-Sha256": r["signer_sha256"],
+               "X-Relume-Package": r["package"], "X-Relume-Version-Code": r["version_code"]}
+    return server.FileResponse(r["path"], download_name=Path(r["path"]).name, etag=r["sha256"],
+                               headers={k: str(v) for k, v in headers.items() if v is not None})
 
 
 def group_zip_files(group_id):

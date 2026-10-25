@@ -320,6 +320,19 @@ class ArtifactSwapTest(BuildCase):
         self.assert_rejected(*self.swap_after_validation(swap)[::2])
 
 
+class DownloadTest(BuildCase):
+    def test_artifact_download_headers(self):
+        f = self.data / "a.apk"
+        f.write_bytes(b"apk")
+        with db.tx() as c:
+            jid = add_job(c, 1, "success")
+            c.execute("INSERT INTO artifacts(job_id, item_id, variant, abi, package, version_code, signer_sha256, path, sha256, created_at)"
+                      " VALUES (?, 1, 'universal', 'universal', 'a.b', 7, 'sig', ?, 'sum', 'now')", (jid, str(f)))
+        res = build.download_artifact(helpers.fake_request("GET", params={"id": 1}))
+        self.assertEqual((res.path, res.etag, res.headers), (f, "sum", {
+            "X-Relume-Sha256": "sum", "X-Relume-Signer-Sha256": "sig", "X-Relume-Package": "a.b", "X-Relume-Version-Code": "7"}))
+
+
 class RetentionTest(BuildCase):
     def build_n(self, n, item_id=1):
         jobs_ = []
