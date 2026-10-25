@@ -45,10 +45,11 @@ def serve(tc, names=()):
     return f'http://127.0.0.1:{srv.server_address[1]}'
 
 
-def fake_request(method='GET', path='/', json=None, params=None, query=None, headers=None, session='test'):
+def fake_request(method='GET', path='/', json=None, params=None, query=None, headers=None, session='test',
+                 device_id=None):
     """Route-handler input without HTTP (auth, CSRF and body parsing are tested in test_core_*)."""
     return types.SimpleNamespace(method=method, path=path, json=json or {}, params=params or {},
-                                 query=query or {}, headers=headers or {}, session=session)
+                                 query=query or {}, headers=headers or {}, session=session, device_id=device_id)
 
 
 def http(method, url, body=None, cookie=None, headers=None):

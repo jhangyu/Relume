@@ -9,12 +9,16 @@ import secrets
 import threading
 import time
 
-from . import db, settings
-from .server import HttpError
+from . import catalog, db, devices, ota, settings
+from .server import HttpError, is_int
 
 COOKIE = 'relume_session'
 PUBLIC = {('POST', '/api/auth/login'), ('POST', '/api/auth/setup'), ('POST', '/api/auth/reset'),
-          ('GET', '/api/auth/state'), ('GET', '/api/health')}
+          ('POST', '/api/auth/device'), ('GET', '/api/auth/state'), ('GET', '/api/health')}
+# a device token gets 403 here: these change the account or revoke another phone
+SESSION_ONLY = {('POST', '/api/auth/password'), ('POST', '/api/auth/logout'), ('PUT', '/api/settings'),
+                ('PUT', '/api/notify'), ('DELETE', '/api/devices/{id}'), ('DELETE', '/api/devices/{id}/token')}
+DEVICE_NAME_MAX = 64
 MAX_FAILS, WINDOW, LOCK = 5, 300, 300
 REMEMBER, SHORT = 30 * 86400, 12 * 3600
 RESET_COOLDOWN = 300
@@ -101,6 +105,25 @@ def session_token(cookie_header):
     return r['token'] if r else None
 
 
+def token_hash(token):
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def authenticate(headers):
+    """(session, device_id), at most one non-None. An Authorization header means the token path only:
+    a bad token is a 401, never a fall-through to the cookie, and never counts toward the login lockout."""
+    value = headers.get('Authorization')
+    if value is None:
+        return session_token(headers.get('Cookie')), None
+    scheme, _, token = value.strip().partition(' ')
+    row = None
+    if scheme.lower() == 'bearer' and token.strip():
+        row = db.conn().execute('SELECT id FROM devices WHERE token_hash=?', (token_hash(token.strip()),)).fetchone()
+    if row is None:
+        raise HttpError(401, 'invalid device token')
+    return None, row['id']
+
+
 def auth_state(req):
     return 200, {'setup_required': not account_exists()}
 
@@ -134,7 +157,8 @@ def reset(req):
     return 202, {'ok': True}
 
 
-def login(req):
+def _check_credentials(req):
+    """Username/password check with the shared lockout. None = accepted, else the error response."""
     if not account_exists():
         return 409, {'error': 'setup required'}
     now = _clock()
@@ -149,8 +173,7 @@ def login(req):
     pw_ok = verify_password(pw, settings.get('admin_password_hash'))
     if user_ok and pw_ok:
         reset_lockout()
-        _, cookie = create_session(bool(req.json.get('remember', True)))
-        return 200, {'ok': True}, {'Set-Cookie': cookie}
+        return None
     with _lock:
         _fails[:] = [t for t in _fails if now - t < WINDOW] + [now]
         if len(_fails) >= MAX_FAILS:
@@ -158,6 +181,71 @@ def login(req):
             _state['locked_until'] = now + LOCK
             return 429, {'error': 'locked', 'retry_after': LOCK}
         return 401, {'error': 'wrong credentials', 'attempts_left': MAX_FAILS - len(_fails)}
+
+
+def login(req):
+    denied = _check_credentials(req)
+    if denied:
+        return denied
+    _, cookie = create_session(bool(req.json.get('remember', True)))
+    return 200, {'ok': True}, {'Set-Cookie': cookie}
+
+
+def _device_facts(body):
+    d = body.get('device')
+    if not isinstance(d, dict):
+        raise HttpError(400, f'device must be an object, got {type(d).__name__}')
+    name, model, sdk, release, abis = (d.get(k) for k in ('name', 'model', 'sdk', 'android_release', 'abi_list'))
+    if not isinstance(name, str) or not 0 < len(name.strip()) <= DEVICE_NAME_MAX:
+        raise HttpError(400, f'device.name must be 1-{DEVICE_NAME_MAX} characters')
+    for field, v in (('model', model), ('android_release', release)):
+        if not isinstance(v, str) or not v.strip():
+            raise HttpError(400, f'device.{field} must be a non-empty string')
+    if not is_int(sdk) or sdk < 1:
+        raise HttpError(400, f'device.sdk must be a positive integer, got {sdk!r}')
+    if not isinstance(abis, list) or not abis:
+        raise HttpError(400, 'device.abi_list must be a non-empty list')
+    for i, a in enumerate(abis):
+        if a not in catalog.ABIS:
+            raise HttpError(400, f'device.abi_list[{i}] must be one of {", ".join(catalog.ABIS)}, got {a!r}')
+    return name.strip(), model, sdk, release, ','.join(abis)
+
+
+def _device_view(device_id):
+    return ota._device_view(devices.get(device_id), {})
+
+
+def register_device(req):
+    """Phone login: same credential check and lockout as login, returns a device token once, sets no cookie."""
+    facts = _device_facts(req.json)
+    denied = _check_credentials(req)
+    if denied:
+        return denied
+    token = secrets.token_urlsafe(32)
+    with db.tx() as c:
+        did = c.execute("INSERT INTO devices(name, kind, token_hash, model, sdk, android_release, abi_list) "
+                        "VALUES (?, 'app', ?, ?, ?, ?, ?)", (facts[0], token_hash(token), *facts[1:])).lastrowid
+        adb = [dict(r) for r in c.execute("SELECT id, name, model FROM devices WHERE kind='adb' ORDER BY id")]
+    return 200, {'token': token, 'device': _device_view(did), 'adb_devices': adb}
+
+
+def device_logout(req):
+    with db.tx() as c:
+        c.execute('UPDATE devices SET token_hash=NULL WHERE id=?', (req.device_id,))
+    return 200, {'ok': True}
+
+
+def revoke_device_token(req):
+    """Row, assignments and history stay; only the phone's token stops working."""
+    did = req.params['id']
+    with db.tx() as c:
+        row = c.execute('SELECT kind FROM devices WHERE id=?', (did,)).fetchone()
+        if row is None:
+            raise HttpError(404, 'device not found')
+        if row['kind'] != 'app':
+            raise HttpError(409, 'not an app device')
+        c.execute('UPDATE devices SET token_hash=NULL WHERE id=?', (did,))
+    return 200, {'device': _device_view(did)}
 
 
 def logout(req):
@@ -185,4 +273,7 @@ ROUTES = [
     ('POST', '/api/auth/login', login),
     ('POST', '/api/auth/logout', logout),
     ('POST', '/api/auth/password', change_password),
+    ('POST', '/api/auth/device', register_device),
+    ('POST', '/api/me/logout', device_logout),
+    ('DELETE', '/api/devices/{id}/token', revoke_device_token),
 ]

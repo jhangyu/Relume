@@ -61,6 +61,7 @@ class Request:
         self.method, self.path, self.params, self.query, self.headers = method, path, params, query, headers
         self.json = {}
         self.session = None
+        self.device_id = None
 
 
 def is_int(v):
@@ -196,9 +197,14 @@ class Handler(BaseHTTPRequestHandler):
                 raise HttpError(403, 'origin mismatch')
             req.json = self._read_json_body()
         if (method, pattern) not in auth.PUBLIC:
-            req.session = auth.session_token(self.headers.get('Cookie'))
-            if not req.session:
+            req.session, req.device_id = auth.authenticate(self.headers)
+            if req.session is None and req.device_id is None:
                 raise HttpError(401, 'login required')
+            if pattern == '/api/me' or pattern.startswith('/api/me/'):
+                if req.device_id is None:
+                    raise HttpError(403, 'device token required')
+            elif req.device_id is not None and (method, pattern) in auth.SESSION_ONLY:
+                raise HttpError(403, 'session required')
         return fn(req)
 
     def _read_json_body(self):

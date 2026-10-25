@@ -1,4 +1,4 @@
-import concurrent.futures, contextlib, datetime, io, json, pathlib, re, tempfile, threading, unittest
+import concurrent.futures, contextlib, datetime, hashlib, io, json, pathlib, re, tempfile, threading, unittest
 from unittest import mock
 from webui import auth, db, server, settings
 from webui.tests.helpers import DataTestCase, serve, http, login
@@ -137,3 +137,102 @@ class AuthTest(DataTestCase):
         clock[0] += 1
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(http('POST', self.base + '/api/auth/reset', {})[0], 202)
+
+
+DEVICE = {'name': 'Pixel 8', 'model': 'Pixel 8', 'sdk': 35, 'android_release': '15', 'abi_list': ['arm64-v8a']}
+
+
+class DeviceTokenTest(DataTestCase):
+    def setUp(self):
+        super().setUp()
+        self.base = serve(self, ['devices', 'notify', 'projects'])
+        self.cookie = login(self.base)
+
+    def register(self, password='correct-horse-42', device=DEVICE):
+        return http('POST', self.base + '/api/auth/device', {'username': 'admin', 'password': password, 'device': device})
+
+    def token(self):
+        st, h, body = self.register()
+        self.assertEqual(st, 200, body)
+        self.assertNotIn('Set-Cookie', h)
+        return json.loads(body)
+
+    def bearer(self, method, path, token, body=None, cookie=None):
+        return http(method, self.base + path, body, cookie=cookie, headers={'Authorization': f'Bearer {token}'})
+
+    def bad_login(self):
+        return http('POST', self.base + '/api/auth/login', {'username': 'admin', 'password': 'nope'})
+
+    def test_bearer_token_paths(self):
+        db.conn().execute("INSERT INTO devices(name, serial, host, connect_port, model) VALUES ('Tab', 's:5555', 's', 5555, 'T1')")
+        out = self.token()
+        tok = out['token']
+        self.assertEqual(out['adb_devices'], [{'id': 1, 'name': 'Tab', 'model': 'T1'}])
+        row = db.conn().execute('SELECT * FROM devices WHERE id=?', (out['device']['id'],)).fetchone()
+        self.assertEqual((row['kind'], row['token_hash'], row['abi_list'], row['host']),
+                         ('app', hashlib.sha256(tok.encode()).hexdigest(), 'arm64-v8a', None))
+        self.assertEqual(self.bearer('GET', '/api/jobs', tok)[0], 200)
+        for header in ('Bearer nope', 'Basic ' + tok, 'Bearer '):   # no fall-through to the valid cookie
+            st, _, body = http('GET', self.base + '/api/jobs', cookie=self.cookie, headers={'Authorization': header})
+            self.assertEqual((st, json.loads(body)), (401, {'error': 'invalid device token'}), header)
+        st, _, body = http('POST', self.base + '/api/me/logout', {}, cookie=self.cookie)
+        self.assertEqual((st, json.loads(body)), (403, {'error': 'device token required'}))
+        for bad in ({**DEVICE, 'sdk': '35'}, {**DEVICE, 'abi_list': ['mips']}, {**DEVICE, 'name': ''}, None):
+            self.assertEqual(self.register(device=bad)[0], 400, bad)
+        # revoke from the web UI: row stays, token stops working
+        self.assertEqual(http('DELETE', self.base + '/api/devices/1/token', cookie=self.cookie)[:3:2],
+                         (409, b'{"error": "not an app device"}'))
+        self.assertEqual(http('DELETE', self.base + '/api/devices/99/token', cookie=self.cookie)[0], 404)
+        did = out['device']['id']
+        st, _, body = http('DELETE', self.base + f'/api/devices/{did}/token', cookie=self.cookie)
+        self.assertEqual((st, json.loads(body)['device']['id']), (200, did))
+        self.assertEqual(self.bearer('GET', '/api/jobs', tok)[0], 401)
+        # app logout
+        tok2 = self.token()['token']
+        self.assertEqual(self.bearer('POST', '/api/me/logout', tok2, {})[:3:2], (200, b'{"ok": true}'))
+        self.assertEqual(self.bearer('GET', '/api/jobs', tok2)[0], 401)
+        self.assertEqual(db.conn().execute("SELECT count(*) FROM devices WHERE kind='app'").fetchone()[0], 2)
+
+    def test_session_only_routes_reject_token(self):
+        self.assertEqual(auth.SESSION_ONLY, {
+            ('POST', '/api/auth/password'), ('POST', '/api/auth/logout'), ('PUT', '/api/settings'),
+            ('PUT', '/api/notify'), ('DELETE', '/api/devices/{id}'), ('DELETE', '/api/devices/{id}/token')})
+        tok = self.token()['token']
+        for method, pattern in sorted(auth.SESSION_ONLY):
+            st, _, body = self.bearer(method, pattern.replace('{id}', '1'), tok, {})
+            self.assertEqual((st, json.loads(body)), (403, {'error': 'session required'}), pattern)
+        self.assertEqual(db.conn().execute("SELECT count(*) FROM devices").fetchone()[0], 1)
+
+    def test_signer_accept_allows_token(self):
+        tok = self.token()['token']
+        st, _, body = self.bearer('POST', '/api/projects/9/signer/accept', tok, {'signer_sha256': 'a' * 64})
+        self.assertNotIn(st, (401, 403), body)
+        self.assertEqual(st, 404, body)
+
+    def test_device_registration_shares_lockout(self):
+        for _ in range(2):
+            self.assertEqual(self.bad_login()[0], 401)
+        st, _, body = self.register(password='nope')
+        self.assertEqual((st, json.loads(body)), (401, {'error': 'wrong credentials', 'attempts_left': 2}))
+        self.assertEqual(json.loads(self.bad_login()[2])['attempts_left'], 1)
+        self.assertEqual(json.loads(self.register(password='nope')[2])['error'], 'locked')
+        st, _, body = self.register()      # right password, still locked: same counter as the login form
+        self.assertEqual((st, json.loads(body)['error']), (429, 'locked'))
+        self.assertEqual(db.conn().execute("SELECT count(*) FROM devices").fetchone()[0], 0)
+
+    def test_bad_bearer_does_not_count_lockout(self):
+        for _ in range(auth.MAX_FAILS + 1):
+            self.assertEqual(self.bearer('GET', '/api/jobs', 'guess')[0], 401)
+        self.assertEqual(json.loads(self.bad_login()[2])['attempts_left'], auth.MAX_FAILS - 1)
+
+    def test_reset_and_password_change_keep_device_tokens(self):
+        tok = self.token()['token']
+        before = db.conn().execute("SELECT token_hash FROM devices").fetchone()[0]
+        st, _, _ = http('POST', self.base + '/api/auth/password', {'old': 'correct-horse-42', 'new': 'long-enough-pw'},
+                        cookie=self.cookie)
+        self.assertEqual(st, 200)
+        with contextlib.redirect_stdout(io.StringIO()):
+            auth.reset_password()
+        self.assertEqual(http('GET', self.base + '/api/jobs', cookie=self.cookie)[0], 401)
+        self.assertEqual(self.bearer('GET', '/api/jobs', tok)[0], 200)
+        self.assertEqual(db.conn().execute("SELECT token_hash FROM devices").fetchone()[0], before)
