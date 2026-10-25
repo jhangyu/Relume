@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import traceback
 import unittest
@@ -32,6 +33,10 @@ def fmt_exc(err):
 
 
 class BudgetExceeded(Exception):
+    pass
+
+
+class ProtocolError(Exception):
     pass
 
 
@@ -107,7 +112,7 @@ def python_leg(root):
             except json.JSONDecodeError:
                 continue  # non-result stdout from the module under test
             if not isinstance(unit, dict):
-                raise BudgetExceeded(f"python leg: webui.tests.{module} printed JSON that is not a result object: {line[:200]}")
+                raise ProtocolError(f"protocol error, python leg: webui.tests.{module} printed JSON that is not a result object: {line[:200]}")
             units.append(unit)
         if proc.returncode != 0 or not units:
             units.append({"id": f"webui.tests.{module}", "seconds": 0.0, "outcome": "error",
@@ -118,19 +123,44 @@ def python_leg(root):
         return [u for units in pool.map(one, modules) for u in units]
 
 
-def timed_command(unit_id, cmd, cwd):
-    start = time.monotonic()
-    proc = run_bounded("shell", cmd, cwd=cwd)
-    seconds = time.monotonic() - start
-    outcome = "pass" if proc.returncode == 0 else "failure"
-    detail = "" if proc.returncode == 0 else f"rc={proc.returncode}\n{(proc.stdout + proc.stderr)[-3000:]}"
-    return {"id": unit_id, "seconds": seconds, "outcome": outcome, "detail": detail}
+CASE_LINE = re.compile(r"(PASS|FAIL) (\S+?):?(?: |$)")
+SHELL_SCRIPT = "src/build/test-build-item.sh"
 
 
 def shell_leg(root):
+    """Each PASS/FAIL line the script prints is one test, timed from the previous case line."""
     if shutil.which("bash") is None:
         raise SystemExit("shell leg: required tool 'bash' not found on PATH")
-    return [timed_command("src/build/test-build-item.sh", ["bash", "src/build/test-build-item.sh"], root)]
+    proc = subprocess.Popen(["bash", SHELL_SCRIPT], cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    timed_out = threading.Event()
+
+    def expire():
+        timed_out.set()
+        proc.kill()
+
+    watchdog = threading.Timer(max(TOTAL_BUDGET_S - (time.monotonic() - _start), 0), expire)
+    watchdog.start()
+    units, other, mark = [], [], time.monotonic()
+    try:
+        for line in proc.stdout:
+            now = time.monotonic()
+            m = CASE_LINE.match(line)
+            if m:
+                units.append({"id": f"{SHELL_SCRIPT}:{m.group(2)}", "seconds": now - mark,
+                              "outcome": "pass" if m.group(1) == "PASS" else "failure",
+                              "detail": "" if m.group(1) == "PASS" else line.strip()})
+                mark = now
+            else:
+                other.append(line)
+        rc = proc.wait()
+    finally:
+        watchdog.cancel()
+    if timed_out.is_set():
+        raise BudgetExceeded(f"shell leg: {SHELL_SCRIPT} still running after {time.monotonic() - _start:.1f}s, budget {TOTAL_BUDGET_S}s")
+    if not units or (rc != 0 and not any(u["outcome"] == "failure" for u in units)):
+        units.append({"id": SHELL_SCRIPT, "seconds": 0.0, "outcome": "error",
+                      "detail": f"rc={rc}, {len(units)} case lines\n{''.join(other)[-3000:]}"})
+    return units
 
 
 def android_leg(root):
@@ -201,7 +231,7 @@ def main():
     for leg in legs:
         try:
             units = runners[leg](root)
-        except BudgetExceeded as e:
+        except (BudgetExceeded, ProtocolError) as e:
             print(f"FAIL {e}")
             return 1
         all_units += units

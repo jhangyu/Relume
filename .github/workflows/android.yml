@@ -27,6 +27,7 @@ jobs:
         env:
           KEYSTORE_B64: ${{ secrets.RELUME_COMPANION_KEYSTORE_B64 }}
         run: |
+          : "${KEYSTORE_B64:?secret RELUME_COMPANION_KEYSTORE_B64 is empty}"
           printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/companion.keystore"
           echo "RELUME_COMPANION_KEYSTORE=$RUNNER_TEMP/companion.keystore" >> "$GITHUB_ENV"
       - name: Assemble release
@@ -34,11 +35,16 @@ jobs:
           RELUME_COMPANION_KEYSTORE_PASSWORD: ${{ secrets.RELUME_COMPANION_KEYSTORE_PASSWORD }}
           RELUME_COMPANION_KEY_ALIAS: ${{ secrets.RELUME_COMPANION_KEY_ALIAS }}
           RELUME_COMPANION_KEY_PASSWORD: ${{ secrets.RELUME_COMPANION_KEY_PASSWORD }}
-        run: android/gradlew -p android assembleRelease --no-watch-fs
+        run: |
+          : "${RELUME_COMPANION_KEYSTORE_PASSWORD:?secret RELUME_COMPANION_KEYSTORE_PASSWORD is empty}"
+          : "${RELUME_COMPANION_KEY_ALIAS:?secret RELUME_COMPANION_KEY_ALIAS is empty}"
+          : "${RELUME_COMPANION_KEY_PASSWORD:?secret RELUME_COMPANION_KEY_PASSWORD is empty}"
+          android/gradlew -p android assembleRelease --no-watch-fs
       - name: Publish to jhangyu/relume-companion
         env:
           GH_TOKEN: ${{ secrets.RELUME_COMPANION_RELEASE_TOKEN }}
         run: |
+          : "${GH_TOKEN:?secret RELUME_COMPANION_RELEASE_TOKEN is empty}"
           cp android/app/build/outputs/apk/release/app-release.apk relume-companion.apk
           gh release create "v$RELUME_COMPANION_VERSION_NAME" relume-companion.apk \
             --repo jhangyu/relume-companion \
