@@ -134,12 +134,22 @@ class NotifyTest(helpers.DataTestCase):
         stub.gate = threading.Event()
         settings.put('notify', discord(stub.url))
         notify.register()
-        threading.Thread(target=notify.worker, daemon=True).start()
+
+        def deliver_one():  # one worker step, so no notifier thread or its sqlite connection outlives the test
+            try:
+                notify.deliver(*notify._q.get())
+            finally:
+                db.close()
+
+        worker = threading.Thread(target=deliver_one, daemon=True)
+        worker.start()
         t = time.monotonic()
         events.emit('ota.done', {'job_id': None, 'device_id': 1, 'outcome': 'done'})
         self.assertLess(time.monotonic() - t, 0.1)
         self.assertTrue(stub.arrived.wait(5))   # fail-fast bound, the worker posts at once
         self.assertEqual(len(stub.requests), 1)
+        stub.gate.set()
+        worker.join(5)
 
     def test_skip_notify_false_job(self):
         stub = Stub(self, [(204, {}, b'')])

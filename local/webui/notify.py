@@ -150,9 +150,10 @@ def send(cfg, text):
             with upstream.opener.open(_request(cfg, text), timeout=10) as r:
                 return True, r.status, r.read(2000).decode('utf-8', 'replace')
         except urllib.error.HTTPError as e:
-            status, detail = e.code, e.read(2000).decode('utf-8', 'replace')
-            if e.code == 429:
-                wait = _retry_after(e.headers, detail)
+            with e:
+                status, detail = e.code, e.read(2000).decode('utf-8', 'replace')
+                if e.code == 429:
+                    wait = _retry_after(e.headers, detail)
         except OSError as e:
             status, detail = None, str(e)
         if attempt < 2:
