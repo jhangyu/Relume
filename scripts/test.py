@@ -31,6 +31,23 @@ def fmt_exc(err):
     return "".join(traceback.format_exception(*err))
 
 
+class BudgetExceeded(Exception):
+    pass
+
+
+_start = time.monotonic()
+
+
+def run_bounded(leg, cmd, **kwargs):
+    """subprocess.run with a fail-fast timeout: whatever is left of TOTAL_BUDGET_S."""
+    remaining = TOTAL_BUDGET_S - (time.monotonic() - _start)
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=max(remaining, 0), **kwargs)
+    except subprocess.TimeoutExpired:
+        raise BudgetExceeded(f"{leg} leg: {' '.join(map(str, cmd[:4]))} still running after "
+                             f"{time.monotonic() - _start:.1f}s, budget {TOTAL_BUDGET_S}s") from None
+
+
 class JsonLineResult(unittest.TestResult):
     """Prints one JSON line per finished test: {id, seconds, outcome, detail}."""
 
@@ -81,15 +98,17 @@ def python_leg(root):
     script = Path(__file__).resolve()
 
     def one(module):
-        proc = subprocess.run(
-            [sys.executable, str(script), CHILD_FLAG, f"webui.tests.{module}"],
-            cwd=root / "local", env=env, capture_output=True, text=True)
+        proc = run_bounded("python", [sys.executable, str(script), CHILD_FLAG, f"webui.tests.{module}"],
+                           cwd=root / "local", env=env)
         units = []
         for line in proc.stdout.splitlines():
             try:
-                units.append(json.loads(line))
+                unit = json.loads(line)
             except json.JSONDecodeError:
                 continue  # non-result stdout from the module under test
+            if not isinstance(unit, dict):
+                raise BudgetExceeded(f"python leg: webui.tests.{module} printed JSON that is not a result object: {line[:200]}")
+            units.append(unit)
         if proc.returncode != 0 or not units:
             units.append({"id": f"webui.tests.{module}", "seconds": 0.0, "outcome": "error",
                           "detail": f"child rc={proc.returncode}, results={len(units)}\n{proc.stderr[-2000:]}"})
@@ -101,7 +120,7 @@ def python_leg(root):
 
 def timed_command(unit_id, cmd, cwd):
     start = time.monotonic()
-    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+    proc = run_bounded("shell", cmd, cwd=cwd)
     seconds = time.monotonic() - start
     outcome = "pass" if proc.returncode == 0 else "failure"
     detail = "" if proc.returncode == 0 else f"rc={proc.returncode}\n{(proc.stdout + proc.stderr)[-3000:]}"
@@ -125,9 +144,8 @@ def android_leg(root):
     # stale reports must not be read as this run's results
     for old in results.glob("*.xml"):
         old.unlink()
-    proc = subprocess.run(
-        [str(gradlew), "-p", "android", "testDebugUnitTest", "--console=plain", "--no-watch-fs"],
-        cwd=root, capture_output=True, text=True)
+    proc = run_bounded("android", [str(gradlew), "-p", "android", "testDebugUnitTest", "--console=plain", "--no-watch-fs"],
+                       cwd=root)
     units = []
     for report in sorted(results.glob("*.xml")):
         for case in ET.parse(report).getroot().iter("testcase"):
@@ -178,11 +196,14 @@ def main():
     root = Path(args.root).resolve()
     runners = {"python": python_leg, "shell": shell_leg, "android": android_leg}
 
-    start = time.monotonic()
     failed = False
     all_units = []
     for leg in legs:
-        units = runners[leg](root)
+        try:
+            units = runners[leg](root)
+        except BudgetExceeded as e:
+            print(f"FAIL {e}")
+            return 1
         all_units += units
         bad = [u for u in units if u["outcome"] in OUTCOME_FAIL]
         skipped = sum(u["outcome"] == OUTCOME_SKIP for u in units)
@@ -190,7 +211,7 @@ def main():
         for u in bad:
             print(f"FAIL {u['id']}\n{u['detail']}")
         failed |= bool(bad)
-    wall = time.monotonic() - start
+    wall = time.monotonic() - _start
     print(f"total: {len(all_units)} tests, skipped: {sum(u['outcome'] == OUTCOME_SKIP for u in all_units)}, wall {wall:.1f}s")
 
     if wall > TOTAL_BUDGET_S:

@@ -41,7 +41,9 @@ class JobsApiTest(DataTestCase):
         with urllib.request.urlopen(req, timeout=20) as r:
             seen = ''
             while ' start' not in seen:   # 'start' arrives while the job is still blocked on go
-                seen += r.readline().decode()
+                line = r.readline().decode()
+                self.assertTrue(line, f"stream ended before ' start' arrived, got {seen!r}")
+                seen += line
             go.set()
             text = seen + r.read().decode()
         self.assertIn(' start', text)
