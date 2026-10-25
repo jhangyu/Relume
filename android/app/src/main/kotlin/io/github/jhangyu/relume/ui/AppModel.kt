@@ -239,7 +239,8 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     private fun start(p: InstallPlan) {
         when (InstallRunner.start(relume, p, Origin.UI)) {
             StartResult.Busy -> error = "an install run is in progress"
-            StartResult.Started -> runStarted++
+            // Corrupt: the Install screen shows the unreadable run file and its reset.
+            StartResult.Started, StartResult.Corrupt -> runStarted++
         }
     }
 

@@ -17,7 +17,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -95,8 +97,16 @@ fun InstallScreen(run: RunState?, model: AppModel, onClose: () -> Unit) {
     val c = FluentTheme.colors
     val ctx = LocalContext.current
     var uninstallIndex by remember { mutableStateOf<Int?>(null) }
+    val corrupt by InstallRunner.corrupt.collectAsState()
     Column(Modifier.fillMaxSize()) {
         AppBar("Install", onBack = onClose)
+        corrupt?.let { e ->
+            Column(Modifier.padding(ScreenPadding), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                MessageBar("The saved install run is corrupt", Tone.Danger, detail = e.message)
+                FButton("Reset install run", { InstallRunner.reset(ctx) }, Modifier.fillMaxWidth(), kind = ButtonKind.Danger)
+            }
+            return@Column
+        }
         if (run == null) {
             Txt("No install run.", Modifier.padding(ScreenPadding), color = c.fg3)
             return@Column
@@ -109,6 +119,7 @@ fun InstallScreen(run: RunState?, model: AppModel, onClose: () -> Unit) {
                 MessageBar("The plan changed on the server", Tone.Warn, detail = "Nothing was reinstalled. Go back, refresh and start again.", action = "Refresh", onAction = model::refresh)
             }
             run.syncError?.let { MessageBar("Could not report to the server", Tone.Danger, detail = it) }
+            run.outboxError?.let { MessageBar("Could not send an earlier result to the server", Tone.Danger, detail = it) }
             run.steps.forEachIndexed { i, s -> StepBlock(s, i, ctx) { uninstallIndex = i } }
         }
         Hairline()
@@ -146,6 +157,11 @@ private fun StepBlock(s: StepRun, index: Int, ctx: Context, onUninstall: () -> U
         when (s.state) {
             StepState.PENDING, StepState.DOWNLOADING, StepState.VERIFYING, StepState.COMMITTED, StepState.INSTALLED, StepState.AWAITING_USER -> {
                 PhaseList(s.state)
+                val d = step.download
+                if (s.state == StepState.DOWNLOADING && d != null) {
+                    LinearProgressIndicator({ s.downloadedBytes.toFloat() / d.size }, Modifier.fillMaxWidth(), color = c.accent, trackColor = c.stroke2)
+                    Txt("${formatMb(s.downloadedBytes)} of ${formatMb(d.size)}", style = FluentType.mono, color = c.fg3)
+                }
                 if (s.state == StepState.PENDING && Inventory.needsConfirmation(ctx, step.packageName)) {
                     Txt("One confirmation needed in the Android dialog.", style = FluentType.small, color = c.fg3)
                 }

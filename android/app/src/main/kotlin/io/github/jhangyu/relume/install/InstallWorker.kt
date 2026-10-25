@@ -66,7 +66,9 @@ class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         }
         if (!move(ctx, index, setOf(StepState.PENDING, StepState.DOWNLOADING, StepState.VERIFYING), StepState.DOWNLOADING)) return false
         val apk = try {
-            Downloader.download(api, d, File(ctx.filesDir, APK_DIR)) { isStopped }
+            Downloader.download(api, d, File(ctx.filesDir, APK_DIR), { isStopped }) { bytes ->
+                InstallRunStore.update(ctx) { cur -> cur?.let { InstallRun.progress(it, index, bytes) } }
+            }
         } catch (e: StepFailure) {
             finish(ctx, index, StepOutcome(StepState.FAILED, e.code, e.message))
             return false
@@ -104,6 +106,15 @@ class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorke
 
     private suspend fun sendReceipts(ctx: Context, api: RelumeApi) {
         val run = InstallRunStore.state.value ?: return
+        run.outbox.forEach { r ->
+            val error = try {
+                api.receipt(r)
+                null
+            } catch (e: ApiError) {
+                if (e.status == HTTP_CONFLICT) null else "${r.kind} ${r.refId}: $e"
+            }
+            InstallRunStore.update(ctx) { cur -> cur?.let { InstallRun.outboxSent(it, r, error) } }
+        }
         run.steps.forEachIndexed { i, s ->
             if (!s.receiptDue) return@forEachIndexed
             val error = try {
@@ -164,16 +175,18 @@ class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         private const val HTTP_CONFLICT = 409
         private val WAITING = setOf(StepState.COMMITTED, StepState.AWAITING_USER)
 
-        /** [replace] for a new or cancelled run; otherwise appended to the current chain (spec 9.1). */
+        /** A UI-triggered pass needs only a network; a background pass waits for unmetered and battery not low. */
+        internal fun constraints(origin: Origin): Constraints = when (origin) {
+            Origin.UI -> Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+            Origin.BACKGROUND -> Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.UNMETERED)
+                .setRequiresBatteryNotLow(true)
+                .build()
+        }
+
+        /** [origin] is who triggers this pass (sets [constraints]); [replace] for a new or cancelled run; otherwise appended to the current chain (spec 9.1). */
         fun enqueue(context: Context, origin: Origin, replace: Boolean) {
-            val constraints = when (origin) {
-                Origin.UI -> Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
-                Origin.BACKGROUND -> Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.UNMETERED)
-                    .setRequiresBatteryNotLow(true)
-                    .build()
-            }
-            val request = OneTimeWorkRequestBuilder<InstallWorker>().setConstraints(constraints).build()
+            val request = OneTimeWorkRequestBuilder<InstallWorker>().setConstraints(constraints(origin)).build()
             val policy = if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.APPEND_OR_REPLACE
             WorkManager.getInstance(context).enqueueUniqueWork(WORK_NAME, policy, request)
         }

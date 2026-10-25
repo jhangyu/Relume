@@ -10,11 +10,11 @@ import io.github.jhangyu.relume.api.StepKind
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/** Who started a run: the UI (any network) or the background check (unmetered, battery not low). */
+/** Who started a run or a worker pass: the UI (any network) or the background check (unmetered, battery not low). */
 @Serializable
 enum class Origin { UI, BACKGROUND }
 
-enum class StartResult { Started, Busy }
+enum class StartResult { Started, Busy, Corrupt }
 
 /** Per-step state of an install run (spec 9.1). */
 @Serializable
@@ -69,6 +69,8 @@ data class StepRun(
     val receiptDue: Boolean,
     /** Last receipt failure other than a stale plan (shown in the UI). */
     val receiptError: String?,
+    /** Bytes of the `.part` file, updated in [PROGRESS_STEPS] steps of the plan size (spec 9.2). */
+    val downloadedBytes: Long,
 )
 
 @Serializable
@@ -81,6 +83,10 @@ data class RunState(
     /** The final `POST /api/me/sync` after the last step ran. */
     val synced: Boolean,
     val syncError: String?,
+    /** Receipts of earlier runs not sent yet; a new run takes them over so no result is lost (spec 9.4). */
+    val outbox: List<InstallReceipt>,
+    /** Last refusal of an [outbox] receipt other than a stale plan (shown in the UI). */
+    val outboxError: String?,
 ) {
     val isActive get() = steps.any { it.state.active }
 
@@ -94,16 +100,26 @@ data class RunState(
 /** Pure run transitions (spec 9.1). Every function returns a new [RunState]. */
 object InstallRun {
 
-    /** Steps in server order; server `error` steps become `server_error` and block their dependents. */
-    fun create(plan: InstallPlan, origin: Origin): RunState {
+    /** Number of progress updates per download: each one rewrites the run file. */
+    const val PROGRESS_STEPS = 100
+
+    /**
+     * Steps in server order; server `error` steps become `server_error` and block their dependents. The unsent receipts
+     * of [previous] (its outbox and its due step receipts) move into the new run's outbox.
+     */
+    fun create(plan: InstallPlan, origin: Origin, previous: RunState?): RunState {
         val steps = plan.steps.map { step ->
             when (step.action) {
-                PlanAction.INSTALL -> StepRun(step, StepState.PENDING, null, null, null, receiptDue = false, receiptError = null)
-                PlanAction.UP_TO_DATE -> StepRun(step, StepState.UP_TO_DATE, null, null, null, receiptDue = false, receiptError = null)
-                PlanAction.ERROR -> StepRun(step, StepState.SERVER_ERROR, null, step.reason, null, receiptDue = false, receiptError = null)
+                PlanAction.INSTALL -> StepRun(step, StepState.PENDING, null, null, null, receiptDue = false, receiptError = null, downloadedBytes = 0)
+                PlanAction.UP_TO_DATE -> StepRun(step, StepState.UP_TO_DATE, null, null, null, receiptDue = false, receiptError = null, downloadedBytes = 0)
+                PlanAction.ERROR -> StepRun(step, StepState.SERVER_ERROR, null, step.reason, null, receiptDue = false, receiptError = null, downloadedBytes = 0)
             }
         }
-        return RunState(plan.revision, origin, steps, stalePlan = false, synced = false, syncError = null).propagate()
+        val unsent = previous?.let { p -> p.outbox + p.steps.filter { it.receiptDue }.map(::receipt) }.orEmpty()
+        return RunState(
+            plan.revision, origin, steps, stalePlan = false, synced = false, syncError = null,
+            outbox = unsent, outboxError = null,
+        ).propagate()
     }
 
     /** Moves step [index] from one of [from] to [to]; null when the step is no longer in [from] (cancelled meanwhile). */
@@ -128,6 +144,26 @@ object InstallRun {
         return run.replace(index, done).propagate()
     }
 
+    /**
+     * Records [bytes] of step [index]'s download when it crosses the next of [PROGRESS_STEPS] steps of the plan size;
+     * otherwise returns [run] unchanged (no file write).
+     */
+    fun progress(run: RunState, index: Int, bytes: Long): RunState {
+        val s = run.steps[index]
+        val size = checkNotNull(s.step.download) { "progress of ${s.step.displayName}: step has no download" }.size
+        if (s.state != StepState.DOWNLOADING || size <= 0) return run
+        val stride = maxOf(1L, size / PROGRESS_STEPS)
+        if (bytes != size && bytes / stride == s.downloadedBytes / stride) return run
+        return run.replace(index, s.copy(downloadedBytes = bytes))
+    }
+
+    /** Removes [sent] from the outbox; [error] is a refusal other than a stale plan (null = accepted or stale). */
+    fun outboxSent(run: RunState, sent: InstallReceipt, error: String?): RunState {
+        val i = run.outbox.indexOf(sent)
+        check(i >= 0) { "outbox of run ${run.revision}: receipt ${sent.kind} ${sent.refId} not found" }
+        return run.copy(outbox = run.outbox.filterIndexed { j, _ -> j != i }, outboxError = error ?: run.outboxError)
+    }
+
     /** Replaces the error text of step [index] without changing its state or receipt. */
     fun note(run: RunState, index: Int, text: String): RunState = run.replace(index, run.steps[index].copy(errorText = text))
 
@@ -144,7 +180,7 @@ object InstallRun {
         val reopened = run.steps.mapIndexed { i, s ->
             val blocked = target.step.kind == StepKind.PROJECT && s.state == StepState.DEPENDENCY_FAILED &&
                 target.step.refId in s.step.needs
-            if (i == index || blocked) s.copy(state = StepState.PENDING, errorCode = null, errorText = null, sessionId = null, receiptDue = false) else s
+            if (i == index || blocked) s.copy(state = StepState.PENDING, errorCode = null, errorText = null, sessionId = null, receiptDue = false, downloadedBytes = 0) else s
         }
         return run.copy(steps = reopened, synced = false, syncError = null).propagate()
     }

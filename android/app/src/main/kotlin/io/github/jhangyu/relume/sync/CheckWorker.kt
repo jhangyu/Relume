@@ -37,6 +37,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
                     "$installs install steps: background run started"
                 }
                 StartResult.Busy -> "$installs install steps: an install run is in progress"
+                StartResult.Corrupt -> return fail(CODE_CORRUPT_RUN, "$installs install steps: the install run file is corrupt, reset it on the Install screen")
             }
         } else {
             "$installs install steps: no new background run"
@@ -56,5 +57,6 @@ class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
     private companion object {
         const val CODE_SIGNED_OUT = "SIGNED_OUT"
         const val CODE_IO = "IO"
+        const val CODE_CORRUPT_RUN = "CORRUPT_RUN_FILE"
     }
 }

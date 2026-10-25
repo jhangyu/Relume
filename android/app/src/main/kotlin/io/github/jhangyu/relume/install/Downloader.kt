@@ -22,8 +22,11 @@ object Downloader {
 
     fun partFile(dir: File, d: Download) = File(dir, "${d.sha256}.part")
 
-    /** [stopped] is checked between buffers; true throws [CancellationException] and keeps the `.part` file. */
-    fun download(api: RelumeApi, d: Download, dir: File, stopped: () -> Boolean): DownloadedApk {
+    /**
+     * [stopped] is checked between buffers; true throws [CancellationException] and keeps the `.part` file.
+     * [progress] gets the `.part` length after every buffer.
+     */
+    fun download(api: RelumeApi, d: Download, dir: File, stopped: () -> Boolean, progress: (Long) -> Unit): DownloadedApk {
         check(dir.isDirectory || dir.mkdirs()) { "download directory $dir: cannot create" }
         val part = partFile(dir, d)
         var restarted = false
@@ -44,7 +47,9 @@ object Downloader {
                         continue
                     }
                     DownloadAction.Append, DownloadAction.Truncate -> {
-                        FileOutputStream(part, action == DownloadAction.Append).use { out ->
+                        val append = action == DownloadAction.Append
+                        var written = if (append) offset else 0L
+                        FileOutputStream(part, append).use { out ->
                             conn.inputStream.use { input ->
                                 val buf = ByteArray(BUFFER)
                                 while (true) {
@@ -52,6 +57,8 @@ object Downloader {
                                     val n = input.read(buf)
                                     if (n < 0) break
                                     out.write(buf, 0, n)
+                                    written += n
+                                    progress(written)
                                 }
                             }
                             out.fd.sync()

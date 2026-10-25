@@ -20,15 +20,23 @@ object InstallRunner {
 
     val state: StateFlow<RunState?> = InstallRunStore.state
 
+    /** The run file could not be read; [start] refuses until the user calls [reset]. */
+    val corrupt: StateFlow<CorruptRunFile?> = InstallRunStore.corrupt
+
     /** Confirm intents (`EXTRA_INTENT`) by step index; process-local, they cannot be persisted. */
     private val confirmIntents = ConcurrentHashMap<Int, Intent>()
     private val reconciled = AtomicBoolean(false)
 
-    /** Starts [plan] unless a step of the current run is downloading, verifying, committed or awaiting the user. */
+    /**
+     * Starts [plan] unless a step of the current run is downloading, verifying, committed or awaiting the user, or the
+     * run file is corrupt. Unsent receipts of the replaced run go with the new run.
+     */
     fun start(context: Context, plan: InstallPlan, origin: Origin): StartResult {
+        InstallRunStore.load(context)
+        if (InstallRunStore.corrupt.value != null) return StartResult.Corrupt
         var started = false
         InstallRunStore.update(context) { cur ->
-            if (cur?.isActive == true) cur else InstallRun.create(plan, origin).also { started = true }
+            if (cur?.isActive == true) cur else InstallRun.create(plan, origin, cur).also { started = true }
         }
         if (!started) return StartResult.Busy
         confirmIntents.clear()
@@ -58,15 +66,19 @@ object InstallRunner {
     /** Cancels the run: open sessions are abandoned, unfinished steps end `cancelled`, receipts are still sent. */
     fun cancel(context: Context) {
         val before = InstallRunStore.state.value ?: return
-        val run = checkNotNull(InstallRunStore.update(context) { cur -> cur?.let(InstallRun::cancelAll) })
+        checkNotNull(InstallRunStore.update(context) { cur -> cur?.let(InstallRun::cancelAll) })
         before.steps.forEachIndexed { i, s ->
             val id = s.sessionId
             if (s.state.active && id != null && Installer.sessionExists(context, id)) Installer.abandon(context, id)
             Notifications.cancelStep(context, i)
         }
         confirmIntents.clear()
-        InstallWorker.enqueue(context, run.origin, replace = true)
+        // User action: only the receipts are left to send, so no background constraints.
+        InstallWorker.enqueue(context, Origin.UI, replace = true)
     }
+
+    /** The user's reset of a corrupt run file (spec 9.1): the file is deleted, the next start begins empty. */
+    fun reset(context: Context) = InstallRunStore.reset(context)
 
     /**
      * Call at process start (MainActivity.onCreate; later calls in the same process do nothing). Loads the run file and the last check outcome, abandons
@@ -148,9 +160,10 @@ object InstallRunner {
         }
     }
 
+    /** Re-runs step [index] after a user action (confirm, uninstall): network CONNECTED only, even for a background run. */
     private fun retry(context: Context, index: Int) {
-        val run = checkNotNull(InstallRunStore.update(context) { cur -> cur?.let { InstallRun.retry(it, index) } })
-        InstallWorker.enqueue(context, run.origin, replace = false)
+        InstallRunStore.update(context) { cur -> cur?.let { InstallRun.retry(it, index) } }
+        InstallWorker.enqueue(context, Origin.UI, replace = false)
     }
 
     private fun stepAt(index: Int, expected: StepState): StepRun {

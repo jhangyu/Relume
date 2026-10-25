@@ -19,7 +19,7 @@ class InstallRunTest {
         val run = InstallRun.create(plan(
             step(StepKind.PROJECT, 5), step(StepKind.PROJECT, 6), step(StepKind.ITEM, 5),
             step(StepKind.ITEM, 1, needs = listOf(5)), step(StepKind.ITEM, 2, needs = listOf(6)), step(StepKind.ITEM, 3, needs = listOf(5)),
-        ), Origin.UI)
+        ), Origin.UI, null)
         val after = InstallRun.finish(run, 0, failed)
         assertEquals(listOf(StepState.FAILED, StepState.PENDING, StepState.PENDING, StepState.DEPENDENCY_FAILED,
             StepState.PENDING, StepState.DEPENDENCY_FAILED), states(after))
@@ -48,7 +48,7 @@ class InstallRunTest {
     fun cancelBlocksDependents() {
         val run = InstallRun.create(plan(
             step(StepKind.PROJECT, 5), step(StepKind.ITEM, 1, needs = listOf(5)), step(StepKind.ITEM, 2),
-        ), Origin.UI)
+        ), Origin.UI, null)
         val one = InstallRun.finish(run, 0, InstallResult.from(android.content.pm.PackageInstaller.STATUS_FAILURE_ABORTED, null))
         assertEquals(listOf(StepState.CANCELLED, StepState.DEPENDENCY_FAILED, StepState.PENDING), states(one))
         assertEquals(ErrorCodes.USER_REJECTED, one.steps[0].errorCode)
@@ -80,7 +80,7 @@ class InstallRunTest {
         val run = InstallRun.create(plan(
             step(StepKind.PROJECT, 5, action = PlanAction.ERROR), step(StepKind.ITEM, 1, needs = listOf(5)),
             step(StepKind.ITEM, 2, action = PlanAction.UP_TO_DATE), step(StepKind.ITEM, 3), step(StepKind.COMPANION, 9),
-        ), Origin.BACKGROUND)
+        ), Origin.BACKGROUND, null)
         assertEquals(listOf(StepState.SERVER_ERROR, StepState.DEPENDENCY_FAILED, StepState.UP_TO_DATE,
             StepState.PENDING, StepState.PENDING), states(run))
         assertEquals("NOT_DOWNLOADED", run.steps[0].errorText)
