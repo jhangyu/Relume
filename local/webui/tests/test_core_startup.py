@@ -43,16 +43,31 @@ class StartupTest(DataTestCase):
         self.assertNotIn('password', out.getvalue())
         self.assertIsNone(db.conn().execute("SELECT 1 FROM settings WHERE key LIKE 'admin_%'").fetchone())
 
-    def test_reset_password(self):
-        db.conn().execute("INSERT INTO sessions VALUES ('t','2999-01-01T00:00:00Z')")
+    def test_boot_applies_env_admin_password(self):
+        self.enterContext(mock.patch.object(auth, 'SCRYPT_N', 2 ** 4))   # fast hashing, the KDF cost is not under test
         settings.put('admin_username', 'root')
         auth.set_password('old-password-1')
+        db.conn().execute("INSERT INTO sessions VALUES ('t','2999-01-01T00:00:00Z')")
+        db.conn().execute("INSERT INTO devices(name, kind, token_hash) VALUES ('Pixel', 'app', 'h')")
         out = io.StringIO()
-        with mock.patch.object(server, 'MODULES', ()), mock.patch.dict('os.environ', {'RELUME_DATA': str(self.data)}), \
-                contextlib.redirect_stdout(out):
-            self.assertEqual(cli.main(['reset-password']), 0)
-        self.assertRegex(out.getvalue(), r'^admin password reset for root: \S{20}\n$')
+        env = {'RELUME_DATA': str(self.data), auth.ADMIN_PASSWORD_ENV: 'brand-new-password'}
+        with mock.patch.dict('os.environ', env), contextlib.redirect_stdout(out), \
+                mock.patch.object(cli.jobs, 'start'), mock.patch.object(cli.jobs, 'recover'), \
+                mock.patch.object(cli.scheduler, 'start'), mock.patch.object(cli.settings, 'check_token_file'):
+            cli.boot(start=True, names=[])
+        stored = settings.get('admin_password_hash')
+        self.assertTrue(auth.verify_password('brand-new-password', stored))
+        self.assertFalse(auth.verify_password('old-password-1', stored))
         self.assertEqual(db.conn().execute('SELECT count(*) FROM sessions').fetchone()[0], 0)
+        self.assertEqual(db.conn().execute('SELECT token_hash FROM devices').fetchone()[0], 'h')
+        self.assertNotIn('brand-new-password', out.getvalue())
+
+    def test_env_admin_password_without_account_or_too_short(self):
+        with mock.patch.dict('os.environ', {auth.ADMIN_PASSWORD_ENV: 'brand-new-password'}), contextlib.redirect_stdout(io.StringIO()):
+            auth.apply_env_password()
+        self.assertIsNone(settings.get('admin_password_hash'))
+        with mock.patch.dict('os.environ', {auth.ADMIN_PASSWORD_ENV: 'short'}), self.assertRaisesRegex(ValueError, 'at least 10'):
+            auth.apply_env_password()
 
     def test_unknown_command(self):
         err = io.StringIO()

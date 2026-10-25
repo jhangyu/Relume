@@ -111,33 +111,8 @@ class AuthTest(DataTestCase):
         self.assertEqual(json.loads(a[2])['attempts_left'], 4)
         self.assertEqual(json.loads(b[2])['attempts_left'], 3)
 
-    def test_login_and_reset_need_account(self):
+    def test_login_needs_account(self):
         self.assertEqual(http('POST', self.base + '/api/auth/login', {'username': 'a', 'password': 'b'})[0], 409)
-        self.assertEqual(http('POST', self.base + '/api/auth/reset', {})[0], 409)
-
-    def test_reset_cooldown_and_new_password(self):
-        cookie = login(self.base)
-        clock = [1000.0]
-        self.enterContext(mock.patch.object(auth, '_clock', lambda: clock[0]))
-        auth._state['reset_at'] = None
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            st, _, body = http('POST', self.base + '/api/auth/reset', {})
-        self.assertEqual((st, json.loads(body)), (202, {'ok': True}))
-        m = re.fullmatch(r'admin password reset for admin: (\S{20})\n', out.getvalue())
-        self.assertTrue(m, out.getvalue())
-        self.assertEqual(http('GET', self.base + '/api/jobs', cookie=cookie)[0], 401)
-        u = self.base + '/api/auth/login'
-        self.assertEqual(http('POST', u, {'username': 'admin', 'password': 'correct-horse-42'})[0], 401)
-        self.assertEqual(http('POST', u, {'username': 'admin', 'password': m.group(1)})[0], 200)
-        clock[0] += auth.RESET_COOLDOWN - 1
-        with contextlib.redirect_stdout(io.StringIO()) as quiet:
-            st, _, body = http('POST', self.base + '/api/auth/reset', {})
-        self.assertEqual((st, json.loads(body)), (429, {'error': 'cooldown', 'retry_after': 1}))
-        self.assertEqual(quiet.getvalue(), '')
-        clock[0] += 1
-        with contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(http('POST', self.base + '/api/auth/reset', {})[0], 202)
 
 
 DEVICE = {'name': 'Pixel 8', 'model': 'Pixel 8', 'sdk': 35, 'android_release': '15', 'abi_list': ['arm64-v8a']}
@@ -231,14 +206,21 @@ class DeviceTokenTest(DataTestCase):
             self.assertEqual(self.bearer('GET', '/api/jobs', 'guess')[0], 401)
         self.assertEqual(json.loads(self.bad_login()[2])['attempts_left'], auth.MAX_FAILS - 1)
 
-    def test_reset_and_password_change_keep_device_tokens(self):
+    def test_env_password_and_password_change_keep_device_tokens(self):
         tok = self.token()['token']
         before = db.conn().execute("SELECT token_hash FROM devices").fetchone()[0]
         st, _, _ = http('POST', self.base + '/api/auth/password', {'old': 'correct-horse-42', 'new': 'long-enough-pw'},
                         cookie=self.cookie)
         self.assertEqual(st, 200)
-        with contextlib.redirect_stdout(io.StringIO()):
-            auth.reset_password()
-        self.assertEqual(http('GET', self.base + '/api/jobs', cookie=self.cookie)[0], 401)
+        self.assertEqual(http('GET', self.base + '/api/jobs', cookie=self.cookie)[0], 200)
+        cookie = login(self.base, 'long-enough-pw')
+        out = io.StringIO()
+        with mock.patch.dict('os.environ', {auth.ADMIN_PASSWORD_ENV: 'from-env-password'}), contextlib.redirect_stdout(out):
+            auth.apply_env_password()
+        self.assertNotIn('from-env-password', out.getvalue())
+        for old in (self.cookie, cookie):
+            self.assertEqual(http('GET', self.base + '/api/jobs', cookie=old)[0], 401)
+        self.assertEqual(http('POST', self.base + '/api/auth/login', {'username': 'admin', 'password': 'long-enough-pw'})[0], 401)
+        self.assertEqual(http('POST', self.base + '/api/auth/login', {'username': 'admin', 'password': 'from-env-password'})[0], 200)
         self.assertEqual(self.bearer('GET', '/api/jobs', tok)[0], 200)
         self.assertEqual(db.conn().execute("SELECT token_hash FROM devices").fetchone()[0], before)

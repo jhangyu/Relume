@@ -38,7 +38,7 @@ docker compose -f local/docker-compose.yml up -d --build
 
 Open `http://localhost:47000` (in bridge mode the port is `RELUME_WEB_PORT`). All settings are listed in `local/.env.example`; the data directory (database, logs, artifacts, caches) is `RELUME_DATA_DIR`, default `local/data`.
 
-On first start, open the Web UI and create the admin account (username + password). Forgot it: the login page's "Forgot password?" button writes a new random password to the server log (`docker logs relume-app`, or Portainer > Containers > relume-app > Logs). Web UI pages: app catalog (patches, options and version pin per app), builds, schedules, devices and settings. Helper commands: `docker exec relume-app python3 -m webui reset-password` and `docker exec relume-app python3 -m webui export-seed`.
+On first start, open the Web UI and create the admin account (username + password). Forgot it: set `RELUME_ADMIN_PASSWORD` (at least 10 characters) in the `app` service environment and restart the container. At boot the admin password becomes that value and every browser session is signed out. Phone device tokens keep working. Remove the variable afterwards. It does nothing before the admin account exists. Web UI pages: app catalog (patches, options and version pin per app), builds, schedules, devices and settings. Helper command: `docker exec relume-app python3 -m webui export-seed`.
 
 ### Portainer
 
@@ -50,7 +50,7 @@ On first start, open the Web UI and create the admin account (username + passwor
 
 ## Tests
 
-`python3 scripts/test.py [--legs python,shell,android]` runs everything (default all three legs). The python and shell legs run on Linux in Docker: `docker build -f local/Dockerfile --target app -t relume-gate . && docker run --rm -v "$PWD:/repo" -w /repo relume-gate env -u RELUME_VERSION python3 scripts/test.py --legs python,shell`. The android leg needs `ANDROID_HOME`. The run fails when the suite takes over 90 s, a test takes over 1 s, a test source contains `sleep` or `delay(`, or a requested leg's tool is missing; skipped tests are counted per leg.
+`python3 scripts/test.py [--legs python,shell,android]` (macOS and Linux only) runs everything (default all three legs). The python and shell legs run on Linux in Docker: `docker build -f local/Dockerfile --target app -t relume-gate . && docker run --rm -v "$PWD:/repo" -w /repo relume-gate env -u RELUME_VERSION python3 scripts/test.py --legs python,shell`. The android leg needs `ANDROID_HOME`. The run fails when the suite takes over 90 s, a test takes over 1 s, a test source contains `sleep` or `delay(`, or a requested leg's tool is missing; skipped tests are counted per leg.
 
 ## More
 

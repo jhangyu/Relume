@@ -4,6 +4,7 @@ import hmac
 import http.cookies
 import json
 import math
+import os
 import re
 import secrets
 import threading
@@ -13,7 +14,7 @@ from . import catalog, db, devices, ota, settings
 from .server import HttpError, is_int
 
 COOKIE = 'relume_session'
-PUBLIC = {('POST', '/api/auth/login'), ('POST', '/api/auth/setup'), ('POST', '/api/auth/reset'),
+PUBLIC = {('POST', '/api/auth/login'), ('POST', '/api/auth/setup'),
           ('POST', '/api/auth/device'), ('GET', '/api/auth/state'), ('GET', '/api/health')}
 # a device token gets 403 here: these change the account or revoke another phone
 SESSION_ONLY = {('POST', '/api/auth/password'), ('POST', '/api/auth/logout'), ('PUT', '/api/settings'),
@@ -21,13 +22,13 @@ SESSION_ONLY = {('POST', '/api/auth/password'), ('POST', '/api/auth/logout'), ('
 DEVICE_NAME_MAX = 64
 MAX_FAILS, WINDOW, LOCK = 5, 300, 300
 REMEMBER, SHORT = 30 * 86400, 12 * 3600
-RESET_COOLDOWN = 300
+ADMIN_PASSWORD_ENV = 'RELUME_ADMIN_PASSWORD'
 SCRYPT_N = 2 ** 14
 MIN_PASSWORD = 10
 USERNAME_RE = re.compile(r'[A-Za-z0-9._-]{1,64}\Z')
 _clock = time.monotonic
 _fails = []
-_state = {'locked_until': 0.0, 'reset_at': None}
+_state = {'locked_until': 0.0}
 _lock = threading.Lock()
 
 
@@ -52,25 +53,27 @@ def set_password(pw):
     settings.put('admin_password_hash', hash_password(pw))
 
 
-def new_password():
-    return secrets.token_urlsafe(15)
-
-
 def account_exists():
     return settings.get('admin_username') is not None and settings.get('admin_password_hash') is not None
 
 
-def reset_password():
-    """Random new password to stdout (server log), all sessions deleted. Used by the reset endpoint and the CLI."""
-    username = settings.get('admin_username')
-    if username is None or settings.get('admin_password_hash') is None:
-        raise HttpError(409, 'setup required')
-    pw = new_password()
-    with db.tx() as c:  # one transaction: a failed DELETE cannot leave an unprinted new password
+def apply_env_password():
+    """Boot step: RELUME_ADMIN_PASSWORD (non-empty) replaces the admin password and signs out every cookie session.
+    Device tokens stay. Without an account the variable is reported and ignored: setup needs a username, which the
+    variable does not carry. The password is never printed."""
+    pw = os.environ.get(ADMIN_PASSWORD_ENV)
+    if not pw:
+        return
+    if len(pw) < MIN_PASSWORD:
+        raise ValueError(f'{ADMIN_PASSWORD_ENV} must have at least {MIN_PASSWORD} characters, got {len(pw)}')
+    if not account_exists():
+        print(f'{ADMIN_PASSWORD_ENV} ignored: no admin account yet, create it on the setup page first', flush=True)
+        return
+    with db.tx() as c:  # one transaction: the new hash and the sign-out of old sessions happen together
         c.execute('INSERT INTO settings(key, value) VALUES (?, ?) '
                   'ON CONFLICT(key) DO UPDATE SET value=excluded.value', ('admin_password_hash', json.dumps(hash_password(pw))))
         c.execute('DELETE FROM sessions')
-    print(f'admin password reset for {username}: {pw}', flush=True)
+    print(f'admin password set from {ADMIN_PASSWORD_ENV}, all sessions signed out', flush=True)
 
 
 def reset_lockout():
@@ -145,17 +148,6 @@ def setup(req):
                       'ON CONFLICT(key) DO UPDATE SET value=excluded.value', (k, json.dumps(v)))
     _, cookie = create_session(bool(req.json.get('remember', True)))
     return 200, {'ok': True}, {'Set-Cookie': cookie}
-
-
-def reset(req):
-    now = _clock()
-    with _lock:
-        last = _state['reset_at']
-        if last is not None and now - last < RESET_COOLDOWN:
-            return 429, {'error': 'cooldown', 'retry_after': math.ceil(RESET_COOLDOWN - (now - last))}
-        reset_password()
-        _state['reset_at'] = now
-    return 202, {'ok': True}
 
 
 def _check_credentials(req):
@@ -270,7 +262,6 @@ def change_password(req):
 ROUTES = [
     ('GET', '/api/auth/state', auth_state),
     ('POST', '/api/auth/setup', setup),
-    ('POST', '/api/auth/reset', reset),
     ('POST', '/api/auth/login', login),
     ('POST', '/api/auth/logout', logout),
     ('POST', '/api/auth/password', change_password),

@@ -3,7 +3,7 @@ import sys
 
 from . import auth, ci, db, jobs, scheduler, server, settings
 
-USAGE = 'usage: python3 -m webui [serve|reset-password|ci-plan|ci-build|export-seed]'
+USAGE = 'usage: python3 -m webui [serve|ci-plan|ci-build|export-seed]'
 
 
 # Modes of the data subdirectories, set at every boot so an empty volume needs no host preparation. The server
@@ -34,6 +34,7 @@ def boot(start=False, names=None):
         if hasattr(m, 'register'):
             m.register()
     if start:
+        auth.apply_env_password()
         settings.check_token_file()
         jobs.recover()
         jobs.start()
@@ -50,14 +51,6 @@ def main(argv=None):
     if cmd in ('ci-plan', 'ci-build', 'export-seed'):
         boot()
         return ci.main(argv)
-    if cmd == 'reset-password':
-        boot()
-        try:
-            auth.reset_password()
-        except server.HttpError as e:
-            print(f'reset-password failed: {e.message}', file=sys.stderr)
-            return 1
-        return 0
     if cmd != 'serve':
         print(USAGE, file=sys.stderr)
         return 2

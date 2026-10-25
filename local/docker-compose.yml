@@ -68,6 +68,7 @@ services:
               "python3", "-m", "webui"]
     environment:
       HOME: /private/data/home
+      # RELUME_ADMIN_PASSWORD: <at least 10 characters>   # uncomment, restart, then remove again: sets the admin password at boot and signs out all browser sessions
       RELUME_DATA: /private/data
       RELUME_RUNNER_UID: "10001"
       RELUME_RUNNER_DATA: /data

@@ -1,7 +1,7 @@
-import { $, api, ask, fmt, html } from '/static/app.js';
+import { $, api, fmt, html } from '/static/app.js';
 
 const MIN_PASSWORD_LENGTH = 10;
-const form = $('#f'), user = $('#u'), pw = $('#p'), pw2 = $('#p2'), err = $('#err'), info = $('#info'), go = $('#go');
+const form = $('#f'), user = $('#u'), pw = $('#p'), pw2 = $('#p2'), err = $('#err'), go = $('#go');
 let setupMode = false;
 const cooldownTimers = new Map(); // one cooldown timer per button
 
@@ -15,13 +15,6 @@ $('#pwt').addEventListener('click', e => {
 function showError(text) {
   err.querySelector('span').textContent = text;
   err.hidden = false;
-  info.hidden = true;
-}
-
-function showInfo(text) {
-  info.querySelector('span').textContent = text;
-  info.hidden = false;
-  err.hidden = true;
 }
 
 const minSec = s => `${Math.floor(s / 60)} min ${s % 60} s`;
@@ -35,7 +28,6 @@ function setMode(setup) {
   $('#cf').hidden = $('#ph').hidden = !setup;
   pw2.required = setup;
   pw.autocomplete = setup ? 'new-password' : 'current-password';
-  $('#forgot').hidden = setup;
   go.lastChild.textContent = setup ? 'Create account' : 'Sign in';
 }
 
@@ -85,26 +77,6 @@ form.addEventListener('submit', async e => {
       const s = ex.data.retry_after;
       showError(`Too many attempts. Try again in ${minSec(s)}.`);
       lockButton(go, s);
-    } else {
-      showError('Server unreachable');
-    }
-  }
-});
-
-$('#forgot').addEventListener('click', async e => {
-  if (await ask($('#dlg-reset')) !== 'ok') return;
-  const btn = e.currentTarget;
-  try {
-    await api('POST', '/api/auth/reset');
-    showInfo('Password reset. The new password is in the server log: Portainer > Containers > relume-app > Logs, or run `docker logs relume-app`. Look for the line "admin password reset for".');
-  } catch (ex) {
-    if (ex.status === 429) {
-      const s = ex.data.retry_after;
-      showError(`A reset was just done. Try again in ${minSec(s)}.`);
-      lockButton(btn, s);
-    } else if (ex.status === 409) {
-      await boot();
-      showError('No account exists yet. Create it below.');
     } else {
       showError('Server unreachable');
     }
