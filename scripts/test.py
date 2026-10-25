@@ -9,6 +9,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import threading
@@ -44,13 +45,20 @@ _start = time.monotonic()
 
 
 def run_bounded(leg, cmd, **kwargs):
-    """subprocess.run with a fail-fast timeout: whatever is left of TOTAL_BUDGET_S."""
+    """subprocess.run with a fail-fast timeout: whatever is left of TOTAL_BUDGET_S.
+
+    The child leads its own process group; on timeout the whole group is killed so a hung grandchild cannot outlive the budget."""
     remaining = TOTAL_BUDGET_S - (time.monotonic() - _start)
-    try:
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=max(remaining, 0), **kwargs)
-    except subprocess.TimeoutExpired:
-        raise BudgetExceeded(f"{leg} leg: {' '.join(map(str, cmd[:4]))} still running after "
-                             f"{time.monotonic() - _start:.1f}s, budget {TOTAL_BUDGET_S}s") from None
+    with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                          start_new_session=True, **kwargs) as proc:
+        try:
+            stdout, stderr = proc.communicate(timeout=max(remaining, 0))
+        except subprocess.TimeoutExpired:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.communicate()
+            raise BudgetExceeded(f"{leg} leg: {' '.join(map(str, cmd[:4]))} still running after "
+                                 f"{time.monotonic() - _start:.1f}s, budget {TOTAL_BUDGET_S}s") from None
+    return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
 
 
 class JsonLineResult(unittest.TestResult):
@@ -131,12 +139,13 @@ def shell_leg(root):
     """Each PASS/FAIL line the script prints is one test, timed from the previous case line."""
     if shutil.which("bash") is None:
         raise SystemExit("shell leg: required tool 'bash' not found on PATH")
-    proc = subprocess.Popen(["bash", SHELL_SCRIPT], cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    proc = subprocess.Popen(["bash", SHELL_SCRIPT], cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                            start_new_session=True)
     timed_out = threading.Event()
 
     def expire():
         timed_out.set()
-        proc.kill()
+        os.killpg(proc.pid, signal.SIGKILL)
 
     watchdog = threading.Timer(max(TOTAL_BUDGET_S - (time.monotonic() - _start), 0), expire)
     watchdog.start()
@@ -167,7 +176,7 @@ def android_leg(root):
     sdk = os.environ.get("ANDROID_HOME")
     if not sdk:
         raise SystemExit("android leg: environment variable ANDROID_HOME is not set")
-    gradlew = root / "android" / ("gradlew.bat" if os.name == "nt" else "gradlew")
+    gradlew = root / "android" / "gradlew"
     if not gradlew.is_file():
         raise SystemExit(f"android leg: {gradlew} not found")
     results = root / "android" / "app" / "build" / "test-results" / "testDebugUnitTest"
