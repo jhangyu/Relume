@@ -20,6 +20,7 @@ class DataTestCase(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.addCleanup(jobs.stop)      # runs before tmp.cleanup (LIFO): no worker touches a removed dir
+        self.addCleanup(db.close)       # this thread's connection; the last test's would finalize unclosed
         self.data = pathlib.Path(tmp.name)
         db.init(self.data)
         db.migrate(self.schema_dir)
@@ -84,7 +85,8 @@ def http(method, url, body=None, cookie=None, headers=None):
         with _opener.open(req, timeout=15) as r:
             return r.status, dict(r.headers), r.read()
     except urllib.error.HTTPError as e:
-        return e.code, dict(e.headers), e.read()
+        with e:
+            return e.code, dict(e.headers), e.read()
 
 
 def login(base_url, password='correct-horse-42', username='admin'):
