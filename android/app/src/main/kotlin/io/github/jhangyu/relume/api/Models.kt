@@ -355,7 +355,7 @@ data class FollowedApp(
 )
 
 @Serializable
-data class FollowedFile(val name: String, val abi: String?, val url: String)
+data class FollowedFile(val name: String, val abi: String?, @SerialName("version_name") val versionName: String?, val url: String)
 
 @Serializable
 data class AppBundle(

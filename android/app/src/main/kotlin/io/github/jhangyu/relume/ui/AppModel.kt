@@ -100,6 +100,15 @@ class AppModel(application: Application) : AndroidViewModel(application) {
 
     fun followedStep(app: FollowedApp): PlanStep? = plan?.steps?.firstOrNull { it.refId == app.id && it.kind == StepKind.PROJECT }
 
+    /** Version Install would put on the phone: the plan step's file, else the first listed file with a version. */
+    fun followedTarget(app: FollowedApp): String? = followedStep(app)?.download?.versionName ?: app.files.firstNotNullOfOrNull { it.versionName }
+
+    fun followedPhone(app: FollowedApp): PhoneState {
+        val installed = app.packageName?.let(installed::get)
+        val target = followedTarget(app)
+        return phoneState(followedStep(app), installed, target != null && target != installed?.versionName)
+    }
+
     fun signedIn() {
         api = relume.api
         notice = null

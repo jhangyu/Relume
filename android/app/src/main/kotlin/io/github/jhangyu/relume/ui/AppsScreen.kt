@@ -53,7 +53,7 @@ fun AppsScreen(model: AppModel, onOpenSettings: (Int) -> Unit, onOpenLog: (Int, 
     var fixing by remember { mutableStateOf<Pair<AppObject, Lookup>?>(null) }
     val all = model.apps.map(model::facts)
     val visible = all.filter { AppFilter.entries[filter].matches(it) }
-    val followed = model.followed.map { it to phoneState(model.followedStep(it), it.packageName?.let(model.installed::get), newer = false) }
+    val followed = model.followed.map { it to model.followedPhone(it) }
     val visibleFollowed = followed.filter { (_, p) -> AppFilter.entries[filter].followed(p) }
     val run by InstallRunner.state.collectAsState()
     val installing = run?.steps.orEmpty()
@@ -221,7 +221,7 @@ private fun FollowedCard(app: FollowedApp, phone: PhoneState, installing: Boolea
             }
             Hairline()
             Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                PhonePill(installing, phone, app.version, app.packageName?.let(model.installed::get))
+                PhonePill(installing, phone, model.followedTarget(app), app.packageName?.let(model.installed::get))
                 Spacer(Modifier.weight(1f))
                 if (!installing && !app.blocked && app.files.isNotEmpty() && (phone == PhoneState.NotInstalled || phone == PhoneState.Update)) {
                     ActionButton(if (phone == PhoneState.Update) "Update" else "Install", { model.beginInstall(StepKind.PROJECT, app.id) }, kind = ButtonKind.Install, icon = R.drawable.ms_install_mobile, size = ButtonSize.Small)
