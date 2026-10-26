@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Window theme only; Compose draws everything (FluentTheme in ui/). -->
-    <style name="Theme.Relume" parent="android:Theme.DeviceDefault.DayNight">
-        <item name="android:windowActionBar">false</item>
-        <item name="android:windowNoTitle">true</item>
+    <!-- Window theme only; Compose draws everything (RelumeTheme in ui/). Light only. -->
+    <style name="Theme.Relume" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#FFF8F8F8</item>
     </style>
 </resources>

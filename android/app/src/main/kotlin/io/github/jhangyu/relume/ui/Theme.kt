@@ -1,9 +1,7 @@
 package io.github.jhangyu.relume.ui
 
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.Typography
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -14,73 +12,79 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Fluent 2 tokens of fluent-alt-NOTES.md / spec 10; light and dark ramps. */
+/** One fixed light scheme (android/tokens.md sections 1 and 2): no dynamic colour, no dark scheme. */
+val RelumeLight = lightColorScheme(
+    primary = Color(0xFF6E5FD4), onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFE6E1FF), onPrimaryContainer = Color(0xFF34248C),
+    secondary = Color(0xFF2F6EAE), onSecondary = Color(0xFFFFFFFF),
+    secondaryContainer = Color(0xFFDBE9FF), onSecondaryContainer = Color(0xFF0B3D91),
+    tertiary = Color(0xFFB85A35), onTertiary = Color(0xFFFFFFFF),
+    tertiaryContainer = Color(0xFFFFE1D5), onTertiaryContainer = Color(0xFF7D2A0E),
+    error = Color(0xFFBA1A1A), onError = Color(0xFFFFFFFF),
+    errorContainer = Color(0xFFFFDAD6), onErrorContainer = Color(0xFF93000A),
+    background = Color(0xFFF8F8F8), onBackground = Color(0xFF1C1C1C),
+    surface = Color(0xFFF8F8F8), onSurface = Color(0xFF1C1C1C),
+    surfaceVariant = Color(0xFFE8E8E8), onSurfaceVariant = Color(0xFF474747),
+    surfaceContainerLowest = Color(0xFFFFFFFF),
+    surfaceContainerLow = Color(0xFFF3F3F3),
+    surfaceContainer = Color(0xFFEEEEEE),
+    surfaceContainerHigh = Color(0xFFE8E8E8),
+    surfaceContainerHighest = Color(0xFFE2E2E2),
+    outline = Color(0xFF767676), outlineVariant = Color(0xFFC8C8C8),
+    inverseSurface = Color(0xFF303030), inverseOnSurface = Color(0xFFF1F1F1),
+)
+
+/** A pastel container with the dark text colour that sits on it (tokens.md section 3). */
 @Immutable
-class FluentColors(
-    val bg: Color, val bg2: Color, val card: Color,
-    val stroke: Color, val stroke2: Color,
-    val fg: Color, val fg2: Color, val fg3: Color,
-    val accent: Color, val onAccent: Color,
-    val ok: Color, val warn: Color, val danger: Color, val info: Color,
-    val dark: Boolean,
+class Pastel(val container: Color, val onContainer: Color)
+
+/** Extended roles of tokens.md section 3 and the per-tab navigation indicators. */
+@Immutable
+class RelumeColors(
+    val blue: Pastel = Pastel(Color(0xFFDBE9FF), Color(0xFF0B3D91)),
+    val green: Pastel = Pastel(Color(0xFFD4F3DC), Color(0xFF14532D)),
+    val amber: Pastel = Pastel(Color(0xFFFFEDC2), Color(0xFF6B4500)),
+    val coral: Pastel = Pastel(Color(0xFFFFE1D6), Color(0xFF8A2C0D)),
+    val pink: Pastel = Pastel(Color(0xFFFDE0EF), Color(0xFF8A1650)),
+    val lavender: Pastel = Pastel(Color(0xFFE8E0FF), Color(0xFF4A2A8F)),
+    val teal: Pastel = Pastel(Color(0xFFD0F2EE), Color(0xFF0F5249)),
+    /** Glyph colours by meaning: build, sync and search, add link. */
+    val buildGlyph: Color = Color(0xFF34248C),
+    val syncGlyph: Color = Color(0xFF0B3D91),
+    val linkGlyph: Color = Color(0xFF6B4500),
 )
 
-private val LightColors = FluentColors(
-    bg = Color(0xFFFAFAFA), bg2 = Color(0xFFFFFFFF), card = Color(0xFFFFFFFF),
-    stroke = Color(0xFFE0E0E0), stroke2 = Color(0xFFD1D1D1),
-    fg = Color(0xFF242424), fg2 = Color(0xFF424242), fg3 = Color(0xFF707070),
-    accent = Color(0xFF2B6AE8), onAccent = Color(0xFFFFFFFF),
-    ok = Color(0xFF107C10), warn = Color(0xFFBC4B09), danger = Color(0xFFB10E1C), info = Color(0xFF0F6CBD),
-    dark = false,
+val LocalRelumeColors = staticCompositionLocalOf { RelumeColors() }
+
+/** `MaterialTheme.relume.green` and so on. */
+val MaterialTheme.relume: RelumeColors
+    @Composable @ReadOnlyComposable get() = LocalRelumeColors.current
+
+/** Every role one step down the MD3 scale (tokens.md section 4); components keep their default slot. */
+private fun style(size: Int, line: Int, weight: FontWeight, tracking: Double) =
+    TextStyle(fontSize = size.sp, lineHeight = line.sp, fontWeight = weight, letterSpacing = tracking.sp)
+
+val RelumeTypography = Typography(
+    headlineSmall = style(22, 28, FontWeight.Normal, 0.0),
+    titleLarge = style(16, 24, FontWeight.Medium, 0.15),
+    titleMedium = style(14, 20, FontWeight.Medium, 0.1),
+    titleSmall = style(12, 16, FontWeight.Medium, 0.5),
+    bodyLarge = style(14, 20, FontWeight.Normal, 0.25),
+    bodyMedium = style(12, 16, FontWeight.Normal, 0.4),
+    bodySmall = style(11, 16, FontWeight.Normal, 0.4),
+    labelLarge = style(12, 16, FontWeight.Medium, 0.5),
+    labelMedium = style(11, 16, FontWeight.Medium, 0.5),
+    labelSmall = style(11, 16, FontWeight.Medium, 0.5),
 )
 
-private val DarkColors = FluentColors(
-    bg = Color(0xFF141414), bg2 = Color(0xFF1F1F1F), card = Color(0xFF292929),
-    stroke = Color(0xFF3D3D3D), stroke2 = Color(0xFF525252),
-    fg = Color(0xFFFFFFFF), fg2 = Color(0xFFD6D6D6), fg3 = Color(0xFFA3A3A3),
-    accent = Color(0xFF5FB8FF), onAccent = Color(0xFF09090B),
-    ok = Color(0xFF54B054), warn = Color(0xFFFAA06B), danger = Color(0xFFDC626D), info = Color(0xFF479EF5),
-    dark = true,
-)
+/** Monospace slot for versions, tags and log lines. */
+val MonoSmall = TextStyle(fontSize = 11.sp, lineHeight = 16.sp, fontFamily = FontFamily.Monospace)
 
-/** Radii 4 (controls), 8 (cards), 12 (dialogs). */
-object FluentShapes {
-    val control = RoundedCornerShape(4.dp)
-    val card = RoundedCornerShape(8.dp)
-    val dialog = RoundedCornerShape(12.dp)
-}
-
-/** Body 14 sp, title 20 sp semibold, versions monospace. */
-object FluentType {
-    val body = TextStyle(fontSize = 14.sp, lineHeight = 20.sp)
-    val small = TextStyle(fontSize = 12.sp, lineHeight = 16.sp)
-    val label = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-    val title = TextStyle(fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold)
-    val headline = TextStyle(fontSize = 26.sp, fontWeight = FontWeight.Bold)
-    val mono = TextStyle(fontSize = 13.sp, fontFamily = FontFamily.Monospace)
-    val monoSmall = TextStyle(fontSize = 11.5.sp, lineHeight = 19.sp, fontFamily = FontFamily.Monospace)
-}
-
-private val LocalFluentColors = staticCompositionLocalOf<FluentColors> { error("FluentTheme is missing above this composable") }
-
-object FluentTheme {
-    val colors: FluentColors
-        @Composable @ReadOnlyComposable get() = LocalFluentColors.current
-}
-
-/** Material3 is used only for neutral shells (pull-to-refresh); its scheme is mapped from the Fluent tokens. */
 @Composable
-fun FluentTheme(content: @Composable () -> Unit) {
-    val c = if (isSystemInDarkTheme()) DarkColors else LightColors
-    val scheme = if (c.dark) {
-        darkColorScheme(primary = c.accent, onPrimary = c.onAccent, surface = c.card, onSurface = c.fg, background = c.bg)
-    } else {
-        lightColorScheme(primary = c.accent, onPrimary = c.onAccent, surface = c.card, onSurface = c.fg, background = c.bg)
-    }
-    CompositionLocalProvider(LocalFluentColors provides c) {
-        MaterialTheme(colorScheme = scheme, content = content)
+fun RelumeTheme(content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalRelumeColors provides RelumeColors()) {
+        MaterialTheme(colorScheme = RelumeLight, typography = RelumeTypography, content = content)
     }
 }

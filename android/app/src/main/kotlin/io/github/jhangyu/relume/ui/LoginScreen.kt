@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +41,7 @@ import kotlinx.coroutines.launch
 import java.io.IOException
 
 private val LOGO_SIZE = 52.dp
+private const val LOGO_LETTER = "R"
 
 /** Registration answer held until the user decides about adopting an ADB row (token is stored only after that). */
 private class Pending(val url: ServerUrl, val token: String, val adb: List<AdbDevice>)
@@ -65,7 +67,6 @@ private val PendingSaver = listSaver<Pending?, String>(
  */
 @Composable
 fun LoginScreen(app: RelumeApp, notice: String?, onSignedIn: () -> Unit) {
-    val c = FluentTheme.colors
     val scope = rememberCoroutineScope()
     var urlText by rememberSaveable { mutableStateOf(app.prefs.serverUrl?.toString().orEmpty()) }
     var user by rememberSaveable { mutableStateOf("") }
@@ -139,49 +140,42 @@ fun LoginScreen(app: RelumeApp, notice: String?, onSignedIn: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Box(
-            Modifier.padding(top = 30.dp).size(LOGO_SIZE).clip(RoundedCornerShape(14.dp)).background(c.accent),
+            Modifier.padding(top = 30.dp).size(LOGO_SIZE).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.primary),
             contentAlignment = Alignment.Center,
-        ) { Ic(Icons.Box, c.onAccent, 28.dp) }
-        Txt("Connect to Relume", style = FluentType.headline)
+        ) { Txt(LOGO_LETTER, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onPrimary) }
+        Txt("Connect to Relume", style = MaterialTheme.typography.headlineSmall)
         val choice = pending
         if (choice != null) {
             AdoptChoice(choice, busy, onAdopt = { finish(choice.url, choice.token, it) }, onNew = { finish(choice.url, choice.token, null) })
-            formError?.let { MessageBar("Sign-in failed", Tone.Danger, detail = it) }
+            formError?.let { Banner("Sign-in failed", Tone.Danger, detail = it) }
             return@Column
         }
-        Txt("Enter your Relume server address and sign in with the admin account.", color = c.fg3)
-        notice?.let { MessageBar(it, Tone.Warn) }
-        unreachable?.let { (head, detail) -> MessageBar(head, Tone.Danger, detail = detail, action = "Retry", onAction = ::submit) }
-        formError?.let { MessageBar("Sign-in failed", Tone.Danger, detail = it) }
+        Txt("Enter your Relume server address and sign in with the admin account.", color = muted())
+        notice?.let { Banner(it, Tone.Warn) }
+        unreachable?.let { (head, detail) -> Banner(head, Tone.Danger, detail = detail, action = "Retry", onAction = ::submit) }
+        formError?.let { Banner("Sign-in failed", Tone.Danger, detail = it) }
         Field(
-            "Server URL", urlText, { urlText = it }, icon = Icons.Server, mono = true, error = urlError,
+            "Server URL", urlText, { urlText = it }, mono = true, error = urlError,
             hint = "https:// recommended · works over Tailscale or a reverse proxy",
             keyboard = KeyboardOptions(keyboardType = KeyboardType.Uri),
         )
-        Field("Username", user, { user = it }, icon = Icons.User)
-        Field("Password", password, { password = it }, icon = Icons.Lock, secret = true)
-        FButton("Sign in", ::submit, Modifier.fillMaxWidth(), kind = ButtonKind.Primary, enabled = !busy && user.isNotBlank() && password.isNotEmpty() && urlText.isNotBlank())
+        Field("Username", user, { user = it })
+        Field("Password", password, { password = it }, secret = true)
+        ActionButton("Sign in", ::submit, Modifier.fillMaxWidth(), kind = ButtonKind.Primary, enabled = !busy && user.isNotBlank() && password.isNotEmpty() && urlText.isNotBlank())
         Txt(
             "Signing in registers this phone and stores a per-device token. Revoke it any time from the server.",
-            style = FluentType.small, color = c.fg3,
+            style = MaterialTheme.typography.bodyMedium, color = muted(),
         )
     }
 }
 
 @Composable
 private fun AdoptChoice(pending: Pending, busy: Boolean, onAdopt: (Int) -> Unit, onNew: () -> Unit) {
-    val c = FluentTheme.colors
-    Txt("Is this phone already on the server as an ADB device? Choosing one keeps its app assignments.", color = c.fg3)
+    Txt("Is this phone already on the server as an ADB device? Choosing one keeps its app assignments.", color = muted())
     pending.adb.forEach { d ->
-        FCard(Modifier.clickable(enabled = !busy) { onAdopt(d.id) }) {
-            Row(Modifier.heightIn(min = TouchTarget).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Ic(Icons.Phone)
-                Column(Modifier.weight(1f)) {
-                    Txt(d.name, bold = true)
-                    d.model?.let { Txt(it, style = FluentType.small, color = c.fg3) }
-                }
-            }
+        InsetGroup(Modifier.clickable(enabled = !busy) { onAdopt(d.id) }) {
+            ListRow(d.name, supporting = d.model)
         }
     }
-    FButton("No, register as a new device", onNew, Modifier.fillMaxWidth(), enabled = !busy)
+    ActionButton("No, register as a new device", onNew, Modifier.fillMaxWidth(), kind = ButtonKind.Outlined, enabled = !busy)
 }

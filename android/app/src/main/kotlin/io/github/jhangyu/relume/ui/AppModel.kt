@@ -8,15 +8,15 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.jhangyu.relume.RelumeApp
 import io.github.jhangyu.relume.api.ApiError
-import io.github.jhangyu.relume.api.Artifact
-import io.github.jhangyu.relume.api.Catalog
+import io.github.jhangyu.relume.api.AppObject
 import io.github.jhangyu.relume.api.CleanupReport
 import io.github.jhangyu.relume.api.DeviceView
 import io.github.jhangyu.relume.api.Health
 import io.github.jhangyu.relume.api.InstalledPackage
 import io.github.jhangyu.relume.api.InstallPlan
 import io.github.jhangyu.relume.api.CheckInterval
-import io.github.jhangyu.relume.api.Item
+import io.github.jhangyu.relume.api.OtaSchedule
+import io.github.jhangyu.relume.api.Schedule
 import io.github.jhangyu.relume.api.PlanAction
 import io.github.jhangyu.relume.api.PlanStep
 import io.github.jhangyu.relume.api.StepKind
@@ -30,6 +30,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
 import java.io.IOException
 
 private const val HTTP_UNAUTHORIZED = 401
@@ -45,7 +46,11 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         private set
     var health by mutableStateOf<Health?>(null)
         private set
-    var catalog by mutableStateOf<Catalog?>(null)
+    var apps by mutableStateOf<List<AppObject>>(emptyList())
+        private set
+    var schedule by mutableStateOf<Schedule?>(null)
+        private set
+    var otaSchedules by mutableStateOf<List<OtaSchedule>>(emptyList())
         private set
     var device by mutableStateOf<DeviceView?>(null)
         private set
@@ -58,20 +63,16 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     var error by mutableStateOf<String?>(null)
         private set
 
-    /** Bumped when any build finished, so the Builds list and detail pages reload. */
-    var buildsVersion by mutableStateOf(0)
-        private set
-
     /** Job ids with an open event stream; a stream ends on `event: end` or on its first error. */
     private val watching = mutableMapOf<Int, Job>()
 
-    val items: List<Item>
-        get() = catalog?.let { c -> c.groups.flatMap { it.items } + c.ungrouped }.orEmpty()
+    /** Marketplace state; it shares this model's server calls and sign-out handling. */
+    val market = MarketModel(this)
 
-    fun item(id: Int): Item? = items.firstOrNull { it.id == id }
+    fun app(id: Int): AppObject? = apps.firstOrNull { it.id == id }
 
-    fun facts(item: Item): AppFacts =
-        AppFacts(item, installed[item.packageName], plan?.steps?.firstOrNull { it.refId == item.id && it.kind == StepKind.ITEM })
+    fun facts(app: AppObject): AppFacts =
+        AppFacts(app, installed[app.packageName], plan?.steps?.firstOrNull { it.refId == app.id && it.kind == StepKind.ITEM })
 
     fun signedIn() {
         api = relume.api
@@ -83,7 +84,10 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         relume.signOut()
         api = null
         notice = reason
-        catalog = null
+        apps = emptyList()
+        schedule = null
+        otaSchedules = emptyList()
+        market.reset()
         device = null
         plan = null
         installed = emptyMap()
@@ -139,7 +143,9 @@ class AppModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun load() {
         health = call { it.health() } ?: return
-        catalog = call { it.catalog() } ?: return
+        apps = call { it.apps() } ?: return
+        schedule = call { it.schedule() } ?: return
+        otaSchedules = call { it.otaSchedules() } ?: return
         loadDeviceState()
         watchActiveJobs()
     }
@@ -179,10 +185,10 @@ class AppModel(application: Application) : AndroidViewModel(application) {
             }
             val d = device ?: run { error = "install: this phone is not registered with the server yet, refresh and try again"; return@launch }
             if (f.step == null) {
-                call { it.putAssignments(d.id, d.assignments.map { a -> a.itemId } + f.item.id, null) } ?: return@launch
+                call { it.putAssignments(d.id, d.assignments.map { a -> a.itemId } + f.app.id, null) } ?: return@launch
             }
-            val scoped = call { it.plan(listOf(f.item.id), null) } ?: return@launch
-            evaluate(f.item.id, scoped)
+            val scoped = call { it.plan(listOf(f.app.id), null) } ?: return@launch
+            evaluate(f.app.id, scoped)
         }
     }
 
@@ -222,20 +228,39 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun loadArtifacts(itemId: Int, into: (List<Artifact>) -> Unit) {
-        viewModelScope.launch { call { it.artifacts(itemId) }?.let(into) }
-    }
-
-    fun setSwitches(itemId: Int, enabled: Boolean?, autoUpdate: Boolean?) {
+    /** Disable: the server keeps the row and its settings, the app leaves this list. */
+    fun disable(appId: Int, done: () -> Unit) {
         viewModelScope.launch {
-            val updated = call { it.setSwitches(itemId, enabled, autoUpdate) } ?: return@launch
-            catalog = catalog?.replacing(updated)
+            call { it.disable(appId); true } ?: return@launch
+            done()
+            refresh()
         }
     }
 
-    /** "Build now": queues a build and opens its stream. */
-    fun build(itemId: Int, opened: (Int) -> Unit) {
-        viewModelScope.launch { call { it.build(itemId) }?.let { opened(it); refresh() } }
+    /** Rebuild: queues a build and opens its stream. */
+    fun rebuild(appId: Int, opened: (Int) -> Unit) {
+        viewModelScope.launch { call { it.build(appId) }?.let { opened(it); refresh() } }
+    }
+
+    /** Saves the partial `PUT /api/apps/{id}` body and, when asked, rebuilds. */
+    fun saveApp(appId: Int, body: JsonObject, rebuildAfter: Boolean, done: (Int?) -> Unit) {
+        viewModelScope.launch {
+            call { it.putApp(appId, body) } ?: return@launch
+            val job = if (rebuildAfter) call { it.build(appId) } ?: return@launch else null
+            done(job)
+            refresh()
+        }
+    }
+
+    fun putSchedule(body: JsonObject) {
+        viewModelScope.launch { call { it.putSchedule(body) }?.let { schedule = it } }
+    }
+
+    fun runSchedule() {
+        viewModelScope.launch {
+            call { it.runSchedule() }
+            refresh()
+        }
     }
 
     /** Settings "Clean up": [cleanupPreview] is the pending confirmation, [cleanupFreed] the result of the last run. */
@@ -258,17 +283,10 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { cleanupFreed = call { it.cleanup() } }
     }
 
-    /** "Check upstream": spec 6.7 per-item update trigger, no rebuild forced. */
-    fun checkUpstream(itemId: Int) {
+    /** Check for an update of one app (the scoped update run). */
+    fun check(appId: Int) {
         viewModelScope.launch {
-            call { it.update(itemId, rebuild = false) }
-            refresh()
-        }
-    }
-
-    fun checkAll() {
-        viewModelScope.launch {
-            call { it.checkAll() }
+            call { it.check(appId) }
             refresh()
         }
     }
@@ -276,11 +294,10 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     /** One stream per job seen active; on its end event the item and plan are refreshed (spec 10, no polling). */
     private fun watchActiveJobs() {
         val a = api ?: return
-        items.mapNotNull { it.activeJob?.jobId }.filter { it !in watching }.forEach { jobId ->
+        apps.filter { it.status.state == STATE_BUILDING || it.status.state == STATE_QUEUED }.mapNotNull { it.status.jobId }.filter { it !in watching }.forEach { jobId ->
             watching[jobId] = viewModelScope.launch {
                 try {
                     withContext(Dispatchers.IO) { a.jobLog(jobId, null) { } }
-                    buildsVersion++
                     refresh()
                 } catch (e: ApiError) {
                     error = describe(e)
@@ -295,12 +312,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
 
     /** Called by the log screen when its own stream ended. */
     fun buildEnded() {
-        buildsVersion++
         refresh()
     }
 }
 
-internal fun Catalog.replacing(updated: Item): Catalog = Catalog(
-    groups = groups.map { g -> io.github.jhangyu.relume.api.Group(g.id, g.name, g.color, g.items.map { if (it.id == updated.id) updated else it }) },
-    ungrouped = ungrouped.map { if (it.id == updated.id) updated else it },
-)

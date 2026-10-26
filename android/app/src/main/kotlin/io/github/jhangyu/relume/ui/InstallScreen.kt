@@ -30,7 +30,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.material3.MaterialTheme
+import io.github.jhangyu.relume.R
 import io.github.jhangyu.relume.api.PlanAction
 import io.github.jhangyu.relume.api.PlanStep
 import io.github.jhangyu.relume.api.StepKind
@@ -45,7 +46,6 @@ private const val PHASE_VERIFY = 1
 private const val PHASE_SYSTEM = 2
 private val PHASES = listOf("Download", "Verify sha256 and signer", "System install")
 private const val KEY_PREVIEW = 16
-private val STEP_NAME = FluentType.body.copy(fontSize = 18.sp)
 
 private enum class PhaseMark { Done, Active, Waiting }
 
@@ -82,20 +82,21 @@ private fun StepState.label(): String = when (this) {
 }
 
 @Composable
-private fun StepState.color(): Color = with(FluentTheme.colors) {
-    when (this@color) {
-        StepState.INSTALLED, StepState.UP_TO_DATE -> ok
-        StepState.FAILED, StepState.NEEDS_UNINSTALL, StepState.DEPENDENCY_FAILED, StepState.SERVER_ERROR -> danger
-        StepState.AWAITING_USER -> warn
-        StepState.CANCELLED, StepState.PENDING -> fg3
-        StepState.DOWNLOADING, StepState.VERIFYING, StepState.COMMITTED -> info
+private fun StepState.pastel(): Pair<Color, Color> {
+    val r = MaterialTheme.relume
+    val s = MaterialTheme.colorScheme
+    return when (this) {
+        StepState.INSTALLED, StepState.UP_TO_DATE -> r.green.container to r.green.onContainer
+        StepState.FAILED, StepState.NEEDS_UNINSTALL, StepState.DEPENDENCY_FAILED, StepState.SERVER_ERROR -> s.errorContainer to s.onErrorContainer
+        StepState.AWAITING_USER -> r.amber.container to r.amber.onContainer
+        StepState.CANCELLED, StepState.PENDING -> s.surfaceContainerHigh to s.onSurfaceVariant
+        StepState.DOWNLOADING, StepState.VERIFYING, StepState.COMMITTED -> r.blue.container to r.blue.onContainer
     }
 }
 
 /** Frames 5a and 5b: one block per plan step, phases for the running ones, buttons for the ones that wait for the user. */
 @Composable
 fun InstallScreen(run: RunState?, model: AppModel, onClose: () -> Unit) {
-    val c = FluentTheme.colors
     val ctx = LocalContext.current
     var uninstallIndex by remember { mutableStateOf<Int?>(null) }
     val corrupt by InstallRunner.corrupt.collectAsState()
@@ -103,13 +104,13 @@ fun InstallScreen(run: RunState?, model: AppModel, onClose: () -> Unit) {
         AppBar("Install", onBack = onClose)
         corrupt?.let { e ->
             Column(Modifier.padding(ScreenPadding), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                MessageBar("The saved install run is corrupt", Tone.Danger, detail = e.message)
-                FButton("Reset install run", { InstallRunner.reset(ctx) }, Modifier.fillMaxWidth(), kind = ButtonKind.Danger)
+                Banner("The saved install run is corrupt", Tone.Danger, detail = e.message)
+                ActionButton("Reset install run", { InstallRunner.reset(ctx) }, Modifier.fillMaxWidth(), kind = ButtonKind.Danger)
             }
             return@Column
         }
         if (run == null) {
-            Txt("No install run.", Modifier.padding(ScreenPadding), color = c.fg3)
+            Txt("No install run.", Modifier.padding(ScreenPadding), color = muted())
             return@Column
         }
         Column(
@@ -117,18 +118,17 @@ fun InstallScreen(run: RunState?, model: AppModel, onClose: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             if (run.stalePlan) {
-                MessageBar("The plan changed on the server", Tone.Warn, detail = "Nothing was reinstalled. Go back, refresh and start again.", action = "Refresh", onAction = model::refresh)
+                Banner("The plan changed on the server", Tone.Warn, detail = "Nothing was reinstalled. Go back, refresh and start again.", action = "Refresh", onAction = model::refresh)
             }
-            run.syncError?.let { MessageBar("Could not report to the server", Tone.Danger, detail = it) }
-            run.outboxError?.let { MessageBar("Could not send an earlier result to the server", Tone.Danger, detail = it) }
+            run.syncError?.let { Banner("Could not report to the server", Tone.Danger, detail = it) }
+            run.outboxError?.let { Banner("Could not send an earlier result to the server", Tone.Danger, detail = it) }
             run.steps.forEachIndexed { i, s -> StepBlock(s, i, ctx, model) { uninstallIndex = i } }
         }
-        Hairline()
-        Column(Modifier.fillMaxWidth().background(c.bg2).padding(horizontal = ScreenPadding, vertical = 10.dp)) {
+        Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer).padding(horizontal = ScreenPadding, vertical = 10.dp)) {
             if (run.isActive || run.steps.any { it.state == StepState.PENDING }) {
-                FButton("Cancel", { InstallRunner.cancel(ctx) }, Modifier.fillMaxWidth())
+                ActionButton("Cancel", { InstallRunner.cancel(ctx) }, Modifier.fillMaxWidth(), kind = ButtonKind.Outlined)
             } else {
-                FButton("Done", onClose, Modifier.fillMaxWidth(), kind = ButtonKind.Primary)
+                ActionButton("Done", onClose, Modifier.fillMaxWidth(), kind = ButtonKind.Primary)
             }
         }
     }
@@ -144,42 +144,47 @@ fun InstallScreen(run: RunState?, model: AppModel, onClose: () -> Unit) {
 
 @Composable
 private fun StepBlock(s: StepRun, index: Int, ctx: Context, model: AppModel, onUninstall: () -> Unit) {
-    val c = FluentTheme.colors
     val step = s.step
-    val icon = if (step.kind == StepKind.ITEM) model.item(step.refId)?.iconUrl else null // project steps have no icon
+    val icon = if (step.kind == StepKind.ITEM) model.app(step.refId)?.iconUrl else null // project steps have no icon
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
             AppTile(step.displayName, icon, model.api, 56.dp)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Txt(step.displayName, style = STEP_NAME, bold = true)
-                step.download?.let { d -> Txt("${d.versionName ?: d.versionCode} · ${formatMb(d.size)}", style = FluentType.mono, color = c.fg3) }
+                Txt(step.displayName, style = MaterialTheme.typography.headlineSmall)
+                step.download?.let { d -> Txt("${d.versionName ?: d.versionCode} · ${formatMb(d.size)}", style = Mono, color = muted()) }
             }
-            Chip(s.state.label(), s.state.color())
+            val (container, onContainer) = s.state.pastel()
+            Pill(s.state.label(), container, onContainer)
         }
         when (s.state) {
             StepState.PENDING, StepState.DOWNLOADING, StepState.VERIFYING, StepState.COMMITTED, StepState.INSTALLED, StepState.AWAITING_USER -> {
                 PhaseList(s.state)
                 val d = step.download
                 if (s.state == StepState.DOWNLOADING && d != null) {
-                    LinearProgressIndicator({ s.downloadedBytes.toFloat() / d.size }, Modifier.fillMaxWidth(), color = c.accent, trackColor = c.stroke2)
-                    Txt("${formatMb(s.downloadedBytes)} of ${formatMb(d.size)}", style = FluentType.mono, color = c.fg3)
+                    LinearProgressIndicator(
+                        { s.downloadedBytes.toFloat() / d.size },
+                        Modifier.fillMaxWidth(),
+                        color = MaterialTheme.relume.blue.onContainer,
+                        trackColor = MaterialTheme.relume.blue.container,
+                    )
+                    Txt("${formatMb(s.downloadedBytes)} of ${formatMb(d.size)}", style = Mono, color = muted())
                 }
                 if (s.state == StepState.PENDING && Inventory.needsConfirmation(ctx, step.packageName)) {
-                    Txt("One confirmation needed in the Android dialog.", style = FluentType.small, color = c.fg3)
+                    Txt("One confirmation needed in the Android dialog.", style = MaterialTheme.typography.bodyMedium, color = muted())
                 }
                 if (s.state == StepState.AWAITING_USER) {
-                    FButton("Confirm", { InstallRunner.confirm(ctx, index) }, Modifier.fillMaxWidth(), kind = ButtonKind.Primary)
+                    ActionButton("Confirm", { InstallRunner.confirm(ctx, index) }, Modifier.fillMaxWidth(), kind = ButtonKind.Install)
                 }
             }
             StepState.NEEDS_UNINSTALL -> {
-                MessageBar(conflictTitle(step), Tone.Danger, detail = s.errorText)
-                FButton("Uninstall and install…", onUninstall, Modifier.fillMaxWidth(), kind = ButtonKind.Danger)
+                Banner(conflictTitle(step), Tone.Danger, detail = s.errorText)
+                ActionButton("Uninstall and install…", onUninstall, Modifier.fillMaxWidth(), kind = ButtonKind.Danger)
             }
             StepState.UP_TO_DATE -> Unit
             StepState.FAILED, StepState.CANCELLED, StepState.DEPENDENCY_FAILED, StepState.SERVER_ERROR ->
-                MessageBar(s.state.label(), Tone.Danger, detail = listOfNotNull(s.errorCode, s.errorText).joinToString(": ").ifEmpty { step.reason })
+                Banner(s.state.label(), Tone.Danger, detail = listOfNotNull(s.errorCode, s.errorText).joinToString(": ").ifEmpty { step.reason })
         }
-        s.receiptError?.let { MessageBar("Could not send the result to the server", Tone.Danger, detail = it) }
+        s.receiptError?.let { Banner("Could not send the result to the server", Tone.Danger, detail = it) }
     }
 }
 
@@ -187,7 +192,9 @@ private fun conflictTitle(step: PlanStep) = if (step.signerConflict) "Signature 
 
 @Composable
 private fun PhaseList(state: StepState) {
-    val c = FluentTheme.colors
+    val ok = MaterialTheme.relume.green.onContainer
+    val active = MaterialTheme.colorScheme.secondary
+    val idle = MaterialTheme.colorScheme.outline
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         phaseMarks(state).forEachIndexed { i, mark ->
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -195,17 +202,17 @@ private fun PhaseList(state: StepState) {
                     Modifier
                         .size(24.dp)
                         .clip(CircleShape)
-                        .background(if (mark == PhaseMark.Done) c.ok else Color.Transparent)
-                        .border(1.5.dp, if (mark == PhaseMark.Active) c.accent else if (mark == PhaseMark.Done) c.ok else c.stroke2, CircleShape),
+                        .background(if (mark == PhaseMark.Done) ok else Color.Transparent)
+                        .border(1.5.dp, if (mark == PhaseMark.Active) active else if (mark == PhaseMark.Done) ok else idle, CircleShape),
                     contentAlignment = Alignment.Center,
                 ) {
                     when (mark) {
-                        PhaseMark.Done -> Ic(Icons.Check, Color.White, 14.dp)
-                        PhaseMark.Active -> Box(Modifier.size(10.dp).clip(CircleShape).background(c.accent))
+                        PhaseMark.Done -> Glyph(R.drawable.ms_check, Color.White, 14.dp)
+                        PhaseMark.Active -> Box(Modifier.size(10.dp).clip(CircleShape).background(active))
                         PhaseMark.Waiting -> Unit
                     }
                 }
-                Txt(PHASES[i], color = if (mark == PhaseMark.Waiting) c.fg3 else c.fg, bold = mark != PhaseMark.Waiting)
+                Txt(PHASES[i], color = if (mark == PhaseMark.Waiting) muted() else MaterialTheme.colorScheme.onSurface, bold = mark != PhaseMark.Waiting)
             }
         }
     }
@@ -215,15 +222,15 @@ private fun PhaseList(state: StepState) {
 @Composable
 private fun UninstallDialog(s: StepRun, onDismiss: () -> Unit, onConfirm: () -> Unit) {
     var understood by remember { mutableStateOf(false) }
-    FDialog(onDismiss) {
-        DialogIcon(Icons.Warning, Tone.Danger)
-        Txt(conflictTitle(s.step), style = FluentType.title, bold = true)
-        s.errorText?.let { Txt(it, color = FluentTheme.colors.fg2) }
-        MessageBar("App data will be deleted", Tone.Danger, detail = "Uninstalling deletes this app's data on the phone (logins, downloads, settings). This cannot be undone.")
+    RDialog(onDismiss) {
+        DialogIcon(R.drawable.ms_warning, Tone.Danger)
+        Txt(conflictTitle(s.step), style = MaterialTheme.typography.headlineSmall)
+        s.errorText?.let { Txt(it, color = muted()) }
+        Banner("App data will be deleted", Tone.Danger, detail = "Uninstalling deletes this app's data on the phone (logins, downloads, settings). This cannot be undone.")
         CheckRow("I understand, uninstall first", understood) { understood = it }
         DialogButtons {
-            FButton("Cancel", onDismiss, Modifier.weight(1f))
-            FButton("Uninstall and install", onConfirm, Modifier.weight(1f), kind = ButtonKind.Danger, enabled = understood)
+            ActionButton("Cancel", onDismiss, Modifier.weight(1f), kind = ButtonKind.Text)
+            ActionButton("Uninstall and install", onConfirm, Modifier.weight(1f), kind = ButtonKind.Danger, enabled = understood)
         }
     }
 }
@@ -232,44 +239,43 @@ private fun UninstallDialog(s: StepRun, onDismiss: () -> Unit, onConfirm: () -> 
 @Composable
 fun InstallPrompts(model: AppModel) {
     val ctx = LocalContext.current
-    val c = FluentTheme.colors
     when (val p = model.prompt) {
         null -> Unit
-        is AppModel.InstallPrompt.NeedPermission -> FDialog(model::dismissPrompt) {
-            DialogIcon(Icons.Warning, Tone.Warn)
-            Txt("Allow installs from Relume", style = FluentType.title, bold = true)
-            Txt("Android blocks app installs until you allow Relume under “Install unknown apps”. Come back here afterwards and start the install again.", color = c.fg2)
+        is AppModel.InstallPrompt.NeedPermission -> RDialog(model::dismissPrompt) {
+            DialogIcon(R.drawable.ms_warning, Tone.Warn)
+            Txt("Allow installs from Relume", style = MaterialTheme.typography.headlineSmall)
+            Txt("Android blocks app installs until you allow Relume under “Install unknown apps”. Come back here afterwards and start the install again.", color = muted())
             DialogButtons {
-                FButton("Cancel", model::dismissPrompt, Modifier.weight(1f))
-                FButton("Open settings", {
+                ActionButton("Cancel", model::dismissPrompt, Modifier.weight(1f), kind = ButtonKind.Text)
+                ActionButton("Open settings", {
                     ctx.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${ctx.packageName}")))
                     model.dismissPrompt()
                 }, Modifier.weight(1f), kind = ButtonKind.Primary)
             }
         }
-        is AppModel.InstallPrompt.Dependencies -> FDialog(model::dismissPrompt) {
+        is AppModel.InstallPrompt.Dependencies -> RDialog(model::dismissPrompt) {
             val installs = p.plan.steps.filter { it.action == PlanAction.INSTALL }
-            DialogIcon(Icons.Box, Tone.Ok)
-            Txt("Install ${installs.first().displayName} first", style = FluentType.title, bold = true)
-            Txt("${installs.last().displayName} needs ${installs.dropLast(1).joinToString { it.displayName }}. They are installed in this order:", color = c.fg2)
+            DialogIcon(R.drawable.ms_install_mobile, Tone.Ok)
+            Txt("Install ${installs.first().displayName} first", style = MaterialTheme.typography.headlineSmall)
+            Txt("${installs.last().displayName} needs ${installs.dropLast(1).joinToString { it.displayName }}. They are installed in this order:", color = muted())
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 installs.forEachIndexed { i, s -> DependencyRow(i + 1, s) }
             }
             DialogButtons {
-                FButton("Cancel", model::dismissPrompt, Modifier.weight(1f))
-                FButton("Install all", { model.confirmDependencies(p) }, Modifier.weight(1f), kind = ButtonKind.Primary)
+                ActionButton("Cancel", model::dismissPrompt, Modifier.weight(1f), kind = ButtonKind.Text)
+                ActionButton("Install all", { model.confirmDependencies(p) }, Modifier.weight(1f), kind = ButtonKind.Install)
             }
         }
-        is AppModel.InstallPrompt.Signer -> FDialog(model::dismissPrompt) {
+        is AppModel.InstallPrompt.Signer -> RDialog(model::dismissPrompt) {
             val change = checkNotNull(p.step.signerChange) { "signer prompt for ${p.step.displayName} without signer_change" }
-            DialogIcon(Icons.Warning, Tone.Danger)
-            Txt("Signing key changed", style = FluentType.title, bold = true)
-            Txt("The signing key of ${p.step.displayName} on the server changed.", color = c.fg2)
-            Txt("pinned   ${change.pinned?.take(KEY_PREVIEW) ?: "none"}\noffered  ${change.offered.take(KEY_PREVIEW)}", style = FluentType.mono)
-            MessageBar("Accepting trusts a new signing key for ${p.step.displayName}", Tone.Danger)
+            DialogIcon(R.drawable.ms_warning, Tone.Danger)
+            Txt("Signing key changed", style = MaterialTheme.typography.headlineSmall)
+            Txt("The signing key of ${p.step.displayName} on the server changed.", color = muted())
+            Txt("pinned   ${change.pinned?.take(KEY_PREVIEW) ?: "none"}\noffered  ${change.offered.take(KEY_PREVIEW)}", style = Mono)
+            Banner("Accepting trusts a new signing key for ${p.step.displayName}", Tone.Danger)
             DialogButtons {
-                FButton("Cancel", model::dismissPrompt, Modifier.weight(1f))
-                FButton("Accept key", { model.acceptSigner(p) }, Modifier.weight(1f), kind = ButtonKind.Danger)
+                ActionButton("Cancel", model::dismissPrompt, Modifier.weight(1f), kind = ButtonKind.Text)
+                ActionButton("Accept key", { model.acceptSigner(p) }, Modifier.weight(1f), kind = ButtonKind.Danger)
             }
         }
     }
@@ -277,14 +283,14 @@ fun InstallPrompts(model: AppModel) {
 
 @Composable
 private fun DependencyRow(number: Int, s: PlanStep) {
-    val c = FluentTheme.colors
+    val active = MaterialTheme.colorScheme.secondary
     Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(24.dp).clip(CircleShape).border(1.5.dp, if (number == 1) c.accent else c.stroke2, CircleShape), contentAlignment = Alignment.Center) {
-            if (number == 1) Box(Modifier.size(10.dp).clip(CircleShape).background(c.accent))
+        Box(Modifier.size(24.dp).clip(CircleShape).border(1.5.dp, if (number == 1) active else MaterialTheme.colorScheme.outline, CircleShape), contentAlignment = Alignment.Center) {
+            if (number == 1) Box(Modifier.size(10.dp).clip(CircleShape).background(active))
         }
         Column {
             Txt("$number · ${s.displayName}", bold = true)
-            s.download?.let { Txt("${it.versionName ?: it.versionCode} · ${formatMb(it.size)}", style = FluentType.mono, color = c.fg3) }
+            s.download?.let { Txt("${it.versionName ?: it.versionCode} · ${formatMb(it.size)}", style = Mono, color = muted()) }
         }
     }
 }

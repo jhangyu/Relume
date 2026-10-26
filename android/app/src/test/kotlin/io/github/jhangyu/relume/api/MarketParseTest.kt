@@ -1,0 +1,108 @@
+package io.github.jhangyu.relume.api
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/** JSON samples copied from API part 2.1/2.2/2.3 with the spec 6 amendments (stars, updated_at, feed). */
+class MarketParseTest {
+    @Test
+    fun marketplaceListParses() {
+        val text = """
+            {"total": 1207, "page": 1, "per_page": 50,
+             "categories": [{"name": "Social", "count": 88}],
+             "apps": [{"package": "com.reddit.frontpage", "name": "Reddit", "category": "Social",
+                       "icon_url": "/api/apps/com.reddit.frontpage/icon", "bundle_count": 4, "stars": 1200,
+                       "origins": ["builtin", "official"], "updated_at": "2026-10-20T10:00:00Z", "app_id": 12, "enabled": true}],
+             "feed": {"feeds": [{"feed": "bundles.json", "origin": "official", "last_ok_at": "2026-10-26T08:00:00Z",
+                                 "last_attempt_at": "2026-10-26T08:00:00Z", "last_error": null, "bundle_count": 297,
+                                 "app_count": 1207, "duplicates": [],
+                                 "skipped": [{"where": "bundles[12]", "repo": "o/r", "error": "bad"}]}],
+                      "sources": [{"bundle_id": 1, "origin": "builtin", "repo": "MorpheApp/morphe-patches",
+                                   "list_tag": "v1.48.0", "last_error": null}]}}
+        """
+        val list = ApiJson.decodeFromString(MarketList.serializer(), text)
+        val app = list.apps.single()
+        assertEquals(1207, list.total)
+        assertEquals(50, list.perPage)
+        assertEquals("Social", list.categories.single().name)
+        assertEquals("com.reddit.frontpage", app.packageName)
+        assertEquals(4, app.bundleCount)
+        assertEquals(listOf("builtin", "official"), app.origins)
+        assertEquals(12, app.appId)
+        assertTrue(app.enabled)
+        assertEquals(297, list.feed.feeds.single().bundleCount)
+        assertEquals("bundles[12]", list.feed.feeds.single().skipped.single().where)
+        assertNull(list.feed.sources.single().lastError)
+    }
+
+    @Test
+    fun appObjectParses() {
+        val text = """
+            {"id": 12, "package": "com.reddit.frontpage", "name": "Reddit", "icon_url": "/api/apps/com.reddit.frontpage/icon",
+             "bundle": {"bundle_id": 1, "name": "Morphe Patches", "origin": "builtin", "engine": "morphe", "tag": "v1.48.0"},
+             "app_version": "2026.40.0",
+             "status": {"state": "building", "job_id": 345, "progress": {"step": "patch", "index": 4, "count": 6},
+                        "fail_code": null, "fail_detail": null},
+             "download": {"state": "ambiguous", "apkmirror_list_url": null, "apkmirror_example_url": null,
+                          "apkmirror_example_url2": null, "apkpure_url": null,
+                          "candidates": [{"title": "YouTube", "url": "https://www.apkmirror.com/apk/google-inc/youtube/",
+                                          "list_url": "https://www.apkmirror.com/uploads/?appcategory=youtube"}],
+                          "error": null, "retry_at": null}}
+        """
+        val app = ApiJson.decodeFromString(AppObject.serializer(), text)
+        assertEquals(12, app.id)
+        assertEquals("builtin", app.bundle.origin)
+        assertEquals("v1.48.0", app.bundle.tag)
+        assertEquals("building", app.status.state)
+        assertEquals(4, app.status.progress?.index)
+        assertNull(app.status.failCode)
+        val candidate = app.download.candidates.single()
+        assertEquals("YouTube", candidate.title)
+        assertEquals("https://www.apkmirror.com/uploads/?appcategory=youtube", candidate.listUrl)
+    }
+
+    @Test
+    fun marketDetailKeepsUnknownDefaultEnabled() {
+        val text = """
+            {"package": "com.x", "name": "X", "category": "Tools", "description": "d", "icon_url": "/api/apps/com.x/icon",
+             "app_id": null, "enabled": false,
+             "bundles": [{"bundle_id": 1, "name": "Morphe Patches", "author": "MorpheApp", "host": "github",
+                          "repo": "MorpheApp/morphe-patches", "origin": "builtin", "engine": "morphe", "stars": 1200,
+                          "listed": true, "selectable": false, "not_selectable_reason": "GitLab download is not supported",
+                          "updated_at": "2026-10-20T10:00:00Z", "versions": ["20.40.45"],
+                          "patches": [{"name": "Hide ads", "description": "d", "default_enabled": null},
+                                      {"name": "Theme", "description": null, "default_enabled": true}]}]}
+        """
+        val detail = ApiJson.decodeFromString(MarketDetail.serializer(), text)
+        val bundle = detail.bundles.single()
+        assertNull(detail.download)
+        assertFalse(bundle.selectable)
+        assertNull(bundle.patches[0].defaultEnabled)
+        assertEquals(true, bundle.patches[1].defaultEnabled)
+    }
+
+    @Test
+    fun scheduleParses() {
+        val schedule = ApiJson.decodeFromString(
+            Schedule.serializer(),
+            """{"spec": {"every": "hours", "hours": 6}, "enabled": true, "options": {"notify": true},
+                "last_run_at": "2026-10-26T06:00:00Z", "next_run_at": "2026-10-26T12:00:00Z"}""",
+        )
+        assertEquals("hours", schedule.spec.every)
+        assertEquals(6, schedule.spec.hours)
+        assertNull(schedule.spec.at)
+        assertTrue(schedule.options.notify)
+        assertEquals("2026-10-26T12:00:00Z", schedule.nextRunAt)
+
+        val day = ApiJson.decodeFromString(
+            Schedule.serializer(),
+            """{"spec": {"every": "day", "at": "09:00"}, "enabled": false, "options": {"notify": false},
+                "last_run_at": null, "next_run_at": null}""",
+        )
+        assertEquals("09:00", day.spec.at)
+        assertNull(day.nextRunAt)
+    }
+}

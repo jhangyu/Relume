@@ -3,59 +3,73 @@ package io.github.jhangyu.relume.ui
 import android.graphics.BitmapFactory
 import android.util.Log
 import android.util.LruCache
-import androidx.compose.foundation.Canvas
+import androidx.annotation.DrawableRes
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
-import androidx.compose.runtime.produceState
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
-import io.github.jhangyu.relume.api.ApiError
-import io.github.jhangyu.relume.api.RelumeApi
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import java.io.IOException
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.graphics.vector.PathParser
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -64,344 +78,403 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import io.github.jhangyu.relume.R
+import io.github.jhangyu.relume.api.ApiError
+import io.github.jhangyu.relume.api.RelumeApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.IOException
+import java.util.Locale
 
-/** Smallest touch target (spec 10, user requirement). */
+/** Smallest touch target. */
 val TouchTarget = 48.dp
-private const val ICON_VIEWPORT = 24f
-private const val ICON_STROKE = 1.75f
-private const val TINT_FILL = 0.14f
-private const val TINT_BORDER = 0.35f
-private const val SWITCH_ON_ALPHA = 1f
+internal val ScreenPadding = 16.dp
+private val ICON_SIZE = 24.dp
+private val INSET_GROUP_RADIUS = 16.dp
+private val PILL_ICON_SIZE = 14.dp
+private val DIALOG_RADIUS = 28.dp
+private val MONO = TextStyle(fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+private const val DISABLED_ALPHA = 0.38f
+private const val BYTES_PER_MB = 1024.0 * 1024.0
 
-fun Color.tint(alpha: Float) = copy(alpha = alpha)
+internal val Mono: TextStyle get() = MONO
+
+internal fun formatMb(bytes: Long): String = String.format(Locale.ENGLISH, "%.1f MB", bytes / BYTES_PER_MB)
 
 @Composable
 fun Txt(
     text: String,
     modifier: Modifier = Modifier,
-    style: TextStyle = FluentType.body,
-    color: Color = FluentTheme.colors.fg,
+    style: TextStyle = MaterialTheme.typography.bodyLarge,
+    color: Color = MaterialTheme.colorScheme.onSurface,
     maxLines: Int = Int.MAX_VALUE,
     bold: Boolean = false,
 ) {
-    BasicText(
+    Text(
         text = text,
         modifier = modifier,
-        style = style.copy(color = color, fontWeight = if (bold) FontWeight.SemiBold else style.fontWeight),
+        style = style,
+        color = color,
+        fontWeight = if (bold) FontWeight.Medium else null,
         maxLines = maxLines,
         overflow = TextOverflow.Ellipsis,
     )
 }
 
-/** Fluent line icons: the 24x24 stroke paths of the mockup. */
-object Icons {
-    const val Wifi = "M2 9a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M12 19.5v.1"
-    const val Search = "M11 18a7 7 0 1 0 0-14a7 7 0 0 0 0 14zM20 20l-4-4"
-    const val Refresh = "M20 11a8 8 0 1 0-2.3 6.2M20 4v7h-7"
-    const val Back = "M15 6l-6 6 6 6"
-    const val Close = "M6 6l12 12M18 6L6 18"
-    const val Apps = "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"
-    const val Builds = "M12 3l9 5-9 5-9-5zM3 13l9 5 9-5"
-    const val Settings = "M4 7h9M17 7h3M4 17h3M11 17h9M15 4v6M9 14v6"
-    const val Play = "M8 5l11 7-11 7z"
-    const val Warning = "M12 4l9.5 16.5h-19zM12 10v4M12 17.2v.1"
-    const val Box = "M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10"
-    const val Server = "M4 5h16v5H4zM4 14h16v5H4zM8 7.5v.1M8 16.5v.1"
-    const val User = "M12 12a4 4 0 1 0 0-8a4 4 0 0 0 0 8zM5 20a7 7 0 0 1 14 0"
-    const val Lock = "M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3"
-    const val Eye = "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6a3 3 0 0 0 0 6z"
-    const val Check = "M5 12.5l4.5 4.5L19 7.5"
-    const val Phone = "M8 2h8a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zM11 18h2"
-}
+/** Secondary text colour. */
+@Composable
+internal fun muted(): Color = MaterialTheme.colorScheme.onSurfaceVariant
 
 @Composable
-fun Ic(path: String, tint: Color = FluentTheme.colors.fg2, size: Dp = 20.dp) {
-    val parsed = remember(path) { PathParser().parsePathString(path).toPath() }
-    Canvas(Modifier.size(size)) {
-        scale(scaleX = this.size.width / ICON_VIEWPORT, scaleY = this.size.height / ICON_VIEWPORT, pivot = Offset.Zero) {
-            drawPath(parsed, tint, style = Stroke(ICON_STROKE, cap = StrokeCap.Round, join = StrokeJoin.Round))
-        }
+fun Glyph(@DrawableRes icon: Int, tint: Color = MaterialTheme.colorScheme.onSurfaceVariant, size: Dp = ICON_SIZE) {
+    Icon(painterResource(icon), contentDescription = null, tint = tint, modifier = Modifier.size(size))
+}
+
+/** What an icon button means: the glyph colour follows tokens.md section 3. */
+enum class IconTone { Plain, Build, Sync, Link }
+
+/** 48 dp icon button. Build is the tonal rebuild button (primaryContainer). */
+@Composable
+fun IconAction(@DrawableRes icon: Int, contentDescription: String, onClick: () -> Unit, tone: IconTone = IconTone.Plain, enabled: Boolean = true) {
+    val glyph = when (tone) {
+        IconTone.Plain -> MaterialTheme.colorScheme.onSurfaceVariant
+        IconTone.Build -> MaterialTheme.relume.buildGlyph
+        IconTone.Sync -> MaterialTheme.relume.syncGlyph
+        IconTone.Link -> MaterialTheme.relume.linkGlyph
+    }
+    val painted = @Composable {
+        Icon(painterResource(icon), contentDescription = contentDescription, tint = glyph, modifier = Modifier.size(ICON_SIZE))
+    }
+    if (tone == IconTone.Build) {
+        FilledTonalIconButton(
+            onClick,
+            enabled = enabled,
+            colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+            content = painted,
+        )
+    } else {
+        IconButton(onClick, enabled = enabled, content = painted)
     }
 }
 
+/** Pastel pill: label (and optional glyph) on a container colour. */
 @Composable
-fun IconButton(path: String, description: String, onClick: () -> Unit, tint: Color = FluentTheme.colors.fg2) {
-    Box(
-        Modifier
-            .size(TouchTarget)
-            .clip(CircleShape)
-            .semantics { contentDescription = description }
-            .clickable(role = Role.Button, onClick = onClick),
-        contentAlignment = Alignment.Center,
+fun Pill(text: String, container: Color, onContainer: Color, @DrawableRes icon: Int? = null) {
+    Row(
+        Modifier.clip(RoundedCornerShape(50)).background(container).padding(horizontal = 10.dp, vertical = 3.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Ic(path, tint)
+        if (icon != null) Glyph(icon, onContainer, PILL_ICON_SIZE)
+        Txt(text, style = MaterialTheme.typography.labelMedium, color = onContainer, maxLines = 1)
     }
 }
 
-/** Tinted pill badge. */
+/** Build status of an enabled app (`status.state`). */
 @Composable
-fun Chip(text: String, color: Color) {
-    Txt(
-        text,
-        Modifier
-            .clip(RoundedCornerShape(50))
-            .background(color.tint(TINT_FILL))
-            .border(1.dp, color.tint(TINT_BORDER), RoundedCornerShape(50))
-            .padding(horizontal = 10.dp, vertical = 2.dp),
-        style = FluentType.small,
-        color = color,
-        bold = true,
-        maxLines = 1,
-    )
+fun StatusPill(state: String) {
+    val r = MaterialTheme.relume
+    val s = MaterialTheme.colorScheme
+    when (state) {
+        "up_to_date" -> Pill("Up to date", r.green.container, r.green.onContainer, R.drawable.ms_check)
+        "update_available" -> Pill("New version", r.lavender.container, r.lavender.onContainer, R.drawable.ms_sync)
+        "building" -> Pill("Building", r.blue.container, r.blue.onContainer, R.drawable.ms_progress_activity)
+        "queued" -> Pill("Queued", r.blue.container, r.blue.onContainer)
+        "needs_download_url" -> Pill("Needs URL", r.amber.container, r.amber.onContainer, R.drawable.ms_link)
+        "failed" -> Pill("Failed", s.errorContainer, s.onErrorContainer, R.drawable.ms_error)
+        "not_built" -> Pill("Not built", s.surfaceContainerHigh, s.onSurfaceVariant)
+        else -> throw IllegalArgumentException("status.state: expected one of up_to_date, update_available, building, queued, failed, not_built, needs_download_url, got '$state'")
+    }
+}
+
+/** Official catalog = blue, Built-in = teal, Custom = pink. */
+@Composable
+fun OriginLabel(origin: String) {
+    val r = MaterialTheme.relume
+    when (origin) {
+        "official" -> Pill("Official catalog", r.blue.container, r.blue.onContainer)
+        "builtin" -> Pill("Built-in", r.teal.container, r.teal.onContainer)
+        "custom" -> Pill("Custom", r.pink.container, r.pink.onContainer)
+        else -> throw IllegalArgumentException("origin: expected official, builtin or custom, got '$origin'")
+    }
+}
+
+/** Category colours of tokens.md section 3: first = container, second = tile gradient end. */
+@Composable
+private fun categoryPastels(category: String?): Pair<Pastel, Pastel> {
+    val r = MaterialTheme.relume
+    return when (category?.lowercase(Locale.ENGLISH)) {
+        "social" -> r.pink to r.lavender
+        "video", "video players & editors" -> r.coral to r.amber
+        "music", "music & audio" -> r.amber to r.coral
+        "tools" -> r.teal to r.blue
+        "productivity" -> r.blue to r.teal
+        "personalization" -> r.lavender to r.pink
+        "maps", "maps & navigation" -> r.green to r.teal
+        "news", "news & magazines" -> r.blue to r.lavender
+        else -> r.blue to r.lavender
+    }
 }
 
 @Composable
-fun FCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    val c = FluentTheme.colors
-    Column(
-        modifier.fillMaxWidth().clip(FluentShapes.card).background(c.card).border(1.dp, c.stroke, FluentShapes.card),
-        content = content,
-    )
+fun CategoryTag(category: String?) {
+    if (category == null) return
+    val (first, _) = categoryPastels(category)
+    Pill(category, first.container, first.onContainer)
 }
 
-enum class ButtonKind { Default, Primary, Danger, DangerText }
+/** MD3 inset list group: white container, 16 dp radius. */
+@Composable
+fun InsetGroup(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    Surface(modifier.fillMaxWidth(), shape = RoundedCornerShape(INSET_GROUP_RADIUS), color = MaterialTheme.colorScheme.surfaceContainerLowest) {
+        Column(content = content)
+    }
+}
 
 @Composable
-fun FButton(
+fun SectionHeader(text: String) {
+    Box(Modifier.fillMaxWidth().height(TouchTarget).padding(horizontal = 4.dp), contentAlignment = Alignment.CenterStart) {
+        Txt(text, style = MaterialTheme.typography.titleSmall, color = muted())
+    }
+}
+
+enum class ButtonKind { Primary, Tonal, Outlined, Text, Install, Danger }
+
+/** Button of the Relume palette: violet = build, sky = choose, coral = send to the phone (Install, Update). */
+@Composable
+fun ActionButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    kind: ButtonKind = ButtonKind.Default,
-    compact: Boolean = false,
+    kind: ButtonKind = ButtonKind.Primary,
     enabled: Boolean = true,
-    subtitle: String? = null,
-    icon: String? = null,
+    @DrawableRes icon: Int? = null,
 ) {
-    val c = FluentTheme.colors
-    val (fill, fg, stroke) = when (kind) {
-        ButtonKind.Default -> Triple(c.bg, c.fg, c.stroke2)
-        ButtonKind.Primary -> Triple(c.accent, c.onAccent, c.accent)
-        ButtonKind.Danger -> Triple(c.danger, Color.White, c.danger)
-        ButtonKind.DangerText -> Triple(c.bg, c.danger, c.stroke2)
-    }
-    val alpha = if (enabled) 1f else DISABLED_ALPHA
-    Row(
-        modifier
-            .heightIn(min = if (compact) TouchTarget else if (subtitle != null) 56.dp else TouchTarget)
-            .clip(FluentShapes.control)
-            .background(fill.tint(alpha))
-            .border(1.dp, stroke.tint(alpha), FluentShapes.control)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = if (compact) 12.dp else 16.dp, vertical = if (subtitle != null) 8.dp else 0.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (icon != null) Ic(icon, fg.tint(alpha), 18.dp)
-        if (subtitle == null) {
-            Txt(text, style = if (compact) FluentType.label else FluentType.body, color = fg.tint(alpha), bold = true, maxLines = 1)
-        } else {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Txt(text, color = fg.tint(alpha), bold = true)
-                Txt(subtitle, style = FluentType.small, color = fg.tint(alpha * SUBTITLE_ALPHA))
-            }
+    val s = MaterialTheme.colorScheme
+    val label: @Composable RowScope.() -> Unit = {
+        if (icon != null) {
+            Glyph(icon, contentOf(kind), 18.dp)
+            Spacer(Modifier.width(8.dp))
         }
+        Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge)
     }
-}
-
-private const val DISABLED_ALPHA = 0.45f
-private const val SUBTITLE_ALPHA = 0.85f
-
-private val SWITCH_WIDTH = 40.dp
-private val SWITCH_HEIGHT = 22.dp
-private val THUMB = 13.dp
-private val THUMB_INSET = 3.dp
-
-/** Outlined 40x22 switch. Draw only; pair with [SwitchRow] or [ToggleLabel] for the 48 dp hit target. */
-@Composable
-fun SwitchGlyph(checked: Boolean) {
-    val c = FluentTheme.colors
-    Box(
-        Modifier
-            .size(SWITCH_WIDTH, SWITCH_HEIGHT)
-            .clip(RoundedCornerShape(SWITCH_HEIGHT / 2))
-            .background(if (checked) c.accent.tint(SWITCH_ON_ALPHA) else Color.Transparent)
-            .border(1.5.dp, if (checked) c.accent else c.fg3, RoundedCornerShape(SWITCH_HEIGHT / 2)),
-    ) {
-        Box(
-            Modifier
-                .align(Alignment.CenterStart)
-                .offset(x = if (checked) SWITCH_WIDTH - THUMB - THUMB_INSET - 3.dp else THUMB_INSET)
-                .size(THUMB)
-                .clip(CircleShape)
-                .background(if (checked) c.onAccent else c.fg3),
+    when (kind) {
+        ButtonKind.Primary -> Button(onClick, modifier, enabled, content = label)
+        ButtonKind.Install -> Button(onClick, modifier, enabled, colors = ButtonDefaults.buttonColors(containerColor = s.tertiary, contentColor = s.onTertiary), content = label)
+        ButtonKind.Danger -> Button(onClick, modifier, enabled, colors = ButtonDefaults.buttonColors(containerColor = s.error, contentColor = s.onError), content = label)
+        ButtonKind.Tonal -> Button(onClick, modifier, enabled, colors = ButtonDefaults.buttonColors(containerColor = s.secondaryContainer, contentColor = s.onSecondaryContainer), content = label)
+        ButtonKind.Outlined -> OutlinedButton(
+            onClick, modifier, enabled,
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = s.secondary),
+            border = BorderStroke(1.dp, if (enabled) s.secondary else s.secondary.copy(alpha = DISABLED_ALPHA)),
+            content = label,
         )
+        ButtonKind.Text -> TextButton(onClick, modifier, enabled, colors = ButtonDefaults.textButtonColors(contentColor = s.secondary), content = label)
     }
 }
 
-/** Inline switch with label; the whole row is the toggle target (min 48 dp tall). */
 @Composable
-fun ToggleLabel(label: String, checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
-    val c = FluentTheme.colors
-    Row(
-        Modifier
-            .heightIn(min = TouchTarget)
-            .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onChange),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        SwitchGlyph(checked)
-        Txt(label, style = FluentType.label.copy(fontWeight = FontWeight.Normal), color = if (enabled) c.fg2 else c.fg3)
-    }
-}
-
-/** Settings-style row: title and help text on the left, switch on the right. */
-@Composable
-fun SwitchRow(title: String, help: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = 56.dp)
-            .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onChange),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Txt(title, bold = true)
-            Txt(help, style = FluentType.small, color = FluentTheme.colors.fg3)
-        }
-        SwitchGlyph(checked)
+private fun contentOf(kind: ButtonKind): Color {
+    val s = MaterialTheme.colorScheme
+    return when (kind) {
+        ButtonKind.Primary -> s.onPrimary
+        ButtonKind.Install -> s.onTertiary
+        ButtonKind.Danger -> s.onError
+        ButtonKind.Tonal -> s.onSecondaryContainer
+        ButtonKind.Outlined, ButtonKind.Text -> s.secondary
     }
 }
 
 enum class Tone { Info, Ok, Danger, Warn }
 
+/** Message strip: pastel container, bold headline, optional detail and action link. */
 @Composable
-private fun Tone.color(): Color = with(FluentTheme.colors) {
-    when (this@color) {
-        Tone.Info -> info
-        Tone.Ok -> ok
-        Tone.Danger -> danger
-        Tone.Warn -> warn
-    }
-}
-
-/** Message bar: tinted strip with icon, bold headline and optional detail and action link. */
-@Composable
-fun MessageBar(
+fun Banner(
     headline: String,
     tone: Tone,
     modifier: Modifier = Modifier,
     detail: String? = null,
-    icon: String = if (tone == Tone.Ok || tone == Tone.Info) Icons.Wifi else Icons.Warning,
     action: String? = null,
     onAction: () -> Unit = {},
 ) {
-    val tint = tone.color()
-    val c = FluentTheme.colors
-    Row(
-        modifier
-            .fillMaxWidth()
-            .clip(FluentShapes.control)
-            .background(tint.tint(0.12f))
-            .border(1.dp, tint.tint(0.35f), FluentShapes.control)
-            .padding(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    val (container, onContainer) = tone.colors()
+    Column(
+        modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(container).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        Ic(icon, tint, 16.dp)
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Txt(headline, style = FluentType.label, bold = true)
-            if (detail != null) Txt(detail, style = FluentType.small, color = c.fg2)
-            if (action != null) {
-                Txt(
-                    action,
-                    Modifier.heightIn(min = TouchTarget).clickable(role = Role.Button, onClick = onAction).padding(top = 12.dp),
-                    style = FluentType.label,
-                    color = c.accent,
-                    bold = true,
-                )
-            }
+        Txt(headline, style = MaterialTheme.typography.titleMedium, color = onContainer)
+        if (detail != null) Txt(detail, style = MaterialTheme.typography.bodyMedium, color = onContainer)
+        if (action != null) {
+            Txt(
+                action,
+                Modifier.heightIn(min = TouchTarget).clickable(role = Role.Button, onClick = onAction).padding(top = 12.dp),
+                style = MaterialTheme.typography.labelLarge,
+                color = onContainer,
+                bold = true,
+            )
         }
     }
 }
 
-/** Pivot tabs: underline marks the selected one. */
 @Composable
-fun Pivot(labels: List<String>, selected: Int, onSelect: (Int) -> Unit) {
-    val c = FluentTheme.colors
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-        labels.forEachIndexed { i, label ->
-            Box(
-                Modifier
-                    .heightIn(min = TouchTarget)
-                    .clickable(role = Role.Tab) { onSelect(i) }
-                    .padding(horizontal = 12.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Txt(label, style = FluentType.label, color = if (i == selected) c.fg else c.fg3, bold = true, maxLines = 1)
-                if (i == selected) {
-                    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(c.accent))
-                }
-            }
-        }
-    }
-    Box(Modifier.fillMaxWidth().height(1.dp).background(c.stroke))
-}
-
-data class NavItem(val label: String, val icon: String)
-
-/** Bottom navigation with a tinted pill behind the selected icon. */
-@Composable
-fun BottomNav(items: List<NavItem>, selected: Int, onSelect: (Int) -> Unit) {
-    val c = FluentTheme.colors
-    Column(Modifier.fillMaxWidth().background(c.bg2)) {
-        Box(Modifier.fillMaxWidth().height(1.dp).background(c.stroke))
-        Row(Modifier.fillMaxWidth()) {
-            items.forEachIndexed { i, item ->
-                val on = i == selected
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .heightIn(min = TouchTarget)
-                        .clickable(role = Role.Tab) { onSelect(i) }
-                        .padding(top = 8.dp, bottom = 10.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Box(
-                        Modifier.size(56.dp, 30.dp).clip(RoundedCornerShape(15.dp)).background(if (on) c.accent.tint(0.18f) else Color.Transparent),
-                        contentAlignment = Alignment.Center,
-                    ) { Ic(item.icon, if (on) c.accent else c.fg3) }
-                    Txt(item.label, style = FluentType.small.copy(fontSize = 11.sp), color = if (on) c.fg else c.fg3, bold = on)
-                }
-            }
-        }
+internal fun Tone.colors(): Pair<Color, Color> {
+    val r = MaterialTheme.relume
+    val s = MaterialTheme.colorScheme
+    return when (this) {
+        Tone.Info -> r.blue.container to r.blue.onContainer
+        Tone.Ok -> r.green.container to r.green.onContainer
+        Tone.Warn -> r.amber.container to r.amber.onContainer
+        Tone.Danger -> s.errorContainer to s.onErrorContainer
     }
 }
 
+/** Top app bar: 64 dp, optional back arrow, title with optional mono subtitle, trailing actions. */
 @Composable
 fun AppBar(title: String, subtitle: String? = null, onBack: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
     Row(
-        Modifier.fillMaxWidth().padding(start = if (onBack != null) 4.dp else 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+        Modifier.fillMaxWidth().height(64.dp).padding(start = if (onBack != null) 4.dp else 16.dp, end = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (onBack != null) IconButton(Icons.Back, "Back", onBack)
+        if (onBack != null) IconAction(R.drawable.ms_arrow_back, "Back", onBack)
         Column(Modifier.weight(1f)) {
-            Txt(title, style = FluentType.title, maxLines = 1)
-            if (subtitle != null) Txt(subtitle, style = FluentType.monoSmall.copy(fontSize = 11.sp, lineHeight = 14.sp), color = FluentTheme.colors.fg3, maxLines = 1)
+            Txt(title, style = MaterialTheme.typography.titleLarge, maxLines = 1)
+            if (subtitle != null) Txt(subtitle, style = MonoSmall, color = muted(), maxLines = 1)
         }
         actions()
     }
 }
 
-/** Labeled text field with Fluent look (4 dp corner, thick bottom stroke). */
+/** The signed-in account as the top app bars show it: avatar initials and what a tap does (open Settings). */
+class Account(val initials: String, val openSettings: () -> Unit)
+
+val LocalAccount = staticCompositionLocalOf<Account> { error("RelumeRoot provides LocalAccount above every screen") }
+
+/** Account avatar of the top app bar; opens Settings. */
+@Composable
+fun Avatar() {
+    val account = LocalAccount.current
+    Box(Modifier.size(TouchTarget), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.size(32.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer)
+                .semantics { contentDescription = "Phone settings and account" }
+                .clickable(role = Role.Button, onClick = account.openSettings),
+            contentAlignment = Alignment.Center,
+        ) {
+            Txt(account.initials, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        }
+    }
+}
+
+/** Horizontal filter chips; the selected one is secondaryContainer with a check. */
+@Composable
+fun ChipRow(labels: List<String>, selected: Int, onSelect: (Int) -> Unit) {
+    val s = MaterialTheme.colorScheme
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = ScreenPadding, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        labels.forEachIndexed { i, label ->
+            FilterChip(
+                selected = i == selected,
+                onClick = { onSelect(i) },
+                label = { Text(label, maxLines = 1) },
+                leadingIcon = if (i == selected) ({ Glyph(R.drawable.ms_check, s.onSecondaryContainer, 18.dp) }) else null,
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = s.secondaryContainer,
+                    selectedLabelColor = s.onSecondaryContainer,
+                ),
+                border = FilterChipDefaults.filterChipBorder(
+                    enabled = true,
+                    selected = i == selected,
+                    borderColor = s.outline,
+                    selectedBorderColor = Color.Transparent,
+                ),
+            )
+        }
+    }
+}
+
+/** Two-line list row: leading slot, headline, supporting text, trailing slot; min 56/72 dp. */
+@Composable
+fun ListRow(
+    headline: String,
+    modifier: Modifier = Modifier,
+    supporting: String? = null,
+    leading: @Composable (() -> Unit)? = null,
+    trailing: @Composable (() -> Unit)? = null,
+) {
+    Row(
+        modifier.fillMaxWidth().heightIn(min = if (supporting == null) 56.dp else 72.dp).padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        leading?.invoke()
+        Column(Modifier.weight(1f)) {
+            Txt(headline, maxLines = 1)
+            if (supporting != null) Txt(supporting, style = MaterialTheme.typography.bodyMedium, color = muted(), maxLines = 2)
+        }
+        trailing?.invoke()
+    }
+}
+
+/** Settings-style row: title and help text on the left, switch on the right; the whole row toggles. */
+@Composable
+fun SwitchRow(title: String, help: String?, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onChange)
+            .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Txt(title)
+            if (help != null) Txt(help, style = MaterialTheme.typography.bodyMedium, color = muted())
+        }
+        Switch(checked = checked, onCheckedChange = null, enabled = enabled)
+    }
+}
+
+/** Radio row: the whole row is the 48 dp target. */
+@Composable
+fun RadioRow(selected: Boolean, enabled: Boolean = true, onSelect: () -> Unit, content: @Composable RowScope.() -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = TouchTarget)
+            .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onSelect)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = null, enabled = enabled, colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.secondary))
+        content()
+    }
+}
+
+@Composable
+fun CheckRow(text: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = TouchTarget).toggleable(value = checked, role = Role.Checkbox, onValueChange = onChange),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(checked = checked, onCheckedChange = null, colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.secondary))
+        Txt(text)
+    }
+}
+
+/** Outlined text field (56 dp); focus colour = secondary. A secret field gets a Show/Hide text button. */
 @Composable
 fun Field(
     label: String,
     value: String,
     onChange: (String) -> Unit,
     modifier: Modifier = Modifier,
-    icon: String? = null,
+    @DrawableRes leadingIcon: Int? = null,
     mono: Boolean = false,
     secret: Boolean = false,
     error: String? = null,
@@ -409,82 +482,45 @@ fun Field(
     enabled: Boolean = true,
     keyboard: KeyboardOptions = KeyboardOptions.Default,
 ) {
-    val c = FluentTheme.colors
+    val s = MaterialTheme.colorScheme
     var reveal by remember { mutableStateOf(false) }
-    val requester = remember { BringIntoViewRequester() }
-    Column(modifier.bringIntoViewRequester(requester), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Txt(label, style = FluentType.label, bold = true)
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = TouchTarget)
-                .clip(FluentShapes.control)
-                .border(1.dp, if (error != null) c.danger else c.stroke2, FluentShapes.control)
-                .background(c.bg)
-                .padding(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (icon != null) Ic(icon, c.fg2)
-            BasicTextField(
-                value = value,
-                onValueChange = onChange,
-                enabled = enabled,
-                singleLine = true,
-                textStyle = (if (mono) FluentType.mono else FluentType.body).copy(color = c.fg),
-                cursorBrush = SolidColor(c.accent),
-                visualTransformation = if (secret && !reveal) PasswordVisualTransformation() else VisualTransformation.None,
-                keyboardOptions = keyboard,
-                modifier = Modifier.weight(1f),
-            )
-            if (secret) {
-                Box(Modifier.size(TouchTarget).clickable(role = Role.Button) { reveal = !reveal }, contentAlignment = Alignment.Center) {
-                    Ic(Icons.Eye, if (reveal) c.accent else c.fg3)
-                }
-            }
-        }
-        if (error != null) Txt(error, style = FluentType.small, color = c.danger)
-        else if (hint != null) Txt(hint, style = FluentType.small, color = c.fg3)
-    }
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        modifier = modifier.fillMaxWidth(),
+        enabled = enabled,
+        singleLine = true,
+        label = { Text(label) },
+        leadingIcon = leadingIcon?.let { icon -> { Glyph(icon) } },
+        trailingIcon = if (secret) ({ TextButton({ reveal = !reveal }) { Text(if (reveal) "Hide" else "Show", color = s.secondary) } }) else null,
+        textStyle = if (mono) MONO else MaterialTheme.typography.bodyLarge,
+        isError = error != null,
+        supportingText = (error ?: hint)?.let { text -> { Text(text) } },
+        visualTransformation = if (secret && !reveal) PasswordVisualTransformation() else VisualTransformation.None,
+        keyboardOptions = keyboard,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = s.secondary,
+            focusedLabelColor = s.secondary,
+            cursorColor = s.secondary,
+            unfocusedBorderColor = s.outline,
+        ),
+    )
 }
 
+/** Dialog shell: 28 dp corners, 24 dp padding. */
 @Composable
-fun CheckRow(text: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    val c = FluentTheme.colors
-    Row(
-        Modifier.fillMaxWidth().heightIn(min = TouchTarget).toggleable(value = checked, role = Role.Checkbox, onValueChange = onChange),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier
-                .size(20.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .background(if (checked) c.accent else Color.Transparent)
-                .border(1.5.dp, if (checked) c.accent else c.fg3, RoundedCornerShape(4.dp)),
-            contentAlignment = Alignment.Center,
-        ) { if (checked) Ic(Icons.Check, c.onAccent, 14.dp) }
-        Txt(text)
-    }
-}
-
-/** Dialog shell: 12 dp corners, 24 dp padding, scrim from the platform dialog window. */
-@Composable
-fun FDialog(onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    val c = FluentTheme.colors
+fun RDialog(onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
-        Column(
-            Modifier.fillMaxWidth().clip(FluentShapes.dialog).background(c.bg).padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            content = content,
-        )
+        Surface(shape = RoundedCornerShape(DIALOG_RADIUS), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp), content = content)
+        }
     }
 }
 
 @Composable
-fun DialogIcon(path: String, tone: Tone) {
-    val tint = tone.color()
-    Box(Modifier.size(44.dp).clip(CircleShape).background(tint.tint(0.15f)), contentAlignment = Alignment.Center) { Ic(path, tint) }
+fun DialogIcon(@DrawableRes icon: Int, tone: Tone) {
+    val (container, onContainer) = tone.colors()
+    Box(Modifier.size(44.dp).clip(CircleShape).background(container), contentAlignment = Alignment.Center) { Glyph(icon, onContainer) }
 }
 
 @Composable
@@ -492,21 +528,30 @@ fun DialogButtons(content: @Composable RowScope.() -> Unit) {
     Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), content = content)
 }
 
+@Composable
+fun Hairline(modifier: Modifier = Modifier) {
+    HorizontalDivider(modifier, color = MaterialTheme.colorScheme.outlineVariant)
+}
+
 /**
- * Round app tile. Shows the server icon at [iconUrl] when there is one, the initials tile (colour derived from
- * the label) while it loads, when [iconUrl] is null and when the fetch fails (logged with package path and status).
+ * App tile. Shows the server icon at [iconUrl] when there is one, the initials tile (two-container gradient picked
+ * from the label) while it loads, when [iconUrl] is null and when the fetch fails (logged with package path and status).
  */
 @Composable
 fun AppTile(label: String, iconUrl: String?, api: RelumeApi?, size: Dp = 40.dp) {
-    val hue = (label.hashCode().mod(TILE_HUES)) * (360f / TILE_HUES)
-    val bg = Color.hsv(hue, 0.65f, 0.75f)
+    val r = MaterialTheme.relume
+    val pairs = listOf(r.pink to r.lavender, r.coral to r.amber, r.amber to r.coral, r.teal to r.blue, r.blue to r.teal, r.lavender to r.pink, r.green to r.teal)
+    val (first, second) = pairs[label.hashCode().mod(pairs.size)]
     val icon by produceState<ImageBitmap?>(null, iconUrl, api) { value = if (iconUrl != null && api != null) loadIcon(api, iconUrl) else null }
-    Box(Modifier.size(size).clip(RoundedCornerShape(size / 4)).background(bg), contentAlignment = Alignment.Center) {
+    Box(
+        Modifier.size(size).clip(RoundedCornerShape(size / 4)).background(Brush.linearGradient(listOf(first.container, second.container))),
+        contentAlignment = Alignment.Center,
+    ) {
         val bmp = icon
         if (bmp != null) {
             Image(bmp, contentDescription = label, modifier = Modifier.size(size))
         } else {
-            Txt(initials(label), style = FluentType.label.copy(fontSize = if (size > 48.dp) 18.sp else 13.sp), color = Color.White, bold = true)
+            Txt(initials(label), style = TextStyle(fontSize = if (size > 48.dp) 18.sp else 13.sp, fontWeight = FontWeight.Medium), color = first.onContainer)
         }
     }
 }
@@ -534,8 +579,6 @@ private suspend fun loadIcon(api: RelumeApi, path: String): ImageBitmap? {
     return bmp.asImageBitmap().also { iconCache.put(key, it) }
 }
 
-private const val TILE_HUES = 12
-
 internal fun initials(label: String): String {
     val words = label.split(' ', '-', '_').filter { it.isNotEmpty() }
     return when {
@@ -544,10 +587,3 @@ internal fun initials(label: String): String {
         else -> "" + words[0][0] + words[1][0]
     }
 }
-
-@Composable
-fun Hairline(modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth().height(1.dp).background(FluentTheme.colors.stroke))
-}
-
-internal val ScreenPadding = 16.dp

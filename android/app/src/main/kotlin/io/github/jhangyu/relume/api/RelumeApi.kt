@@ -8,10 +8,12 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.serializer
 import java.net.HttpURLConnection
+import java.net.URLEncoder
 
 /** HTTP failure or unreadable response: [status] (the HTTP status), server `error` text, request path. */
 class ApiError(val status: Int, override val message: String, val path: String) : Exception() {
@@ -55,30 +57,87 @@ class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
         send<JsonObject>("POST", "/api/me/logout", EMPTY)
     }
 
-    suspend fun catalog(): Catalog = get("/api/catalog")
+    suspend fun marketplace(q: String?, category: String?, origin: String?, sort: String?, page: Int?): MarketList {
+        val query = listOfNotNull(
+            q?.takeIf { it.isNotBlank() }?.let { "q=" + enc(it) },
+            category?.let { "category=" + enc(it) },
+            origin?.let { "origin=$it" },
+            sort?.let { "sort=$it" },
+            page?.let { "page=$it" },
+            "per_page=$MARKET_PAGE_SIZE",
+        )
+        return get("/api/marketplace" + query.joinToString("&", prefix = "?"))
+    }
 
-    suspend fun item(id: Int): Item = get("/api/items/$id")
+    suspend fun marketApp(pkg: String): MarketDetail = get("/api/marketplace/" + enc(pkg))
 
-    suspend fun artifacts(id: Int): List<Artifact> = get<ArtifactList>("/api/items/$id/artifacts").artifacts
+    suspend fun apps(): List<AppObject> = get<AppList>("/api/apps").apps
 
-    suspend fun setSwitches(id: Int, enabled: Boolean?, autoUpdate: Boolean?): Item =
-        send("PUT", "/api/items/$id", buildJsonObject {
-            enabled?.let { put("enabled", it) }
-            autoUpdate?.let { put("auto_update", it) }
+    suspend fun app(id: Int): AppDetail {
+        val body = get<JsonObject>("/api/apps/$id")
+        return AppDetail(ApiJson.decodeFromJsonElement<AppObject>(body), ApiJson.decodeFromJsonElement<AppSettingsEnvelope>(body).settings)
+    }
+
+    /** Enable [pkg] with the chosen bundle. [patches] holds only the switches the user changed. [download] sets the optional URLs. */
+    suspend fun enable(pkg: String, bundleId: Int, patches: Map<String, Boolean>?, download: JsonObject?): AppObject =
+        send("POST", "/api/apps", buildJsonObject {
+            put("package", pkg)
+            put("bundle_id", bundleId)
+            patches?.let { p -> put("patches", buildJsonObject { p.forEach { (k, v) -> put(k, v) } }) }
+            download?.let { put("download", it) }
         })
 
-    suspend fun build(id: Int): Int = send<JobId>("POST", "/api/items/$id/build", EMPTY).jobId
+    suspend fun putApp(id: Int, body: JsonObject): AppObject = send("PUT", "/api/apps/$id", body)
+
+    suspend fun disable(id: Int) = sendNoContent("DELETE", "/api/apps/$id")
+
+    suspend fun patches(id: Int): PatchesView = get("/api/apps/$id/patches")
+
+    suspend fun putPatches(id: Int, body: JsonObject) {
+        send<JsonObject>("PUT", "/api/apps/$id/patches", body)
+    }
+
+    suspend fun check(id: Int): Int = send<JobId>("POST", "/api/apps/$id/check", EMPTY).jobId
+
+    suspend fun build(id: Int): Int = send<JobId>("POST", "/api/apps/$id/build", EMPTY).jobId
+
+    suspend fun locate(id: Int): Int = send<JobId>("POST", "/api/apps/$id/locate", EMPTY).jobId
+
+    suspend fun artifacts(id: Int): List<Artifact> = get<ArtifactList>("/api/apps/$id/artifacts").artifacts
+
+    suspend fun schedule(): Schedule = get("/api/schedule")
+
+    suspend fun putSchedule(body: JsonObject): Schedule = send("PUT", "/api/schedule", body)
+
+    suspend fun runSchedule(): Int = send<JobId>("POST", "/api/schedule/run", EMPTY).jobId
+
+    suspend fun otaSchedules(): List<OtaSchedule> = get<OtaScheduleList>("/api/schedules").schedules
+
+    suspend fun createOtaSchedule(body: JsonObject): Int = send<CreatedId>("POST", "/api/schedules", body).id
+
+    suspend fun putOtaSchedule(id: Int, body: JsonObject) {
+        send<JsonObject>("PUT", "/api/schedules/$id", body)
+    }
+
+    suspend fun deleteOtaSchedule(id: Int) = sendNoContent("DELETE", "/api/schedules/$id")
+
+    suspend fun devices(): List<DeviceView> = get<DeviceList>("/api/devices").devices
+
+    suspend fun sources(): List<CustomSource> = get<SourceList>("/api/sources").sources
+
+    suspend fun addSource(url: String, engine: String, assetRegex: String?, packages: List<String>?): Int =
+        send<BundleCreated>("POST", "/api/sources", buildJsonObject {
+            put("url", url)
+            put("engine", engine)
+            assetRegex?.let { put("asset_regex", it) }
+            packages?.let { p -> putJsonArray("packages") { p.forEach { add(it) } } }
+        }).bundleId
+
+    suspend fun deleteSource(id: Int) = sendNoContent("DELETE", "/api/sources/$id")
 
     suspend fun cleanupPreview(): CleanupReport = get("/api/cleanup")
 
     suspend fun cleanup(): CleanupReport = send("POST", "/api/cleanup", EMPTY)
-
-    suspend fun update(id: Int, rebuild: Boolean): List<Int> =
-        send<JobIds>("POST", "/api/items/$id/update", buildJsonObject { put("rebuild", rebuild) }).jobIds
-
-    suspend fun checkAll() {
-        send<JsonObject>("POST", "/api/upstreams/check", EMPTY)
-    }
 
     suspend fun jobs(kind: String?, status: String?, beforeId: Int?, limit: Int?): List<Job> {
         val query = listOfNotNull(
@@ -162,7 +221,22 @@ class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
     private suspend inline fun <reified T> send(method: String, path: String, body: JsonObject): T =
         call(path, method, body, serializer())
 
-    private suspend fun <T> call(path: String, method: String, body: JsonObject?, de: KSerializer<T>): T =
+    private suspend fun <T> call(path: String, method: String, body: JsonObject?, de: KSerializer<T>): T {
+        val (status, text) = raw(path, method, body)
+        try {
+            return ApiJson.decodeFromString(de, text)
+        } catch (e: IllegalArgumentException) {
+            // SerializationException is an IllegalArgumentException; init checks throw it directly.
+            throw ApiError(status, "unreadable response: ${e.message}", path)
+        }
+    }
+
+    /** DELETE-style calls whose success answer is an empty 204. */
+    private suspend fun sendNoContent(method: String, path: String) {
+        raw(path, method, null)
+    }
+
+    private suspend fun raw(path: String, method: String, body: JsonObject?): Pair<Int, String> =
         withContext(Dispatchers.IO) {
             val conn = open(path, method)
             try {
@@ -173,13 +247,7 @@ class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
                 }
                 val status = conn.responseCode
                 if (status !in HTTP_SUCCESS) throw errorOf(conn, status, path)
-                val text = conn.inputStream.use { it.readBytes().toString(Charsets.UTF_8) }
-                try {
-                    ApiJson.decodeFromString(de, text)
-                } catch (e: IllegalArgumentException) {
-                    // SerializationException is an IllegalArgumentException; init checks throw it directly.
-                    throw ApiError(status, "unreadable response: ${e.message}", path)
-                }
+                status to conn.inputStream.use { it.readBytes().toString(Charsets.UTF_8) }
             } finally {
                 conn.disconnect()
             }
@@ -223,6 +291,8 @@ class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
 
 
         private const val JSON_TYPE = "application/json"
+        const val MARKET_PAGE_SIZE = 100
+        private fun enc(v: String) = URLEncoder.encode(v, Charsets.UTF_8)
         const val END_EVENT = "end"
         const val CONNECT_TIMEOUT_MS = 15_000
         /** Longer than the server's 15 s SSE keepalive. */

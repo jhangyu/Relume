@@ -230,54 +230,235 @@ data class Health(
     val version: String,
 )
 
-// ---- catalog, items, artifacts ----
+// ---- marketplace, enabled apps, schedules (spec 6) ----
 
 @Serializable
-data class Catalog(val groups: List<Group>, val ungrouped: List<Item>)
+data class MarketList(
+    val total: Int,
+    val page: Int,
+    @SerialName("per_page") val perPage: Int,
+    val categories: List<MarketCategory>,
+    val apps: List<MarketApp>,
+    val feed: FeedStatus,
+)
 
 @Serializable
-data class Group(val id: Int, val name: String, val color: String?, val items: List<Item>)
+data class MarketCategory(val name: String, val count: Int)
 
 @Serializable
-data class Item(
-    val id: Int,
-    val label: String,
+data class MarketApp(
     @SerialName("package") val packageName: String,
-    val enabled: Boolean,
-    @SerialName("auto_update") val autoUpdate: Boolean,
+    val name: String,
+    val category: String?,
     @SerialName("icon_url") val iconUrl: String?,
-    val abis: List<String>,
-    val upstream: ItemUpstream,
-    @SerialName("last_build") val lastBuild: LastBuild?,
-    @SerialName("last_success") val lastSuccess: LastSuccess?,
-    @SerialName("active_job") val activeJob: ActiveJob?,
+    @SerialName("bundle_count") val bundleCount: Int,
+    val stars: Int?,
+    val origins: List<String>,
+    @SerialName("updated_at") val updatedAt: String?,
+    @SerialName("app_id") val appId: Int?,
+    val enabled: Boolean,
 )
 
 @Serializable
-data class ItemUpstream(
-    @SerialName("downloaded_tag") val downloadedTag: String?,
-    @SerialName("latest_tag") val latestTag: String?,
-    @SerialName("checked_at") val checkedAt: String?,
-    @SerialName("check_error") val checkError: String?,
+data class MarketDetail(
+    @SerialName("package") val packageName: String,
+    val name: String,
+    val category: String?,
+    val description: String?,
+    @SerialName("icon_url") val iconUrl: String?,
+    @SerialName("app_id") val appId: Int?,
+    val enabled: Boolean,
+    /** The server sends `download` only when an app row exists for the package. */
+    val download: DownloadState? = null,
+    val bundles: List<BundleOption>,
 )
 
 @Serializable
-data class LastBuild(@SerialName("job_id") val jobId: Int, val status: String, val reason: String?)
+data class BundleOption(
+    @SerialName("bundle_id") val bundleId: Int,
+    val name: String,
+    val author: String?,
+    val host: String,
+    val repo: String,
+    val origin: String,
+    val engine: String,
+    val stars: Int?,
+    val listed: Boolean,
+    val selectable: Boolean,
+    @SerialName("not_selectable_reason") val notSelectableReason: String?,
+    @SerialName("updated_at") val updatedAt: String?,
+    val versions: List<String>,
+    val patches: List<CatalogPatch>,
+)
+
+/** [defaultEnabled] is null when the catalog does not say (the UI shows "default unknown"). */
+@Serializable
+data class CatalogPatch(
+    val name: String,
+    val description: String?,
+    @SerialName("default_enabled") val defaultEnabled: Boolean?,
+)
 
 @Serializable
-data class LastSuccess(
-    @SerialName("job_id") val jobId: Int,
+data class FeedStatus(val feeds: List<FeedEntry>, val sources: List<FeedSource>)
+
+@Serializable
+data class FeedEntry(
+    val feed: String,
+    val origin: String,
+    @SerialName("last_ok_at") val lastOkAt: String?,
+    @SerialName("last_attempt_at") val lastAttemptAt: String?,
+    @SerialName("last_error") val lastError: String?,
+    @SerialName("bundle_count") val bundleCount: Int,
+    @SerialName("app_count") val appCount: Int,
+    val skipped: List<FeedSkip>,
+)
+
+@Serializable
+data class FeedSkip(val where: String, val repo: String?, val error: String)
+
+@Serializable
+data class FeedSource(
+    @SerialName("bundle_id") val bundleId: Int,
+    val origin: String,
+    val repo: String,
+    @SerialName("list_tag") val listTag: String?,
+    @SerialName("last_error") val lastError: String?,
+)
+
+/** One enabled app (`item` row): list entry and detail head. */
+@Serializable
+data class AppObject(
+    val id: Int,
+    @SerialName("package") val packageName: String,
+    val name: String,
+    @SerialName("icon_url") val iconUrl: String?,
+    val bundle: AppBundle,
     @SerialName("app_version") val appVersion: String?,
-    @SerialName("finished_at") val finishedAt: String?,
+    val status: AppStatusDto,
+    val download: DownloadState,
 )
 
 @Serializable
-data class ActiveJob(
-    @SerialName("job_id") val jobId: Int,
-    val status: String,
-    val step: String?,
-    @SerialName("step_index") val stepIndex: Int?,
-    @SerialName("step_count") val stepCount: Int?,
+data class AppBundle(
+    @SerialName("bundle_id") val bundleId: Int,
+    val name: String,
+    val origin: String,
+    val engine: String,
+    val tag: String?,
+)
+
+@Serializable
+data class AppStatusDto(
+    /** up_to_date, update_available, building, queued, failed, not_built, needs_download_url. */
+    val state: String,
+    @SerialName("job_id") val jobId: Int?,
+    val progress: BuildProgress?,
+    @SerialName("fail_code") val failCode: String?,
+    @SerialName("fail_detail") val failDetail: String?,
+)
+
+@Serializable
+data class BuildProgress(val step: String, val index: Int, val count: Int)
+
+/** APKMirror / APKPure download source of an app (not the install-plan [Download]). */
+@Serializable
+data class DownloadState(
+    val state: String,
+    @SerialName("apkmirror_list_url") val apkmirrorListUrl: String?,
+    @SerialName("apkmirror_example_url") val apkmirrorExampleUrl: String?,
+    @SerialName("apkmirror_example_url2") val apkmirrorExampleUrl2: String?,
+    @SerialName("apkpure_url") val apkpureUrl: String?,
+    val candidates: List<Candidate>,
+    val error: String?,
+    @SerialName("retry_at") val retryAt: String?,
+)
+
+@Serializable
+data class Candidate(val title: String, val url: String, @SerialName("list_url") val listUrl: String)
+
+/** `GET /api/apps/{id}`: the [AppObject] fields plus `settings`; [RelumeApi.app] decodes both from one body. */
+data class AppDetail(val app: AppObject, val settings: AppSettings)
+
+@Serializable
+data class AppSettings(
+    val version: VersionSettings,
+    @SerialName("project_ids") val projectIds: List<Int>,
+)
+
+@Serializable
+data class VersionSettings(
+    /** auto, pinned or latest. */
+    val mode: String,
+    val pin: String?,
+    @SerialName("allow_nearest") val allowNearest: Boolean,
+    val supported: List<String>,
+)
+
+@Serializable
+internal data class AppSettingsEnvelope(val settings: AppSettings)
+
+/** `GET /api/apps/{id}/patches` (today's shape). */
+@Serializable
+data class PatchesView(
+    val tag: String?,
+    val patches: List<PatchView>,
+    @SerialName("stale_overrides") val staleOverrides: List<String>,
+    @SerialName("compatible_versions") val compatibleVersions: List<String>,
+    val unavailable: Boolean,
+)
+
+@Serializable
+data class PatchView(
+    val name: String,
+    val description: String?,
+    @SerialName("default_enabled") val defaultEnabled: Boolean?,
+    val enabled: Boolean?,
+    @SerialName("compatible_versions") val compatibleVersions: List<String>,
+)
+
+/** `spec` of a schedule: `hours` for every=hours, `at` for day and week, `days` for week. */
+@Serializable
+data class ScheduleSpec(
+    val every: String,
+    val hours: Int? = null,
+    val at: String? = null,
+    val days: List<Int>? = null,
+)
+
+@Serializable
+data class ScheduleOptions(val notify: Boolean)
+
+/** The single global update schedule (`GET /api/schedule`). */
+@Serializable
+data class Schedule(
+    val spec: ScheduleSpec,
+    val enabled: Boolean,
+    val options: ScheduleOptions,
+    @SerialName("last_run_at") val lastRunAt: String?,
+    @SerialName("next_run_at") val nextRunAt: String?,
+)
+
+@Serializable
+data class OtaOptions(val retries: Int? = null, val notify: Boolean? = null)
+
+@Serializable
+data class OtaSchedule(
+    val id: Int,
+    val name: String,
+    val target: JsonObject,
+    val spec: ScheduleSpec,
+    val options: OtaOptions,
+    val enabled: Boolean,
+    @SerialName("last_run_at") val lastRunAt: String?,
+    @SerialName("next_run_at") val nextRunAt: String?,
+)
+
+@Serializable
+data class CustomSource(
+    @SerialName("bundle_id") val bundleId: Int,
+    val repo: String,
+    val engine: String,
 )
 
 @Serializable
@@ -338,16 +519,31 @@ internal data class PlanEnvelope(val plan: InstallPlan)
 internal data class ArtifactList(val artifacts: List<Artifact>)
 
 @Serializable
+internal data class AppList(val apps: List<AppObject>)
+
+@Serializable
+internal data class OtaScheduleList(val schedules: List<OtaSchedule>)
+
+@Serializable
+internal data class CreatedId(val id: Int)
+
+@Serializable
+internal data class BundleCreated(@SerialName("bundle_id") val bundleId: Int)
+
+@Serializable
+internal data class DeviceList(val devices: List<DeviceView>)
+
+@Serializable
+internal data class SourceList(val sources: List<CustomSource>)
+
+@Serializable
 internal data class JobList(val jobs: List<Job>)
 
 @Serializable
 internal data class ProjectList(val projects: List<Project>)
 
 @Serializable
-internal data class JobId(@SerialName("job_id") val jobId: Int)
-
-@Serializable
-internal data class JobIds(@SerialName("job_ids") val jobIds: List<Int>)
+data class JobId(@SerialName("job_id") val jobId: Int)
 
 /** `/api/cleanup` body: a preview (GET) or what was deleted (POST). */
 @Serializable

@@ -12,7 +12,14 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -23,6 +30,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.annotation.DrawableRes
+import io.github.jhangyu.relume.R
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -36,18 +46,19 @@ private val StackSaver = Saver<List<Screen>, String>(
     restore = { Json.decodeFromString(ListSerializer(Screen.serializer()), it) },
 )
 
+private class Tab(val label: String, @DrawableRes val icon: Int, @DrawableRes val selectedIcon: Int, val screen: Screen)
+
 private val TABS = listOf(
-    NavItem("Apps", Icons.Apps) to Screen.Apps,
-    NavItem("Builds", Icons.Builds) to Screen.Builds,
-    NavItem("Settings", Icons.Settings) to Screen.Settings,
+    Tab("Marketplace", R.drawable.ms_storefront, R.drawable.ms_storefront_fill1, Screen.Marketplace),
+    Tab("Apps", R.drawable.ms_apps, R.drawable.ms_apps, Screen.Apps),
+    Tab("Schedules", R.drawable.ms_schedule, R.drawable.ms_schedule_fill1, Screen.Schedules),
 )
 
-/** Spec 10 navigation: a saved back stack of [Screen]s and a back handler. Tabs are stack roots, Login replaces everything. */
+/** Navigation: a saved back stack of [Screen]s and a back handler. Tabs are stack roots, Login replaces everything. */
 @Composable
 fun RelumeRoot() {
-    FluentTheme {
-        val c = FluentTheme.colors
-        Column(Modifier.fillMaxSize().background(c.bg).windowInsetsPadding(WindowInsets.systemBars)) {
+    RelumeTheme {
+        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).windowInsetsPadding(WindowInsets.systemBars)) {
             RootContent()
         }
     }
@@ -92,33 +103,62 @@ private fun ColumnScope.RootContent() {
         return
     }
     val current = stack.last()
-    Column(Modifier.weight(1f)) {
-        when (current) {
-            Screen.Apps -> AppsScreen(
-                model,
-                onOpenDetail = { stack = stack + Screen.Detail(it) },
-                onOpenLog = { job, item -> stack = stack + Screen.Log(job, item) },
-                onInstall = model::beginInstall,
-            )
-            Screen.Builds -> model.api?.let { api ->
-                BuildsScreen(api, labelOf = { id -> id?.let(model::item)?.label }, onOpen = { stack = stack + Screen.Log(it, null) }, reloadKey = model.buildsVersion)
+    val account = Account(model.device?.name?.let(::initials)?.uppercase().orEmpty().ifEmpty { "R" }) {
+        if (stack.last() != Screen.Settings) stack = stack + Screen.Settings
+    }
+    val back = { stack = stack.dropLast(1) }
+    val openLog = { job: Int, app: Int? -> stack = stack + Screen.Log(job, app) }
+    CompositionLocalProvider(LocalAccount provides account) {
+        Column(Modifier.weight(1f)) {
+            when (current) {
+                Screen.Marketplace -> MarketplaceScreen(
+                    model.market,
+                    onOpen = { stack = stack + Screen.MarketApp(it) },
+                    onAddSource = model.market::openAddSource,
+                )
+                is Screen.MarketApp -> MarketAppScreen(
+                    model.market, current.pkg, onBack = back,
+                    onEnabled = { stack = listOf(Screen.Apps, Screen.AppSettings(it)) },
+                )
+                Screen.Apps -> AppsScreen(model, onOpenSettings = { stack = stack + Screen.AppSettings(it) }, onOpenLog = openLog)
+                is Screen.AppSettings -> AppSettingsScreen(model, current.appId, onBack = back, onOpenLog = openLog)
+                Screen.Schedules -> SchedulesScreen(model)
+                Screen.Settings -> SettingsScreen(model, notificationsOn, askNotifications, onBack = back)
+                is Screen.Log -> model.api?.let { api ->
+                    val app = current.appId?.let(model::app)
+                    LogScreen(api, current.jobId, app?.status?.takeIf { it.jobId == current.jobId }?.progress, app?.name, back, model::buildEnded)
+                }
+                Screen.Install -> InstallScreen(run, model, onClose = back)
             }
-            Screen.Settings -> SettingsScreen(model, notificationsOn, askNotifications)
-            is Screen.Detail -> DetailScreen(
-                model, current.itemId,
-                onBack = { stack = stack.dropLast(1) },
-                onOpenLog = { job, item -> stack = stack + Screen.Log(job, item) },
-                onInstall = model::beginInstall,
-            )
-            is Screen.Log -> model.api?.let { api ->
-                val item = current.itemId?.let(model::item)
-                LogScreen(api, current.jobId, item?.activeJob?.takeIf { it.jobId == current.jobId }, item?.label, { stack = stack.dropLast(1) }, model::buildEnded)
-            }
-            Screen.Install -> InstallScreen(run, model) { stack = stack.dropLast(1) }
         }
     }
+    AddSourceDialog(model.market)
     if (current.isRoot) {
-        BottomNav(TABS.map { it.first }, TABS.indexOfFirst { it.second == current }) { stack = listOf(TABS[it].second) }
+        NavBar(current) { stack = listOf(it) }
     }
     InstallPrompts(model)
+}
+
+/** MD3 navigation bar; each tab has its own indicator colour (Marketplace amber, Apps blue, Schedules teal). */
+@Composable
+private fun NavBar(current: Screen, onSelect: (Screen) -> Unit) {
+    val r = MaterialTheme.relume
+    val indicators = listOf(r.amber.container, r.blue.container, r.teal.container)
+    val glyphs = listOf(r.amber.onContainer, r.blue.onContainer, r.teal.onContainer)
+    NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+        TABS.forEachIndexed { i, tab ->
+            val selected = tab.screen == current
+            NavigationBarItem(
+                selected = selected,
+                onClick = { onSelect(tab.screen) },
+                icon = { Icon(painterResource(if (selected) tab.selectedIcon else tab.icon), contentDescription = null) },
+                label = { Text(tab.label) },
+                colors = NavigationBarItemDefaults.colors(
+                    indicatorColor = indicators[i],
+                    selectedIconColor = glyphs[i],
+                    selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                ),
+            )
+        }
+    }
 }
