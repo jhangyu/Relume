@@ -6,20 +6,22 @@
 <title>Android · Marketplace · Relume (candidate 2)</title>
 <link rel="stylesheet" href="m3.css">
 <style>
-  .carousel { display: flex; gap: 8px; overflow-x: auto; padding: 8px 16px 4px; scrollbar-width: none; scroll-snap-type: x mandatory; }
-  .hero { flex: none; scroll-snap-align: start; width: 248px; height: 168px; border-radius: 28px; padding: 18px; color: #fff; background: linear-gradient(135deg, var(--c1), var(--c2)); display: flex; flex-direction: column; justify-content: space-between; position: relative; overflow: hidden; }
-  .hero.narrow { width: 96px; padding: 14px; align-items: center; justify-content: center; }
-  .hero::before { content: ""; position: absolute; width: 220px; height: 220px; right: -70px; top: -90px; border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,.3), transparent 65%); }
-  .hero .tile { box-shadow: 0 6px 16px rgba(0,0,0,.25); }
-  .hero .k { font: 500 11px/16px var(--font); letter-spacing: .8px; text-transform: uppercase; opacity: .92; }
-  .bundle { display: flex; gap: 12px; align-items: flex-start; padding: 14px 14px 14px 16px; border-radius: var(--md-sys-shape-corner-large); border: 1px solid var(--md-sys-color-outline-variant); margin: 0 16px 8px; cursor: pointer; }
-  .bundle:has(input:checked) { background: var(--md-sys-color-primary-container); border-color: transparent; color: var(--md-sys-color-on-primary-container); }
-  .bundle:has(input:checked) .var { color: var(--md-sys-color-on-primary-container); }
-  .bundle input { margin-top: 2px; }
-  .au { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: #fff; font: 500 14px/1 var(--font); flex: none; }
-  .bottom { flex: none; padding: 12px 16px 12px; background: var(--md-sys-color-surface-container); display: grid; gap: 8px; }
-  .warncard { margin: 0 16px; padding: 16px; border-radius: var(--md-sys-shape-corner-large); background: var(--x-warning-container); color: var(--x-on-warning-container); display: grid; gap: 6px; }
-  .detail-head { display: flex; gap: 16px; align-items: center; padding: 4px 16px 12px; }
+  /* MD3 multi-browse carousel: large / medium / small items fill the 328dp content width (8dp gaps) */
+  .carousel { display: flex; gap: 8px; overflow-x: auto; padding: 8px 16px; scrollbar-width: none; scroll-snap-type: x mandatory; }
+  .hero { flex: none; scroll-snap-align: start; width: 224px; height: 176px; border-radius: 28px; padding: 16px; color: var(--cf); background: linear-gradient(135deg, var(--c1), var(--c2)); display: flex; flex-direction: column; justify-content: space-between; }
+  .hero.m { width: 56px; padding: 0; align-items: center; justify-content: center; }
+  .hero.sm { width: 32px; padding: 0; }
+  .hero .tile { background: #fff; }
+  .hero .k { font: 500 11px/16px var(--font); letter-spacing: .5px; text-transform: uppercase; }
+  .hero .top { display: flex; justify-content: space-between; align-items: center; }
+  .bottom { flex: none; padding: 16px; background: var(--md-sys-color-surface-container); display: grid; gap: 8px; }
+  .bottom .btn { width: 100%; }
+  .warncard { margin: 0 16px; padding: 16px; border-radius: var(--md-sys-shape-corner-large); background: var(--x-amber); color: var(--x-on-amber); display: grid; gap: 8px; }
+  .warncard .row { gap: 8px; }
+  .detail-head { display: flex; gap: 16px; align-items: center; padding: 0 16px 8px; }
+  .detail-head .grow { display: grid; gap: 4px; }
+  .detail-head .row { margin-top: 4px; }
+  .field { padding: 16px 16px 0; }
 </style>
 </head>
 <body>
@@ -27,110 +29,106 @@
   <header>
     <div>
       <h1>Android · Marketplace</h1>
-      <p class="lede">Material 3, light only. Phones show the sample dynamic colour scheme (green wallpaper); switch to the fallback scheme used on Android 10–11 (API 29–30, no dynamic colour). Scroll inside each phone.</p>
+      <p class="lede">Material 3, light only. Surfaces are neutral grey; colour sits on items and its hue tells what it means: violet builds on the server, sky chooses and edits, coral sends to the phone, pastels mark status and category. One fixed palette on every Android version (no wallpaper colour). Scroll inside each phone.</p>
     </div>
     <nav class="files" aria-label="Android mockups"><a href="marketplace.html" aria-current="page">Marketplace</a><a href="apps.html">Apps</a><a href="schedules.html">Schedules</a></nav>
-    <div class="palette" role="group" aria-label="Colour scheme"><button type="button" aria-pressed="true" data-p="dyn">Dynamic colour</button><button type="button" aria-pressed="false" data-p="fallback">Fallback palette</button></div>
   </header>
 
   <div class="phones">
     <!-- 1. Marketplace list -->
     <figure>
-      <div class="phone dyn"><div class="screen">
+      <div class="phone"><div class="screen">
         <div class="status"><span>9:41</span><span class="cam"></span><span class="sys"><i></i><i></i></span></div>
         <div class="appbar"><span class="title">Marketplace</span>
-          <button class="icon-btn" type="button" aria-label="Add custom source"><svg class="i" aria-hidden="true"><use href="#i-github"/></svg></button>
+          <button class="icon-btn" type="button" aria-label="Add custom source"><svg class="i" aria-hidden="true"><use href="#ms-add_link"/></svg></button>
           <button class="icon-btn" type="button" aria-label="Phone settings and account"><span class="avatar" aria-hidden="true">AD</span></button>
         </div>
         <div class="body">
-          <div class="searchbar" role="search"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg><span>Search 1,207 apps</span><button class="icon-btn" type="button" aria-label="Sort and origin"><svg class="i" aria-hidden="true"><use href="#i-sort"/></svg></button></div>
+          <div class="searchbar" role="search"><svg class="i" aria-hidden="true"><use href="#ms-search"/></svg><span>Search 1,207 apps</span><button class="icon-btn" type="button" aria-label="Sort and origin filter"><svg class="i" aria-hidden="true"><use href="#ms-sort"/></svg></button></div>
           <div class="chips" role="group" aria-label="Category">
-            <button class="chip on" type="button" aria-pressed="true"><svg class="i i-18" aria-hidden="true"><use href="#i-check"/></svg>All</button>
+            <button class="chip on" type="button" aria-pressed="true"><svg class="i i-18" aria-hidden="true"><use href="#ms-check"/></svg>All</button>
             <button class="chip" type="button" aria-pressed="false" data-cat="social"><span class="dot"></span>Social</button>
             <button class="chip" type="button" aria-pressed="false" data-cat="video"><span class="dot"></span>Video</button>
             <button class="chip" type="button" aria-pressed="false" data-cat="music"><span class="dot"></span>Music</button>
             <button class="chip" type="button" aria-pressed="false" data-cat="productivity"><span class="dot"></span>Productivity</button>
           </div>
           <div class="carousel" aria-label="Featured">
-            <div class="hero" data-cat="social"><div class="row" style="justify-content:space-between;align-items:flex-start;position:relative"><span class="k">Featured</span><span class="tile s48" data-cat="social" aria-hidden="true">Ig</span></div><div style="position:relative"><div class="t-title-l">Instagram</div><div class="t-body-s" style="opacity:.95">11 bundles · Piko 5.8k ★</div></div></div>
-            <div class="hero" data-cat="video" style="width:200px"><span class="k" style="position:relative">Built-in</span><div style="position:relative"><span class="tile s40" data-cat="video" aria-hidden="true" style="margin-bottom:8px">YT</span><div class="t-title-m">YouTube</div></div></div>
-            <div class="hero narrow" data-cat="personalization"><span class="tile s48" data-cat="personalization" aria-hidden="true">N</span></div>
+            <div class="hero" data-cat="social"><div class="top"><span class="k">Featured</span><span class="tile s48" data-cat="social" aria-hidden="true">Ig</span></div><div><div class="t-title-l">Instagram</div><div class="t-body-s">11 bundles · Piko 5.8k ★</div></div></div>
+            <div class="hero m" data-cat="video" aria-label="YouTube"><span class="tile s40" data-cat="video" aria-hidden="true">YT</span></div>
+            <div class="hero sm" data-cat="personalization" aria-label="Nova"></div>
           </div>
-          <div class="row pad" style="padding-top:12px"><span class="t-title-s grow">All apps</span><span class="t-body-s var">Most bundles</span></div>
-          <div class="li"><span class="tile s48" data-cat="social" aria-hidden="true">Ig</span><div class="grow"><div class="h">Instagram</div><div class="s">Social · 11 bundles</div></div><span class="st ok"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>On</span></div>
-          <div class="li"><span class="tile s48" data-cat="productivity" aria-hidden="true">G</span><div class="grow"><div class="h">Gboard</div><div class="s">Productivity · 11 bundles</div></div><span class="st ok"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>On</span></div>
-          <div class="li"><span class="tile s48" data-cat="video" aria-hidden="true">Tw</span><div class="grow"><div class="h">Twitch</div><div class="s">Video · 8 bundles</div></div><span class="st ok"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>On</span></div>
-          <div class="li"><span class="tile s48" data-cat="social" aria-hidden="true">B</span><div class="grow"><div class="h">Boost for Reddit</div><div class="s">Social · 4 bundles + 1 custom</div></div><svg class="i var" aria-hidden="true"><use href="#i-chevron-right"/></svg></div>
-          <div class="li"><span class="tile s48" data-cat="news" aria-hidden="true">P</span><div class="grow"><div class="h">Pinterest</div><div class="s">News · 7 bundles</div></div><svg class="i var" aria-hidden="true"><use href="#i-chevron-right"/></svg></div>
-          <div class="li"><span class="tile s48" data-cat="maps" aria-hidden="true">W</span><div class="grow"><div class="h">Waze</div><div class="s">Maps · 6 bundles</div></div><svg class="i var" aria-hidden="true"><use href="#i-chevron-right"/></svg></div>
-          <div class="li"><span class="tile s48" data-cat="music" aria-hidden="true">YM</span><div class="grow"><div class="h">YouTube Music</div><div class="s"><span class="origin builtin">BUILT-IN</span> Music</div></div><svg class="i var" aria-hidden="true"><use href="#i-chevron-right"/></svg></div>
+          <div class="sec"><span class="sec-label">All apps</span><button class="btn text" type="button"><svg class="i" aria-hidden="true"><use href="#ms-sort"/></svg>Most bundles</button></div>
+          <a class="li l2" href="#" style="color:inherit;text-decoration:none"><span class="tile s40" data-cat="social" aria-hidden="true">Ig</span><span class="grow"><span class="h">Instagram</span><span class="s row"><span class="tag" data-cat="social">Social</span>11 bundles</span></span><span class="st ok"><svg class="i" aria-hidden="true"><use href="#ms-check"/></svg>On</span></a>
+          <a class="li l2" href="#" style="color:inherit;text-decoration:none"><span class="tile s40" data-cat="productivity" aria-hidden="true">G</span><span class="grow"><span class="h">Gboard</span><span class="s row"><span class="tag" data-cat="productivity">Productivity</span>11 bundles</span></span><span class="st ok"><svg class="i" aria-hidden="true"><use href="#ms-check"/></svg>On</span></a>
+          <a class="li l2" href="#" style="color:inherit;text-decoration:none"><span class="tile s40" data-cat="video" aria-hidden="true">Tw</span><span class="grow"><span class="h">Twitch</span><span class="s row"><span class="tag" data-cat="video">Video</span>8 bundles</span></span><span class="st ok"><svg class="i" aria-hidden="true"><use href="#ms-check"/></svg>On</span></a>
+          <a class="li l2" href="#" style="color:inherit;text-decoration:none"><span class="tile s40" data-cat="social" aria-hidden="true">B</span><span class="grow"><span class="h">Boost for Reddit</span><span class="s row"><span class="tag" data-cat="social">Social</span>4 bundles + 1 custom</span></span><svg class="i var" aria-hidden="true"><use href="#ms-chevron_right"/></svg></a>
+          <a class="li l2" href="#" style="color:inherit;text-decoration:none"><span class="tile s40" data-cat="news" aria-hidden="true">P</span><span class="grow"><span class="h">Pinterest</span><span class="s row"><span class="tag" data-cat="news">News</span>7 bundles</span></span><svg class="i var" aria-hidden="true"><use href="#ms-chevron_right"/></svg></a>
+          <a class="li l2" href="#" style="color:inherit;text-decoration:none"><span class="tile s40" data-cat="maps" aria-hidden="true">W</span><span class="grow"><span class="h">Waze</span><span class="s row"><span class="tag" data-cat="maps">Maps</span>6 bundles</span></span><svg class="i var" aria-hidden="true"><use href="#ms-chevron_right"/></svg></a>
+          <a class="li l2" href="#" style="color:inherit;text-decoration:none"><span class="tile s40" data-cat="music" aria-hidden="true">YM</span><span class="grow"><span class="h">YouTube Music</span><span class="s row"><span class="tag" data-cat="music">Music</span><span class="origin builtin">BUILT-IN</span></span></span><svg class="i var" aria-hidden="true"><use href="#ms-chevron_right"/></svg></a>
         </div>
         <nav class="navbar" aria-label="Main">
-          <a href="marketplace.html" aria-current="page"><span class="ind"><svg class="i" aria-hidden="true"><use href="#i-store"/></svg></span>Marketplace</a>
-          <a href="apps.html"><span class="ind"><svg class="i" aria-hidden="true"><use href="#i-apps"/></svg><span class="badge" aria-label="6 enabled">6</span></span>Apps</a>
-          <a href="schedules.html"><span class="ind"><svg class="i" aria-hidden="true"><use href="#i-schedule"/></svg></span>Schedules</a>
+          <a href="marketplace.html" aria-current="page"><span class="ind"><svg class="i" aria-hidden="true"><use href="#ms-storefront-fill1"/></svg></span>Marketplace</a>
+          <a href="apps.html"><span class="ind"><svg class="i" aria-hidden="true"><use href="#ms-apps"/></svg><span class="badge" aria-label="6 enabled">6</span></span>Apps</a>
+          <a href="schedules.html"><span class="ind"><svg class="i" aria-hidden="true"><use href="#ms-schedule"/></svg></span>Schedules</a>
         </nav>
         <div class="gesture" style="background:var(--md-sys-color-surface-container)"></div>
       </div></div>
-      <figcaption>Marketplace: search bar, category filter chips, featured carousel, app list. Sort and origin filter sit behind the sort icon.</figcaption>
+      <figcaption>Marketplace: search bar, category filter chips, featured carousel (large / medium / small items), two-line app list with centred leading tile and trailing status.</figcaption>
     </figure>
 
     <!-- 2. App detail: pick bundle + patches -->
     <figure>
-      <div class="phone dyn"><div class="screen">
+      <div class="phone"><div class="screen">
         <div class="status"><span>9:41</span><span class="cam"></span><span class="sys"><i></i><i></i></span></div>
-        <div class="appbar"><button class="icon-btn" type="button" aria-label="Back"><svg class="i" aria-hidden="true"><use href="#i-back"/></svg></button><span class="title"></span></div>
+        <div class="appbar"><button class="icon-btn" type="button" aria-label="Back"><svg class="i" aria-hidden="true"><use href="#ms-arrow_back"/></svg></button><span class="title"></span></div>
         <div class="body">
-          <div class="detail-head"><span class="tile s72" data-cat="social" aria-hidden="true">B</span><div class="grow"><div class="t-headline-s">Boost for Reddit</div><div class="mono var">com.rubenmayayo.reddit</div><div class="row" style="margin-top:6px"><span class="chip assist">Social</span><span class="chip assist">1.12.10 – 1.12.12</span></div></div></div>
-          <div class="sec-t">Choose one bundle</div>
-          <label class="bundle"><input type="radio" name="b2" checked><span class="au" style="background:#0f6cbd">W</span><span class="grow"><span class="t-title-s">Patcheddit</span><br><span class="t-body-s var">wchill/patcheddit · 814 ★ · 14 patches</span><br><span class="origin official">OFFICIAL CATALOG</span></span></label>
-          <label class="bundle"><input type="radio" name="b2"><span class="au" style="background:#c239b3">B</span><span class="grow"><span class="t-title-s">Brealorg</span><br><span class="t-body-s var">103 ★ · 78 patches</span><br><span class="origin official">OFFICIAL CATALOG</span></span></label>
-          <label class="bundle"><input type="radio" name="b2"><span class="au" style="background:#5c2e91">J</span><span class="grow"><span class="t-title-s">boost-tweaks</span><br><span class="t-body-s var">Xposed · LSPatch · added by you</span><br><span class="origin custom">CUSTOM</span></span></label>
-          <div class="t-body-s var pad">+ 2 more bundles</div>
-          <div class="row" style="padding:20px 16px 4px"><span class="t-title-s grow" style="color:var(--md-sys-color-primary)">Patches · 12 on</span><button class="btn text" type="button">Reset</button></div>
-          <div class="li"><div class="grow"><div class="h">Spoof client</div><div class="s">Custom client ID · has options</div></div><span class="sw"><input type="checkbox" checked aria-label="Spoof client"><span></span></span></div>
-          <div class="li div"><div class="grow"><div class="h">Disable ads</div><div class="s">Feeds and comments</div></div><span class="sw"><input type="checkbox" checked aria-label="Disable ads"><span></span></span></div>
-          <div class="li div"><div class="grow"><div class="h">Automatically undelete Reddit content</div><div class="s"><span class="st ter" style="height:20px">Changed by you</span></div></div><span class="sw"><input type="checkbox" aria-label="Automatically undelete Reddit content"><span></span></span></div>
-          <div class="li div"><div class="grow"><div class="h">Fix /r/all</div><div class="s">Loads /r/all via .json</div></div><span class="sw"><input type="checkbox" checked aria-label="Fix /r/all"><span></span></span></div>
-          <div class="li div"><div class="grow"><div class="h">Enable Android debugging</div><div class="s">Default off</div></div><span class="sw"><input type="checkbox" aria-label="Enable Android debugging"><span></span></span></div>
+          <div class="detail-head"><span class="tile s64" data-cat="social" aria-hidden="true">B</span><div class="grow"><div class="t-headline-s">Boost for Reddit</div><div class="mono var">com.rubenmayayo.reddit</div><div class="row"><span class="tag" data-cat="social">Social</span><span class="tag">1.12.10 – 1.12.12</span></div></div></div>
+          <div class="sec"><span class="sec-label">Choose one bundle</span><button class="btn text" type="button">2 more</button></div>
+          <div class="group" role="radiogroup" aria-label="Patch bundle">
+            <label class="li l2"><span class="lead"><input class="rb" type="radio" name="b2" checked aria-label="Patcheddit"></span><span class="grow"><span class="h">Patcheddit</span><span class="s">814 ★ · 14 patches</span></span><span class="origin official">OFFICIAL</span></label>
+            <label class="li l2"><span class="lead"><input class="rb" type="radio" name="b2" aria-label="Brealorg"></span><span class="grow"><span class="h">Brealorg</span><span class="s">103 ★ · 78 patches</span></span><span class="origin official">OFFICIAL</span></label>
+            <label class="li l2"><span class="lead"><input class="rb" type="radio" name="b2" aria-label="boost-tweaks"></span><span class="grow"><span class="h">boost-tweaks</span><span class="s">Xposed · LSPatch · yours</span></span><span class="origin custom">CUSTOM</span></label>
+          </div>
+          <div class="sec"><span class="sec-label">Patches · 12 on</span><button class="btn text" type="button">Reset</button></div>
+          <label class="li l2"><span class="grow"><span class="h">Spoof client</span><span class="s">Custom client ID · has options</span></span><span class="sw"><input type="checkbox" checked aria-label="Spoof client"><span></span></span></label>
+          <label class="li l2 div"><span class="grow"><span class="h">Disable ads</span><span class="s">Feeds and comments</span></span><span class="sw"><input type="checkbox" checked aria-label="Disable ads"><span></span></span></label>
+          <label class="li l2 div"><span class="grow"><span class="h">Automatically undelete Reddit content</span><span class="s"><span class="st mine">Changed by you</span></span></span><span class="sw"><input type="checkbox" aria-label="Automatically undelete Reddit content"><span></span></span></label>
+          <label class="li l2 div"><span class="grow"><span class="h">Fix /r/all</span><span class="s">Loads /r/all via .json</span></span><span class="sw"><input type="checkbox" checked aria-label="Fix /r/all"><span></span></span></label>
+          <label class="li l2 div"><span class="grow"><span class="h">Enable Android debugging</span><span class="s">Default off</span></span><span class="sw"><input type="checkbox" aria-label="Enable Android debugging"><span></span></span></label>
         </div>
         <div class="bottom"><button class="btn filled large" type="button">Next: download source</button></div>
         <div class="gesture" style="background:var(--md-sys-color-surface-container)"></div>
       </div></div>
-      <figcaption>App detail: pick one bundle (origin label on each), toggle its patches for this app.</figcaption>
+      <figcaption>App detail: bundle choice is an MD3 radio list (leading radio, name and stats, trailing origin label, all centred); patches are two-line list items with trailing switches.</figcaption>
     </figure>
 
     <!-- 3. Enable: APKMirror not found -> paste URL -->
     <figure>
-      <div class="phone dyn"><div class="screen">
+      <div class="phone"><div class="screen">
         <div class="status"><span>9:41</span><span class="cam"></span><span class="sys"><i></i><i></i></span></div>
-        <div class="appbar"><button class="icon-btn" type="button" aria-label="Back"><svg class="i" aria-hidden="true"><use href="#i-back"/></svg></button><span class="title">Download source</span></div>
+        <div class="appbar"><button class="icon-btn" type="button" aria-label="Back"><svg class="i" aria-hidden="true"><use href="#ms-arrow_back"/></svg></button><span class="title">Download source</span></div>
         <div class="body">
-          <div class="li" style="min-height:56px"><span class="tile s40" data-cat="social" aria-hidden="true">B</span><div class="grow"><div class="t-title-s">Boost for Reddit</div><div class="t-body-s var">Patcheddit · 12 patches · Auto version</div></div></div>
-          <div class="warncard" role="status"><div class="row"><svg class="i i-20" aria-hidden="true"><use href="#i-warning"/></svg><span class="t-title-s">APKMirror page not found</span></div><div class="t-body-s">3 search results, none lists <span class="mono">com.rubenmayayo.reddit</span>. Paste the APKMirror listing URL.</div></div>
-          <div style="padding:24px 16px 0">
-            <div class="tf focus"><label for="am3">APKMirror listing URL</label><svg class="i i-20 var" aria-hidden="true"><use href="#i-link"/></svg><input id="am3" placeholder="apkmirror.com/apk/…/"><button class="icon-btn" type="button" aria-label="Paste from clipboard" style="width:40px;height:40px"><svg class="i i-20" aria-hidden="true"><use href="#i-paste"/></svg></button></div>
+          <div class="li l2"><span class="tile s40" data-cat="social" aria-hidden="true">B</span><span class="grow"><span class="h">Boost for Reddit</span><span class="s">Patcheddit · 12 patches · Auto version</span></span></div>
+          <div class="warncard" role="status"><div class="row"><svg class="i i-20" aria-hidden="true"><use href="#ms-warning"/></svg><span class="t-title-m">APKMirror page not found</span></div><div class="t-body-s">3 search results, none lists <span class="mono">com.rubenmayayo.reddit</span>. Paste the APKMirror listing URL.</div></div>
+          <div class="field" style="padding-top:24px">
+            <div class="tf focus"><label for="am3">APKMirror listing URL</label><svg class="i var" aria-hidden="true"><use href="#ms-link"/></svg><input id="am3" placeholder="apkmirror.com/apk/…/"><button class="icon-btn" type="button" aria-label="Paste from clipboard"><svg class="i" aria-hidden="true"><use href="#ms-content_paste"/></svg></button></div>
             <div class="support">The page that lists every version of the app. Required.</div>
           </div>
-          <div style="padding:20px 16px 0">
-            <div class="tf"><label for="ap3">APKPure URL (optional)</label><svg class="i i-20 var" aria-hidden="true"><use href="#i-link"/></svg><input id="ap3" placeholder=""></div>
+          <div class="field" style="padding-top:24px">
+            <div class="tf"><label for="ap3">APKPure URL (optional)</label><svg class="i var" aria-hidden="true"><use href="#ms-link"/></svg><input id="ap3"></div>
           </div>
-          <div class="sec-t">After you enable</div>
-          <div class="li" style="min-height:56px"><svg class="i var" aria-hidden="true"><use href="#i-rebuild"/></svg><div class="grow s">Relume builds the app right away, then keeps it updated on the global schedule.</div></div>
+          <div class="sec"><span class="sec-label">After you enable</span></div>
+          <div class="li l2"><span class="lead"><svg class="i" aria-hidden="true"><use href="#ms-build"/></svg></span><span class="grow"><span class="s">Relume builds the app right away, then keeps it updated on the global schedule.</span></span></div>
         </div>
-        <div class="bottom"><div class="t-body-s var" id="hint3">Add the APKMirror URL to enable.</div><button class="btn filled large" type="button" id="en3" disabled><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Enable and build</button></div>
+        <div class="bottom"><div class="t-body-s var" id="hint3">Add the APKMirror URL to enable.</div><button class="btn filled large" type="button" id="en3" disabled><svg class="i" aria-hidden="true"><use href="#ms-check"/></svg>Enable and build</button></div>
         <div class="gesture" style="background:var(--md-sys-color-surface-container)"></div>
       </div></div>
       <figcaption>Enable step when auto-locate fails. Type a URL like apkmirror.com/apk/rubenmayayo/boost-for-reddit/ to unlock Enable.</figcaption>
     </figure>
   </div>
 </div>
-<script src="../icons.js"></script>
+<script src="icons-material.js"></script>
 <script>
-document.querySelectorAll('.palette button').forEach(b => b.onclick = () => {
-  document.querySelectorAll('.palette button').forEach(x => x.setAttribute('aria-pressed', x === b));
-  document.querySelectorAll('.phone').forEach(p => p.classList.toggle('dyn', b.dataset.p === 'dyn'));
-});
 document.getElementById('am3').addEventListener('input', e => {
   const ok = /apkmirror\.com\/apk\/[^/]+\/[^/]+/.test(e.target.value);
   document.getElementById('en3').disabled = !ok;

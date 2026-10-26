@@ -6,17 +6,24 @@
 <title>Android · Apps · Relume (candidate 2)</title>
 <link rel="stylesheet" href="m3.css">
 <style>
-  .acard { margin: 0 16px 8px; padding: 12px 8px 4px 16px; }
-  .acard .top { display: flex; gap: 14px; align-items: center; padding-right: 8px; }
-  .acard .acts { display: flex; align-items: center; gap: 0; margin-top: 4px; }
-  .acard .acts .sp { flex: 1; }
-  .acard .meta { font-size: 13px; line-height: 18px; color: var(--md-sys-color-on-surface-variant); }
-  .bopt { display: flex; gap: 12px; align-items: center; padding: 12px 16px; margin: 0 16px 8px; border-radius: var(--md-sys-shape-corner-large); border: 1px solid var(--md-sys-color-outline-variant); }
-  .bopt:has(input:checked) { background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); border-color: transparent; }
-  .opt { margin: 0 16px 8px; padding: 20px 12px 12px; border-radius: var(--md-sys-shape-corner-medium); background: var(--md-sys-color-surface-container); display: grid; gap: 18px; }
+  /* app card: 16dp padding; trailing icon buttons pulled out 12dp so glyphs align with the 16dp content edge */
+  .acard { margin: 0 16px 8px; padding: 16px 16px 0; }
+  .acard .top { display: flex; gap: 16px; align-items: center; }
+  .acard .top .grow { display: grid; gap: 2px; }
+  .acard .acts { display: flex; align-items: center; gap: 0; min-height: 48px; margin: 4px -12px 0 0; }
+  .acard .acts .btn.text { margin-right: 0; }
+  .acard .sp { flex: 1; min-width: 0; }
+  .acard .meta { font-size: 11px; line-height: 16px; letter-spacing: .4px; color: var(--md-sys-color-on-surface-variant); }
+  .acard .inst { display: flex; align-items: center; gap: 8px; min-height: 56px; margin: 0 -16px; padding: 8px 16px; border-top: 1px solid var(--md-sys-color-outline-variant); }
+  .acard .lp { margin-top: 12px; }
+  .sysdlg { position: absolute; left: 24px; right: 24px; top: 200px; z-index: 6; padding: 24px 24px 16px; border-radius: 28px; background: var(--md-sys-color-surface-container-high); }
+  .sysdlg .acts { display: flex; justify-content: flex-end; gap: 8px; margin: 24px -12px 0 0; }
+  .opt { margin: 0 16px 8px; padding: 24px 16px 16px; border-radius: var(--md-sys-shape-corner-medium); background: var(--md-sys-color-surface-container); display: grid; gap: 24px; }
   .opt .tf label { background: var(--md-sys-color-surface-container); }
-  .bottom { flex: none; padding: 12px 16px; background: var(--md-sys-color-surface-container); display: flex; gap: 8px; }
-  .bottom .btn { flex: 1; padding: 0 12px; }
+  .field { padding: 16px 16px 0; }
+  .seg-wrap { padding: 0 16px; }
+  .bottom { flex: none; padding: 16px; background: var(--md-sys-color-surface-container); display: flex; gap: 8px; }
+  .bottom .btn { flex: 1; padding: 0 16px; }
 </style>
 </head>
 <body>
@@ -24,116 +31,122 @@
   <header>
     <div>
       <h1>Android · Apps and app settings</h1>
-      <p class="lede">Enabled apps with status and SVG icon actions (long-press shows the tooltip; each button has a content description). App settings has the same fields as web.</p>
+      <p class="lede">Enabled apps with build status, icon actions (long-press shows the tooltip; each button has a content description) and an Install row for this phone. App settings has the same fields as web. Surfaces stay neutral grey; colour sits on actions, status and category.</p>
     </div>
     <nav class="files" aria-label="Android mockups"><a href="marketplace.html">Marketplace</a><a href="apps.html" aria-current="page">Apps</a><a href="schedules.html">Schedules</a></nav>
-    <div class="palette" role="group" aria-label="Colour scheme"><button type="button" aria-pressed="true" data-p="dyn">Dynamic colour</button><button type="button" aria-pressed="false" data-p="fallback">Fallback palette</button></div>
   </header>
 
   <div class="phones">
-    <!-- 1. Apps list -->
+    <!-- 1. Apps list with install state -->
     <figure>
-      <div class="phone dyn"><div class="screen">
+      <div class="phone"><div class="screen">
         <div class="status"><span>9:41</span><span class="cam"></span><span class="sys"><i></i><i></i></span></div>
         <div class="appbar"><span class="title">Apps</span>
-          <button class="icon-btn" type="button" aria-label="Check all apps for updates"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg></button>
+          <button class="icon-btn" type="button" aria-label="Check all apps for updates"><svg class="i" aria-hidden="true"><use href="#ms-sync"/></svg></button>
           <button class="icon-btn" type="button" aria-label="Phone settings and account"><span class="avatar" aria-hidden="true">AD</span></button>
         </div>
         <div class="body">
           <div class="chips" role="group" aria-label="Status">
-            <button class="chip on" type="button" aria-pressed="true"><svg class="i i-18" aria-hidden="true"><use href="#i-check"/></svg>All 6</button>
-            <button class="chip" type="button" aria-pressed="false">Updates 1</button>
-            <button class="chip" type="button" aria-pressed="false">Building 1</button>
+            <button class="chip on" type="button" aria-pressed="true"><svg class="i i-18" aria-hidden="true"><use href="#ms-check"/></svg>All 6</button>
+            <button class="chip" type="button" aria-pressed="false">Not installed 2</button>
+            <button class="chip" type="button" aria-pressed="false">Phone update 1</button>
             <button class="chip" type="button" aria-pressed="false">Failed 1</button>
             <button class="chip" type="button" aria-pressed="false">Needs URL 1</button>
           </div>
-
           <div class="card-f acard">
-            <div class="top"><span class="tile s48" data-cat="social" aria-hidden="true">Re</span><div class="grow"><div class="t-title-m">Reddit</div><div class="meta"><span class="mono">2026.42.0</span> · Adobo</div></div><span class="st prim">62 %</span></div>
-            <div class="lp" style="margin:12px 8px 0 0" role="progressbar" aria-label="Reddit build progress" aria-valuenow="62" aria-valuemin="0" aria-valuemax="100"><span style="width:62%"></span><span style="flex:1;background:transparent"></span></div>
-            <div class="acts"><span class="t-body-s var sp">Patching, step 4 of 6</span>
-              <button class="icon-btn" type="button" aria-label="Check Reddit for updates"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg></button>
-              <button class="icon-btn plain" type="button" aria-label="Rebuild Reddit, build running" disabled><svg class="i" aria-hidden="true"><use href="#i-rebuild"/></svg></button>
-              <button class="icon-btn" type="button" aria-label="Download Reddit previous build"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg></button>
-            </div>
+            <div class="top"><span class="tile s40" data-cat="social" aria-hidden="true">Re</span><div class="grow"><div class="t-title-m">Reddit</div><div class="meta"><span class="mono">2026.42.0</span> · Adobo</div></div><span class="st run">62 %</span></div>
+            <div class="lp" role="progressbar" aria-label="Reddit build progress" aria-valuenow="62" aria-valuemin="0" aria-valuemax="100"><span style="width:62%"></span><span style="flex:1;background:transparent"></span></div>
+            <div class="acts"><span class="t-body-s var sp">Patching, step 4 of 6</span><button class="icon-btn " type="button" aria-label="Check Reddit for updates"><svg class="i" aria-hidden="true"><use href="#ms-sync"/></svg></button><button class="icon-btn " type="button" aria-label="Rebuild Reddit, build running" disabled><svg class="i" aria-hidden="true"><use href="#ms-build"/></svg></button></div>
+            <div class="inst"><span class="st ok"><svg class="i" aria-hidden="true"><use href="#ms-check"/></svg>Installed 2026.41.2</span><span class="sp"></span><span class="t-body-s var">Update after build</span></div>
           </div>
-
           <div class="card-f acard">
-            <div class="top"><span class="tile s48" data-cat="social" aria-hidden="true">Ig</span><div class="grow"><div class="t-title-m">Instagram</div><div class="meta"><span class="mono">402.0.0.41</span> · Piko</div></div><span class="st ter"><svg class="i" aria-hidden="true"><use href="#i-sparkle"/></svg>Update</span></div>
-            <div class="acts"><span class="t-body-s var sp">Piko 3.3.0 · app 403.0.0.38</span>
-              <button class="icon-btn" type="button" aria-label="Check Instagram for updates"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg></button>
-              <button class="icon-btn filled" type="button" aria-label="Rebuild Instagram with the update"><svg class="i" aria-hidden="true"><use href="#i-rebuild"/></svg></button>
-              <button class="icon-btn" type="button" aria-label="Download Instagram 402.0.0.41"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg></button>
-            </div>
+            <div class="top"><span class="tile s40" data-cat="social" aria-hidden="true">Ig</span><div class="grow"><div class="t-title-m">Instagram</div><div class="meta"><span class="mono">402.0.0.41</span> · Piko</div></div><span class="st upd">New version</span></div>
+            <div class="acts"><span class="t-body-s var sp">App 403.0.0.38 · Piko 3.3.0</span><button class="icon-btn " type="button" aria-label="Check Instagram for updates"><svg class="i" aria-hidden="true"><use href="#ms-sync"/></svg></button><button class="icon-btn tonal" type="button" aria-label="Rebuild Instagram with the new version"><svg class="i" aria-hidden="true"><use href="#ms-build"/></svg></button></div>
+            <div class="inst"><span class="st run"><svg class="i" aria-hidden="true"><use href="#ms-progress_activity"/></svg>Installing 402.0.0.41</span><span class="sp"></span><button class="btn small" type="button" disabled>Installing</button></div>
           </div>
-
           <div class="card-f acard">
-            <div class="top"><span class="tile s48" data-cat="video" aria-hidden="true">Tw</span><div class="grow"><div class="t-title-m">Twitch</div><div class="meta"><span class="mono">21.4.0</span> · De-Vanced</div></div><span class="st err"><svg class="i" aria-hidden="true"><use href="#i-error"/></svg>Failed</span></div>
-            <div class="acts"><span class="t-body-s sp" style="color:var(--md-sys-color-error)">"Block video ads" failed · Log</span>
-              <button class="icon-btn" type="button" aria-label="Check Twitch for updates"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg></button>
-              <button class="icon-btn tonal" type="button" aria-label="Retry Twitch build"><svg class="i" aria-hidden="true"><use href="#i-rebuild"/></svg></button>
-              <button class="icon-btn" type="button" aria-label="Download Twitch last good build 21.3.1"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg></button>
-            </div>
+            <div class="top"><span class="tile s40" data-cat="video" aria-hidden="true">Tw</span><div class="grow"><div class="t-title-m">Twitch</div><div class="meta"><span class="mono">21.4.0</span> · De-Vanced</div></div><span class="st err"><svg class="i" aria-hidden="true"><use href="#ms-error"/></svg>Failed</span></div>
+            <div class="acts"><span class="t-body-s sp" style="color:var(--md-sys-color-error)">"Block video ads" failed · Log</span><button class="icon-btn " type="button" aria-label="Check Twitch for updates"><svg class="i" aria-hidden="true"><use href="#ms-sync"/></svg></button><button class="icon-btn tonal" type="button" aria-label="Retry Twitch build"><svg class="i" aria-hidden="true"><use href="#ms-build"/></svg></button></div>
+            <div class="inst"><span class="st neu">Not installed</span><span class="sp"></span><button class="btn filled small" type="button" aria-label="Install Twitch 21.3.1, last good build"><svg class="i" aria-hidden="true"><use href="#ms-install_mobile"/></svg>Install 21.3.1</button></div>
           </div>
-
           <div class="card-f acard">
-            <div class="top"><span class="tile s48" data-cat="social" aria-hidden="true">Sy</span><div class="grow"><div class="t-title-m">Reddit Sync</div><div class="meta"><span class="mono">v24.11.0</span> · Patcheddit</div></div><span class="st warn"><svg class="i" aria-hidden="true"><use href="#i-link"/></svg>Needs URL</span></div>
-            <div class="acts"><span class="t-body-s var sp">APKMirror listing 404</span>
-              <button class="btn text" type="button">Add URL</button>
-              <button class="icon-btn plain" type="button" aria-label="Rebuild Reddit Sync, needs download URL" disabled><svg class="i" aria-hidden="true"><use href="#i-rebuild"/></svg></button>
-              <button class="icon-btn" type="button" aria-label="Download Reddit Sync v24.11.0"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg></button>
-            </div>
+            <div class="top"><span class="tile s40" data-cat="social" aria-hidden="true">Sy</span><div class="grow"><div class="t-title-m">Reddit Sync</div><div class="meta"><span class="mono">v24.11.0</span> · Patcheddit</div></div><span class="st warn"><svg class="i" aria-hidden="true"><use href="#ms-link"/></svg>Needs URL</span></div>
+            <div class="acts"><span class="t-body-s var sp">APKMirror listing 404</span><button class="btn text" type="button">Add URL</button><button class="icon-btn " type="button" aria-label="Rebuild Reddit Sync, needs download URL" disabled><svg class="i" aria-hidden="true"><use href="#ms-build"/></svg></button></div>
+            <div class="inst"><span class="st upd"><svg class="i" aria-hidden="true"><use href="#ms-system_update"/></svg>Phone has v24.10.2</span><span class="sp"></span><button class="btn filled small" type="button" aria-label="Update Reddit Sync to v24.11.0"><svg class="i" aria-hidden="true"><use href="#ms-system_update"/></svg>Update</button></div>
           </div>
-
           <div class="card-f acard">
-            <div class="top"><span class="tile s48" data-cat="video" aria-hidden="true">YT</span><div class="grow"><div class="t-title-m">YouTube</div><div class="meta"><span class="mono">20.14.43</span> · Morphe patches</div></div><span class="st ok"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Up to date</span></div>
-            <div class="acts"><span class="t-body-s var sp">Built 3 h ago</span>
-              <button class="icon-btn" type="button" aria-label="Check YouTube for updates"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg></button>
-              <button class="icon-btn" type="button" aria-label="Rebuild YouTube"><svg class="i" aria-hidden="true"><use href="#i-rebuild"/></svg></button>
-              <button class="icon-btn" type="button" aria-label="Download YouTube 20.14.43"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg></button>
-            </div>
+            <div class="top"><span class="tile s40" data-cat="video" aria-hidden="true">YT</span><div class="grow"><div class="t-title-m">YouTube</div><div class="meta"><span class="mono">20.14.43</span> · Morphe patches</div></div><span class="st ok"><svg class="i" aria-hidden="true"><use href="#ms-check"/></svg>Up to date</span></div>
+            <div class="acts"><span class="t-body-s var sp">Built 3 h ago</span><button class="icon-btn " type="button" aria-label="Check YouTube for updates"><svg class="i" aria-hidden="true"><use href="#ms-sync"/></svg></button><button class="icon-btn " type="button" aria-label="Rebuild YouTube"><svg class="i" aria-hidden="true"><use href="#ms-build"/></svg></button></div>
+            <div class="inst"><span class="st ok"><svg class="i" aria-hidden="true"><use href="#ms-check"/></svg>Installed 20.14.43</span></div>
           </div>
-
           <div class="card-f acard">
-            <div class="top"><span class="tile s48" data-cat="productivity" aria-hidden="true">G</span><div class="grow"><div class="t-title-m">Gboard</div><div class="meta"><span class="mono">15.8.4</span> · Pixel Board</div></div><span class="st neu">Idle</span></div>
-            <div class="acts"><span class="t-body-s var sp">Checked 40 min ago</span>
-              <button class="icon-btn" type="button" aria-label="Check Gboard for updates"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg></button>
-              <button class="icon-btn" type="button" aria-label="Rebuild Gboard"><svg class="i" aria-hidden="true"><use href="#i-rebuild"/></svg></button>
-              <button class="icon-btn" type="button" aria-label="Download Gboard 15.8.4"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg></button>
-            </div>
+            <div class="top"><span class="tile s40" data-cat="productivity" aria-hidden="true">G</span><div class="grow"><div class="t-title-m">Gboard</div><div class="meta"><span class="mono">15.8.4</span> · Pixel Board</div></div><span class="st neu">Idle</span></div>
+            <div class="acts"><span class="t-body-s var sp">Checked 40 min ago</span><button class="icon-btn " type="button" aria-label="Check Gboard for updates"><svg class="i" aria-hidden="true"><use href="#ms-sync"/></svg></button><button class="icon-btn " type="button" aria-label="Rebuild Gboard"><svg class="i" aria-hidden="true"><use href="#ms-build"/></svg></button></div>
+            <div class="inst"><span class="st neu">Not installed</span><span class="sp"></span><button class="btn filled small" type="button" aria-label="Install Gboard 15.8.4"><svg class="i" aria-hidden="true"><use href="#ms-install_mobile"/></svg>Install</button></div>
           </div>
         </div>
         <nav class="navbar" aria-label="Main">
-          <a href="marketplace.html"><span class="ind"><svg class="i" aria-hidden="true"><use href="#i-store"/></svg></span>Marketplace</a>
-          <a href="apps.html" aria-current="page"><span class="ind"><svg class="i" aria-hidden="true"><use href="#i-apps"/></svg><span class="badge" aria-label="6 enabled">6</span></span>Apps</a>
-          <a href="schedules.html"><span class="ind"><svg class="i" aria-hidden="true"><use href="#i-schedule"/></svg></span>Schedules</a>
+          <a href="marketplace.html"><span class="ind"><svg class="i" aria-hidden="true"><use href="#ms-storefront"/></svg></span>Marketplace</a>
+          <a href="apps.html" aria-current="page"><span class="ind"><svg class="i" aria-hidden="true"><use href="#ms-apps"/></svg><span class="badge" aria-label="6 enabled">6</span></span>Apps</a>
+          <a href="schedules.html"><span class="ind"><svg class="i" aria-hidden="true"><use href="#ms-schedule"/></svg></span>Schedules</a>
         </nav>
         <div class="gesture" style="background:var(--md-sys-color-surface-container)"></div>
       </div></div>
-      <figcaption>Apps: name, app version, bundle, status chip; check update / rebuild / download as icon buttons. Tap a card to open its settings.</figcaption>
+      <figcaption>Apps: name, app version, bundle, build status; check update and rebuild as icon buttons. Bottom row of each card is this phone: Not installed → Install, older version → Update, Installing, Installed + version. No Download on Android.</figcaption>
+    </figure>
+
+    <!-- 1b. Install hand-off to the Android package installer -->
+    <figure>
+      <div class="phone"><div class="screen">
+        <div class="status"><span>9:41</span><span class="cam"></span><span class="sys"><i></i><i></i></span></div>
+        <div class="appbar"><span class="title">Apps</span></div>
+        <div class="body">
+          <div class="card-f acard" style="padding-bottom:16px">
+            <div class="top"><span class="tile s40" data-cat="productivity" aria-hidden="true">G</span><div class="grow"><div class="t-title-m">Gboard</div><div class="meta"><span class="mono">15.8.4</span> · Pixel Board</div></div></div>
+            <div style="display:grid;gap:8px;margin-top:16px"><span class="t-body-s var">Downloading from server · 31 of 48 MB</span>
+              <div class="lp" role="progressbar" aria-label="Gboard download" aria-valuenow="65" aria-valuemin="0" aria-valuemax="100"><span style="width:65%"></span><span style="flex:1;background:transparent"></span></div></div>
+          </div>
+        </div>
+        <nav class="navbar" aria-label="Main">
+          <a href="marketplace.html"><span class="ind"><svg class="i" aria-hidden="true"><use href="#ms-storefront"/></svg></span>Marketplace</a>
+          <a href="apps.html" aria-current="page"><span class="ind"><svg class="i" aria-hidden="true"><use href="#ms-apps"/></svg><span class="badge" aria-label="6 enabled">6</span></span>Apps</a>
+          <a href="schedules.html"><span class="ind"><svg class="i" aria-hidden="true"><use href="#ms-schedule"/></svg></span>Schedules</a>
+        </nav>
+        <div class="gesture" style="background:var(--md-sys-color-surface-container)"></div>
+        <div class="scrim"></div>
+        <div class="sysdlg" role="dialog" aria-labelledby="pi-t">
+          <div class="row" style="gap:16px"><span class="tile s40" data-cat="productivity" aria-hidden="true">G</span><span class="t-headline-s" id="pi-t">Gboard</span></div>
+          <p class="t-body-l" style="margin:16px 0 0">Do you want to install this app?</p>
+          <p class="t-body-s var" style="margin:8px 0 0">Shown by Android's package installer. First time only: Android asks to allow installs from Relume.</p>
+          <div class="acts"><button class="btn text" type="button">Cancel</button><button class="btn text" type="button">Install</button></div>
+        </div>
+      </div></div>
+      <figcaption>Install: Relume pulls the server-built APK, then hands it to Android's package installer (system dialog, not Relume UI). After it finishes the card shows "Installed 15.8.4".</figcaption>
     </figure>
 
     <!-- 2. App settings: bundle, patches, options -->
     <figure>
-      <div class="phone dyn"><div class="screen">
+      <div class="phone"><div class="screen">
         <div class="status"><span>9:41</span><span class="cam"></span><span class="sys"><i></i><i></i></span></div>
-        <div class="appbar"><button class="icon-btn" type="button" aria-label="Back"><svg class="i" aria-hidden="true"><use href="#i-back"/></svg></button><span class="title">YouTube</span><span class="sw" style="margin-right:12px"><input type="checkbox" checked aria-label="YouTube enabled"><span></span></span></div>
+        <div class="appbar"><button class="icon-btn" type="button" aria-label="Back"><svg class="i" aria-hidden="true"><use href="#ms-arrow_back"/></svg></button><span class="title">YouTube</span><span class="sw" style="margin-right:12px"><input type="checkbox" checked aria-label="YouTube enabled"><span></span></span></div>
         <div class="body">
-          <div class="sec-t" style="padding-top:4px">Patch bundle</div>
-          <label class="bopt"><input type="radio" name="b2" checked><span class="grow"><span class="t-title-s">Morphe patches</span><br><span class="t-body-s">v1.4.2</span></span><span class="origin builtin">BUILT-IN</span></label>
-          <label class="bopt"><input type="radio" name="b2"><span class="grow"><span class="t-title-s">yt-extras</span><br><span class="t-body-s var">Xposed · LSPatch</span></span><span class="origin custom">CUSTOM</span></label>
-          <div class="row" style="padding:16px 16px 0"><span class="t-title-s grow" style="color:var(--md-sys-color-primary)">Patches · 38 of 46 on</span><button class="btn text" type="button">Reset</button></div>
-          <div class="li"><div class="grow"><div class="h">Hide ads</div><div class="s">Video, general and Shorts ads</div></div><span class="sw"><input type="checkbox" checked aria-label="Hide ads"><span></span></span></div>
-          <div class="li div"><div class="grow"><div class="h">Custom branding</div><div class="s">2 options</div></div><span class="sw"><input type="checkbox" checked aria-label="Custom branding"><span></span></span></div>
+          <div class="sec" style="padding-top:0"><span class="sec-label">Patch bundle</span></div>
+          <div class="group" role="radiogroup" aria-label="Patch bundle">
+            <label class="li l2"><span class="lead"><input class="rb" type="radio" name="b2" checked aria-label="Morphe patches"></span><span class="grow"><span class="h">Morphe patches</span><span class="s">v1.4.2 · 46 patches</span></span><span class="origin builtin">BUILT-IN</span></label>
+            <label class="li l2"><span class="lead"><input class="rb" type="radio" name="b2" aria-label="yt-extras"></span><span class="grow"><span class="h">yt-extras</span><span class="s">Xposed · LSPatch</span></span><span class="origin custom">CUSTOM</span></label>
+          </div>
+          <div class="sec"><span class="sec-label">Patches · 38 of 46 on</span><button class="btn text" type="button">Reset</button></div>
+          <div class="li l2"><div class="grow"><div class="h">Hide ads</div><div class="s">Video, general and Shorts ads</div></div><span class="sw"><input type="checkbox" checked aria-label="Hide ads"><span></span></span></div>
+          <div class="li l2 div"><div class="grow"><div class="h">Custom branding</div><div class="s">2 options</div></div><span class="sw"><input type="checkbox" checked aria-label="Custom branding"><span></span></span></div>
           <div class="opt">
             <div class="tf"><label for="o-n">App name</label><input id="o-n" value="YouTube Morphe"></div>
-            <div class="tf"><label for="o-i">Icon</label><input id="o-i" value="Morphe" readonly><svg class="i var" aria-hidden="true"><use href="#i-chevron-down"/></svg></div>
+            <div class="tf"><label for="o-i">Icon</label><input id="o-i" value="Morphe" readonly><svg class="i var" aria-hidden="true"><use href="#ms-expand_more"/></svg></div>
           </div>
-          <div class="li"><div class="grow"><div class="h">Return YouTube Dislike</div><div class="s"><span class="st ter" style="height:20px">Changed by you</span></div></div><span class="sw"><input type="checkbox" aria-label="Return YouTube Dislike"><span></span></span></div>
-          <div class="li div"><div class="grow"><div class="h">SponsorBlock</div><div class="s">2 options</div></div><span class="sw"><input type="checkbox" checked aria-label="SponsorBlock"><span></span></span></div>
+          <div class="li l2"><div class="grow"><div class="h">Return YouTube Dislike</div><div class="s"><span class="st mine">Changed by you</span></div></div><span class="sw"><input type="checkbox" aria-label="Return YouTube Dislike"><span></span></span></div>
+          <div class="li l2 div"><div class="grow"><div class="h">SponsorBlock</div><div class="s">2 options</div></div><span class="sw"><input type="checkbox" checked aria-label="SponsorBlock"><span></span></span></div>
           <div class="li div"><div class="grow"><div class="h">Hide Shorts components</div></div><span class="sw"><input type="checkbox" checked aria-label="Hide Shorts components"><span></span></span></div>
         </div>
-        <div class="bottom"><button class="btn outlined" type="button">Save</button><button class="btn filled" type="button"><svg class="i" aria-hidden="true"><use href="#i-rebuild"/></svg>Save &amp; rebuild</button></div>
+        <div class="bottom"><button class="btn outlined" type="button">Save</button><button class="btn filled" type="button"><svg class="i" aria-hidden="true"><use href="#ms-build"/></svg>Save &amp; rebuild</button></div>
         <div class="gesture" style="background:var(--md-sys-color-surface-container)"></div>
       </div></div>
       <figcaption>App settings, top: enable switch in the app bar, change bundle, patch toggles with inline options.</figcaption>
@@ -141,38 +154,32 @@
 
     <!-- 3. App settings: version, dependencies, URLs -->
     <figure>
-      <div class="phone dyn"><div class="screen">
+      <div class="phone"><div class="screen">
         <div class="status"><span>9:41</span><span class="cam"></span><span class="sys"><i></i><i></i></span></div>
-        <div class="appbar"><button class="icon-btn" type="button" aria-label="Back"><svg class="i" aria-hidden="true"><use href="#i-back"/></svg></button><span class="title">YouTube</span><span class="sw" style="margin-right:12px"><input type="checkbox" checked aria-label="YouTube enabled"><span></span></span></div>
+        <div class="appbar"><button class="icon-btn" type="button" aria-label="Back"><svg class="i" aria-hidden="true"><use href="#ms-arrow_back"/></svg></button><span class="title">YouTube</span><span class="sw" style="margin-right:12px"><input type="checkbox" checked aria-label="YouTube enabled"><span></span></span></div>
         <div class="body">
-          <div class="sec-t" style="padding-top:4px">Version</div>
-          <div class="pad"><div class="seg" role="radiogroup" aria-label="Version mode"><label><input type="radio" name="vm" checked>Auto</label><label><input type="radio" name="vm">Pinned</label><label><input type="radio" name="vm">Latest</label></div></div>
+          <div class="sec" style="padding-top:0"><span class="sec-label">Version</span></div>
+          <div class="seg-wrap"><div class="seg" role="radiogroup" aria-label="Version mode"><label><input type="radio" name="vm" checked>Auto</label><label><input type="radio" name="vm">Pinned</label><label><input type="radio" name="vm">Latest</label></div></div>
           <div class="support">Auto: newest version the bundle supports · 20.14.43</div>
-          <div class="li" style="min-height:64px"><div class="grow"><div class="h">Allow nearest version</div><div class="s">Build the closest one if the exact version is missing</div></div><span class="sw"><input type="checkbox" checked aria-label="Allow nearest version"><span></span></span></div>
+          <div class="li l2" style="margin-top:8px"><div class="grow"><div class="h">Allow nearest version</div><div class="s">Build the closest one if the exact version is missing</div></div><span class="sw"><input type="checkbox" checked aria-label="Allow nearest version"><span></span></span></div>
           <div class="divider"></div>
-          <div class="sec-t">Depends on Followed projects</div>
-          <label class="li" style="min-height:64px"><span class="tile s40" data-cat="tools" aria-hidden="true">μG</span><span class="grow"><span class="h">MicroG-RE</span><br><span class="s mono">v6.1.3</span></span><input type="checkbox" checked aria-label="Depends on MicroG-RE"></label>
-          <label class="li" style="min-height:64px"><span class="tile s40" data-cat="news" aria-hidden="true">Ob</span><span class="grow"><span class="h">Obtainium</span><br><span class="s mono">v1.2.3</span></span><input type="checkbox" aria-label="Depends on Obtainium"></label>
-          <div class="support" style="padding-top:0">Install and OTA push bring these along.</div>
+          <div class="sec"><span class="sec-label">Depends on Followed projects</span></div>
+          <label class="li l2"><span class="tile s40" data-cat="tools" aria-hidden="true">μG</span><span class="grow"><span class="h">MicroG-RE</span><span class="s mono">v6.1.3</span></span><span class="lead"><input class="cb" type="checkbox" checked aria-label="Depends on MicroG-RE"></span></label>
+          <label class="li l2 div"><span class="tile s40" data-cat="news" aria-hidden="true">Ob</span><span class="grow"><span class="h">Obtainium</span><span class="s mono">v1.2.3</span></span><span class="lead"><input class="cb" type="checkbox" aria-label="Depends on Obtainium"></span></label>
+          <div class="support">Install and OTA push bring these along.</div>
           <div class="divider" style="margin-top:12px"></div>
-          <div class="sec-t">Download URLs</div>
-          <div style="padding:8px 16px 0"><div class="tf"><label for="u1">APKMirror listing</label><input id="u1" value="apkmirror.com/apk/google-inc/youtube/"><button class="icon-btn" type="button" aria-label="Locate APKMirror page again" style="width:40px;height:40px"><svg class="i i-20" aria-hidden="true"><use href="#i-search"/></svg></button></div>
-          <div class="support"><span class="st ok" style="height:20px">Found automatically</span></div></div>
-          <div style="padding:20px 16px 16px"><div class="tf"><label for="u2">APKPure (optional)</label><input id="u2"></div></div>
+          <div class="sec"><span class="sec-label">Download URLs</span></div>
+          <div class="field" style="padding-top:8px"><div class="tf"><label for="u1">APKMirror listing</label><input id="u1" value="apkmirror.com/apk/google-inc/youtube/"><button class="icon-btn" type="button" aria-label="Locate APKMirror page again"><svg class="i" aria-hidden="true"><use href="#ms-search"/></svg></button></div>
+          <div class="support" style="padding-top:8px"><span class="st ok">Found automatically</span></div></div>
+          <div class="field" style="padding-bottom:16px"><div class="tf"><label for="u2">APKPure (optional)</label><input id="u2"></div></div>
         </div>
-        <div class="bottom"><button class="btn outlined" type="button">Save</button><button class="btn filled" type="button"><svg class="i" aria-hidden="true"><use href="#i-rebuild"/></svg>Save &amp; rebuild</button></div>
+        <div class="bottom"><button class="btn outlined" type="button">Save</button><button class="btn filled" type="button"><svg class="i" aria-hidden="true"><use href="#ms-build"/></svg>Save &amp; rebuild</button></div>
         <div class="gesture" style="background:var(--md-sys-color-surface-container)"></div>
       </div></div>
       <figcaption>App settings, lower part: version mode as a segmented button, allow-nearest switch, Follow-project dependencies, download URLs.</figcaption>
     </figure>
   </div>
 </div>
-<script src="../icons.js"></script>
-<script>
-document.querySelectorAll('.palette button').forEach(b => b.onclick = () => {
-  document.querySelectorAll('.palette button').forEach(x => x.setAttribute('aria-pressed', x === b));
-  document.querySelectorAll('.phone').forEach(p => p.classList.toggle('dyn', b.dataset.p === 'dyn'));
-});
-</script>
+<script src="icons-material.js"></script>
 </body>
 </html>
