@@ -7,7 +7,7 @@ const ENGINE_LABEL = { lspatch: 'Xposed, LSPatch', npatch: 'Xposed, NPatch' };
 const ORIGIN = { official: 'Official catalog', builtin: 'Built-in', custom: 'Custom' };
 const MODE_TEXT = { auto: 'Auto', pinned: 'Pinned', latest: 'Latest' };
 const FILTERS = [
-  { key: 'all', label: 'All enabled', icon: 'apps', tint: 'brand' },
+  { key: 'all', label: 'All apps', icon: 'apps', tint: 'brand' },
   { key: 'upd', label: 'Update available', icon: 'sparkle', tint: 'lav' },
   { key: 'run', label: 'Building', icon: 'rebuild', tint: 'brand' },
   { key: 'fail', label: 'Failed', icon: 'error', tint: 'err' },
@@ -32,7 +32,7 @@ const LOCATABLE = new Set(['pending', 'not_found', 'ambiguous', 'failed', 'block
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const clone = v => JSON.parse(JSON.stringify(v));
-const S = { apps: [], filter: 'all', q: '', menuOpen: false };
+const S = { apps: [], followed: [], filter: 'all', q: '', menuOpen: false };
 let D = null; // draft of the open drawer
 
 // ---------- list ----------
@@ -83,19 +83,36 @@ function row(a) {
 </div></div>`;
 }
 
+function followedRow(p) {
+  const n = p.device_ids.length, tip = n ? `Install on ${n} assigned phone(s)` : 'Assign phones on Followed projects first';
+  const noInstall = p.blocked || !p.version || !n;
+  return html`<div class="arow" data-id="f${p.id}">
+<div class="row" style="gap:14px">${iconTile(p, 's48')}<div class="grow"><div class="nm"><a href="/projects.html">${p.name}</a></div><div class="mono subtle-text">${p.package || p.repo}</div></div></div>
+<div><div class="mono">${p.version || '—'}</div><div class="caption">Followed</div></div>
+<div><span class="origin">${icon('follow')}Followed project</span><div class="mono subtle-text">github.com/${p.repo}</div></div>
+<div class="st">${p.blocked ? html`<span><span class="badge err">Signer changed</span></span><span class="caption"><a href="/projects.html">Confirm on Followed projects</a></span>` : !p.version ? html`<span class="caption">Not downloaded yet</span>` : ''}</div>
+<div class="acts">
+<span class="dd"><button class="icon-btn" type="button" data-act="dl" aria-label="Download ${p.name} APK" title="Download APK" data-tip="Download APK" aria-haspopup="true" ${p.files.length ? '' : html`disabled`}>${icon('download')}</button></span>
+<button class="icon-btn" type="button" data-act="install" aria-label="${tip}: ${p.name}" title="${tip}" data-tip="${tip}" ${noInstall ? html`disabled` : ''}>${icon('devices')}</button>
+</div></div>`;
+}
+
 function renderList() {
-  const counts = { all: S.apps.length };
+  const counts = { all: S.apps.length + S.followed.length };
   for (const a of S.apps) { const f = filterOf(a); if (f) counts[f] = (counts[f] || 0) + 1; }
   $('#summary').innerHTML = html`${FILTERS.map(f => html`<button class="sum" type="button" data-filter="${f.key}" aria-pressed="${String(S.filter === f.key)}"><span class="ic" style="${TINT[f.tint]}">${icon(f.icon)}</span><span><span class="n">${counts[f.key] || 0}</span><br><span class="caption">${f.label}</span></span></button>`)}`;
   const q = S.q.trim().toLowerCase();
   const rows = S.apps.filter(a => (S.filter === 'all' || filterOf(a) === S.filter)
     && (!q || `${a.name} ${a.package}`.toLowerCase().includes(q)));
-  $('#list').innerHTML = html`${rows.length ? rows.map(row)
-    : html`<div class="empty">${S.apps.length ? 'No app matches this filter.' : html`No app is enabled yet. <a href="/">Add one from the Marketplace</a>.`}</div>`}`;
+  const fol = S.filter === 'all' ? S.followed.filter(p => !q || `${p.name} ${p.package || ''} ${p.repo}`.toLowerCase().includes(q)) : [];
+  $('#list').innerHTML = html`${rows.length || fol.length ? [...rows.map(row), ...fol.map(followedRow)]
+    : html`<div class="empty">${S.apps.length || S.followed.length ? 'No app matches this filter.' : html`No app is enabled yet. <a href="/">Add one from the Marketplace</a>.`}</div>`}`;
 }
 
 async function loadList() {
-  S.apps = (await api('GET', '/api/apps')).apps;
+  const r = await api('GET', '/api/apps');
+  S.apps = r.apps;
+  S.followed = r.followed;
   if (!S.menuOpen) renderList();
 }
 
@@ -104,12 +121,19 @@ async function loadNextRun() {
   $('#nextrun').textContent = !s.enabled ? 'Schedule is off' : s.next_run_at ? `Next scheduled run ${fmt.rel(s.next_run_at)}` : '';
 }
 
-const appOf = el => S.apps.find(a => a.id === Number(el.closest('[data-id]').dataset.id));
+const appOf = el => {
+  const k = el.closest('[data-id]').dataset.id;
+  return k[0] === 'f' ? S.followed.find(p => p.id === Number(k.slice(1))) : S.apps.find(a => a.id === Number(k));
+};
 
 async function openMenu(btn, a) {
   const host = btn.parentElement;
   S.menuOpen = true;
   host.insertAdjacentHTML('beforeend', html`<div class="menu" role="menu"><span class="caption">Loading…</span></div>`);
+  if (a.source === 'followed') {
+    $('.menu', host).innerHTML = html`${a.files.map(f => html`<a role="menuitem" href="${f.url}" download>${f.abi || '?'} · ${f.name} · ${fmt.bytes(f.size)}</a>`)}`;
+    return;
+  }
   await fillDownloads($('.menu', host), a.id);
 }
 
@@ -140,6 +164,7 @@ $('#list').addEventListener('click', async e => {
     }
     if (t.dataset.act === 'settings') { e.preventDefault(); return await openDrawer(a.id); }
     if (t.dataset.act === 'url') return await openDrawer(a.id, 'sec-url');
+    if (t.dataset.act === 'install') await act('POST', `/api/projects/${a.id}/install`, {}, `Installing ${a.name} ${a.version} on ${a.device_ids.length} phone(s)`);
     if (t.dataset.act === 'check') await act('POST', `/api/apps/${a.id}/check`, {}, `Checking ${a.name}`);
     if (t.dataset.act === 'build') await act('POST', `/api/apps/${a.id}/build`, {}, `Build queued for ${a.name}`);
     await loadList();
@@ -247,13 +272,13 @@ function fieldFor(x, op, i, j) {
     return html`<label class="row" for="${id}"><span class="switch"><input type="checkbox" id="${id}" ${data} data-kind="bool" ${v ? html`checked` : ''}><span class="track"></span></span>${op.title || op.key}</label>`;
   }
   if (/list|\[\]/i.test(t)) {
-    return html`<div class="field">${label}<textarea class="input mono" id="${id}" rows="3" style="height:auto;padding:6px 10px" ${data} data-kind="list">${(v || []).join('\n')}</textarea>${hint}</div>`;
+    return html`<div class="field">${label}<textarea class="input mono" id="${id}" rows="3" ${data} data-kind="list">${(v || []).join('\n')}</textarea>${hint}</div>`;
   }
   if (/int|long|float|double/i.test(t)) {
     return html`<div class="field">${label}<span class="input"><input class="mono" type="number" ${/float|double/i.test(t) ? html`step="any"` : ''} id="${id}" ${data} data-kind="num" value="${v ?? ''}"></span>${hint}</div>`;
   }
   const pickFrom = COLOR.test(String(v ?? '')) ? v : COLOR.test(String(op.default ?? '')) ? op.default : null;
-  return html`<div class="field">${label}<div class="row">${pickFrom ? html`<input type="color" data-color-for="${id}" value="${'#' + String(pickFrom).slice(-6)}" aria-label="Pick colour" style="width:2.75rem;height:2rem;padding:2px">` : ''}<span class="input grow"><input class="mono" id="${id}" ${data} data-kind="text" value="${v ?? ''}"></span></div>${hint}</div>`;
+  return html`<div class="field">${label}<div class="row">${pickFrom ? html`<input type="color" data-color-for="${id}" value="${'#' + String(pickFrom).slice(-6)}" aria-label="Pick colour">` : ''}<span class="input grow"><input class="mono" id="${id}" ${data} data-kind="text" value="${v ?? ''}"></span></div>${hint}</div>`;
 }
 
 function patchRow(x, i) {
@@ -332,7 +357,7 @@ function pinWarn() {
 function renderVariants() {
   const xposed = isModule(chosenEngine());
   $('#sec-variants').innerHTML = html`<h3 class="subtitle2" id="s-a">${icon('package')}ABI variants</h3>
-<div class="chips">${ABIS.map(a => html`<label class="chip"><input type="checkbox" data-f="abi" value="${a}" ${D.cur.variants.some(v => v.abi === a) ? html`checked` : ''}>${a}</label>`)}</div>
+<div class="row wrap">${ABIS.map(a => html`<label class="pill"><input type="checkbox" data-f="abi" value="${a}" ${D.cur.variants.some(v => v.abi === a) ? html`checked` : ''}>${a}</label>`)}</div>
 <p class="hint">${xposed ? 'Each checked ABI is built as its own variant.' : 'Each checked ABI is built as its own variant, stripped to that ABI.'}</p>`;
 }
 
