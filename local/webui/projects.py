@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import sqlite3
+import subprocess
 import tempfile
 import urllib.parse
 import zipfile
@@ -18,6 +19,7 @@ _ABI_SPLIT = re.compile("(" + "|".join(map(re.escape, ABI_TOKENS)) + ")")
 _NUM = re.compile(r"\d+(?:\.\d+)*")
 _NUM_PATTERN = r"\d+(?:\.\d+)*"
 _SIGNER = re.compile(r"^Signer #1 certificate SHA-256 digest: ([0-9a-fA-F]+)$")
+_APK_ICON = re.compile(r"\bres/[^\s\"]+\.(?:png|webp|jpg)\b")  # raster configs of APKEditor info -app-icon -v
 
 
 # ---- pure functions (§4.1) ----
@@ -275,7 +277,7 @@ def followed_apps():
         facts = _apks(r["upstream_id"], tag) if tag else None
         blocked = bool(_alert(r, facts))
         out.append({"id": pid, "source": "followed", "name": label(r), "package": r["package"],
-                    "icon_url": f"/api/apps/{r['package']}/icon" if r["package"] else None,
+                    "icon_url": f"/api/projects/{pid}/icon" if facts else None,
                     "repo": r["repo"], "version": tag if facts else None, "blocked": blocked,
                     "files": [] if blocked else [
                         {"name": f["file"], "abi": f["abi"], "size": f["size"], "version_name": f["version_name"],
@@ -519,8 +521,65 @@ def download_apk(req):
                                         "X-Relume-Package": f["package"], "X-Relume-Version-Code": str(f["version_code"])})
 
 
+class _RequestLog:
+    """_tool log in a request handler: no job to cancel, lines go to the server log."""
+
+    def line(self, text):
+        print(f"project icon: {text}", flush=True)
+
+    def run(self, argv, cwd=None, env=None, timeout=None, on_line=None):
+        try:
+            p = subprocess.run(argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, text=True, errors="replace", timeout=timeout)
+        except subprocess.TimeoutExpired:
+            raise jobs.JobFailed("timeout")
+        for s in p.stdout.splitlines():
+            self.line(s)
+            on_line(s)
+        return p.returncode
+
+
+def _extract_icon(d, facts):
+    """Largest raster launcher icon of the release's APK copied to d/icon.<ext>, else the d/icon.none marker."""
+    apk = d / sorted(f["file"] for f in facts)[0]  # one release = one package: every APK has the same icon
+    try:
+        paths = _tool([*APKEDITOR, "info", "-i", jobs.runner_path(apk), "-app-icon", "-v"], _RequestLog(),
+                      _APK_ICON.findall, f"icon unreadable: {apk.name}")
+    except ValueError as e:
+        raise server.HttpError(500, f"no icon: {e}")
+    with zipfile.ZipFile(apk) as z:
+        sizes = {i.filename: i.file_size for i in z.infolist()}
+        best = max((p for p in paths if sizes.get(p, catalog.ICON_MAX_BYTES + 1) <= catalog.ICON_MAX_BYTES),
+                   key=sizes.get, default=None)
+        data = z.read(best) if best else b""
+    if best is None:
+        print(f"project icon: {apk.name}: expected a raster launcher icon up to {catalog.ICON_MAX_BYTES} bytes, "
+              f"got {paths or 'none'}", flush=True)
+    out = d / f"icon.{best.rsplit('.', 1)[1] if best else 'none'}"
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=".icon")  # two first requests may race: each writes its own file
+    with os.fdopen(fd, "wb") as f:
+        f.write(data)
+    os.replace(tmp, out)
+    return out
+
+
+def get_icon(req):
+    """Launcher icon of the downloaded release, extracted from its APK once per tag. 404 when it has none."""
+    r = _get(req.params["id"])
+    tag = r["downloaded_tag"]
+    facts = _apks(r["upstream_id"], tag) if tag else None
+    if not facts:
+        raise server.HttpError(404, f"no icon: project {r['id']} has no downloaded release")
+    d = upstream.tag_dir(r["upstream_id"], tag)
+    path = next(d.glob("icon.*"), None) or _extract_icon(d, facts)
+    if path.suffix == ".none":
+        raise server.HttpError(404, f"no icon: {tag} has no raster launcher icon")
+    return server.FileResponse(path, cache_seconds=86400)
+
+
 ROUTES = [
     ("GET", "/api/projects/{id}/apks/{file}", download_apk),
+    ("GET", "/api/projects/{id}/icon", get_icon),
     ("GET", "/api/projects", list_projects),
     ("POST", "/api/projects", post_project),
     ("POST", "/api/projects/assets", post_assets),
