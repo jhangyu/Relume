@@ -1,428 +1,396 @@
-import { $, $$, act, api, ask, catalogItems, every, fillDownloads, fmt, html, iconTile, itemStatus, shell, STATUS, toast } from '/static/app.js';
+import { $, $$, act, api, ask, catSlug, fmt, html, icon, iconTile, shell, toast } from '/static/app.js';
 
-const state = { catalog: null, upstreams: [], filter: { s: 'all', q: '' }, dragging: false };
-const openIds = () => new Set(JSON.parse(localStorage.getItem('relume-open') || '[]'));
-const allItems = () => catalogItems(state.catalog);
-const groupsWithUngrouped = () => [...state.catalog.groups,
-  { id: 0, name: 'Ungrouped', color: null, items: state.catalog.ungrouped }];
+// Marketplace (spec §7.3): catalog gallery, expand-in-place enable panel, custom sources.
+const PER_PAGE = 48;
+const ORIGIN = { official: 'Official catalog', builtin: 'Built-in', custom: 'Custom' };
+const ENGINE = { morphe: 'Morphe', lspatch: 'Xposed · LSPatch', npatch: 'Xposed · NPatch' };
+const AUTHOR_COLORS = ['#0f6cbd', '#c239b3', '#8764b8', '#03787c', '#5c2e91', '#ca5010'];
+// download.state (spec §5.4) -> [msgbar class, icon, title, hint]
+const DL = {
+  pending: ['info', 'info', 'APKMirror lookup pending', 'Relume looks the app up on APKMirror after you enable it. Paste a listing URL to skip the search.'],
+  found: ['ok', 'check', 'APKMirror page found', ''],
+  manual: ['ok', 'check', 'Using your APKMirror listing URL', ''],
+  not_found: ['warn', 'warning', 'APKMirror page not found', 'Paste the APKMirror listing URL to continue.'],
+  ambiguous: ['warn', 'warning', 'Several APKMirror pages match', 'Pick one in Apps after enabling, or paste the listing URL here.'],
+  failed: ['err', 'error', 'APKMirror lookup failed', ''],
+  blocked: ['warn', 'warning', 'APKMirror lookup is blocked for now', ''],
+};
+const DL_NONE = ['info', 'info', 'Download source', 'Relume looks the app up on APKMirror after you enable it. Paste a listing URL to skip the search.'];
 
-function badge(it, s) {
-  if (s === 'run') {
-    const j = it.active_job;
-    const txt = j.status === 'queued' ? 'Queued'
-      : `Building ${j.step_count ? Math.round((100 * j.step_index) / j.step_count) : 0} %`;
-    return html`<span class="badge b-info">${txt}</span>`;
+const S = { sort: 'bundles', origin: '', q: '', category: '', page: 1, apps: [], total: 0, categories: [], feed: null, universe: null, open: null };
+let D = null;          // the open panel: { pkg, meta, bundleId, flips, am, am0, ap, ap0, filter }
+let seq = 0;           // drops list responses that a newer request has overtaken
+const featured = new Map();
+const gallery = $('#gallery'), detail = $('#detail');
+
+const stars = n => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+const starBadge = n => (n ? html`<span class="row" style="gap:3px">${icon('star')}${stars(n)}</span>` : '');
+const authorColor = s => AUTHOR_COLORS[[...s].reduce((h, c) => h + c.charCodeAt(0), 0) % AUTHOR_COLORS.length];
+
+// ---------- header, notices, stats ----------
+function renderNotice() {
+  const feed = S.feed;
+  const errs = [...feed.feeds.filter(f => f.last_error).map(f => `Catalog feed ${f.feed}: ${f.last_error}`),
+    ...feed.sources.filter(s => s.last_error).map(s => `Source ${s.repo}: ${s.last_error}`)];
+  const skipped = feed.feeds.flatMap(f => f.skipped.map(s => `${f.feed} skipped ${s.where}${s.repo ? ` (${s.repo})` : ''}: ${s.error}`));
+  $('#notice').innerHTML = html`${errs.length ? html`<div class="msgbar err">${icon('error')}<div class="grow"><div class="strong">The last catalog refresh failed</div>${errs.map(e => html`<div>${e}</div>`)}</div></div>` : ''}${skipped.length ? html`<div class="msgbar warn">${icon('warning')}<div class="grow"><details><summary>${plural(skipped.length, 'catalog entry')} skipped as invalid</summary>${skipped.map(e => html`<div class="mono">${e}</div>`)}</details></div></div>` : ''}`;
+}
+
+function renderStats() {
+  const feed = S.feed, official = feed.feeds.filter(f => f.origin === 'official');
+  const okAt = official.map(f => f.last_ok_at).filter(Boolean).sort().pop();
+  const builtin = feed.sources.find(s => s.origin === 'builtin');
+  const custom = feed.sources.filter(s => s.origin === 'custom').length;
+  $('#stats').innerHTML = html`<span><b>${S.universe.toLocaleString()}</b> apps</span><span><b>${official.reduce((n, f) => n + f.bundle_count, 0).toLocaleString()}</b> community bundles</span><span>${okAt ? html`Official catalog refreshed <b>${fmt.rel(okAt)}</b>` : 'Official catalog never refreshed'}</span>${builtin ? html`<span>Built-in <span class="mono">${builtin.repo}</span></span>` : ''}<span><b>${custom}</b> custom source${custom === 1 ? '' : 's'}</span>`;
+}
+
+function featureCard(a, kicker, big) {
+  featured.set(a.package, a);
+  return html`<button class="feature" type="button" data-feature="${a.package}" data-cat="${catSlug(a.category)}">
+<div style="display:grid;gap:10px;position:relative"><span class="kicker">${big ? icon('sparkle') : ''}${kicker}</span>
+${big ? html`<div class="row" style="justify-content:space-between;align-items:flex-start"><h2 class="title2">${a.name || a.package}</h2>${iconTile(a, 's96')}</div>`
+    : html`<div class="row" style="gap:14px">${iconTile(a, 's72')}<h2 class="subtitle1">${a.name || a.package}</h2></div>`}</div>
+<div class="row wrap" style="position:relative"><span class="chip-w">${plural(a.bundle_count, 'bundle')}</span>${a.stars ? html`<span class="chip-w">${icon('star')}${stars(a.stars)} top bundle</span>` : ''}${a.enabled ? html`<span class="chip-w">${icon('check')}Enabled</span>` : ''}</div></button>`;
+}
+
+async function renderHero() {
+  const top = async qs => (await api('GET', `/api/marketplace?${qs}&per_page=1`)).apps[0];
+  const [most, builtin, recent] = await Promise.all([top('sort=bundles'), top('origin=builtin&sort=bundles'), top('sort=updated')]);
+  featured.clear();
+  const cards = [most && featureCard(most, 'Featured · most bundles', true), builtin && featureCard(builtin, 'Built-in', false),
+    recent && featureCard(recent, 'Recently updated', false)].filter(Boolean);
+  $('#hero').hidden = !cards.length;
+  $('#hero').innerHTML = html`${cards}`;
+}
+
+// ---------- gallery ----------
+function renderCats() {
+  $('#cats').innerHTML = html`<button class="pill" type="button" aria-pressed="${S.category === '' ? 'true' : 'false'}" data-f="">All</button>${S.categories.map(c => html`<button class="pill" type="button" aria-pressed="${S.category === c.name ? 'true' : 'false'}" data-f="${c.name}" data-cat="${catSlug(c.name)}"><span class="dot"></span>${c.name} <span class="n">${c.count}</span></button>`)}`;
+}
+
+function card(a) {
+  const builtinOnly = a.origins.length === 1 && a.origins[0] === 'builtin';
+  return html`<button class="app" type="button" data-pkg="${a.package}" data-cat="${catSlug(a.category)}" aria-expanded="${S.open === a.package ? 'true' : 'false'}">
+${a.enabled ? html`<span class="corner badge ok">${icon('check')}Enabled</span>` : ''}${iconTile(a)}
+<div><div class="name">${a.name || a.package}</div><div class="cat">${a.category || ''}</div></div>
+<div class="meta">${builtinOnly ? html`<span class="origin builtin">Built-in</span>` : html`<span>${plural(a.bundle_count, 'bundle')}</span>${a.origins.includes('custom') ? html`<span class="origin custom">Custom</span>` : ''}`}${starBadge(a.stars)}</div></button>`;
+}
+
+function renderGallery() {
+  $$('.app', gallery).forEach(c => c.remove());
+  detail.insertAdjacentHTML('beforebegin', html`${S.apps.map(card)}`);
+  const none = !S.apps.length;
+  const e = $('#empty');
+  e.hidden = !none;
+  if (none) {
+    e.innerHTML = html`${S.universe === 0
+      ? html`${icon('store')}<h2 class="subtitle1">The Marketplace is empty</h2><p class="subtle-text">The app catalog has not been downloaded yet. Refresh it to list the community apps and bundles.</p><button class="btn primary" type="button" data-act="refresh">${icon('sync')}Refresh catalog</button>`
+      : html`${icon('search')}<h2 class="subtitle1">No apps match</h2><p class="subtle-text">Change the search, category or origin filter.</p>`}`;
   }
-  if (s === 'fail') {
-    const b = it.last_build;
-    return html`<span class="badge b-err">Failed #${b.job_id}</span><div class="why xs"><span class="muted">${b.reason || ''}</span> · <a href="/builds.html?job=${b.job_id}">Log</a></div>`;
-  }
-  return html`<span class="badge ${STATUS[s].cls}">${STATUS[s].label}</span>`;
+  $('#count').textContent = none ? '' : `Showing ${S.apps.length} of ${S.total.toLocaleString()}`;
+  $('#more').hidden = S.apps.length >= S.total;
+  placeDetail();
 }
 
-function itemRow(it) {
-  const s = itemStatus(it), up = it.upstream || {};
-  const current = !up.latest_tag || up.latest_tag === up.downloaded_tag;
-  const xposed = it.engine !== 'morphe';
-  const updTitle = xposed ? `Updates module ${up.repo} for all its apps` : `Updates the ${it.source_name} source for all its items`;
-  const rebuildLabel = s === 'fail' ? 'Retry' : s === 'new' ? 'Build' : 'Rebuild';
-  return html`<div class="item" draggable="true" data-item="${it.id}" data-s="${s}">
-<span class="handle" aria-label="Reorder ${it.label}; Alt+arrow keys" role="button" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/></svg></span>${iconTile(it)}
-<div style="min-width:0"><div class="row" style="gap:.375rem"><a href="/item.html?id=${it.id}" style="font-weight:600;text-decoration:none">${it.label}</a><span class="src">${it.source_name}</span>${xposed ? html`<span class="badge b-mute plain">Xposed · ${it.engine === 'lspatch' ? 'LSPatch' : 'NPatch'}</span>` : ''}</div>
-<div class="xs muted mono" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${it.package} · ${(it.abis || []).join(', ')}</div></div>
-<div class="ver col-built"><small>Built app</small><span class="mono">${it.last_success ? it.last_success.app_version : '—'}</span></div>
-<div class="ver col-up"><small>Patches · local → upstream</small><span class="mono">${up.downloaded_tag || '—'} → ${current ? (up.latest_tag || '—') : html`<span class="newer">${up.latest_tag}</span>`}</span></div>
-<div>${badge(it, s)}</div>
-<div class="acts">
-<label class="row xs" style="gap:.25rem;flex-wrap:nowrap" title="Build on schedule"><span class="switch"><input type="checkbox" data-sw="enabled" ${it.enabled ? html`checked` : ''} aria-label="Build ${it.label}"><span></span></span>Build</label>
-<label class="row xs" style="gap:.25rem;flex-wrap:nowrap" title="Update on schedule"><span class="switch"><input type="checkbox" data-sw="auto_update" ${it.auto_update ? html`checked` : ''} aria-label="Update ${it.label}"><span></span></span>Update</label>
-<button class="btn btn-outline btn-sm" type="button" data-act="pull" title="${updTitle}" ${current ? html`disabled` : ''}>Update</button>
-<button class="btn btn-outline btn-sm" type="button" data-act="build" ${s === 'run' || !it.enabled ? html`disabled` : ''} ${it.enabled ? '' : html`title="Build switch is off"`}>${rebuildLabel}</button>
-<details class="dd"><summary class="btn btn-ghost btn-sm btn-icon" aria-label="Download ${it.label}" title="${it.last_success ? 'Download' : 'No build yet'}" data-act="dl" ${it.last_success ? '' : html`aria-disabled="true"`}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></summary><div class="menu" role="menu" data-dl-menu><span class="xs muted" style="padding:.5rem">Loading…</span></div></details>
-</div></div>`;
+const cols = () => getComputedStyle(gallery).gridTemplateColumns.split(' ').length;
+function placeDetail() {
+  const cards = $$('.app', gallery), i = cards.findIndex(c => c.dataset.pkg === S.open);
+  if (i < 0) { detail.hidden = true; return; }
+  const n = cols();
+  cards[Math.min(cards.length - 1, Math.floor(i / n) * n + n - 1)].after(detail);
+  detail.hidden = false;
 }
 
-function groupCard(g, open) {
-  const counts = {};
-  g.items.forEach(it => { const s = itemStatus(it); counts[s] = (counts[s] || 0) + 1; });
-  const named = g.id !== 0;
-  const colorAttr = g.color ? html`data-color style="--gc:${g.color}"` : '';
-  return html`<details class="card group" data-group="${g.id}" ${named ? html`draggable="true"` : ''} ${open ? html`open` : ''} ${colorAttr}>
-<summary>${named ? html`<span class="handle" aria-label="Reorder group ${g.name}; Alt+arrow keys" role="button" tabindex="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/></svg></span>` : ''}<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
-<input type="checkbox" class="cb" aria-label="Select all in ${g.name}" data-act="selall">${g.color ? html`<span class="gdot" style="--gc:${g.color}" aria-hidden="true"></span>` : ''}<h2>${g.name}</h2><span class="badge b-mute plain">${g.items.length}</span>
-<span class="gsum xs hide-m" aria-label="Group status">${Object.entries(counts).map(([s, n]) => html`<span class="${STATUS[s].cls}"><i></i>${n} ${STATUS[s].label.toLowerCase()}</span>`)}</span><span class="grow"></span>
-<button class="btn btn-ghost btn-sm hide-m" type="button" data-act="gpull">Update all</button>
-<button class="btn btn-ghost btn-sm hide-m" type="button" data-act="gbuild">Rebuild all</button>
-<details class="dd"><summary class="btn btn-ghost btn-sm btn-icon" aria-label="More actions for ${g.name}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></summary>
-<div class="menu" role="menu"><button class="only-m" role="menuitem" type="button" data-act="gpull">Update all</button><button class="only-m" role="menuitem" type="button" data-act="gbuild">Rebuild all</button><button role="menuitem" type="button" data-act="gota">OTA group to devices</button><a role="menuitem" href="/api/groups/${g.id}/download" download>Download all (zip) · newest successful build of each item</a>${named ? html`<button role="menuitem" type="button" data-act="grename">Rename…</button><button role="menuitem" type="button" data-act="gdelete">Delete group</button>` : ''}</div></details>
-</summary><div data-list>${g.items.map(itemRow)}</div></details>`;
+async function loadList(reset) {
+  if (reset) { S.page = 1; }
+  const mine = ++seq;
+  const p = new URLSearchParams({ sort: S.sort, page: S.page, per_page: PER_PAGE });
+  for (const k of ['origin', 'q', 'category']) if (S[k]) p.set(k, S[k]);
+  const d = await api('GET', `/api/marketplace?${p}`);
+  if (mine !== seq) return;
+  S.apps = reset ? d.apps : [...S.apps, ...d.apps];
+  S.total = d.total;
+  S.categories = d.categories;
+  S.feed = d.feed;
+  if (!S.origin && !S.q && !S.category) S.universe = d.total;
+  else if (S.universe === null) S.universe = (await api('GET', '/api/marketplace?per_page=1')).total;
+  renderNotice();
+  renderStats();
+  renderCats();
+  renderGallery();
 }
 
-function renderTallies(items) {
-  const by = s => items.filter(it => itemStatus(it) === s);
-  const sources = new Set(items.map(it => it.source_id));
-  const checked = items.map(it => it.upstream && it.upstream.checked_at).filter(Boolean).sort().pop();
-  const queued = items.filter(it => it.active_job && it.active_job.status === 'queued').length;
-  const failed = by('fail');
-  $('#n-all').textContent = items.length;
-  $('#s-all').textContent = `${state.catalog.groups.length} groups · ${sources.size} patch sources`;
-  $('#n-upd').textContent = by('upd').length;
-  $('#s-upd').textContent = `upstream checked ${fmt.rel(checked)}`;
-  $('#n-run').textContent = by('run').length;
-  $('#s-run').textContent = `+${queued} queued`;
-  $('#n-fail').textContent = failed.length;
-  $('#s-fail').textContent = failed.length ? failed[0].label : 'none';
+async function loadSources() {
+  const { sources } = await api('GET', '/api/sources');
+  $('#sources').hidden = !sources.length;
+  $('#source-list').innerHTML = html`${sources.map(s => html`<div class="src-row"><div class="grow"><div class="strong">${s.name || s.repo}</div><div class="mono subtle-text">${s.repo}</div>${s.packages.length ? html`<div class="caption">For ${s.packages.join(', ')}</div>` : ''}</div>
+<span class="origin custom">${ENGINE[s.engine] || s.engine}</span>${s.list_tag ? html`<span class="badge">${s.list_tag}</span>` : ''}${s.list_error ? html`<span class="badge err" title="${s.list_error}">${icon('error')}${s.list_error}</span>` : ''}
+<button class="icon-btn" type="button" data-del="${s.bundle_id}" data-repo="${s.repo}" aria-label="Delete source ${s.repo}" title="Delete source">${icon('delete')}</button></div>`)}`;
 }
 
-function renderBanner() {
-  const bad = state.upstreams.filter(u => u.check_error);
-  const b = $('#banner');
-  b.hidden = !bad.length;
-  if (!bad.length) return;
-  const shown = bad.slice(0, 3).map(u => `${u.repo} — ${u.check_error}`).join('; ');
-  b.querySelector('span').textContent = `Upstream check problems: ${shown}${bad.length > 3 ? `; and ${bad.length - 3} more` : ''}`;
+async function loadAll() {
+  await Promise.all([renderHero(), loadList(true), loadSources()]);
 }
 
-function applyFilter() {
-  const { s, q } = state.filter;
-  let n = 0;
-  $$('[data-item]').forEach(el => {
-    const ok = (s === 'all' || el.dataset.s === s) && el.textContent.toLowerCase().includes(q);
-    el.hidden = !ok;
-    if (ok) n++;
+// ---------- expand-in-place panel ----------
+const cur = () => D.meta.bundles.find(b => b.bundle_id === D.bundleId);
+const isOn = p => (p.name in D.flips ? D.flips[p.name] : p.default_enabled === true);
+
+function bundleCard(b) {
+  const ok = b.selectable;
+  return html`<label class="bundle"><input type="radio" name="bundle" value="${b.bundle_id}" data-bundle ${b.bundle_id === D.bundleId ? html`checked` : ''} ${ok ? '' : html`disabled`}>
+<div class="row"><span class="au" style="background:${authorColor(b.author || b.name)}">${(b.author || b.name || '?')[0].toUpperCase()}</span><div class="grow"><div class="strong">${b.name}</div><div class="mono subtle-text">${b.repo}</div></div></div>
+<div class="row wrap"><span class="origin ${b.origin}">${ORIGIN[b.origin] || b.origin}</span><span class="caption">${ENGINE[b.engine] || b.engine}</span></div>
+${ok ? '' : html`<div class="caption">${b.not_selectable_reason}</div>`}
+<div class="stat">${b.stars != null ? html`<span>${icon('star')}${stars(b.stars)}</span>` : ''}<span>${b.patches.length ? plural(b.patches.length, 'patch') : 'Module, no patch list'}</span>${b.updated_at ? html`<span>${fmt.rel(b.updated_at)}</span>` : ''}</div></label>`;
+}
+
+function patchRow(p) {
+  return html`<div class="patch" data-n="${p.name}"><div class="grow"><div class="pn">${p.name} ${p.default_enabled === false ? html`<span class="badge" style="height:18px">Default off</span>` : ''}${p.default_enabled === null ? html`<span class="badge" style="height:18px">Default unknown</span>` : ''} <span class="badge lav" style="height:18px" data-chg hidden>Changed by you</span></div><div class="pd">${p.description || ''}</div></div>
+<label class="switch"><input type="checkbox" data-patch="${p.name}" aria-label="${p.name}" ${isOn(p) ? html`checked` : ''}><span class="track"></span></label></div>`;
+}
+
+function patchesSection() {
+  const b = cur();
+  if (!b) return html`<div class="msgbar info">${icon('info')}<div class="grow">Choose a bundle to see its patches.</div></div>`;
+  if (!b.patches.length) return html`<div class="msgbar info">${icon('info')}<div class="grow">${b.name} has no patch list for this app. It is applied as it is.</div></div>`;
+  return html`<div class="patches"><div class="patches-bar">
+<label class="input grow" style="min-width:180px;max-width:320px">${icon('search')}<span class="sr-only">Filter patches</span><input type="search" data-r="filter" placeholder="Filter ${b.patches.length} patches" value="${D.filter}"></label>
+<span class="badge brand" data-r="on"></span><span class="badge" data-r="off"></span><span class="badge lav" data-r="chg" hidden></span><div class="grow"></div>
+<button class="btn subtle small" type="button" data-act="allon">All on</button><button class="btn subtle small" type="button" data-act="reset">Reset to defaults</button></div>
+<div class="patch-list">${b.patches.map(patchRow)}</div></div>`;
+}
+
+function marks() {
+  const b = cur();
+  if (!b || !b.patches.length) { updateBar(); return; }
+  const on = b.patches.filter(isOn).length, chg = Object.keys(D.flips).length;
+  $('[data-r=on]', detail).textContent = `${on} on`;
+  $('[data-r=off]', detail).textContent = `${b.patches.length - on} off`;
+  const c = $('[data-r=chg]', detail);
+  c.hidden = !chg;
+  c.textContent = `${chg} changed by you`;
+  $$('.patch', detail).forEach(r => {
+    const changed = r.dataset.n in D.flips;
+    r.classList.toggle('changed', changed);
+    $('[data-chg]', r).hidden = !changed;
   });
-  $$('[data-group]').forEach(g => {
-    const any = g.querySelector('[data-item]:not([hidden])');
-    g.hidden = !any && (s !== 'all' || q !== '');
-    if (any && (s !== 'all' || q)) g.open = true;
-  });
-  $$('[data-f]').forEach(b => b.setAttribute('aria-pressed', b.dataset.f === s));
-  $('#sf').value = s;
-  $('#nores').hidden = n > 0;
+  updateBar();
 }
 
-function render() {
-  const open = openIds();
-  $('#groups').innerHTML = html`${groupsWithUngrouped().map(g => groupCard(g, open.has(g.id)))}`;
-  renderTallies(allItems());
-  renderBanner();
-  applyFilter();
+function updateBar() {
+  const b = cur(), btn = $('[data-r=enable]', detail);
+  if (!btn) return;
+  btn.disabled = !b;
+  const on = b ? b.patches.filter(isOn).length : 0;
+  $('[data-r=sum]', detail).textContent = b ? `${b.name}${b.patches.length ? ` · ${plural(on, 'patch')} on` : ''} · version Auto (newest the bundle supports)` : 'Choose a patch bundle';
 }
 
-async function load() {
-  const [catalog, ups] = await Promise.all([api('GET', '/api/catalog'), api('GET', '/api/upstreams')]);
-  state.catalog = catalog;
-  state.upstreams = ups.upstreams;
-  render();
+function factsHtml() {
+  const m = D.meta, b = cur(), counts = {};
+  m.bundles.forEach(x => { counts[x.origin] = (counts[x.origin] || 0) + 1; });
+  const dl = DL[m.download && m.download.state] || DL_NONE;
+  return html`<dl class="facts"><dt>Category</dt><dd>${m.category || '—'}</dd>
+<dt>Bundles</dt><dd>${Object.entries(counts).map(([o, n]) => `${n} ${ORIGIN[o].toLowerCase()}`).join(', ')}</dd>
+${b && b.versions.length ? html`<dt>Versions</dt><dd class="mono">${b.versions[0]} (${plural(b.versions.length, 'version')})</dd>` : ''}
+<dt>APKMirror</dt><dd><span class="badge ${dl[0] === 'info' ? '' : dl[0]}">${icon(dl[1])}${dl[2]}</span></dd></dl>`;
 }
 
-const itemById = id => allItems().find(it => it.id === Number(id));
-const groupById = id => groupsWithUngrouped().find(g => g.id === Number(id));
-
-async function pullAll(items) {
-  await Promise.all(items.map(it => act('POST', `/api/items/${it.id}/update`, { rebuild: true })));
-  toast(`Update queued for ${items.length} item${items.length === 1 ? '' : 's'}`);
+function sourceStep() {
+  const dl = D.meta.download, st = DL[dl && dl.state] || DL_NONE;
+  return html`<div class="src-box"><div class="msgbar ${st[0]}" role="status">${icon(st[1])}<div class="grow"><div class="strong">${st[2]}</div>${st[3] ? html`<div>${st[3]}</div>` : ''}${dl && dl.error ? html`<div>${dl.error}</div>` : ''}${dl && dl.retry_at ? html`<div>Next try ${fmt.abs(dl.retry_at)}</div>` : ''}</div></div>
+<div class="field"><label for="u-am">APKMirror listing URL <span class="subtle-text" style="font-weight:400">(optional)</span></label>
+<span class="input">${icon('link')}<input id="u-am" data-r="am" value="${D.am}" placeholder="https://www.apkmirror.com/apk/org/app/" autocomplete="off"></span><div class="hint">The page that lists all versions of the app, not a single release.</div></div>
+<div class="field"><label for="u-ap">APKPure URL <span class="subtle-text" style="font-weight:400">(optional fallback)</span></label>
+<span class="input">${icon('link')}<input id="u-ap" data-r="ap" value="${D.ap}" placeholder="https://apkpure.com/…/${D.pkg}" autocomplete="off"></span></div></div>`;
 }
 
-async function otaGroup(g) {
-  const ids = new Set(g.items.map(it => it.id));
-  const { devices } = await api('GET', '/api/devices');
-  let n = 0;
-  for (const d of devices) {
-    const mine = d.assignments.map(a => a.item_id).filter(id => ids.has(id));
-    if (mine.length) { await act('POST', `/api/devices/${d.id}/ota`, { item_ids: mine }); n++; }
-  }
-  toast(n ? `OTA queued on ${n} device${n === 1 ? '' : 's'}` : 'No device has items of this group assigned');
+function renderDetail() {
+  const m = D.meta;
+  const aside = html`<aside>${iconTile(m, 's96')}<div><h2 class="title3" id="d-name">${m.name || m.package}</h2><div class="mono subtle-text" style="margin-top:4px">${m.package}</div></div>
+${m.description ? html`<p class="subtle-text">${m.description}</p>` : ''}<div data-r="facts">${factsHtml()}</div>
+<button class="btn subtle" type="button" data-act="close" style="justify-content:flex-start;min-width:0;padding:0" aria-label="Close app details">${icon('close')}Close</button></aside>`;
+  const work = m.enabled
+    ? html`<div class="work"><div class="msgbar ok">${icon('check')}<div class="grow"><div class="strong">${m.name || m.package} is enabled</div><div>Change its bundle, patches or download source in <a href="/apps.html?app=${m.app_id}">Apps</a>.</div></div></div></div>`
+    : html`<div class="work">
+<div><div class="step-h"><span class="step-n">1</span><h3 class="subtitle2">Choose one patch bundle</h3><span class="caption">One bundle per app · you can switch later in Apps</span></div><div class="bundles" role="radiogroup" aria-label="Patch bundle">${m.bundles.map(bundleCard)}</div></div>
+<div><div class="step-h"><span class="step-n">2</span><h3 class="subtitle2">Patches</h3><span class="caption">Defaults come from the bundle · your changes stay across versions</span></div><div data-r="patchsec">${patchesSection()}</div></div>
+<div><div class="step-h"><span class="step-n">3</span><h3 class="subtitle2">Download source</h3></div>${sourceStep()}</div>
+<div class="enable-bar"><div class="grow"><div class="strong" data-r="sum"></div><div class="caption">Enabling builds the app right away. A download URL is optional.</div></div>
+<button class="btn primary large" type="button" data-r="enable" data-act="enable">${icon('check')}Enable and build</button></div></div>`;
+  detail.dataset.cat = catSlug(m.category);
+  detail.setAttribute('aria-labelledby', 'd-name');
+  detail.innerHTML = html`${aside}${work}`;
+  if (!m.enabled) marks();
 }
 
-document.addEventListener('click', async e => {
-  const el = e.target.closest('[data-act]');
-  if (!el) return;
-  const row = el.closest('[data-item]'), card = el.closest('[data-group]');
-  const it = row && itemById(row.dataset.item), g = card && groupById(card.dataset.group);
-  const a = el.dataset.act;
-  if (a === 'grename' || a === 'gdelete') return;   // handled by the dialog code below
-  if (a === 'selall') { e.stopPropagation(); $$('[data-item]', card).forEach(r => r.classList.toggle('selected', el.checked)); return; }
-  if (a === 'dl') { if (!it.last_success) { e.preventDefault(); return; } fillDownloads(el.nextElementSibling, it.id).catch(() => {}); return; }
-  e.preventDefault();
+async function openApp(pkg) {
+  if (S.open === pkg) { closeApp(); return; }
+  const meta = await act('GET', `/api/marketplace/${encodeURIComponent(pkg)}`);
+  const sel = meta.bundles.find(b => b.selectable);
+  const dl = meta.download || {};
+  D = { pkg, meta, bundleId: sel ? sel.bundle_id : null, flips: {}, filter: '', am: dl.apkmirror_list_url || '', ap: dl.apkpure_url || '' };
+  D.am0 = D.am;
+  D.ap0 = D.ap;
+  S.open = pkg;
+  $$('.app', gallery).forEach(c => c.setAttribute('aria-expanded', c.dataset.pkg === pkg ? 'true' : 'false'));
+  renderDetail();
+  placeDetail();
+  detail.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+function closeApp() {
+  S.open = null;
+  D = null;
+  $$('.app', gallery).forEach(c => c.setAttribute('aria-expanded', 'false'));
+  detail.hidden = true;
+}
+
+function setFlip(name, on) {
+  const p = cur().patches.find(x => x.name === name);
+  if (on === (p.default_enabled === true)) delete D.flips[name];
+  else D.flips[name] = on;
+}
+
+async function enable() {
+  const body = { package: D.pkg, bundle_id: D.bundleId };
+  if (Object.keys(D.flips).length) body.patches = D.flips;
+  const download = {};
+  if (D.am.trim() !== D.am0) download.apkmirror_list_url = D.am.trim();
+  if (D.ap.trim() !== D.ap0) download.apkpure_url = D.ap.trim();
+  if (Object.keys(download).length) body.download = download;
+  const btn = $('[data-r=enable]', detail), name = D.meta.name || D.pkg;
+  btn.disabled = true;
   try {
-    if (a === 'pull') await act('POST', `/api/items/${it.id}/update`, { rebuild: true }, `Update queued: ${it.label}`);
-    if (a === 'build') await act('POST', `/api/items/${it.id}/build`, {}, `Build queued: ${it.label}`);
-    if (a === 'gpull') await pullAll(g.items);
-    if (a === 'gbuild') {
-      const picked = $$('[data-item].selected', card).map(r => Number(r.dataset.item));
-      const ids = (picked.length ? picked : g.items.map(x => x.id)).filter(id => itemById(id).enabled);
-      if (!ids.length) { toast('No Build-on items to build', 'error'); return; }
-      await act('POST', '/api/builds', { item_ids: ids }, `Queued ${ids.length} builds`);
-    }
-    if (a === 'gota') await otaGroup(g);
-    await load();
-  } catch (_) { /* act() already showed the error */ }
+    await act('POST', '/api/apps', body, `Enabled ${name}, build queued`);
+  } catch (e) {
+    btn.disabled = false;       // act() already showed the server message
+    return;
+  }
+  closeApp();
+  await Promise.all([renderHero(), loadList(true)]);
+}
+
+// ---------- events ----------
+gallery.addEventListener('click', e => {
+  const c = e.target.closest('.app');
+  if (c) openApp(c.dataset.pkg).catch(() => {});   // act() toasted the failure
+});
+detail.addEventListener('click', e => {
+  const a = e.target.closest('[data-act]');
+  if (!a) return;
+  const b = cur();
+  if (a.dataset.act === 'close') closeApp();
+  else if (a.dataset.act === 'enable') enable();
+  else if (a.dataset.act === 'allon' || a.dataset.act === 'reset') {
+    b.patches.forEach(p => setFlip(p.name, a.dataset.act === 'allon' ? true : p.default_enabled === true));
+    $$('input[data-patch]', detail).forEach(i => { i.checked = isOn(b.patches.find(p => p.name === i.dataset.patch)); });
+    marks();
+  }
+});
+detail.addEventListener('change', e => {
+  const t = e.target;
+  if (t.matches('[data-bundle]')) {
+    D.bundleId = Number(t.value);
+    D.flips = {};
+    D.filter = '';
+    $('[data-r=patchsec]', detail).innerHTML = html`${patchesSection()}`;
+    $('[data-r=facts]', detail).innerHTML = html`${factsHtml()}`;
+    marks();
+  } else if (t.matches('[data-patch]')) {
+    setFlip(t.dataset.patch, t.checked);
+    marks();
+  }
+});
+detail.addEventListener('input', e => {
+  const t = e.target, r = t.dataset.r;
+  if (r === 'filter') {
+    D.filter = t.value;
+    const q = t.value.toLowerCase();
+    $$('.patch', detail).forEach(row => { row.hidden = !row.dataset.n.toLowerCase().includes(q); });
+  } else if (r === 'am') D.am = t.value;
+  else if (r === 'ap') D.ap = t.value;
 });
 
-document.addEventListener('change', async e => {
-  const sw = e.target.closest('[data-sw]');
-  if (!sw) return;
-  try { await act('PUT', `/api/items/${sw.closest('[data-item]').dataset.item}`, { [sw.dataset.sw]: sw.checked }); } catch (_) { /* shown */ }
-  await load();
+$('#hero').addEventListener('click', e => {
+  const f = e.target.closest('[data-feature]');
+  if (!f) return;
+  const a = featured.get(f.dataset.feature);
+  S.q = a.name || a.package;
+  S.origin = S.category = '';
+  $('#q').value = S.q;
+  $('#origin').value = '';
+  closeApp();
+  loadList(true).then(() => openApp(a.package)).catch(err => console.error('open featured app:', err));
 });
 
-document.addEventListener('toggle', e => {
-  const g = e.target.closest && e.target.matches('details[data-group]') ? e.target : null;
-  if (!g) return;
-  const ids = openIds();
-  if (g.open) ids.add(Number(g.dataset.group)); else ids.delete(Number(g.dataset.group));
-  localStorage.setItem('relume-open', JSON.stringify([...ids]));
-}, true);
+$('#cats').addEventListener('click', e => {
+  const p = e.target.closest('.pill');
+  if (!p) return;
+  S.category = p.dataset.f;
+  closeApp();
+  loadList(true).catch(err => console.error('category filter:', err));
+});
+const onFilter = fn => e => { fn(e.target.value); closeApp(); loadList(true).catch(err => console.error('filter:', err)); };
+$('#q').addEventListener('input', onFilter(v => { S.q = v.trim(); }));
+$('#origin').addEventListener('change', onFilter(v => { S.origin = v; }));
+$('#sort').addEventListener('change', onFilter(v => { S.sort = v; }));
+$('#more').addEventListener('click', () => { S.page += 1; loadList(false).catch(err => console.error('load more:', err)); });
+addEventListener('resize', placeDetail);
 
-$$('[data-f]').forEach(b => b.addEventListener('click', () => { state.filter.s = b.dataset.f; applyFilter(); }));
-$('#sf').addEventListener('change', e => { state.filter.s = e.target.value; applyFilter(); });
-$('#q').addEventListener('input', e => { state.filter.q = e.target.value.trim().toLowerCase(); applyFilter(); });
-$('#check').addEventListener('click', async () => {
-  try { await act('POST', '/api/upstreams/check', {}, 'Upstream checked'); await load(); } catch (_) { /* shown */ }
+async function refreshCatalog() {
+  const btns = [$('#refresh'), ...$$('[data-act=refresh]')];
+  btns.forEach(b => { b.disabled = true; });
+  toast('Refreshing catalog…');
+  try {
+    await act('POST', '/api/catalog/refresh', {}, 'Catalog refreshed');
+  } catch (err) {
+    console.error('catalog refresh:', err);   // act() showed the failure, the feed error text follows from the reload
+  }
+  await loadAll();
+  $('#refresh').disabled = false;
+}
+$('#refresh').addEventListener('click', refreshCatalog);
+$('#empty').addEventListener('click', e => { if (e.target.closest('[data-act=refresh]')) refreshCatalog(); });
+
+// ---------- custom sources ----------
+const engine = () => $('input[name=eng]:checked').value;
+$$('input[name=eng]').forEach(r => r.addEventListener('change', () => { $('#c-mod').hidden = engine() === 'morphe'; }));
+$('#add-source').addEventListener('click', async () => {
+  const dlg = $('#dlg-custom');
+  if (await ask(dlg) !== 'ok') return;
+  const body = { url: $('#c-url').value.trim(), engine: engine() };
+  if (engine() !== 'morphe') {
+    body.asset_regex = $('#c-regex').value.trim();
+    body.packages = $('#c-pkgs').value.split(/[\s,]+/).filter(Boolean);
+  }
+  toast('Adding source…');
+  try {
+    await act('POST', '/api/sources', body, 'Source added');
+  } catch (err) {
+    console.error('add source:', err);   // act() showed the server message
+    return;
+  }
+  $('#c-url').value = $('#c-regex').value = $('#c-pkgs').value = '';
+  await loadAll();
+});
+$('#source-list').addEventListener('click', async e => {
+  const b = e.target.closest('[data-del]');
+  if (!b) return;
+  $('#dd-msg').textContent = `Remove ${b.dataset.repo} from Marketplace? Apps that use it must switch bundle first.`;
+  if (await ask($('#dlg-del')) !== 'ok') return;
+  try {
+    await act('DELETE', `/api/sources/${Number(b.dataset.del)}`, null, 'Source deleted');
+  } catch (err) {
+    console.error('delete source:', err);   // act() showed the server message (409 source_in_use lists the apps)
+    return;
+  }
+  await loadAll();
 });
 
 shell();
-load().catch(() => {});
-every(5000, () => {
-  if (state.dragging || document.querySelector('dialog[open], details.dd[open]')) return;
-  load().catch(() => {});
-});
-
-// ---- reorder (spec ui §3 drag-and-drop) ----
-let dragEl = null, fromList = null;
-const listGroupId = list => Number(list.closest('[data-group]').dataset.group);
-
-async function saveOrder(el, srcList) {
-  try {
-    if (el.hasAttribute('data-group')) {
-      const ids = $$('#groups > [data-group]').map(g => Number(g.dataset.group)).filter(id => id !== 0);
-      await api('PUT', '/api/groups/order', { ids });
-    } else {
-      const lists = new Set([el.closest('[data-list]'), srcList]);
-      for (const list of lists) {
-        if (!list) continue;
-        const item_ids = $$('[data-item]', list).map(r => Number(r.dataset.item));
-        await api('PUT', `/api/groups/${listGroupId(list)}/items/order`, { item_ids });
-      }
-    }
-    toast('Order saved');
-  } catch (e) {
-    toast(e.message, 'error');
-  }
-  state.dragging = false;
-  load().catch(() => {});
-}
-
-function placeOver(el, x, y, target) {
-  const isItem = el.hasAttribute('data-item');
-  let over = isItem ? target.closest('[data-item]') : target.closest('[data-group]');
-  const list = isItem ? target.closest('[data-list]') : null;
-  if (!isItem && over && over.dataset.group === '0') over = null;   // Ungrouped stays last
-  if (over && over !== el) {
-    const r = over.getBoundingClientRect();
-    over.parentNode.insertBefore(el, y - r.top > r.height / 2 ? over.nextSibling : over);
-    return true;
-  }
-  if (!over && list) { list.appendChild(el); return true; }
-  if (!isItem && !over && target.closest('[data-group="0"]')) {
-    $('#groups').insertBefore(el, $('#groups > [data-group="0"]'));
-    return true;
-  }
-  return false;
-}
-
-document.addEventListener('dragstart', e => {
-  dragEl = e.target.closest('[data-item]') || e.target.closest('[data-group]:not([data-group="0"])');
-  if (!dragEl) return;
-  e.stopPropagation();
-  state.dragging = true;
-  fromList = dragEl.closest('[data-list]');
-  dragEl.classList.add('dragging');
-  e.dataTransfer.effectAllowed = 'move';
-  e.dataTransfer.setData('text/plain', '');
-});
-document.addEventListener('dragover', e => {
-  if (!dragEl) return;
-  if (placeOver(dragEl, e.clientX, e.clientY, e.target)) e.preventDefault();
-});
-document.addEventListener('dragend', () => {
-  if (!dragEl) return;
-  dragEl.classList.remove('dragging');
-  const el = dragEl;
-  dragEl = null;
-  saveOrder(el, fromList);
-});
-
-let tEl = null, tFrom = null;
-document.addEventListener('pointerdown', e => {
-  const h = e.target.closest('.handle');
-  if (!h || e.pointerType === 'mouse') return;
-  tEl = h.closest('[data-item]') || h.closest('[data-group]');
-  e.preventDefault();
-  state.dragging = true;
-  tFrom = tEl.closest('[data-list]');
-  tEl.classList.add('touch-drag');
-  try { h.setPointerCapture(e.pointerId); } catch (_) { /* capture unsupported */ }
-});
-document.addEventListener('pointermove', e => {
-  if (!tEl) return;
-  tEl.style.pointerEvents = 'none';
-  const t = document.elementFromPoint(e.clientX, e.clientY);
-  tEl.style.pointerEvents = '';
-  if (t) placeOver(tEl, e.clientX, e.clientY, t);
-});
-const tEnd = () => {
-  if (!tEl) return;
-  tEl.classList.remove('touch-drag');
-  const el = tEl;
-  tEl = null;
-  saveOrder(el, tFrom);
-};
-document.addEventListener('pointerup', tEnd);
-document.addEventListener('pointercancel', tEnd);
-document.addEventListener('click', e => { if (e.target.closest('summary .handle')) e.preventDefault(); }, true);
-document.addEventListener('keydown', e => {
-  const h = e.target.closest && e.target.closest('.handle');
-  if (!h || !e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
-  const el = h.closest('[data-item]') || h.closest('[data-group]');
-  const sib = e.key === 'ArrowUp' ? el.previousElementSibling : el.nextElementSibling;
-  if (!sib || sib.dataset.group === '0') return;
-  e.preventDefault();
-  if (e.key === 'ArrowUp') el.parentNode.insertBefore(el, sib); else el.parentNode.insertBefore(sib, el);
-  h.focus();
-  saveOrder(el, el.closest('[data-list]'));
-});
-
-// ---- group dialogs (spec §0.6 R6) ----
-async function editGroup(g) {
-  const dlg = $('#dlg-group');
-  $('#dg-t').textContent = g ? 'Rename group' : 'New group';
-  $('#g-name').value = g ? g.name : '';
-  $('#g-color').value = (g && g.color) || '#10b981';
-  $('#g-nocolor').checked = !!g && !g.color;
-  if (await ask(dlg) !== 'ok') return;
-  const body = { name: $('#g-name').value.trim(), color: $('#g-nocolor').checked ? null : $('#g-color').value };
-  try {
-    if (g) await act('PUT', `/api/groups/${g.id}`, body, 'Group saved');
-    else await act('POST', '/api/groups', body, 'Group created');
-    await load();
-  } catch (_) { /* shown */ }
-}
-$('#g-color').addEventListener('input', () => { $('#g-nocolor').checked = false; });
-$('#newgrp').addEventListener('click', () => editGroup(null));
-document.addEventListener('click', async e => {
-  const el = e.target.closest('[data-act="grename"], [data-act="gdelete"]');
-  if (!el) return;
-  const g = groupById(el.closest('[data-group]').dataset.group);
-  if (el.dataset.act === 'grename') return editGroup(g);
-  if (!confirm(`Delete group "${g.name}"? Its items move to Ungrouped.`)) return;
-  try { await act('DELETE', `/api/groups/${g.id}`, {}, 'Group deleted'); await load(); } catch (_) { /* shown */ }
-});
-
-// ---- Add app and New source ----
-let sourcesCache = [];
-const KS_DEFAULT = { morphe: 'morphe.keystore', lspatch: 'lspatch-signing.p12', npatch: 'fiorenmas.ks' };
-
-function syncEngine(engine) {
-  const mod = engine !== 'morphe';
-  $('[data-repo-label]').textContent = mod ? 'Module repo' : 'Patches repo';
-  $('#s-re').required = mod;
-  $('#s-re-h').textContent = mod ? 'Required: must match exactly one asset of the module release.' : 'Optional for Morphe (default \\.mpp$).';
-}
-
-// src = null creates a source, otherwise the form is prefilled and sends PUT.
-async function sourceDialog(src) {
-  const { upstreams } = await api('GET', '/api/upstreams');
-  $('#s-cli').innerHTML = html`${upstreams.filter(u => u.kind === 'cli').map(u => html`<option value="${u.id}">${u.repo} · ${u.channel === 'tag' ? u.tag : u.channel}</option>`)}`;
-  $('#ds-t').textContent = src ? `Edit source ${src.id}` : 'New source';
-  $('#s-id').value = src ? src.id : '';
-  $('#s-id').disabled = !!src;
-  $('#s-name').value = src ? src.name : '';
-  $('#s-engine').value = src ? src.engine : 'morphe';
-  $('#s-engine').disabled = !!src;   // the engine decides the upstream kind and the item rules: not editable
-  $('#s-repo').value = src ? src.repo : '';
-  $('#s-ch').value = src ? src.channel : 'stable';
-  $('#s-tag-f').hidden = $('#s-ch').value !== 'tag';
-  $('#s-tag').value = (src && src.tag) || '';
-  $('#s-re').value = (src && src.asset_regex) || '';
-  $('#s-ks').value = src ? src.keystore : KS_DEFAULT.morphe;
-  if (src) $('#s-cli').value = src.cli_upstream_id;
-  syncEngine($('#s-engine').value);
-  if (await ask($('#dlg-src')) !== 'ok') return null;
-  const engine = $('#s-engine').value, ch = $('#s-ch').value;
-  const body = {
-    name: $('#s-name').value.trim(), engine,
-    repo: $('#s-repo').value.trim(), channel: ch, keystore: $('#s-ks').value.trim(),
-    cli_upstream_id: Number($('#s-cli').value),
-  };
-  if (ch === 'tag') body.tag = $('#s-tag').value.trim();
-  if ($('#s-re').value.trim()) body.asset_regex = $('#s-re').value.trim();
-  if (src) {
-    await act('PUT', `/api/sources/${src.id}`, body, 'Source saved');
-    return src.id;
-  }
-  body.id = $('#s-id').value.trim();
-  const r = await act('POST', '/api/sources', body, 'Source created');
-  return r.id;
-}
-$('#s-ch').addEventListener('change', e => { $('#s-tag-f').hidden = e.target.value !== 'tag'; });
-$('#s-engine').addEventListener('change', e => {
-  syncEngine(e.target.value);
-  $('#s-ks').value = KS_DEFAULT[e.target.value];
-});
-
-// Module settings (engine_options) apply only to LSPatch/NPatch sources.
-function syncModule() {
-  const s = sourcesCache.find(x => x.id === $('#a-src').value);
-  const mod = !!s && s.engine !== 'morphe';
-  $('#a-mod').hidden = !mod;
-  $('#a-src-edit').disabled = $('#a-src-del').disabled = !s;
-  if (!mod) return;
-  const max = s.engine === 'npatch' ? 4 : 3;
-  $('#a-sig').innerHTML = html`${Array.from({ length: max + 1 }, (_, n) => html`<option value="${n}">${n}</option>`)}`;
-}
-
-async function fillSources(selectId) {
-  const { sources } = await api('GET', '/api/sources');
-  sourcesCache = sources;
-  $('#a-src').innerHTML = html`${sources.map(s => html`<option value="${s.id}">${s.name} · ${s.engine}</option>`)}<option value="__new">New source…</option>`;
-  if (selectId) $('#a-src').value = selectId;
-  syncModule();
-}
-
-$('#a-src').addEventListener('change', async e => {
-  if (e.target.value === '__new') {
-    try { await fillSources(await sourceDialog(null)); } catch (_) { await fillSources(); }
-  }
-  syncModule();
-});
-$('#a-src-edit').addEventListener('click', async () => {
-  const src = sourcesCache.find(x => x.id === $('#a-src').value);
-  if (!src) return;
-  try { await fillSources(await sourceDialog(src)); } catch (_) { await fillSources(src.id); }
-});
-$('#a-src-del').addEventListener('click', async () => {
-  const src = sourcesCache.find(x => x.id === $('#a-src').value);
-  if (!src) return;
-  const items = allItems().filter(it => it.source_id === src.id);
-  const warn = items.length
-    ? `Delete source "${src.name}" and its ${items.length} item(s) with their build history and files?\n\n${items.map(it => it.label).join('\n')}`
-    : `Delete source "${src.name}"?`;
-  if (!confirm(warn)) return;
-  try { await act('DELETE', `/api/sources/${src.id}?cascade=1`, {}, 'Source deleted'); await load(); } catch (_) { /* 409 text shown */ }
-  await fillSources();
-});
-$('#add').addEventListener('click', async () => {
-  try {
-    await fillSources();
-    $('#a-grp').innerHTML = html`${state.catalog.groups.map(g => html`<option value="${g.id}">${g.name}</option>`)}<option value="">Ungrouped</option>`;
-    if (await ask($('#dlg-add')) !== 'ok' || $('#a-src').value === '__new') return;
-    const body = { source_id: $('#a-src').value, package: $('#a-pkg').value.trim(),
-      group_id: $('#a-grp').value ? Number($('#a-grp').value) : null };
-    if ($('#a-name').value.trim()) body.display_name = $('#a-name').value.trim();
-    if (!$('#a-mod').hidden) body.engine_options = { sigbypass: Number($('#a-sig').value), injectdex: $('#a-dex').checked };
-    await act('POST', '/api/items', body, 'Added; the icon appears after the next fetch');
-    await load();
-  } catch (_) { /* shown */ }
+loadAll().catch(err => {
+  console.error('marketplace load:', err);
+  toast(err.message, 'error');
 });

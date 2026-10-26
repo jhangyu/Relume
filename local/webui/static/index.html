@@ -1,55 +1,112 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>App list · Relume</title><link rel="stylesheet" href="/static/app.css"><link rel="manifest" href="/static/manifest.webmanifest"><meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff"><meta name="theme-color" media="(prefers-color-scheme: dark)" content="#09090b"><link rel="icon" href="/static/favicon.svg" type="image/svg+xml"><link rel="icon" href="/static/icon-192.png" type="image/png" sizes="192x192"><link rel="apple-touch-icon" href="/static/icon-192.png">
+<title>Marketplace · Relume</title><link rel="stylesheet" href="/static/app.css"><link rel="manifest" href="/static/manifest.webmanifest"><meta name="theme-color" content="#ffffff"><link rel="icon" href="/static/favicon.svg" type="image/svg+xml"><link rel="icon" href="/static/icon-192.png" type="image/png" sizes="192x192"><link rel="apple-touch-icon" href="/static/icon-192.png">
 <style>
-button.card.stat{font:inherit;color:inherit;text-align:left;cursor:pointer;display:block;width:100%}
-button.card.stat:hover{background:hsl(var(--muted)/.5)}
-button.card.stat[aria-pressed=true]{border-color:hsl(var(--accent));box-shadow:0 0 0 1px hsl(var(--accent))}
-a.badge{text-decoration:none}
-.why{margin-top:.25rem;line-height:1.35}.why a{font-weight:500}
-.gsum{display:inline-flex;gap:.625rem;align-items:center}.gsum span{display:inline-flex;gap:.3rem;align-items:center}
-.gsum i{width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block}
-@media (max-width:768px){.why{max-width:9.5rem}}
-.touch-drag{position:relative;z-index:5;box-shadow:var(--shadow-lg);background:hsl(var(--card))}
-.item.selected{background:hsl(var(--accent)/.08)}
+.hero { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr); gap: 16px; }
+.hero > *, .gallery > *, .detail > * { min-width: 0; }
+.mono { overflow-wrap: anywhere; }
+.feature { position: relative; overflow: hidden; border-radius: var(--borderRadius3XLarge); padding: 24px; min-height: 196px; display: flex; flex-direction: column; justify-content: space-between; gap: 16px; color: #fff; background: linear-gradient(135deg, var(--c1), var(--c2)); box-shadow: var(--shadow8); cursor: pointer; border: 0; text-align: left; transition: transform var(--durationNormal) var(--curveDecelerateMid), box-shadow var(--durationNormal); }
+.feature:hover { transform: translateY(-2px); box-shadow: var(--shadow28); }
+.feature::before { content: ""; position: absolute; width: 320px; height: 320px; right: -90px; top: -120px; border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,.28), transparent 65%); }
+.feature .kicker { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; opacity: .92; display: flex; align-items: center; gap: 6px; }
+.feature .tile { box-shadow: 0 8px 24px rgba(0,0,0,.25), inset 0 0 0 1px rgba(255,255,255,.35); }
+.feature .chip-w { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 999px; background: rgba(255,255,255,.2); font-size: 12px; font-weight: 600; backdrop-filter: blur(6px); }
+.stats { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 20px; color: var(--colorNeutralForeground3); font-size: 13px; }
+.stats b { color: var(--colorNeutralForeground1); font-weight: 600; }
+.toolbar { position: sticky; top: 60px; z-index: 4; display: flex; flex-direction: column; gap: 12px; padding: 14px 0; background: rgba(250,250,250,.92); backdrop-filter: blur(20px); }
+.cats { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px; }
+.q-wrap { width: min(420px, 40vw); }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 16px; }
+.app { position: relative; display: flex; flex-direction: column; gap: 14px; padding: 18px; border-radius: var(--borderRadius2XLarge); background: linear-gradient(180deg, var(--tint), var(--colorNeutralBackground1) 62%); box-shadow: var(--shadow4); border: 1px solid transparent; cursor: pointer; text-align: left; transition: box-shadow var(--durationNormal), transform var(--durationNormal) var(--curveDecelerateMid); }
+.app:hover { box-shadow: var(--shadow16); transform: translateY(-2px); }
+.app[aria-expanded=true] { border-color: var(--c1); box-shadow: var(--shadow16); }
+.app[aria-expanded=true]::after { content: ""; position: absolute; left: 50%; bottom: -17px; width: 16px; height: 16px; background: var(--colorNeutralBackground1); transform: translateX(-50%) rotate(45deg); border-radius: 3px; box-shadow: -1px -1px 0 rgba(0,0,0,.04); z-index: 2; }
+.app .name { font: 600 16px/22px var(--fontFamilyBase); }
+.app .meta { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--colorNeutralForeground3); margin-top: auto; }
+.app .meta .i { width: 14px; height: 14px; }
+.app .cat { font-size: 12px; color: var(--ink); font-weight: 600; }
+.app .corner { position: absolute; top: 14px; right: 14px; }
+.detail { grid-column: 1 / -1; display: grid; grid-template-columns: 300px 1fr; border-radius: var(--borderRadius3XLarge); background: var(--colorNeutralBackground1); box-shadow: var(--shadow16); overflow: hidden; animation: grow var(--durationGentle) var(--curveDecelerateMid); }
+@keyframes grow { from { opacity: 0; transform: translateY(-6px); } }
+.detail aside { padding: 28px; background: linear-gradient(170deg, var(--tint), var(--colorNeutralBackground1) 70%); border-right: 1px solid var(--colorNeutralStroke3); display: flex; flex-direction: column; gap: 16px; }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; font-size: 13px; }
+.facts dt { color: var(--colorNeutralForeground3); }
+.facts dd { margin: 0; }
+.detail .work { padding: 28px 32px; display: flex; flex-direction: column; gap: 28px; min-width: 0; }
+.step-h { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.step-n { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff; background: var(--colorBrandBackground); }
+.bundles { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.bundle { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 14px 14px 12px; border-radius: var(--borderRadiusXLarge); border: 1px solid var(--colorNeutralStroke2); background: var(--colorNeutralBackground1); cursor: pointer; transition: border-color var(--durationFast), box-shadow var(--durationFast); }
+.bundle:hover { border-color: var(--colorNeutralStroke1); box-shadow: var(--shadow4); }
+.bundle:has(input:checked) { border: 2px solid var(--colorBrandBackground); padding: 13px 13px 11px; background: var(--colorBrandBackground2); }
+.bundle:has(input:disabled) { cursor: not-allowed; background: var(--colorNeutralBackground3); }
+.bundle input { position: absolute; top: 14px; right: 14px; }
+.bundle .au { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 700; flex: none; }
+.bundle .stat { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--colorNeutralForeground3); }
+.bundle .stat span { display: inline-flex; align-items: center; gap: 3px; }
+.bundle .stat .i { width: 13px; height: 13px; }
+.patches { border: 1px solid var(--colorNeutralStroke2); border-radius: var(--borderRadiusXLarge); overflow: hidden; }
+.patches-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; background: var(--colorNeutralBackground2); border-bottom: 1px solid var(--colorNeutralStroke2); }
+.patch { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-bottom: 1px solid var(--colorNeutralStroke3); }
+.patch:last-child { border-bottom: 0; }
+.patch .pn { font-weight: 600; }
+.patch .pd { font-size: 12px; line-height: 16px; color: var(--colorNeutralForeground3); }
+.patch.changed { background: linear-gradient(90deg, var(--colorBrandBackground2), transparent 40%); }
+.patch-list { max-height: 360px; overflow: auto; }
+.src-box { display: grid; gap: 12px; }
+.enable-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 20px; border-radius: var(--borderRadiusXLarge); background: var(--colorNeutralBackground3); }
+.empty { display: grid; justify-items: center; gap: 12px; padding: 48px 24px; text-align: center; }
+.src-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--colorNeutralStroke3); flex-wrap: wrap; }
+.src-row:last-child { border-bottom: 0; }
+@media (max-width: 1100px) { .hero { grid-template-columns: minmax(0,1fr) minmax(0,1fr); } .hero .feature:first-child { grid-column: 1 / -1; } }
+@media (max-width: 900px) {
+  .hero { grid-template-columns: minmax(0,1fr); } .hero .feature:not(:first-child) { display: none; }
+  .q-wrap { width: auto; flex: 1; }
+  .gallery { grid-template-columns: repeat(auto-fill, minmax(156px, 1fr)); gap: 12px; }
+  .app { padding: 14px; } .app .tile { --s: 48px; }
+  .detail { grid-template-columns: 1fr; } .detail aside { border-right: 0; border-bottom: 1px solid var(--colorNeutralStroke3); padding: 20px; }
+  .detail .work { padding: 20px 16px; }
+}
 </style>
-<script>document.documentElement.dataset.theme=localStorage.getItem('relume-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')</script>
 <script type="module" src="/static/index.js"></script></head><body><a class="skip" href="#main">Skip to content</a>
 <div class="shell"><aside class="side" aria-label="Primary"></aside>
-<div class="main"><header class="top"><div class="row" style="gap:.75rem;flex-wrap:nowrap;min-width:0">
-<button class="btn btn-outline btn-icon only-m" type="button" data-nav-toggle aria-label="Open navigation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
-<div style="min-width:0"><div class="crumbs">Home</div><h1>App list</h1></div></div>
-<div class="row" style="flex-wrap:nowrap"><button class="btn btn-outline hide-m" type="button" id="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>Check upstream</button><button class="btn btn-accent" type="button" id="add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span class="hide-m">Add app</span></button><details class="dd only-m"><summary class="btn btn-outline btn-icon" aria-label="More actions" title="More"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></summary><div class="menu" role="menu"><button role="menuitem" type="button" data-proxy="#check">Check upstream</button><hr><button role="menuitem" type="button" data-proxy="#sf" data-value="all">Show all status</button><button role="menuitem" type="button" data-proxy="#sf" data-value="upd">Show update available</button><button role="menuitem" type="button" data-proxy="#sf" data-value="fail">Show failed</button><button role="menuitem" type="button" data-proxy="#sf" data-value="run">Show building</button><button role="menuitem" type="button" data-proxy="#sf" data-value="new">Show not built</button></div></details><button class="btn btn-ghost btn-icon" type="button" data-theme-toggle aria-label="Toggle light/dark theme" title="Toggle light/dark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button></div></header>
-<main id="main" class="content"><section class="grid4" role="group" aria-label="Filter by status">
-<button type="button" class="card stat" data-f="all" aria-pressed="true"><span class="muted sm">All items</span><b id="n-all"></b><span class="xs muted" id="s-all"></span></button>
-<button type="button" class="card stat" data-f="upd" aria-pressed="false"><span class="muted sm">Updates available</span><b style="color:hsl(var(--warn))" id="n-upd"></b><span class="xs muted" id="s-upd"></span></button>
-<button type="button" class="card stat" data-f="run" aria-pressed="false"><span class="muted sm">Building</span><b style="color:hsl(var(--info))" id="n-run"></b><span class="xs muted" id="s-run"></span></button>
-<button type="button" class="card stat" data-f="fail" aria-pressed="false"><span class="muted sm">Failed</span><b style="color:hsl(var(--destructive))" id="n-fail"></b><span class="xs muted" id="s-fail"></span></button></section><div class="alert warn" id="banner" hidden><span></span></div><div class="row between"><div class="row grow" style="max-width:540px;flex-wrap:nowrap"><div style="position:relative;flex:1"><span style="position:absolute;left:.65rem;top:.55rem;color:hsl(var(--muted-fg))"><svg style="width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span><input class="input" id="q" type="search" style="padding-left:2rem" placeholder="Search app, package or source…" aria-label="Search apps"></div>
-<select class="input hide-m" id="sf" style="width:auto" aria-label="Filter by status"><option value="all">All status</option><option value="upd">Update available</option><option value="fail">Failed</option><option value="run">Building</option><option value="new">Not built</option></select></div>
-<div class="row"><span class="xs muted hide-m">Drag <svg style="width:12px;height:12px;vertical-align:-2px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/></svg> to reorder groups and apps</span><button class="btn btn-outline btn-sm" type="button" id="newgrp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>New group</button></div></div><div class="stack" id="groups"></div><p class="xs muted">Keyboard: focus a handle, press <span class="kbd">Alt</span>+<span class="kbd">↑</span>/<span class="kbd">↓</span>. Touch: drag the <svg style="width:12px;height:12px;vertical-align:-2px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/></svg> handle with your finger. Items can move between groups. Order is saved immediately.</p><p class="xs muted" id="nores" hidden>No items match this filter.</p></main></div></div>
-<dialog id="dlg-group" aria-labelledby="dg-t"><form method="dialog" class="card stack">
-<div class="card-h"><h2 id="dg-t">Group</h2></div>
-<div class="card-c stack"><div class="field"><label class="lbl" for="g-name">Name</label><input class="input" id="g-name" required maxlength="60"></div>
-<div class="field"><label class="lbl" for="g-color">Colour</label><div class="row"><input type="color" id="g-color" value="#10b981"><label class="row sm"><input type="checkbox" class="cb" id="g-nocolor"> No colour</label></div></div></div>
-<div class="card-f"><button class="btn btn-outline" value="cancel" formnovalidate>Cancel</button><button class="btn" value="ok">Save</button></div></form></dialog>
-<dialog id="dlg-add" aria-labelledby="da-t"><form method="dialog" class="card stack">
-<div class="card-h"><h2 id="da-t">Add app</h2><p class="sm muted">An item is one patch source × one app.</p></div>
-<div class="card-c stack"><div class="field"><label class="lbl" for="a-src">Patch source</label><select class="input" id="a-src"></select><div class="row" style="margin-top:.375rem"><button class="btn btn-outline btn-sm" type="button" id="a-src-edit">Edit source…</button><button class="btn btn-outline btn-sm" type="button" id="a-src-del">Delete source</button></div></div>
-<div class="field" id="a-mod" hidden><label class="lbl" for="a-sig">Signature bypass level</label><select class="input" id="a-sig"></select><label class="row sm" style="margin-top:.375rem"><input type="checkbox" class="cb" id="a-dex"> Inject dex</label><p class="hint">Module settings (LSPatch/NPatch). Changeable later in the item's Module tab.</p></div>
-<div class="field"><label class="lbl" for="a-pkg">Package</label><input class="input mono" id="a-pkg" required pattern="[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+" placeholder="com.google.android.youtube"></div>
-<div class="field"><label class="lbl" for="a-grp">Group</label><select class="input" id="a-grp"></select></div>
-<div class="field"><label class="lbl" for="a-name">Display name (optional)</label><input class="input" id="a-name" maxlength="80"></div></div>
-<div class="card-f"><button class="btn btn-outline" value="cancel" formnovalidate>Cancel</button><button class="btn" value="ok">Add</button></div></form></dialog>
-<dialog id="dlg-src" aria-labelledby="ds-t"><form method="dialog" class="card stack">
-<div class="card-h"><h2 id="ds-t">New source</h2></div>
-<div class="card-c stack"><div class="grid2"><div class="field"><label class="lbl" for="s-id">Id</label><input class="input mono" id="s-id" required pattern="[A-Za-z0-9_][A-Za-z0-9._\-]*"></div>
-<div class="field"><label class="lbl" for="s-name">Name</label><input class="input" id="s-name" required></div></div>
-<div class="field"><label class="lbl" for="s-engine">Engine</label><select class="input" id="s-engine"><option value="morphe">Morphe</option><option value="lspatch">LSPatch</option><option value="npatch">NPatch</option></select></div>
-<div class="field"><label class="lbl" for="s-repo"><span data-repo-label>Patches repo</span></label><input class="input mono" id="s-repo" required pattern="[A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-]+" placeholder="owner/name"></div>
-<div class="grid2"><div class="field"><label class="lbl" for="s-ch">Channel</label><select class="input" id="s-ch"><option value="stable">stable</option><option value="prerelease">prerelease</option><option value="tag">tag</option></select></div>
-<div class="field" id="s-tag-f" hidden><label class="lbl" for="s-tag">Tag</label><input class="input mono" id="s-tag"></div></div>
-<div class="field"><label class="lbl" for="s-re">Asset regex</label><input class="input mono" id="s-re"><p class="hint" id="s-re-h">Optional for Morphe (default \.mpp$).</p></div>
-<div class="field"><label class="lbl" for="s-ks">Keystore</label><input class="input mono" id="s-ks" list="ks-list" value="morphe.keystore" required><datalist id="ks-list"><option value="morphe.keystore"><option value="lspatch-signing.p12"><option value="fiorenmas.ks"></datalist></div>
-<div class="field"><label class="lbl" for="s-cli">Engine upstream</label><select class="input" id="s-cli"></select></div></div>
-<div class="card-f"><button class="btn btn-outline" value="cancel" formnovalidate>Cancel</button><button class="btn" value="ok">Create</button></div></form></dialog>
+<div class="main"><header class="header">
+<button class="icon-btn menu-btn" type="button" data-nav-toggle aria-label="Open navigation" title="Open navigation"><svg class="i" aria-hidden="true"><use href="#i-menu"/></svg></button>
+<h1 class="subtitle1 hide-m">Marketplace</h1><div class="grow hide-m"></div>
+<label class="input search large q-wrap"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Search apps</span><input id="q" type="search" placeholder="Search apps or packages" autocomplete="off"></label>
+<button class="btn" id="refresh" type="button" aria-label="Refresh catalog" title="Refresh catalog"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg><span class="hide-m">Refresh catalog</span></button>
+<button class="btn" id="add-source" type="button" aria-label="Add custom source" title="Add custom source"><svg class="i" aria-hidden="true"><use href="#i-github"/></svg><span class="hide-m">Add custom source</span></button>
+</header>
+<main id="main" class="content">
+<div id="notice" class="stack-sm" role="status"></div>
+<section class="hero" id="hero" aria-label="Featured apps" hidden></section>
+<div class="stats" id="stats" role="status"></div>
+<div class="toolbar"><div class="row" style="gap:12px">
+<div class="cats grow" id="cats" role="group" aria-label="Category"></div>
+<label class="select"><span class="sr-only">Origin</span><select class="dropdown" id="origin" style="width:168px"><option value="">All origins</option><option value="official">Official catalog</option><option value="builtin">Built-in</option><option value="custom">Custom</option></select></label>
+<label class="select"><span class="sr-only">Sort</span><select class="dropdown" id="sort" style="width:176px"><option value="bundles">Most bundles</option><option value="stars">Most stars</option><option value="updated">Recently updated</option><option value="name">Name A–Z</option></select></label>
+</div></div>
+<section class="gallery" id="gallery" aria-label="Apps"><section class="detail" id="detail" hidden></section></section>
+<div id="empty" class="card empty" hidden></div>
+<p class="caption" id="count" style="margin-top:24px;text-align:center"></p>
+<div style="text-align:center;margin-top:8px"><button class="btn" id="more" type="button" hidden>Load more</button></div>
+<section class="section" id="sources" aria-labelledby="src-h" hidden><div class="section-head"><h2 class="subtitle1" id="src-h">Custom sources</h2></div><div class="card card-pad" id="source-list"></div></section>
+</main></div></div>
+<dialog id="dlg-custom" aria-labelledby="dc-t"><form method="dialog">
+<h2 class="subtitle1" id="dc-t">Add a custom source</h2>
+<p class="subtle-text" style="margin:6px 0 20px">A GitHub repository you trust. It appears in Marketplace next to the catalog with a <span class="origin custom">Custom</span> label.</p>
+<div style="display:grid;gap:16px">
+<div class="field"><label for="c-url">GitHub repository URL</label><span class="input"><svg class="i i-16" aria-hidden="true"><use href="#i-github"/></svg><input id="c-url" required placeholder="github.com/owner/repo" autocomplete="off"></span></div>
+<fieldset style="border:0;padding:0;margin:0;display:grid;gap:8px"><legend class="label" style="margin-bottom:8px">Engine</legend>
+<label class="row"><input type="radio" name="eng" value="morphe" checked>Morphe patches</label>
+<label class="row"><input type="radio" name="eng" value="lspatch">Xposed module, packaged with LSPatch</label>
+<label class="row"><input type="radio" name="eng" value="npatch">Xposed module, packaged with NPatch</label></fieldset>
+<div id="c-mod" style="display:grid;gap:16px" hidden>
+<div class="field"><label for="c-regex">Release asset regex</label><span class="input"><input id="c-regex" class="mono" placeholder="\.apk$" autocomplete="off"></span></div>
+<div class="field"><label for="c-pkgs">Target packages</label><span class="input"><input id="c-pkgs" class="mono" placeholder="com.example.app, com.example.other" autocomplete="off"></span><div class="hint">Comma separated. The module is offered for these apps.</div></div></div>
+</div>
+<div class="dlg-actions"><button class="btn" value="cancel" formnovalidate>Cancel</button><button class="btn primary" value="ok">Add source</button></div></form></dialog>
+<dialog id="dlg-del" aria-labelledby="dd-t"><form method="dialog">
+<h2 class="subtitle1" id="dd-t">Delete custom source</h2><p class="subtle-text" style="margin-top:6px" id="dd-msg"></p>
+<div class="dlg-actions"><button class="btn" value="cancel">Cancel</button><button class="btn primary" value="ok">Delete</button></div></form></dialog>
 <div id="toast" class="toast" role="status" aria-live="polite"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg><span></span></div>
 </body></html>
