@@ -8,6 +8,7 @@ import threading
 import types
 
 from webui import db, devices
+from webui.tests import catalog_rows
 
 FIXTURES = pathlib.Path(__file__).parent / 'fixtures' / 'device'
 OTA_DEFAULTS = {'retries': 0, 'mode': 'normal', 'package': None, 'notify': True}
@@ -46,24 +47,10 @@ def job(jid, target=None, options=None, trigger='manual', kind='ota'):
                                  schedule_id=None, cancel_event=threading.Event())
 
 
-def add_group(gid, position):
+def add_catalog_item(item_id, package, enabled=1):
+    """Enabled-app row item_id on the built-in bundle (schema 010)."""
     with db.tx() as c:
-        c.execute('INSERT INTO grp(id,name,color,position) VALUES (?,?,NULL,?)', (gid, f'g{gid}', position))
-
-
-def add_catalog_item(item_id, package, source_id='src', group_id=None, position=0, enabled=1, key=None):
-    with db.tx() as c:
-        c.execute("INSERT OR IGNORE INTO upstream(id,kind,repo,channel,tag,asset_regex,latest_tag,downloaded_tag) "
-                  "VALUES (1,'patches','o/p','stable',NULL,'\\.mpp$','v1','v1')")
-        c.execute("INSERT OR IGNORE INTO upstream(id,kind,repo,channel,tag,asset_regex,latest_tag,downloaded_tag) "
-                  "VALUES (2,'cli','o/cli','stable',NULL,'\\.jar$','v1','v1')")
-        c.execute("INSERT OR IGNORE INTO source(id,name,upstream_id,cli_upstream_id,engine,keystore) "
-                  "VALUES (?,?,1,2,'morphe','morphe.keystore')", (source_id, source_id))
-        c.execute('INSERT OR IGNORE INTO app(package,display_name) VALUES (?,?)', (package, package))
-        c.execute('INSERT INTO item(id,source_id,package,key,display_name,group_id,position,enabled,version_mode,'
-                  "version_pin,allow_nearest,variants,patch_overrides,engine_options) "
-                  "VALUES (?,?,?,?,NULL,?,?,?,'auto',NULL,0,'[]','{}',NULL)",
-                  (item_id, source_id, package, key or f'k{item_id}', group_id, position, enabled))
+        catalog_rows.add_item(c, package, catalog_rows.builtin_id(c), enabled=enabled, id=item_id)
 
 
 def add_device(host='192.168.1.20', port=37011, serial='SER1', abi='arm64-v8a,armeabi-v7a', after_build=0,

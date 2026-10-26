@@ -1,10 +1,9 @@
 """Shared rows and fakes for the catalog tests (plain SQL, no routes)."""
 import json
 import subprocess
-import unittest
 from unittest import mock
 
-from webui import catalog, db, events, settings, upstream
+from webui import db, events, settings, upstream
 from webui.tests import helpers
 
 DOWNLOAD = {"kind": "apkmirror", "type": "apk", "arch": None, "dpi": None, "minver": None, "url": None}
@@ -14,46 +13,56 @@ VARIANTS = [
 ]
 
 
+def builtin_id(c):
+    """The built-in bundle row migration 010 created."""
+    return c.execute("SELECT id FROM bundle WHERE origin = 'builtin'").fetchone()[0]
+
+
+def add_bundle(c, repo, *, origin="official", engine="morphe", host="github", upstream_id=None, asset_regex=None,
+               name=None):
+    return c.execute("INSERT INTO bundle(origin, host, repo, engine, name, upstream_id, asset_regex) VALUES (?,?,?,?,?,?,?)",
+                     (origin, host, repo, engine, name or repo, upstream_id, asset_regex)).lastrowid
+
+
+def add_item(c, package, bundle_id, *, enabled=1, **cols):
+    """An enabled-app row (and its app row); cols = other item columns, variants default VARIANTS."""
+    c.execute("INSERT OR IGNORE INTO app(package) VALUES (?)", (package,))
+    cols = {"variants": json.dumps(VARIANTS), **cols, "package": package, "bundle_id": bundle_id, "enabled": enabled}
+    return c.execute(f"INSERT INTO item({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
+                     tuple(cols.values())).lastrowid
+
+
+def add_store_app(c, package, name, category=None, icon_url=None):
+    c.execute("INSERT INTO store_app(package, name, category, icon_url) VALUES (?,?,?,?)", (package, name, category, icon_url))
+
+
 def add_basic(c):
-    """upstreams 1 cli, 2 patches stable, 3 patches prerelease; sources morphe, morphe-beta;
-    groups 1 Morphe, 2 Beta; items 1 YouTube (g1), 2 Reddit (g1), 3 YouTube beta (g2)."""
-    c.execute("INSERT INTO upstream(id, kind, repo, channel) VALUES (1,'cli','MorpheApp/morphe-desktop','stable')")
-    c.execute("INSERT INTO upstream(id, kind, repo, channel) VALUES (2,'patches','MorpheApp/morphe-patches','stable')")
-    c.execute("INSERT INTO upstream(id, kind, repo, channel) VALUES (3,'patches','MorpheApp/morphe-patches','prerelease')")
-    c.execute("INSERT INTO source(id, name, upstream_id, cli_upstream_id) VALUES ('morphe','Morphe',2,1),('morphe-beta','Morphe Beta',3,1)")
-    c.execute("INSERT INTO app(package, display_name) VALUES ('com.google.android.youtube','YouTube'),('com.reddit.frontpage',NULL)")
-    c.execute("INSERT INTO grp(id, name, color, position) VALUES (1,'Morphe',NULL,0),(2,'Beta',NULL,1)")
-    v = json.dumps(VARIANTS)
-    c.execute("INSERT INTO item(id, source_id, package, key, group_id, position, variants) VALUES (1,'morphe','com.google.android.youtube','youtube',1,0,?)", (v,))
-    c.execute("INSERT INTO item(id, source_id, package, key, group_id, position, variants) VALUES (2,'morphe','com.reddit.frontpage','reddit',1,1,?)", (v,))
-    c.execute("INSERT INTO item(id, source_id, package, key, group_id, position, variants) VALUES (3,'morphe-beta','com.google.android.youtube','youtube',2,0,?)", (v,))
-
-
-class FakeBuild:
-    """Stands in for webui.build in catalog tests."""
-
-    def __init__(self):
-        self.active = {}
-        self.forgotten = []
-
-    def item_status(self, ids):
-        return {i: {"last_build": None, "last_success": None, "active_job": self.active.get(i)} for i in ids}
-
-    def forget_item(self, item_id):
-        self.forgotten.append(item_id)
+    """cli upstream (morphe-desktop stable); built-in bundle (010) and one official bundle without upstream;
+    items 1 YouTube (built-in, enabled), 2 Reddit (built-in, enabled), 3 YT Music (official, disabled)."""
+    cli = c.execute("INSERT INTO upstream(kind, repo, channel) VALUES ('cli','MorpheApp/morphe-desktop','stable')").lastrowid
+    builtin = builtin_id(c)
+    official = add_bundle(c, "o/official-patches", name="Official Patches")
+    for package, name in (("com.google.android.youtube", "YouTube"), ("com.reddit.frontpage", "Reddit"),
+                          ("com.google.android.apps.youtube.music", "YouTube Music")):
+        add_store_app(c, package, name)
+    items = [add_item(c, "com.google.android.youtube", builtin), add_item(c, "com.reddit.frontpage", builtin),
+             add_item(c, "com.google.android.apps.youtube.music", official, enabled=0)]
+    assert items == [1, 2, 3], items
+    return {"cli": cli, "builtin": builtin, "official": official, "items": items}
 
 
 class FakeHTTP:
-    """url -> (status, body object or bytes, headers)."""
+    """url -> (status, body object or bytes, headers[, final_url]); returns upstream.http_get's
+    (status, headers, body, final_url), final_url = the request URL unless the route gives one."""
 
     def __init__(self, routes):
         self.routes = routes
         self.calls = []
 
-    def __call__(self, url, headers=None, timeout=30):
+    def __call__(self, url, headers=None, timeout=30, max_bytes=None):
         self.calls.append((url, headers or {}))
-        st, body, hdr = self.routes.get(url, (404, {}, {}))
-        return st, hdr, body if isinstance(body, bytes) else json.dumps(body).encode()
+        st, body, hdr, *final = self.routes.get(url, (404, {}, {}))
+        return st, hdr, body if isinstance(body, bytes) else json.dumps(body).encode(), final[0] if final else url
 
 
 class FakeLog:
@@ -77,17 +86,15 @@ class FakeLog:
 
 
 class CatalogCase(helpers.DataTestCase):
-    """Temp DB + basic rows + FakeBuild; self.call(handler, json=…, **params)."""
+    """Temp DB + basic rows (self.basic = add_basic's result); self.call(handler, json=…, **params)."""
 
     def setUp(self):
         super().setUp()
-        self.build = FakeBuild()
-        self.enterContext(mock.patch.object(catalog, "build", self.build))
         self.enterContext(mock.patch.object(settings, "github_token", return_value=""))
         self.emitted = []
         self.enterContext(mock.patch.object(events, "emit", side_effect=lambda t, pl: self.emitted.append((t, pl))))
         with db.tx() as c:
-            add_basic(c)
+            self.basic = add_basic(c)
 
     def http(self, routes):
         f = FakeHTTP(routes)

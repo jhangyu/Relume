@@ -6,7 +6,7 @@ import threading
 from contextlib import contextmanager
 
 SCHEMA_DIR = pathlib.Path(__file__).with_name('schema')
-SUBDIRS = ('logs', 'work', 'artifacts', 'apk-cache', 'upstream', 'icons')
+SUBDIRS = ('logs', 'work', 'artifacts', 'apk-cache', 'upstream', 'icons', 'catalog')
 DATA = pathlib.Path(os.environ.get('RELUME_DATA', '/data'))
 KEY = pathlib.Path(os.environ.get('RELUME_KEY') or DATA / 'key')  # what must survive: adb key (HOME/.android), GitHub token
 FMT = '%Y-%m-%dT%H:%M:%SZ'

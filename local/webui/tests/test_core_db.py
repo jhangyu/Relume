@@ -1,4 +1,4 @@
-import datetime, json, pathlib, shutil, sqlite3, tempfile, threading, unittest
+import datetime, pathlib, shutil, sqlite3, tempfile, threading, unittest
 from webui import db, events
 from webui.tests.helpers import DataTestCase
 
@@ -60,53 +60,98 @@ class DbTest(DataTestCase):
         self.assertRegex(db.utcnow(), r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$')
 
 
-class AppScheduleMigrationTest(unittest.TestCase):
-    def test_old_schedule_rows_become_app_rows(self):
+class MarketplaceMigrationTest(unittest.TestCase):
+    def test_migration_010_keeps_builtin_items_and_drops_the_rest(self):
         schema = pathlib.Path(db.SCHEMA_DIR)
         with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as data:
             old = pathlib.Path(d)
-            for f in schema.glob('00[1-6]_*.sql'):
+            for f in schema.glob('00[1-9]_*.sql'):
                 shutil.copy(f, old)
             db.init(data)
             db.migrate(old)
             c = db.conn()
             c.executescript("""
-                INSERT INTO upstream(id, kind, repo, channel) VALUES (1,'cli','a/c','stable'),(2,'patches','a/p','stable');
-                INSERT INTO source(id, name, upstream_id, cli_upstream_id) VALUES ('s1','S1',2,1),('s2','S2',2,1);
-                INSERT INTO app(package) VALUES ('p1'),('p2'),('p3');
+                INSERT INTO upstream(id, kind, repo, channel, downloaded_tag) VALUES
+                  (11,'cli','MorpheApp/morphe-desktop','stable','c1'),(12,'patches','MorpheApp/morphe-patches','stable','v2'),
+                  (13,'patches','o/other','stable','w1'),(14,'patches','o/orphan','stable',NULL),
+                  (15,'project','o/gms','stable','g1');
+                INSERT INTO bundle_info(upstream_id, tag, package, patches) VALUES
+                  (12,'v1','a.one','[]'),(12,'v2','a.one','[]'),(13,'w1','a.four','[]');
+                INSERT INTO project(id, upstream_id, package) VALUES (1, 15, 'o.gms');
+                INSERT INTO source(id, name, upstream_id, cli_upstream_id) VALUES ('morphe','Morphe',12,11),('other','Other',13,11);
+                INSERT INTO app(package, display_name, apkmirror_list_url) VALUES
+                  ('a.one','One','https://www.apkmirror.com/uploads/?appcategory=one'),('a.two',NULL,NULL),
+                  ('a.three',NULL,NULL),('a.four',NULL,NULL);
                 INSERT INTO grp(id, name, position) VALUES (1,'G',0);
-                INSERT INTO item(id, source_id, package, key, group_id, variants) VALUES
-                  (1,'s1','p1','a',1,'[]'),(2,'s1','p2','b',NULL,'[]'),(3,'s2','p3','c',1,'[]');""")
-            sp = '{"every":"day","at":"04:00"}'
-            rows = [('up-all', 'upstream', '{"all":true}', '{"pull":true,"rebuild":false,"notify":false}'),
-                    ('up-src', 'upstream', '{"source_ids":["s1"]}', '{"pull":false,"rebuild":true}'),
-                    ('up-none', 'upstream', '{"source_ids":["nope"]}', '{}'),
-                    ('b-all', 'build', '{"all":true}', '{"only_changed":true}'),
-                    ('b-grp', 'build', '{"group_ids":[1]}', '{}'),
-                    ('b-ungrouped', 'build', '{"group_ids":[0]}', '{"notify":false}'),
-                    ('b-items', 'build', '{"item_ids":[2,3]}', '{"only_changed":false}'),
-                    ('b-empty', 'build', '{"group_ids":[9]}', '{}'),
-                    ('ota', 'ota', '{"device_ids":[1]}', '{"retries":1}')]
-            for i, (n, k, t, o) in enumerate(rows, 1):
-                c.execute("INSERT INTO schedules(id,name,kind,target,spec,options,enabled,next_run_at) VALUES (?,?,?,?,?,?,1,'2026-10-20T04:00:00Z')",
-                          (i, n, k, t, sp, o))
-            shutil.copy(schema / '007_app_schedule.sql', old)
+                INSERT INTO item(id, source_id, package, key, group_id, enabled, version_mode, version_pin, variants,
+                                 patch_overrides) VALUES
+                  (1,'morphe','a.one','one',1,1,'pinned','1.2','["v"]','{"P":{"enabled":false}}'),
+                  (2,'morphe','a.two','two',NULL,0,'auto',NULL,'[]','{}'),
+                  (3,'morphe','a.three','three',NULL,1,'auto',NULL,'[]','{}'),
+                  (4,'other','a.four','four',1,1,'auto',NULL,'[]','{}');
+                INSERT INTO item_dependency(item_id, project_id) VALUES (3,1),(4,1);
+                INSERT INTO devices(id, name, serial, host, connect_port) VALUES (1,'Pixel','s:5555','s',5555);
+                INSERT INTO device_assignments VALUES (1,3),(1,4);
+                INSERT INTO schedules(id, name, kind, target, spec, options, enabled, next_run_at) VALUES
+                  (1,'ota','ota','{"device_ids":[1]}','{"every":"day","at":"03:00"}','{"retries":1}',1,'2026-10-27T03:00:00Z'),
+                  (2,'build only','app','{"all":true}','{"every":"day","at":"05:00"}',
+                   '{"build":true,"force":false,"notify":true,"update":false}',1,'2026-10-27T05:00:00Z'),
+                  (3,'Daily','app','{"all":true}','{"every":"day","at":"09:00"}',
+                   '{"build":true,"force":false,"notify":false,"update":true}',1,'2026-10-27T09:00:00Z'),
+                  (4,'later','app','{"all":true}','{"every":"day","at":"10:00"}',
+                   '{"build":true,"force":false,"notify":true,"update":true}',1,'2026-10-27T10:00:00Z');
+                INSERT INTO jobs(id, kind, status, trigger, schedule_id, target, created_at) VALUES
+                  (1,'build','success','manual',NULL,'{"item_id":4}','t'),(2,'ota','success','manual',NULL,'{}','t'),
+                  (3,'appcheck','success','schedule',2,'{"package":"a.one"}','t'),
+                  (4,'build','success','schedule',2,'{"item_id":1}','t');
+                INSERT INTO build_jobs(job_id, item_id) VALUES (1,4),(4,1);
+                INSERT INTO artifacts(job_id, item_id, variant, abi, path, created_at) VALUES (1,4,'v','universal','p','t');
+                INSERT INTO ota_installs(job_id, device_id, kind, ref_id, package, result) VALUES
+                  (2,1,'item',4,'a.four','installed'),(2,1,'item',3,'a.three','installed');""")
+            shutil.copy(schema / '010_marketplace.sql', old)
             db.migrate(old)
-            got = {r['name']: (r['kind'], r['target'], r['options'], r['enabled'], r['next_run_at'])
-                   for r in db.conn().execute('SELECT * FROM schedules')}
-        def app(update, build, force, notify=True):
-            return json.dumps({'build': build, 'force': force, 'notify': notify, 'update': update}, sort_keys=True, separators=(',', ':'))
-        T = '2026-10-20T04:00:00Z'
-        self.assertEqual(got, {
-            'up-all': ('app', '{"all":true}', app(True, False, False, False), 1, T),
-            'up-src': ('app', '{"item_ids":[1,2]}', app(True, True, False), 1, T),
-            'up-none': ('app', '{"all":true}', app(True, True, False), 0, None),
-            'b-all': ('app', '{"all":true}', app(False, True, False), 1, T),
-            'b-grp': ('app', '{"item_ids":[1,3]}', app(False, True, True), 1, T),
-            'b-ungrouped': ('app', '{"item_ids":[2]}', app(False, True, True, False), 1, T),
-            'b-items': ('app', '{"item_ids":[2,3]}', app(False, True, True), 1, T),
-            'b-empty': ('app', '{"all":true}', app(False, True, True), 0, None),
-            'ota': ('ota', '{"device_ids":[1]}', '{"retries":1}', 1, T)})
+            self.assertEqual(c.execute('PRAGMA user_version').fetchone()[0], 10)
+            self.assertEqual(c.execute('PRAGMA foreign_key_check').fetchall(), [])
+            builtin = c.execute("SELECT id, upstream_id, name FROM bundle WHERE origin = 'builtin'").fetchall()
+            self.assertEqual([tuple(r) for r in builtin], [(builtin[0]['id'], 12, 'Morphe Patches')])
+            items = [tuple(r) for r in c.execute(
+                'SELECT id, package, bundle_id, enabled, version_mode, version_pin, variants, patch_overrides FROM item ORDER BY id')]
+            b = builtin[0]['id']
+            self.assertEqual(items, [(1, 'a.one', b, 1, 'pinned', '1.2', '["v"]', '{"P":{"enabled":false}}'),
+                                     (2, 'a.two', b, 0, 'auto', None, '[]', '{}'),
+                                     (3, 'a.three', b, 1, 'auto', None, '[]', '{}')])
+            def rows(sql):
+                return [tuple(r) for r in c.execute(sql)]
+            self.assertEqual(rows('SELECT item_id, project_id FROM item_dependency'), [(3, 1)])
+            self.assertEqual(rows('SELECT device_id, item_id FROM device_assignments'), [(1, 3)])
+            self.assertEqual(rows("SELECT ref_id FROM ota_installs WHERE kind = 'item'"), [(3,)])
+            self.assertEqual(rows('SELECT item_id FROM artifacts'), [])
+            self.assertEqual(rows('SELECT job_id, item_id, inputs_sha FROM build_jobs'), [(4, 1, None)])
+            self.assertEqual(rows('SELECT id, kind, schedule_id FROM jobs ORDER BY id'), [(2, 'ota', None), (4, 'build', None)])
+            self.assertEqual(rows('SELECT id, name, kind, target, spec, options, enabled, next_run_at FROM schedules ORDER BY id'), [
+                (1, 'ota', 'ota', '{"device_ids":[1]}', '{"every":"day","at":"03:00"}', '{"retries":1}', 1, '2026-10-27T03:00:00Z'),
+                (3, 'Daily', 'update', '{}', '{"every":"day","at":"09:00"}', '{"notify":false}', 1, '2026-10-27T09:00:00Z')])
+            with self.assertRaises(sqlite3.IntegrityError):
+                c.execute("INSERT INTO schedules(name, kind, target, spec) VALUES ('x','update','{}','{}')")
+            self.assertEqual(rows('SELECT id FROM upstream ORDER BY id'), [(11,), (12,), (15,)])
+            self.assertEqual(rows('SELECT upstream_id, tag FROM bundle_info'), [(12, 'v2')])
+            names = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+            self.assertFalse({'source', 'grp'} & names)
+            self.assertEqual(rows("SELECT package, apkm_state FROM app WHERE package LIKE 'a.%' ORDER BY package"),
+                             [('a.four', 'pending'), ('a.one', 'manual'), ('a.three', 'pending'), ('a.two', 'pending')])
+            self.assertEqual(rows("SELECT apkmirror_list_url, apkm_state FROM app WHERE package = 'com.reddit.frontpage'"),
+                             [('https://www.apkmirror.com/uploads/?appcategory=reddit', 'manual')])
+
+    def test_migration_010_fresh_db_has_builtin_bundle(self):
+        with tempfile.TemporaryDirectory() as data:
+            db.init(data)
+            db.migrate()
+            c = db.conn()
+            got = [tuple(r) for r in c.execute(
+                'SELECT b.origin, b.engine, u.kind, u.repo, u.channel, u.tag FROM bundle b JOIN upstream u ON u.id = b.upstream_id')]
+            self.assertEqual(got, [('builtin', 'morphe', 'patches', 'MorpheApp/morphe-patches', 'stable', None)])
+            self.assertEqual(c.execute('SELECT count(*) FROM app').fetchone()[0], 41)
+            self.assertEqual(c.execute('SELECT count(*) FROM schedules').fetchone()[0], 0)
 
 
 class AndroidMigrationTest(unittest.TestCase):
