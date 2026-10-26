@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -51,6 +53,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.jhangyu.relume.R
 import io.github.jhangyu.relume.api.DeviceKind
+import io.github.jhangyu.relume.api.Job
 import io.github.jhangyu.relume.api.OtaSchedule
 import io.github.jhangyu.relume.api.Schedule
 import io.github.jhangyu.relume.api.ScheduleSpec
@@ -116,7 +119,7 @@ private sealed interface Sheet {
 
 /** Schedules tab: the global update interval with Run now and the run pipeline, then the OTA push schedules. */
 @Composable
-fun SchedulesScreen(model: AppModel) {
+fun SchedulesScreen(model: AppModel, onOpenLog: (Int, Int?) -> Unit) {
     val schedule: Schedule? = model.schedule
     var sheet by remember { mutableStateOf<Sheet?>(null) }
     LaunchedEffect(Unit) { model.loadDevices() }
@@ -134,6 +137,7 @@ fun SchedulesScreen(model: AppModel) {
                     IntervalCard(schedule, model) { sheet = Sheet.Custom }
                     SectionHeader("Last run ${formatTime(schedule.lastRunAt)}")
                     RunSteps()
+                    model.lastRun?.let { LastRun(it) { onOpenLog(it.id, null) } }
                 }
                 SectionHeader("OTA push")
                 InsetGroup {
@@ -201,6 +205,28 @@ private fun RunSteps() {
             }
         }
     }
+}
+
+/** Outcome of the newest update run, as the web shows it (schedules.js RUN_BADGE): status, failure reason, log link. */
+@Composable
+private fun LastRun(job: Job, onLog: () -> Unit) {
+    val r = MaterialTheme.relume
+    val s = MaterialTheme.colorScheme
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Txt("Last update run", style = MaterialTheme.typography.bodySmall, color = muted())
+        when (job.status) {
+            "success" -> Pill("Succeeded", r.green.container, r.green.onContainer, R.drawable.ms_check)
+            "failed" -> Pill("Failed", s.errorContainer, s.onErrorContainer, R.drawable.ms_error)
+            "running" -> Pill("Running", r.blue.container, r.blue.onContainer, R.drawable.ms_progress_activity)
+            "queued" -> Pill("Waiting", s.surfaceContainerHigh, s.onSurfaceVariant)
+            "cancelled" -> Pill("Cancelled", s.surfaceContainerHigh, s.onSurfaceVariant)
+            else -> throw IllegalArgumentException("job ${job.id} status: expected success, failed, running, queued or cancelled, got '${job.status}'")
+        }
+        Spacer(Modifier.weight(1f))
+        // Pulled out 12 dp so the label ends on the content edge, as text buttons in section rows do.
+        ActionButton("View log", onLog, Modifier.offset(x = 12.dp), kind = ButtonKind.Text)
+    }
+    job.reason?.let { Txt(it, style = MaterialTheme.typography.bodySmall, color = s.error) }
 }
 
 private val STEP_TILE = 40.dp

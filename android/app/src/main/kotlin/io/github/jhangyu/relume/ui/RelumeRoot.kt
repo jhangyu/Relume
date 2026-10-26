@@ -127,7 +127,7 @@ private fun ColumnScope.RootContent() {
                 )
                 Screen.Apps -> AppsScreen(model, onOpenSettings = { stack = stack + Screen.AppSettings(it) }, onOpenLog = openLog)
                 is Screen.AppSettings -> AppSettingsScreen(model, current.appId, onBack = back, onOpenLog = openLog)
-                Screen.Schedules -> SchedulesScreen(model)
+                Screen.Schedules -> SchedulesScreen(model, onOpenLog = openLog)
                 Screen.Settings -> SettingsScreen(model, notificationsOn, askNotifications, onBack = back)
                 is Screen.Log -> model.api?.let { api ->
                     val app = current.appId?.let(model::app)

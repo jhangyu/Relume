@@ -405,10 +405,12 @@ private fun OptionField(op: PatchOption, onValue: (JsonElement?) -> Unit, onInva
     val label = op.title ?: op.key
     val v = op.value
     when {
+        // Every editor in the option box spans its full width with no inset of its own, so all borders and edges line up.
         op.values.isNotEmpty() -> {
             var open by remember { mutableStateOf(false) }
             Box {
-                ListRow(label, supporting = (v as? JsonPrimitive)?.contentOrNull ?: "–", trailing = {
+                // Mockup .opt "Icon": a read-only outlined field with an expand button; only the menu changes the value.
+                Field(label, (v as? JsonPrimitive)?.contentOrNull.orEmpty(), {}, trailing = {
                     IconAction(R.drawable.ms_expand_more, "Choose $label", { open = true })
                 })
                 DropdownMenu(open, { open = false }) {
@@ -418,8 +420,17 @@ private fun OptionField(op: PatchOption, onValue: (JsonElement?) -> Unit, onInva
                 }
             }
         }
-        Regex("bool", RegexOption.IGNORE_CASE).containsMatchIn(type) ->
-            SwitchRow(label, null, (v as? JsonPrimitive)?.booleanOrNull ?: false) { onValue(JsonPrimitive(it)) }
+        Regex("bool", RegexOption.IGNORE_CASE).containsMatchIn(type) -> {
+            val on = (v as? JsonPrimitive)?.booleanOrNull ?: false
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 56.dp).toggleable(value = on, role = Role.Switch) { onValue(JsonPrimitive(it)) },
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Txt(label, Modifier.weight(1f))
+                Switch(checked = on, onCheckedChange = null)
+            }
+        }
         Regex("list|\\[]", RegexOption.IGNORE_CASE).containsMatchIn(type) -> {
             var text by remember(op.key) { mutableStateOf((v as? JsonArray)?.joinToString("\n") { it.jsonPrimitive.content }.orEmpty()) }
             OutlinedTextField(

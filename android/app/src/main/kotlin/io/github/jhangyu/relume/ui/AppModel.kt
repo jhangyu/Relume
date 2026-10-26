@@ -16,6 +16,7 @@ import io.github.jhangyu.relume.api.DeviceView
 import io.github.jhangyu.relume.api.Health
 import io.github.jhangyu.relume.api.InstalledPackage
 import io.github.jhangyu.relume.api.InstallPlan
+import io.github.jhangyu.relume.api.Job as JobView
 import io.github.jhangyu.relume.api.CheckInterval
 import io.github.jhangyu.relume.api.OtaSchedule
 import io.github.jhangyu.relume.api.Schedule
@@ -40,6 +41,9 @@ import kotlinx.serialization.json.put
 import java.io.IOException
 
 private const val HTTP_UNAUTHORIZED = 401
+private const val KIND_UPSTREAM = "upstream"
+/** Newest upstream jobs scanned for the last update run, as the web does (`/api/jobs?kind=upstream&limit=20`). */
+private const val LAST_RUN_SCAN = 20
 internal const val SIGNED_OUT_NOTICE = "This device was signed out by the server"
 
 /** Everything the screens show, with the server calls of spec 10. State is Compose state: the UI reads it directly. */
@@ -57,6 +61,9 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     var schedule by mutableStateOf<Schedule?>(null)
         private set
     var otaSchedules by mutableStateOf<List<OtaSchedule>>(emptyList())
+        private set
+    /** Newest update-run job of the update schedule (web schedules.js "Last update run"); null when it never ran. */
+    var lastRun by mutableStateOf<JobView?>(null)
         private set
     var device by mutableStateOf<DeviceView?>(null)
         private set
@@ -102,6 +109,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         loaded = false
         loadError = null
         schedule = null
+        lastRun = null
         otaSchedules = emptyList()
         market.reset()
         device = null
@@ -166,7 +174,9 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         health = call { it.health() } ?: return error
         apps = call { it.apps() } ?: return error
         loaded = true
-        schedule = call { it.schedule() } ?: return error
+        val update = call { it.schedule() } ?: return error
+        schedule = update
+        lastRun = (call { it.jobs(KIND_UPSTREAM, null, null, LAST_RUN_SCAN) } ?: return error).firstOrNull { it.scheduleId == update.id }
         otaSchedules = call { it.otaSchedules() } ?: return error
         loadDeviceState()
         watchActiveJobs()
