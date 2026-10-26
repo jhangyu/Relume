@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -71,7 +72,12 @@ fun AppsScreen(model: AppModel, onOpenSettings: (Int) -> Unit, onOpenLog: (Int, 
                     AppCard(f, model, f.app.id in installing, onOpenSettings, onOpenLog) { fixing = f.app to it }
                 }
                 if (visible.isEmpty() && !model.refreshing) {
-                    item { Txt(if (all.isEmpty()) "No apps enabled. Enable one from the Marketplace." else "Nothing in this filter.", color = muted()) }
+                    val empty = when {
+                        !model.loaded -> model.loadError?.let { "Apps could not be loaded: $it. Pull down to try again." } ?: "Loading…"
+                        all.isEmpty() -> "No apps enabled. Enable one from the Marketplace."
+                        else -> "Nothing in this filter."
+                    }
+                    item { Txt(empty, color = muted()) }
                 }
             }
         }
@@ -101,29 +107,33 @@ private fun AppCard(
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLowest,
     ) {
-        Column(Modifier.padding(start = 16.dp, top = 12.dp, end = 4.dp, bottom = 4.dp)) {
-            Row(Modifier.padding(end = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
-                AppTile(app.name, app.iconUrl, model.api)
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        // Mockup .acard: 16 dp padding, no bottom padding (the install row closes the card); trailing icon buttons pulled out 12 dp.
+        Column(Modifier.padding(top = 16.dp)) {
+            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                AppTile(app.name, app.iconUrl, model.api, category = app.category)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Txt(app.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
-                    Txt(listOfNotNull(app.appVersion, app.bundle.name).joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = muted(), maxLines = 1)
+                    Txt(listOfNotNull(app.appVersion, app.bundle.name).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = muted(), maxLines = 1)
                 }
                 StatusPill(status.state)
             }
             status.progress?.let { p ->
                 LinearProgressIndicator(
                     { p.index.toFloat() / p.count },
-                    Modifier.fillMaxWidth().padding(top = 8.dp, end = 12.dp),
+                    Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, end = 16.dp),
                     color = MaterialTheme.relume.blue.onContainer,
                     trackColor = MaterialTheme.relume.blue.container,
                 )
             }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().padding(start = 16.dp, top = 4.dp, end = 4.dp).heightIn(min = TouchTarget),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 val line = f.statusLine
                 Txt(
                     line.orEmpty(),
                     Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     color = if (status.state == STATE_FAILED) MaterialTheme.colorScheme.error else muted(),
                     maxLines = 2,
                 )
@@ -146,6 +156,7 @@ private fun AppCard(
                     enabled = !f.building && status.state != STATE_NEEDS_URL,
                 )
             }
+            Hairline()
             PhoneRow(f, installing, model)
         }
     }
@@ -156,7 +167,12 @@ private fun AppCard(
 private fun PhoneRow(f: AppFacts, installing: Boolean, model: AppModel) {
     val r = MaterialTheme.relume
     val s = MaterialTheme.colorScheme
-    Row(Modifier.fillMaxWidth().padding(end = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    // Mockup .inst: full-bleed divider above, min 56 dp, padding 8 16 dp, content centred, 8 dp gaps.
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         when {
             installing -> Pill("Installing ${f.target.orEmpty()}".trim(), r.blue.container, r.blue.onContainer, R.drawable.ms_progress_activity)
             f.phone == PhoneState.Installed -> Pill("Installed ${f.installed?.versionName.orEmpty()}".trim(), r.green.container, r.green.onContainer, R.drawable.ms_check)
@@ -168,10 +184,10 @@ private fun PhoneRow(f: AppFacts, installing: Boolean, model: AppModel) {
         when {
             installing -> Unit
             f.installable && f.phone == PhoneState.NotInstalled ->
-                ActionButton(listOfNotNull("Install", f.target).joinToString(" "), { model.beginInstall(f) }, kind = ButtonKind.Install, icon = R.drawable.ms_install_mobile)
+                ActionButton(listOfNotNull("Install", f.target).joinToString(" "), { model.beginInstall(f) }, kind = ButtonKind.Install, icon = R.drawable.ms_install_mobile, size = ButtonSize.Small)
             f.installable && f.phone == PhoneState.Update ->
-                ActionButton("Update", { model.beginInstall(f) }, kind = ButtonKind.Install, icon = R.drawable.ms_system_update)
-            f.building && f.phone == PhoneState.Update -> Txt("Update after build", style = MaterialTheme.typography.bodyMedium, color = muted())
+                ActionButton("Update", { model.beginInstall(f) }, kind = ButtonKind.Install, icon = R.drawable.ms_system_update, size = ButtonSize.Small)
+            f.building && f.phone == PhoneState.Update -> Txt("Update after build", style = MaterialTheme.typography.bodySmall, color = muted())
         }
     }
 }

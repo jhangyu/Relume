@@ -8,12 +8,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DropdownMenu
@@ -27,6 +30,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -39,6 +43,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.jhangyu.relume.R
@@ -125,23 +133,13 @@ fun SchedulesScreen(model: AppModel) {
                 } else {
                     IntervalCard(schedule, model) { sheet = Sheet.Custom }
                     SectionHeader("Last run ${formatTime(schedule.lastRunAt)}")
-                    InsetGroup {
-                        val pastels = MaterialTheme.relume.let { listOf(it.blue, it.lavender, it.pink, it.amber, it.green) }
-                        RUN_STEPS.forEachIndexed { i, st ->
-                            if (i > 0) Hairline()
-                            ListRow(st.title, supporting = st.detail, leading = {
-                                Box(Modifier.size(40.dp).clip(CircleShape).background(pastels[i].container), contentAlignment = Alignment.Center) {
-                                    Glyph(st.icon, pastels[i].onContainer)
-                                }
-                            })
-                        }
-                    }
+                    RunSteps()
                 }
                 SectionHeader("OTA push")
                 InsetGroup {
                     if (model.otaSchedules.isEmpty()) ListRow("No OTA schedules", supporting = "Push new builds to ADB phones on a timer")
                     model.otaSchedules.forEachIndexed { i, o ->
-                        if (i > 0) Hairline()
+                        if (i > 0) Hairline(Modifier.padding(start = 16.dp))
                         OtaRow(o, model) { sheet = Sheet.Ota(o) }
                     }
                 }
@@ -166,24 +164,71 @@ fun SchedulesScreen(model: AppModel) {
 
 private val FAB_CLEARANCE = 88.dp
 
+/** Run pipeline (mockup .steps): 40 dp category-gradient tiles joined by a 2 dp connector, on the grey surface. */
+@Composable
+private fun RunSteps() {
+    val r = MaterialTheme.relume
+    // Mockup data-cat per step: productivity, personalization, social, music, maps (tokens.md section 3).
+    val pastels = listOf(r.blue to r.teal, r.lavender to r.pink, r.pink to r.lavender, r.amber to r.coral, r.green to r.teal)
+    val connector = MaterialTheme.colorScheme.outlineVariant
+    Column {
+        RUN_STEPS.forEachIndexed { i, st ->
+            val (c1, c2) = pastels[i]
+            val last = i == RUN_STEPS.lastIndex
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 72.dp).drawBehind {
+                    // ponytail: the line runs 4 dp below this tile to 4 dp above the next one, assuming the next row is 72 dp too.
+                    if (!last) {
+                        val x = STEP_TILE.toPx() / 2 - CONNECTOR_WIDTH.toPx() / 2
+                        val top = size.height / 2 + STEP_TILE.toPx() / 2 + CONNECTOR_GAP.toPx()
+                        val bottom = size.height + (72.dp - STEP_TILE).toPx() / 2 - CONNECTOR_GAP.toPx()
+                        drawRect(connector, Offset(x, top), Size(CONNECTOR_WIDTH.toPx(), bottom - top))
+                    }
+                }.padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier.size(STEP_TILE).clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(listOf(c1.container, c2.container))),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Glyph(st.icon, c1.onContainer, 20.dp)
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Txt(st.title, maxLines = 1)
+                    Txt(st.detail, style = MaterialTheme.typography.bodyMedium, color = muted(), maxLines = 2)
+                }
+            }
+        }
+    }
+}
+
+private val STEP_TILE = 40.dp
+/** Mockup interval tag: 32 dp, taller than a plain tag. */
+private val INTERVAL_TAG_HEIGHT = 32.dp
+private val CONNECTOR_WIDTH = 2.dp
+private val CONNECTOR_GAP = 4.dp
+
+/** Mockup .gcard: white, 28 dp corner, 16 dp padding, 8 dp gaps, start-aligned; chips wrap inside the card. */
 @Composable
 private fun IntervalCard(schedule: Schedule, model: AppModel, onCustom: () -> Unit) {
-    InsetGroup {
-        Column(Modifier.padding(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Txt("Keep apps updated", style = MaterialTheme.typography.titleMedium)
-                Pill(describeSpec(schedule.spec), MaterialTheme.relume.blue.container, MaterialTheme.relume.blue.onContainer, R.drawable.ms_schedule)
-                Txt(
-                    if (schedule.enabled) "Next run ${formatTime(schedule.nextRunAt)}" else "Off: runs only with Run now (turn on in the web Schedules page)",
-                    style = MaterialTheme.typography.bodySmall, color = muted(),
-                )
-            }
+    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerLowest) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Txt("Keep apps updated", style = MaterialTheme.typography.titleMedium)
+            Pill(describeSpec(schedule.spec), MaterialTheme.relume.blue.container, MaterialTheme.relume.blue.onContainer, R.drawable.ms_schedule, INTERVAL_TAG_HEIGHT)
+            Txt(
+                if (schedule.enabled) "Next run ${formatTime(schedule.nextRunAt)}" else "Off: runs only with Run now (turn on in the web Schedules page)",
+                style = MaterialTheme.typography.bodySmall, color = muted(),
+            )
             val labels = INTERVAL_PRESETS.map { "$it h" } + "Custom"
-            ChipRow(labels, presetIndex(schedule.spec) ?: INTERVAL_PRESETS.size) { i ->
-                if (i == INTERVAL_PRESETS.size) onCustom()
-                else model.putSchedule(buildJsonObject { put("spec", buildJsonObject { put("every", EVERY_HOURS); put("hours", INTERVAL_PRESETS[i]) }) })
+            // The wrapping ChipRow brings its own 16 dp side insets; full-bleed puts the chips on the card's content edge.
+            Box(Modifier.fullBleed()) {
+                ChipRow(labels, presetIndex(schedule.spec) ?: INTERVAL_PRESETS.size, wrap = true) { i ->
+                    if (i == INTERVAL_PRESETS.size) onCustom()
+                    else model.putSchedule(buildJsonObject { put("spec", buildJsonObject { put("every", EVERY_HOURS); put("hours", INTERVAL_PRESETS[i]) }) })
+                }
             }
-            ActionButton("Run now", model::runSchedule, Modifier.padding(horizontal = 16.dp).fillMaxWidth(), icon = R.drawable.ms_play_arrow)
+            ActionButton("Run now", model::runSchedule, icon = R.drawable.ms_play_arrow)
         }
     }
 }
@@ -196,7 +241,7 @@ private fun OtaRow(o: OtaSchedule, model: AppModel, onEdit: () -> Unit) {
     val tagColors = MaterialTheme.relume.let { if (o.spec.every == EVERY_WEEK) it.lavender else it.amber }
     ListRow(o.name, supporting = phones, trailing = {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Pill(describeSpec(o.spec), tagColors.container, tagColors.onContainer)
+            Pill(describeSpec(o.spec), tagColors.container, tagColors.onContainer, height = ListPillHeight)
             Switch(checked = o.enabled, onCheckedChange = { model.setOtaEnabled(o.id, it) }, Modifier.padding(horizontal = 8.dp))
             Box {
                 IconAction(R.drawable.ms_more_vert, "More for ${o.name}", { menu = true })
@@ -211,7 +256,11 @@ private fun OtaRow(o: OtaSchedule, model: AppModel, onEdit: () -> Unit) {
 
 /** Repeat form shared by both sheets: Hourly (every n hours), Daily (at), Weekly (days + at). */
 @Composable
-private fun SpecForm(every: String, hours: String, at: String, days: Set<Int>, onEvery: (String) -> Unit, onHours: (String) -> Unit, onAt: (String) -> Unit, onDays: (Set<Int>) -> Unit) {
+private fun SpecForm(
+    every: String, hours: String, at: String, days: Set<Int>,
+    onEvery: (String) -> Unit, onHours: (String) -> Unit, onAt: (String) -> Unit, onDays: (Set<Int>) -> Unit,
+    side: (@Composable RowScope.() -> Unit)? = null,
+) {
     val kinds = listOf(EVERY_HOURS to "Hourly", EVERY_DAY to "Daily", EVERY_WEEK to "Weekly")
     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
         kinds.forEachIndexed { i, (k, label) ->
@@ -227,10 +276,14 @@ private fun SpecForm(every: String, hours: String, at: String, days: Set<Int>, o
             )
         }
     }
-    if (every == EVERY_HOURS) {
-        Field("Every (hours, 1–$MAX_HOURS)", hours, onHours, mono = true, keyboard = KeyboardOptions(keyboardType = KeyboardType.Number))
-    } else {
-        Field("At (HH:MM)", at, onAt, mono = true, error = if (at.isNotEmpty() && !AT.matches(at)) "Expected 24-hour time like 03:00" else null)
+    // Mockup sheet: At and Retries side by side, 16 dp apart.
+    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        if (every == EVERY_HOURS) {
+            Field("Every (hours, 1–$MAX_HOURS)", hours, onHours, Modifier.weight(1f), mono = true, keyboard = KeyboardOptions(keyboardType = KeyboardType.Number))
+        } else {
+            Field("At (HH:MM)", at, onAt, Modifier.weight(1f), mono = true, error = if (at.isNotEmpty() && !AT.matches(at)) "Expected 24-hour time like 03:00" else null)
+        }
+        side?.invoke(this)
     }
     if (every == EVERY_WEEK) {
         val s = MaterialTheme.colorScheme
@@ -256,13 +309,21 @@ private fun SheetFrame(title: String, onDismiss: () -> Unit, content: @Composabl
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
         Column(
-            Modifier.verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
+            Modifier.verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Txt(title, style = MaterialTheme.typography.headlineSmall)
             content()
         }
     }
+}
+
+private val RETRIES_WIDTH = 112.dp
+
+/** Sheet actions (mockup .sheet .acts): text Cancel and a compact filled button, right-aligned, 8 dp apart. */
+@Composable
+private fun SheetButtons(content: @Composable RowScope.() -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), content = content)
 }
 
 /** Custom interval of the update schedule (day / week / hours; no cron, the scheduler has none). */
@@ -275,9 +336,9 @@ private fun CustomSheet(current: ScheduleSpec, onDismiss: () -> Unit, onSave: (J
     val spec = specJson(every, hours, at, days)
     SheetFrame("Custom interval", onDismiss) {
         SpecForm(every, hours, at, days, { every = it }, { hours = it }, { at = it }, { days = it })
-        DialogButtons {
-            ActionButton("Cancel", onDismiss, Modifier.weight(1f), kind = ButtonKind.Text)
-            ActionButton("Save", { spec?.let(onSave) }, Modifier.weight(1f), enabled = spec != null)
+        SheetButtons {
+            ActionButton("Cancel", onDismiss, kind = ButtonKind.Text)
+            ActionButton("Save", { spec?.let(onSave) }, enabled = spec != null)
         }
     }
 }
@@ -301,14 +362,15 @@ private fun OtaSheet(edit: OtaSchedule?, model: AppModel, onClose: () -> Unit) {
     SheetFrame(if (edit == null) "New OTA schedule" else "Edit ${edit.name}", onClose) {
         Field("Name", name, { name = it })
         SectionHeader("Repeat")
-        SpecForm(every, hours, at, days, { every = it }, { hours = it }, { at = it }, { days = it })
-        Field("Retries (0–$MAX_RETRIES)", retries, { retries = it }, mono = true, keyboard = KeyboardOptions(keyboardType = KeyboardType.Number),
-            error = if (retries.isNotEmpty() && retryCount == null) "Expected 0 to $MAX_RETRIES" else null)
+        SpecForm(every, hours, at, days, { every = it }, { hours = it }, { at = it }, { days = it }) {
+            Field("Retries", retries, { retries = it }, Modifier.width(RETRIES_WIDTH), mono = true, keyboard = KeyboardOptions(keyboardType = KeyboardType.Number),
+                error = if (retries.isNotEmpty() && retryCount == null) "0 to $MAX_RETRIES" else null, hint = "0 to $MAX_RETRIES")
+        }
         SectionHeader("Phones")
         if (adb.isEmpty()) Txt("No ADB phones. Pair one on the web Devices page.", color = muted())
         adb.forEach { d -> CheckRow(d.name, d.id in phones) { on -> phones = if (on) phones + d.id else phones - d.id } }
-        DialogButtons {
-            ActionButton("Cancel", onClose, Modifier.weight(1f), kind = ButtonKind.Text)
+        SheetButtons {
+            ActionButton("Cancel", onClose, kind = ButtonKind.Text)
             ActionButton(if (edit == null) "Create" else "Save", {
                 val body = buildJsonObject {
                     put("name", name.trim())
@@ -321,7 +383,7 @@ private fun OtaSheet(edit: OtaSchedule?, model: AppModel, onClose: () -> Unit) {
                     })
                 }
                 model.saveOta(edit?.id, body, onClose)
-            }, Modifier.weight(1f), enabled = ok)
+            }, enabled = ok)
         }
     }
 }

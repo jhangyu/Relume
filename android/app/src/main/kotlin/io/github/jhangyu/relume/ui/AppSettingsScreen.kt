@@ -9,6 +9,10 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -97,7 +101,7 @@ fun AppSettingsScreen(model: AppModel, appId: Int, onBack: () -> Unit, onOpenLog
     LaunchedEffect(appId) { data = model.loadSettings(appId) }
 
     Column(Modifier.fillMaxSize()) {
-        AppBar(app?.name ?: "App", app?.packageName, onBack = onBack, actions = {
+        AppBar(app?.name ?: "App", onBack = onBack, actions = {
             if (app != null) Switch(checked = true, onCheckedChange = { model.disable(appId, onBack) }, Modifier.padding(end = 12.dp))
         })
         model.error?.let { Banner("Request failed", Tone.Danger, Modifier.padding(horizontal = ScreenPadding), detail = it, action = "Dismiss", onAction = model::dismissError) }
@@ -168,7 +172,7 @@ fun AppSettingsScreen(model: AppModel, appId: Int, onBack: () -> Unit, onOpenLog
                     ListRow(app.bundle.name, supporting = "Other bundles unavailable: the catalog has no entry for this package")
                 } else {
                     bundles.forEachIndexed { i, b ->
-                        if (i > 0) Hairline()
+                        if (i > 0) Hairline(Modifier.padding(start = RADIO_TEXT_START))
                         RadioRow(bundleId == b.bundleId, enabled = b.selectable, onSelect = { bundleId = b.bundleId }) {
                             Column(Modifier.weight(1f)) {
                                 Txt(b.name, maxLines = 1)
@@ -223,7 +227,8 @@ fun AppSettingsScreen(model: AppModel, appId: Int, onBack: () -> Unit, onOpenLog
                 style = MaterialTheme.typography.bodySmall, color = muted(),
             )
             if (mode == "pinned") Field("Pinned version", pin, { pin = it }, mono = true, error = if (pinMissing) "A pinned version is required" else null)
-            InsetGroup { SwitchRow("Allow nearest version", "Build the closest one if the exact version is missing", nearest) { nearest = it } }
+            Box(Modifier.fullBleed()) { SwitchRow("Allow nearest version", "Build the closest one if the exact version is missing", nearest) { nearest = it } }
+            Hairline()
 
             if (!bundleChanged) {
                 SectionHeader("ABI variants")
@@ -233,10 +238,10 @@ fun AppSettingsScreen(model: AppModel, appId: Int, onBack: () -> Unit, onOpenLog
             }
 
             SectionHeader("Depends on Followed projects")
-            InsetGroup {
+            Column(Modifier.fullBleed()) {
                 if (d.projects.isEmpty()) ListRow("No followed projects")
                 d.projects.forEachIndexed { i, p ->
-                    if (i > 0) Hairline()
+                    if (i > 0) Hairline(Modifier.padding(start = 16.dp))
                     val on = p.id in deps
                     ListRow(
                         p.label,
@@ -248,12 +253,12 @@ fun AppSettingsScreen(model: AppModel, appId: Int, onBack: () -> Unit, onOpenLog
                 }
             }
             Txt("Install and OTA push bring these along.", style = MaterialTheme.typography.bodySmall, color = muted())
+            Hairline()
 
             SectionHeader("Download URLs")
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Field("APKMirror listing", listUrl, { listUrl = it }, Modifier.weight(1f), leadingIcon = R.drawable.ms_link, mono = true)
+            Field("APKMirror listing", listUrl, { listUrl = it }, leadingIcon = R.drawable.ms_link, mono = true, trailing = {
                 IconAction(R.drawable.ms_search, "Locate APKMirror page again", { model.locate(appId) }, IconTone.Sync, enabled = dl.state !in LOOKUP_DONE)
-            }
+            })
             LookupPill(dl.state)
             if (dl.state == LOOKUP_AMBIGUOUS) {
                 InsetGroup {
@@ -285,6 +290,9 @@ fun AppSettingsScreen(model: AppModel, appId: Int, onBack: () -> Unit, onOpenLog
 }
 
 private const val SUPPORTED_SHOWN = 3
+
+/** Text start of a radio row in an inset group: 16 dp inset + 24 dp radio + 16 dp gap (dividers start here). */
+private val RADIO_TEXT_START = 56.dp
 
 @Composable
 private fun LookupPill(state: String) {
@@ -341,35 +349,45 @@ private fun PatchSection(
             onChange(patches.map { p -> p.copy(enabled = p.defaultEnabled, options = p.options.map { it.copy(value = it.default) }) })
             onBad(emptySet())
             resets++
-        }, kind = ButtonKind.Text)
+        }, Modifier.offset(x = 12.dp), kind = ButtonKind.Text) // mockup .sec .btn.text: pulled out 12 dp, text ends on the content edge
     }
     if (view.unavailable) {
         Txt("The patch list of this bundle is not downloaded yet. It appears after the first update run.", color = muted())
         return
     }
     if (stale.isNotEmpty()) Banner("Kept from an earlier bundle", Tone.Info, detail = stale.joinToString())
-    key(resets) { InsetGroup {
+    // Mockup: the patch list sits on the grey surface (no inset group), dividers between rows.
+    key(resets) { Column(Modifier.fullBleed()) {
         patches.forEachIndexed { i, p ->
-            if (i > 0) Hairline()
+            if (i > 0) Hairline(Modifier.padding(start = 16.dp))
             val update = { q: PatchView -> onChange(patches.toMutableList().also { it[i] = q }) }
             val changed = p.enabled != p.defaultEnabled || p.options.any { it.value != it.default }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            val sub = listOfNotNull(
+                p.description?.takeIf { it.isNotBlank() },
+                "default unknown".takeIf { p.defaultEnabled == null },
+                "${p.options.size} options".takeIf { p.options.size > 1 },
+            )
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = if (sub.isEmpty() && !changed) 56.dp else 72.dp).padding(start = 16.dp, top = 8.dp, end = 24.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Txt(p.name, maxLines = 2)
-                    val sub = listOfNotNull(
-                        p.description?.takeIf { it.isNotBlank() },
-                        "default unknown".takeIf { p.defaultEnabled == null },
-                        "${p.options.size} options".takeIf { p.options.size > 1 },
-                    )
                     if (sub.isNotEmpty()) Txt(sub.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = muted(), maxLines = 2)
-                    if (changed) Pill("Changed by you", MaterialTheme.relume.pink.container, MaterialTheme.relume.pink.onContainer)
+                    if (changed) Pill("Changed by you", MaterialTheme.relume.pink.container, MaterialTheme.relume.pink.onContainer, height = ListPillHeight)
                 }
                 Switch(checked = p.enabled == true, onCheckedChange = { update(p.copy(enabled = it)) })
             }
-            if (p.enabled == true) {
-                p.options.forEachIndexed { j, op ->
-                    val id = "${p.name}/${op.key}"
-                    Box(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)) {
+            if (p.enabled == true && p.options.isNotEmpty()) {
+                // Mockup .opt: grey 12 dp box under the patch row, padding 24 16 16 dp, 24 dp between editors.
+                Column(
+                    Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainer).padding(start = 16.dp, top = 24.dp, end = 16.dp, bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(24.dp),
+                ) {
+                    p.options.forEachIndexed { j, op ->
+                        val id = "${p.name}/${op.key}"
                         OptionField(op, onValue = { v -> update(p.copy(options = p.options.toMutableList().also { it[j] = op.copy(value = v) })) }) { invalid ->
                             onBad(if (invalid) bad + id else bad - id)
                         }

@@ -69,6 +69,14 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     var error by mutableStateOf<String?>(null)
         private set
 
+    /** True once the app list arrived from the server; before that an empty list means "not loaded", not "no apps". */
+    var loaded by mutableStateOf(false)
+        private set
+
+    /** Failure of the last [refresh]; kept to the next successful refresh, so other calls clearing [error] cannot hide it. */
+    var loadError by mutableStateOf<String?>(null)
+        private set
+
     /** Job ids with an open event stream; a stream ends on `event: end` or on its first error. */
     private val watching = mutableMapOf<Int, Job>()
 
@@ -91,6 +99,8 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         api = null
         notice = reason
         apps = emptyList()
+        loaded = false
+        loadError = null
         schedule = null
         otaSchedules = emptyList()
         market.reset()
@@ -148,12 +158,19 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun load() {
-        health = call { it.health() } ?: return
-        apps = call { it.apps() } ?: return
-        schedule = call { it.schedule() } ?: return
-        otaSchedules = call { it.otaSchedules() } ?: return
+        loadError = loadParts()
+    }
+
+    /** Null on success, otherwise the failure text [call] put into [error]. */
+    private suspend fun loadParts(): String? {
+        health = call { it.health() } ?: return error
+        apps = call { it.apps() } ?: return error
+        loaded = true
+        schedule = call { it.schedule() } ?: return error
+        otaSchedules = call { it.otaSchedules() } ?: return error
         loadDeviceState()
         watchActiveJobs()
+        return null
     }
 
     private suspend fun loadDeviceState() {
