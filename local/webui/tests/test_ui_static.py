@@ -64,7 +64,7 @@ class StaticRulesTest(unittest.TestCase):
 
     def test_projects_page_uses_project_api(self):
         js = (STATIC / 'projects.js').read_text()
-        for needle in ("'/api/projects'", '/api/projects/assets', '/signer/accept', '/install', '/api/upstreams/', "'/api/devices'", 'kind=ota'):
+        for needle in ("'/api/projects'", '/api/projects/assets', '/signer/accept', '/install', '/pull', "'/api/devices'", 'kind=ota'):
             self.assertIn(needle, js, needle)
 
     def test_settings_lists_signer_event(self):
