@@ -116,14 +116,14 @@ Budget check: the deletions remove about 50 tests; the new files add about 40 sm
 
 ## 4. Removed-symbol greps (contract item 6)
 
-Run from the repo root (bash or zsh); each must print nothing (exit 1). `schema/` and `test_core_db.py` are excluded because migrations 003–010 and the migration fixture name old tables by design.
+Run from the repo root (bash or zsh); each must print nothing (exit 1). `schema/` and `test_core_db.py` are excluded because migrations 003–010 and the migration fixture name old tables by design; grep 3 also excludes `test_projects.py` (its v4 migration fixture names the old tables), and grep 5 matches the whole word (`compressed` is not a hit). Both instrument fixes were made by the lead after the round-2 review found the false positives.
 
 ```bash
 grep -rnE --exclude-dir=__pycache__ --exclude-dir=schema --exclude=test_core_db.py "seed_import|export_seed|seed_text|catalog-seed|export-seed|DAILY_SCHEDULE|SEED_TABLES" local/webui src scripts README.md "docs/Frequently Asked Questions.md"
 grep -rnE --exclude-dir=__pycache__ --exclude-dir=schema --exclude=test_core_db.py "\bgrp\b|group_id|enabled_group_items|download_group|group_zip_files|/api/groups" local/webui android/app/src
-grep -rnE --exclude-dir=__pycache__ --exclude-dir=schema --exclude=test_core_db.py "source_id|cli_upstream_id|FROM source|JOIN source|_source_fields|xposed_source_rules|list_sources|post_source" local/webui src/build
+grep -rnE --exclude-dir=__pycache__ --exclude-dir=schema --exclude=test_core_db.py --exclude=test_projects.py "source_id|cli_upstream_id|FROM source|JOIN source|_source_fields|xposed_source_rules|list_sources|post_source" local/webui src/build
 grep -rnE --exclude-dir=__pycache__ --exclude-dir=schema --exclude=test_core_db.py "auto_update|autoUpdate|setSwitches" local/webui android/app/src
-grep -nE "pressed" local/webui/*.py
+grep -nE "\bpressed\b" local/webui/*.py
 grep -rnE --exclude-dir=__pycache__ --exclude-dir=schema --exclude=test_core_db.py "_app_jobs|item_update_jobs|post_item_update|appcheck|check_all|checkAll|list_upstreams" local/webui src/build android/app/src
 grep -rnE --exclude-dir=__pycache__ "detect_version|version_unresolved" local/webui src/build
 grep -rnE --exclude-dir=__pycache__ "/api/items|/api/upstreams|'/api/catalog'|\"/api/catalog\"|/api/builds['\"]" local/webui android/app/src
