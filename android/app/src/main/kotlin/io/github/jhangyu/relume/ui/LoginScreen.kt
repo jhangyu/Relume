@@ -107,7 +107,7 @@ fun LoginScreen(app: RelumeApp, notice: String?, onSignedIn: () -> Unit) {
             try {
                 val api = RelumeApi(url) { null }
                 try {
-                    api.health()
+                    api.checkServer()
                 } catch (e: IOException) {
                     unreachable = "Can't reach $url" to describe(e)
                     return@launch

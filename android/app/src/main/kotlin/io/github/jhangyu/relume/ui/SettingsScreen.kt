@@ -1,25 +1,37 @@
 package io.github.jhangyu.relume.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.jhangyu.relume.BuildConfig
+import io.github.jhangyu.relume.api.ApiError
 import io.github.jhangyu.relume.api.CheckInterval
+import io.github.jhangyu.relume.api.InvalidServerUrl
+import io.github.jhangyu.relume.api.RelumeApi
+import io.github.jhangyu.relume.api.ServerUrl
 import io.github.jhangyu.relume.sync.CheckScheduler
+import kotlinx.coroutines.launch
+import java.io.IOException
 import java.time.Instant
 
 private val INTERVAL_LABELS = listOf(CheckInterval.OFF to "Off", CheckInterval.H1 to "1 h", CheckInterval.H6 to "6 h", CheckInterval.H24 to "24 h")
@@ -30,6 +42,7 @@ fun SettingsScreen(model: AppModel, notificationsOn: Boolean, askNotifications: 
     val ctx = LocalContext.current
     val prefs = model.relume.prefs
     var interval by remember { mutableStateOf(prefs.checkInterval) }
+    var editUrl by remember { mutableStateOf(false) }
     val lastCheck by CheckScheduler.lastCheck.collectAsState(initial = null)
     val device = model.device
 
@@ -43,7 +56,7 @@ fun SettingsScreen(model: AppModel, notificationsOn: Boolean, askNotifications: 
 
             SectionHeader("Server")
             InsetGroup {
-                ListRow("Server URL", supporting = prefs.serverUrl?.toString().orEmpty())
+                ListRow("Server URL", Modifier.clickable { editUrl = true }, supporting = prefs.serverUrl?.toString().orEmpty())
                 Hairline()
                 val h = model.health
                 ListRow(
@@ -119,4 +132,52 @@ fun SettingsScreen(model: AppModel, notificationsOn: Boolean, askNotifications: 
             }
         }
     }
+    if (editUrl) ServerUrlDialog(prefs.serverUrl, onDismiss = { editUrl = false }) { url ->
+        prefs.serverUrl = url
+        editUrl = false
+        model.signOutLocally("Server changed to $url. Sign in again.")
+    }
+}
+
+@Composable
+private fun ServerUrlDialog(current: ServerUrl?, onDismiss: () -> Unit, onSaved: (ServerUrl) -> Unit) {
+    val scope = rememberCoroutineScope()
+    var text by remember { mutableStateOf(current?.toString().orEmpty()) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    fun save() {
+        error = null
+        val url = try {
+            ServerUrl.parse(text)
+        } catch (e: InvalidServerUrl) {
+            error = e.message
+            return
+        }
+        scope.launch {
+            busy = true
+            try {
+                RelumeApi(url) { null }.checkServer()
+                onSaved(url)
+            } catch (e: ApiError) {
+                error = describe(e)
+            } catch (e: IOException) {
+                error = "Can't reach $url: ${describe(e)}"
+            } finally {
+                busy = false
+            }
+        }
+    }
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text("Server URL") },
+        text = {
+            Field(
+                "Server URL", text, { text = it }, mono = true, error = error, enabled = !busy,
+                hint = "Checked with /api/health before saving. Saving signs this phone out.",
+                keyboard = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            )
+        },
+        confirmButton = { ActionButton("Save", ::save, kind = ButtonKind.Text, enabled = !busy && text.isNotBlank() && text.trim() != current?.toString()) },
+        dismissButton = { ActionButton("Cancel", onDismiss, kind = ButtonKind.Text, enabled = !busy) },
+    )
 }

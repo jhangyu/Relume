@@ -23,7 +23,15 @@ class ApiError(val status: Int, override val message: String, val path: String) 
 /** All HTTP calls of the app (spec 5, 10). [token] is read for every request; null sends no Authorization. */
 class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
 
-    suspend fun health(): Health = get("/api/health")
+    suspend fun health(): Health = get(HEALTH_PATH)
+
+    /** [health] plus the compatibility rule: throws [ApiError] (status 200, path /api/health) when the server is too old or not ok, [java.io.IOException] when unreachable. */
+    suspend fun checkServer(): Health {
+        val h = health()
+        if (!h.ok) throw ApiError(HEALTH_OK, "server reports ok=false", HEALTH_PATH)
+        if (!isCompatibleServer(h.version)) throw ApiError(HEALTH_OK, "server runs ${h.version}, this app needs ${MIN_SERVER.joinToString(".")} or newer", HEALTH_PATH)
+        return h
+    }
 
     suspend fun registerDevice(user: String, password: String, device: DeviceInfo): Registration =
         send("POST", "/api/auth/device", buildJsonObject {
@@ -305,4 +313,22 @@ class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
         val HTTP_REDIRECTS = 300..399
         val EMPTY = JsonObject(emptyMap())
     }
+}
+
+private const val HEALTH_PATH = "/api/health"
+private const val HEALTH_OK = 200
+
+/** Oldest server whose API this app speaks: 0.0.4 removed the old app routes. */
+private val MIN_SERVER = listOf(0, 0, 4)
+
+/** `RELUME_VERSION` unset: a build of the current tree (local stack, Linux gate). */
+private const val DEV_VERSION = "dev"
+
+/** [version] from `/api/health`: `dev`, or MAJOR.MINOR.PATCH (optional `v`) not below [MIN_SERVER]. */
+internal fun isCompatibleServer(version: String): Boolean {
+    if (version == DEV_VERSION) return true
+    val parts = version.removePrefix("v").split('.').map { it.toIntOrNull() ?: return false }
+    if (parts.size != MIN_SERVER.size) return false
+    for (i in parts.indices) if (parts[i] != MIN_SERVER[i]) return parts[i] > MIN_SERVER[i]
+    return true
 }
