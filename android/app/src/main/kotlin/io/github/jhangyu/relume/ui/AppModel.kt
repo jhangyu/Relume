@@ -8,7 +8,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.jhangyu.relume.RelumeApp
 import io.github.jhangyu.relume.api.ApiError
+import io.github.jhangyu.relume.api.AppDetail
 import io.github.jhangyu.relume.api.AppObject
+import io.github.jhangyu.relume.api.BundleOption
 import io.github.jhangyu.relume.api.CleanupReport
 import io.github.jhangyu.relume.api.DeviceView
 import io.github.jhangyu.relume.api.Health
@@ -19,6 +21,8 @@ import io.github.jhangyu.relume.api.OtaSchedule
 import io.github.jhangyu.relume.api.Schedule
 import io.github.jhangyu.relume.api.PlanAction
 import io.github.jhangyu.relume.api.PlanStep
+import io.github.jhangyu.relume.api.PatchesView
+import io.github.jhangyu.relume.api.Project
 import io.github.jhangyu.relume.api.StepKind
 import io.github.jhangyu.relume.install.InstallRunner
 import io.github.jhangyu.relume.install.Origin
@@ -31,6 +35,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import java.io.IOException
 
 private const val HTTP_UNAUTHORIZED = 401
@@ -183,9 +189,12 @@ class AppModel(application: Application) : AndroidViewModel(application) {
                 prompt = InstallPrompt.NeedPermission
                 return@launch
             }
-            val d = device ?: run { error = "install: this phone is not registered with the server yet, refresh and try again"; return@launch }
-            if (f.step == null) {
-                call { it.putAssignments(d.id, d.assignments.map { a -> a.itemId } + f.app.id, null) } ?: return@launch
+            // Fresh assignments: the cached device may predate an install started a moment ago.
+            val d = call { it.me().device } ?: return@launch
+            val assigned = d.assignments.map { a -> a.itemId }
+            if (f.app.id !in assigned) {
+                // Spec 8.3: assign to this phone first (projects stay as they are), so OTA keeps it updated too.
+                call { it.putAssignments(d.id, assigned + f.app.id, null) } ?: return@launch
             }
             val scoped = call { it.plan(listOf(f.app.id), null) } ?: return@launch
             evaluate(f.app.id, scoped)
@@ -242,13 +251,73 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { call { it.build(appId) }?.let { opened(it); refresh() } }
     }
 
-    /** Saves the partial `PUT /api/apps/{id}` body and, when asked, rebuilds. */
-    fun saveApp(appId: Int, body: JsonObject, rebuildAfter: Boolean, done: (Int?) -> Unit) {
+    /** Everything App settings edits. [bundles] is null when the catalog has no entry for the package (error shown). */
+    class SettingsData(val detail: AppDetail, val patches: PatchesView?, val bundles: List<BundleOption>?, val projects: List<Project>)
+
+    /** Null when a required call failed ([error] says which). Module bundles have no patch list (server 409). */
+    suspend fun loadSettings(appId: Int): SettingsData? {
+        val detail = call { it.app(appId) } ?: return null
+        val patches = if (isModule(detail.app.bundle.engine)) null else call { it.patches(appId) } ?: return null
+        val projects = call { it.projects() } ?: return null
+        val bundles = call { it.marketApp(detail.app.packageName).bundles }
+        return SettingsData(detail, patches, bundles, projects)
+    }
+
+    /**
+     * App settings save: the partial `PUT /api/apps/{id}` body (null = no setting changed), then the patch overrides
+     * (null = unchanged), then the rebuild when asked. A failed step stops the rest; [done] gets the build job id.
+     */
+    fun saveApp(appId: Int, body: JsonObject?, overrides: JsonObject?, rebuildAfter: Boolean, done: (Int?) -> Unit) {
         viewModelScope.launch {
-            call { it.putApp(appId, body) } ?: return@launch
+            if (body != null) call { it.putApp(appId, body) } ?: return@launch
+            if (overrides != null) call { it.putPatches(appId, buildJsonObject { put("overrides", overrides) }); true } ?: return@launch
             val job = if (rebuildAfter) call { it.build(appId) } ?: return@launch else null
             done(job)
             refresh()
+        }
+    }
+
+    /** Apps tab "Add URL" / "Pick one": sets the APKMirror listing URL; the server then starts the update run. */
+    fun setListUrl(appId: Int, url: String, done: () -> Unit) {
+        viewModelScope.launch {
+            call { it.putApp(appId, buildJsonObject { put("download", buildJsonObject { put("apkmirror_list_url", url) }) }) } ?: return@launch
+            done()
+            refresh()
+        }
+    }
+
+    /** Look the APKMirror page up again (manual retry, spec 5.3). */
+    fun locate(appId: Int) {
+        viewModelScope.launch {
+            call { it.locate(appId) } ?: return@launch
+            refresh()
+        }
+    }
+
+    // ---- OTA schedules (kind ota; phones are ADB devices, the server refuses app devices as targets) ----
+
+    var devices by mutableStateOf<List<DeviceView>>(emptyList())
+        private set
+
+    fun loadDevices() {
+        viewModelScope.launch { call { it.devices() }?.let { devices = it } }
+    }
+
+    /** Creates ([id] null) or replaces an OTA schedule; [done] closes the sheet after success. */
+    fun saveOta(id: Int?, body: JsonObject, done: () -> Unit) {
+        viewModelScope.launch {
+            call { if (id == null) it.createOtaSchedule(body) else it.putOtaSchedule(id, body) } ?: return@launch
+            done()
+            otaSchedules = call { it.otaSchedules() } ?: return@launch
+        }
+    }
+
+    fun setOtaEnabled(id: Int, on: Boolean) = saveOta(id, buildJsonObject { put("enabled", on) }) {}
+
+    fun deleteOta(id: Int) {
+        viewModelScope.launch {
+            call { it.deleteOtaSchedule(id); true } ?: return@launch
+            otaSchedules = call { it.otaSchedules() } ?: return@launch
         }
     }
 

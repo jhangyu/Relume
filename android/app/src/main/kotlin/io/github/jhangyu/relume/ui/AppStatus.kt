@@ -10,6 +10,11 @@ internal const val STATE_QUEUED = "queued"
 internal const val STATE_FAILED = "failed"
 internal const val STATE_NEEDS_URL = "needs_download_url"
 
+internal const val LOOKUP_AMBIGUOUS = "ambiguous"
+
+/** Apps card fix for a missing download URL: paste one, or pick one of the APKMirror candidates. */
+enum class Lookup { NeedsUrl, PickOne }
+
 /** What this phone has of an app. */
 enum class PhoneState { NotInstalled, Update, Blocked, Installed }
 
@@ -28,6 +33,33 @@ class AppFacts(val app: AppObject, val installed: InstalledPackage?, val step: P
             installed == null -> PhoneState.NotInstalled
             app.appVersion != null && app.appVersion != installed.versionName -> PhoneState.Update
             else -> PhoneState.Installed
+        }
+
+    /** Download-source problem the Apps card offers a fix for (spec 5.1): null when the app has its URL. */
+    val lookup: Lookup?
+        get() = when {
+            app.download.state == LOOKUP_AMBIGUOUS && app.download.candidates.isNotEmpty() -> Lookup.PickOne
+            app.status.state == STATE_NEEDS_URL -> Lookup.NeedsUrl
+            else -> null
+        }
+
+    /** One line under the card head: build progress, failure, or why the download URL is missing. */
+    val statusLine: String?
+        get() {
+            val s = app.status
+            val d = app.download
+            return when (s.state) {
+                STATE_BUILDING -> s.progress?.let { "${it.step}, step ${it.index} of ${it.count}" } ?: "Building"
+                STATE_FAILED -> s.failDetail ?: s.failCode ?: "Build failed"
+                STATE_NEEDS_URL -> d.error ?: when (d.state) {
+                    LOOKUP_AMBIGUOUS -> "${d.candidates.size} APKMirror pages match"
+                    "blocked" -> "APKMirror blocked the lookup${d.retryAt?.let { ", retry after ${formatTime(it)}" }.orEmpty()}"
+                    "not_found" -> "No APKMirror page found"
+                    "pending" -> "APKMirror lookup on the next update run"
+                    else -> "Needs a download URL"
+                }
+                else -> null
+            }
         }
 
     /** An install can start: the plan offers one, or a build exists and the app is not yet planned. */
