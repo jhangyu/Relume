@@ -42,7 +42,7 @@ function renderStats() {
   const okAt = official.map(f => f.last_ok_at).filter(Boolean).sort().pop();
   const builtin = feed.sources.find(s => s.origin === 'builtin');
   const custom = feed.sources.filter(s => s.origin === 'custom').length;
-  $('#stats').innerHTML = html`<span><b>${S.universe.toLocaleString()}</b> apps</span><span><b>${official.reduce((n, f) => n + f.bundle_count, 0).toLocaleString()}</b> community bundles</span><span>${okAt ? html`Official catalog refreshed <b>${fmt.rel(okAt)}</b>` : 'Official catalog never refreshed'}</span>${builtin ? html`<span>Built-in <span class="mono">${builtin.repo}</span></span>` : ''}<span><b>${custom}</b> custom source${custom === 1 ? '' : 's'}</span>`;
+  $('#stats').innerHTML = html`<span><b>${S.universe.toLocaleString('en')}</b> apps</span><span><b>${official.reduce((n, f) => n + f.bundle_count, 0).toLocaleString('en')}</b> community bundles</span><span>${okAt ? html`Official catalog refreshed <b>${fmt.rel(okAt)}</b>` : 'Official catalog never refreshed'}</span>${builtin ? html`<span>Built-in <span class="mono">${builtin.repo}</span></span>` : ''}<span><b>${custom}</b> custom source${custom === 1 ? '' : 's'}</span>`;
 }
 
 // ponytail: the list API carries no description, so the blurb falls back to bundle count and category
@@ -72,7 +72,7 @@ async function renderHero() {
 
 // ---------- gallery ----------
 function renderCats() {
-  $('#cats').innerHTML = html`<button class="pill" type="button" aria-pressed="${S.category === '' ? 'true' : 'false'}" data-f="">All <span class="n">${S.universe}</span></button>${S.categories.map(c => html`<button class="pill" type="button" aria-pressed="${S.category === c.name ? 'true' : 'false'}" data-f="${c.name}" data-cat="${catSlug(c.name)}"><span class="dot"></span>${c.name} <span class="n">${c.count}</span></button>`)}`;
+  $('#cats').innerHTML = html`<button class="pill" type="button" aria-pressed="${S.category === '' ? 'true' : 'false'}" data-f="">All <span class="n">${S.universe.toLocaleString('en')}</span></button>${S.categories.map(c => html`<button class="pill" type="button" aria-pressed="${S.category === c.name ? 'true' : 'false'}" data-f="${c.name}" data-cat="${catSlug(c.name)}"><span class="dot"></span>${c.name} <span class="n">${c.count}</span></button>`)}`;
 }
 
 function card(a) {
@@ -94,7 +94,7 @@ function renderGallery() {
       ? html`${icon('store', 'i-48')}<h2 class="subtitle1">The Marketplace is empty</h2><p class="subtle-text">The app catalog has not been downloaded yet. Refresh it to list the community apps and bundles.</p><button class="btn primary" type="button" data-act="refresh">${icon('sync')}Refresh catalog</button>`
       : html`${icon('search', 'i-48')}<h2 class="subtitle1">No apps match</h2><p class="subtle-text">Change the search, category or origin filter.</p>`}`;
   }
-  $('#count').textContent = none ? '' : `Showing ${S.apps.length} of ${S.total.toLocaleString()}`;
+  $('#count').textContent = none ? '' : `Showing ${S.apps.length} of ${S.total.toLocaleString('en')}`;
   $('#more').hidden = S.apps.length >= S.total;
   placeDetail();
 }
