@@ -209,7 +209,7 @@ class OtaJobTest(helpers.DataTestCase):
         self.fa.rule('install', out='Success\n')
         with mock.patch.object(jobs, 'enqueue', side_effect=fake_enqueue):
             jid, err = self.run_job(target={'device_id': self.d, 'item_ids': [1]})
-        self.assertEqual(pulled, [('upstream', {'upstream_id': 23}, 'manual', {'rebuild': False, 'notify': True})])
+        self.assertEqual(pulled, [('upstream', {'upstream_id': 23}, 'manual', {'notify': True})])
         self.assertEqual(self.adb_cmds('install')[0], ['install', '-r', str(self.gms)])
         self.assertEqual(self.installs(jid)[0], ('project', GMS, 'installed', None))
         tag = db.conn().execute("SELECT upstream_tag FROM ota_installs WHERE job_id=? AND kind='project'", (jid,))
