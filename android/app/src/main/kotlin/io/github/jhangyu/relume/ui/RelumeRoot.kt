@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -31,6 +33,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.annotation.DrawableRes
 import io.github.jhangyu.relume.R
 import androidx.core.app.NotificationManagerCompat
@@ -134,14 +139,17 @@ private fun ColumnScope.RootContent() {
     }
     AddSourceDialog(model.market)
     if (current.isRoot) {
-        NavBar(current) { stack = listOf(it) }
+        NavBar(current, enabledApps = model.apps.size) { stack = listOf(it) }
     }
     InstallPrompts(model)
 }
 
-/** MD3 navigation bar; each tab has its own indicator colour (Marketplace amber, Apps blue, Schedules teal). */
+/**
+ * MD3 navigation bar; each tab has its own indicator colour (Marketplace amber, Apps blue, Schedules teal), the
+ * selected label is bold and the Apps icon carries the enabled-app count as an error badge.
+ */
 @Composable
-private fun NavBar(current: Screen, onSelect: (Screen) -> Unit) {
+private fun NavBar(current: Screen, enabledApps: Int, onSelect: (Screen) -> Unit) {
     val r = MaterialTheme.relume
     val indicators = listOf(r.amber.container, r.blue.container, r.teal.container)
     val glyphs = listOf(r.amber.onContainer, r.blue.onContainer, r.teal.onContainer)
@@ -151,8 +159,15 @@ private fun NavBar(current: Screen, onSelect: (Screen) -> Unit) {
             NavigationBarItem(
                 selected = selected,
                 onClick = { onSelect(tab.screen) },
-                icon = { Icon(painterResource(if (selected) tab.selectedIcon else tab.icon), contentDescription = null) },
-                label = { Text(tab.label) },
+                icon = {
+                    val glyph = @Composable { Icon(painterResource(if (selected) tab.selectedIcon else tab.icon), contentDescription = null) }
+                    if (tab.screen == Screen.Apps && enabledApps > 0) {
+                        BadgedBox(badge = { Badge { Text("$enabledApps", Modifier.semantics { contentDescription = "$enabledApps enabled" }) } }) { glyph() }
+                    } else {
+                        glyph()
+                    }
+                },
+                label = { Text(tab.label, fontWeight = if (selected) FontWeight.Bold else null) },
                 colors = NavigationBarItemDefaults.colors(
                     indicatorColor = indicators[i],
                     selectedIconColor = glyphs[i],

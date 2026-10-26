@@ -13,6 +13,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -28,6 +30,7 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -51,6 +54,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -63,7 +67,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -92,6 +99,27 @@ internal val ScreenPadding = 16.dp
 private val ICON_SIZE = 24.dp
 private val INSET_GROUP_RADIUS = 16.dp
 private val PILL_ICON_SIZE = 14.dp
+private val PILL_RADIUS = 8.dp
+private val PILL_PADDING = 8.dp
+private val ORIGIN_RADIUS = 4.dp
+private val ORIGIN_HEIGHT = 20.dp
+private val ORIGIN_PADDING = 6.dp
+/** Pill and tag height (m3.css `.st`, `.tag`). */
+val PillHeight = 24.dp
+/** Pill and tag height inside a list row (m3.css `.li .st`, `.li .tag`). */
+val ListPillHeight = 20.dp
+private val LIST_LEADING = 16.dp
+/** MD3 list item trailing inset; an inset group uses [GROUP_TRAILING] (m3.css `.li`, `.group > .li`). */
+private val LIST_TRAILING = 24.dp
+private val GROUP_TRAILING = 16.dp
+private val ONE_LINE_ROW = 56.dp
+private val TWO_LINE_ROW = 72.dp
+private val SEARCH_BAR_HEIGHT = 56.dp
+private val CHIP_DOT = 10.dp
+private val CHIP_DOT_BOX = 18.dp
+private const val CATEGORY_CHIP_BORDER_MIX = 0.7f
+private const val TILE_CORNER_RATIO = 0.3f
+private const val TILE_FONT_RATIO = 0.36f
 private val DIALOG_RADIUS = 28.dp
 private val MONO = TextStyle(fontSize = 12.sp, fontFamily = FontFamily.Monospace)
 private const val DISABLED_ALPHA = 0.38f
@@ -157,11 +185,11 @@ fun IconAction(@DrawableRes icon: Int, contentDescription: String, onClick: () -
     }
 }
 
-/** Pastel pill: label (and optional glyph) on a container colour. */
+/** Coloured label: the shape, height and inset differ between pills (m3.css `.st`) and origin labels (`.origin`). */
 @Composable
-fun Pill(text: String, container: Color, onContainer: Color, @DrawableRes icon: Int? = null) {
+private fun Label(text: String, container: Color, onContainer: Color, @DrawableRes icon: Int?, radius: Dp, height: Dp, inset: Dp) {
     Row(
-        Modifier.clip(RoundedCornerShape(50)).background(container).padding(horizontal = 10.dp, vertical = 3.dp),
+        Modifier.heightIn(min = height).clip(RoundedCornerShape(radius)).background(container).padding(horizontal = inset),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -170,75 +198,132 @@ fun Pill(text: String, container: Color, onContainer: Color, @DrawableRes icon: 
     }
 }
 
+/** Pastel pill and tag: 8 dp corner, 8 dp side inset, [PillHeight] (use [ListPillHeight] inside list rows). */
+@Composable
+fun Pill(text: String, container: Color, onContainer: Color, @DrawableRes icon: Int? = null, height: Dp = PillHeight) {
+    Label(text, container, onContainer, icon, PILL_RADIUS, height, PILL_PADDING)
+}
+
 /** Build status of an enabled app (`status.state`). */
 @Composable
-fun StatusPill(state: String) {
+fun StatusPill(state: String, height: Dp = PillHeight) {
     val r = MaterialTheme.relume
     val s = MaterialTheme.colorScheme
     when (state) {
-        "up_to_date" -> Pill("Up to date", r.green.container, r.green.onContainer, R.drawable.ms_check)
-        "update_available" -> Pill("New version", r.lavender.container, r.lavender.onContainer, R.drawable.ms_sync)
-        "building" -> Pill("Building", r.blue.container, r.blue.onContainer, R.drawable.ms_progress_activity)
-        "queued" -> Pill("Queued", r.blue.container, r.blue.onContainer)
-        "needs_download_url" -> Pill("Needs URL", r.amber.container, r.amber.onContainer, R.drawable.ms_link)
-        "failed" -> Pill("Failed", s.errorContainer, s.onErrorContainer, R.drawable.ms_error)
-        "not_built" -> Pill("Not built", s.surfaceContainerHigh, s.onSurfaceVariant)
+        "up_to_date" -> Pill("Up to date", r.green.container, r.green.onContainer, R.drawable.ms_check, height)
+        "update_available" -> Pill("New version", r.lavender.container, r.lavender.onContainer, height = height)
+        "building" -> Pill("Building", r.blue.container, r.blue.onContainer, R.drawable.ms_progress_activity, height)
+        "queued" -> Pill("Queued", r.blue.container, r.blue.onContainer, height = height)
+        "needs_download_url" -> Pill("Needs URL", r.amber.container, r.amber.onContainer, R.drawable.ms_link, height)
+        "failed" -> Pill("Failed", s.errorContainer, s.onErrorContainer, R.drawable.ms_error, height)
+        "not_built" -> Pill("Not built", s.surfaceContainerHigh, s.onSurfaceVariant, height = height)
         else -> throw IllegalArgumentException("status.state: expected one of up_to_date, update_available, building, queued, failed, not_built, needs_download_url, got '$state'")
     }
 }
 
-/** Official catalog = blue, Built-in = teal, Custom = pink. */
+/** Bundle origin: OFFICIAL = blue, BUILT-IN = teal, CUSTOM = pink; 4 dp corner, 20 dp high (m3.css `.origin`). */
 @Composable
 fun OriginLabel(origin: String) {
     val r = MaterialTheme.relume
-    when (origin) {
-        "official" -> Pill("Official catalog", r.blue.container, r.blue.onContainer)
-        "builtin" -> Pill("Built-in", r.teal.container, r.teal.onContainer)
-        "custom" -> Pill("Custom", r.pink.container, r.pink.onContainer)
+    val (text, pastel) = when (origin) {
+        "official" -> "OFFICIAL" to r.blue
+        "builtin" -> "BUILT-IN" to r.teal
+        "custom" -> "CUSTOM" to r.pink
         else -> throw IllegalArgumentException("origin: expected official, builtin or custom, got '$origin'")
     }
+    Label(text, pastel.container, pastel.onContainer, null, ORIGIN_RADIUS, ORIGIN_HEIGHT, ORIGIN_PADDING)
 }
 
-/** Category colours of tokens.md section 3: first = container, second = tile gradient end. */
+/** Category hues of tokens.md section 3. */
+internal enum class CategoryHue { Social, Video, Music, Productivity, Tools, Personalization, Maps, News }
+
+/**
+ * Store category name -> hue, the same patterns and order as the web's `catSlug` (local/webui/static/app.js CATS),
+ * so "Social & Communication" is social and "Tools & Utilities" is tools. The web's lifestyle hue has no Android token.
+ */
+private val CATEGORY_PATTERNS = listOf(
+    CategoryHue.Social to "social|communicat",
+    CategoryHue.Video to "video|photo|entertain",
+    CategoryHue.Music to "music|audio",
+    CategoryHue.Productivity to "product|business|finance|education",
+    CategoryHue.Tools to "tool|util",
+    CategoryHue.Personalization to "personal",
+    CategoryHue.Maps to "map|navig|travel",
+    CategoryHue.News to "news|media|book",
+).map { (hue, pattern) -> hue to Regex(pattern, RegexOption.IGNORE_CASE) }
+
+/** Hue of a store category; null when the name matches none (m3.css `[data-cat]` default: neutral grey). */
+internal fun categoryHue(category: String?): CategoryHue? =
+    category?.let { name -> CATEGORY_PATTERNS.firstOrNull { (_, re) -> re.containsMatchIn(name) }?.first }
+
+/** Category colours: first = container and glyph, second = gradient end. Unknown or missing = neutral grey. */
 @Composable
-private fun categoryPastels(category: String?): Pair<Pastel, Pastel> {
+internal fun categoryPastels(category: String?): Pair<Pastel, Pastel> {
     val r = MaterialTheme.relume
-    return when (category?.lowercase(Locale.ENGLISH)) {
-        "social" -> r.pink to r.lavender
-        "video", "video players & editors" -> r.coral to r.amber
-        "music", "music & audio" -> r.amber to r.coral
-        "tools" -> r.teal to r.blue
-        "productivity" -> r.blue to r.teal
-        "personalization" -> r.lavender to r.pink
-        "maps", "maps & navigation" -> r.green to r.teal
-        "news", "news & magazines" -> r.blue to r.lavender
-        else -> r.blue to r.lavender
+    val s = MaterialTheme.colorScheme
+    return when (categoryHue(category)) {
+        CategoryHue.Social -> r.pink to r.lavender
+        CategoryHue.Video -> r.coral to r.amber
+        CategoryHue.Music -> r.amber to r.coral
+        CategoryHue.Tools -> r.teal to r.blue
+        CategoryHue.Productivity -> r.blue to r.teal
+        CategoryHue.Personalization -> r.lavender to r.pink
+        CategoryHue.Maps -> r.green to r.teal
+        CategoryHue.News -> r.blue to r.lavender
+        null -> Pastel(s.surfaceContainerHigh, s.onSurfaceVariant) to Pastel(s.surfaceContainerHighest, s.onSurfaceVariant)
     }
 }
 
 @Composable
-fun CategoryTag(category: String?) {
+fun CategoryTag(category: String?, height: Dp = PillHeight) {
     if (category == null) return
     val (first, _) = categoryPastels(category)
-    Pill(category, first.container, first.onContainer)
+    Pill(category, first.container, first.onContainer, height = height)
 }
 
-/** MD3 inset list group: white container, 16 dp radius. */
+/** Trailing inset of list rows: 24 dp on the screen, 16 dp inside an [InsetGroup]. */
+private val LocalListTrailing = staticCompositionLocalOf { LIST_TRAILING }
+
+/** MD3 inset list group: white container, 16 dp radius. Only for choices such as the bundle list (tokens.md section 5). */
 @Composable
 fun InsetGroup(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Surface(modifier.fillMaxWidth(), shape = RoundedCornerShape(INSET_GROUP_RADIUS), color = MaterialTheme.colorScheme.surfaceContainerLowest) {
-        Column(content = content)
+        CompositionLocalProvider(LocalListTrailing provides GROUP_TRAILING) { Column(content = content) }
     }
 }
 
+/**
+ * Lets a plain list run edge to edge inside a parent padded by [inset] on both sides: list rows carry their own
+ * 16 dp insets (m3.css `.li`), so their text lines up with the parent's other content. Needs a bounded width.
+ */
+fun Modifier.fullBleed(inset: Dp = ScreenPadding): Modifier = layout { measurable, constraints ->
+    check(constraints.hasBoundedWidth) { "fullBleed: expected a bounded parent width, got $constraints" }
+    val extra = inset.roundToPx() * 2
+    val placeable = measurable.measure(constraints.copy(minWidth = constraints.minWidth + extra, maxWidth = constraints.maxWidth + extra))
+    layout(placeable.width - extra, placeable.height) { placeable.place(-extra / 2, 0) }
+}
+
+/** Section header (m3.css `.sec-label`): 48 dp, text on the content edge. */
 @Composable
 fun SectionHeader(text: String) {
-    Box(Modifier.fillMaxWidth().height(TouchTarget).padding(horizontal = 4.dp), contentAlignment = Alignment.CenterStart) {
+    Box(Modifier.fillMaxWidth().height(TouchTarget), contentAlignment = Alignment.CenterStart) {
         Txt(text, style = MaterialTheme.typography.titleSmall, color = muted())
     }
 }
 
 enum class ButtonKind { Primary, Tonal, Outlined, Text, Install, Danger }
+
+/** m3.css `.btn.small` (32 dp, in cards and rows), `.btn` (40 dp), `.btn.large` (48 dp, 16 dp corner, full-width bottom action). */
+enum class ButtonSize { Small, Medium, Large }
+
+private val SMALL_BUTTON_HEIGHT = 32.dp
+private val SMALL_BUTTON_PADDING = PaddingValues(horizontal = 14.dp)
+private val SMALL_BUTTON_ICON_GAP = 6.dp
+private val LARGE_BUTTON_HEIGHT = 48.dp
+private val LARGE_BUTTON_PADDING = PaddingValues(horizontal = 24.dp)
+private val LARGE_BUTTON_RADIUS = 16.dp
+private val BUTTON_ICON_GAP = 8.dp
+private val BUTTON_ICON_SIZE = 18.dp
 
 /** Button of the Relume palette: violet = build, sky = choose, coral = send to the phone (Install, Update). */
 @Composable
@@ -249,27 +334,42 @@ fun ActionButton(
     kind: ButtonKind = ButtonKind.Primary,
     enabled: Boolean = true,
     @DrawableRes icon: Int? = null,
+    size: ButtonSize = ButtonSize.Medium,
 ) {
     val s = MaterialTheme.colorScheme
+    val textStyle = if (size == ButtonSize.Large) LargeButtonText else MaterialTheme.typography.labelLarge
     val label: @Composable RowScope.() -> Unit = {
         if (icon != null) {
-            Glyph(icon, contentOf(kind), 18.dp)
-            Spacer(Modifier.width(8.dp))
+            Glyph(icon, contentOf(kind), BUTTON_ICON_SIZE)
+            Spacer(Modifier.width(if (size == ButtonSize.Small) SMALL_BUTTON_ICON_GAP else BUTTON_ICON_GAP))
         }
-        Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge)
+        Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis, style = textStyle)
+    }
+    val sized = when (size) {
+        ButtonSize.Small -> modifier.height(SMALL_BUTTON_HEIGHT)
+        ButtonSize.Medium -> modifier
+        ButtonSize.Large -> modifier.height(LARGE_BUTTON_HEIGHT)
+    }
+    val shape = if (size == ButtonSize.Large) RoundedCornerShape(LARGE_BUTTON_RADIUS) else ButtonDefaults.shape
+    val padding = when (size) {
+        ButtonSize.Small -> SMALL_BUTTON_PADDING
+        ButtonSize.Medium -> if (kind == ButtonKind.Text) ButtonDefaults.TextButtonContentPadding else ButtonDefaults.ContentPadding
+        ButtonSize.Large -> LARGE_BUTTON_PADDING
     }
     when (kind) {
-        ButtonKind.Primary -> Button(onClick, modifier, enabled, content = label)
-        ButtonKind.Install -> Button(onClick, modifier, enabled, colors = ButtonDefaults.buttonColors(containerColor = s.tertiary, contentColor = s.onTertiary), content = label)
-        ButtonKind.Danger -> Button(onClick, modifier, enabled, colors = ButtonDefaults.buttonColors(containerColor = s.error, contentColor = s.onError), content = label)
-        ButtonKind.Tonal -> Button(onClick, modifier, enabled, colors = ButtonDefaults.buttonColors(containerColor = s.secondaryContainer, contentColor = s.onSecondaryContainer), content = label)
+        ButtonKind.Primary -> Button(onClick, sized, enabled, shape = shape, contentPadding = padding, content = label)
+        ButtonKind.Install -> Button(onClick, sized, enabled, shape = shape, colors = ButtonDefaults.buttonColors(containerColor = s.tertiary, contentColor = s.onTertiary), contentPadding = padding, content = label)
+        ButtonKind.Danger -> Button(onClick, sized, enabled, shape = shape, colors = ButtonDefaults.buttonColors(containerColor = s.error, contentColor = s.onError), contentPadding = padding, content = label)
+        ButtonKind.Tonal -> Button(onClick, sized, enabled, shape = shape, colors = ButtonDefaults.buttonColors(containerColor = s.secondaryContainer, contentColor = s.onSecondaryContainer), contentPadding = padding, content = label)
         ButtonKind.Outlined -> OutlinedButton(
-            onClick, modifier, enabled,
+            onClick, sized, enabled,
+            shape = shape,
             colors = ButtonDefaults.outlinedButtonColors(contentColor = s.secondary),
             border = BorderStroke(1.dp, if (enabled) s.secondary else s.secondary.copy(alpha = DISABLED_ALPHA)),
+            contentPadding = padding,
             content = label,
         )
-        ButtonKind.Text -> TextButton(onClick, modifier, enabled, colors = ButtonDefaults.textButtonColors(contentColor = s.secondary), content = label)
+        ButtonKind.Text -> TextButton(onClick, sized, enabled, shape = shape, colors = ButtonDefaults.textButtonColors(contentColor = s.secondary), contentPadding = padding, content = label)
     }
 }
 
@@ -356,46 +456,131 @@ fun Avatar() {
     val account = LocalAccount.current
     Box(Modifier.size(TouchTarget), contentAlignment = Alignment.Center) {
         Box(
-            Modifier.size(32.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer)
+            Modifier.size(32.dp).clip(CircleShape).background(MaterialTheme.relume.lavender.container)
                 .semantics { contentDescription = "Phone settings and account" }
                 .clickable(role = Role.Button, onClick = account.openSettings),
             contentAlignment = Alignment.Center,
         ) {
-            Txt(account.initials, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+            Txt(account.initials, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.relume.lavender.onContainer)
         }
     }
 }
 
-/** Horizontal filter chips; the selected one is secondaryContainer with a check. */
+/**
+ * Filter chips with 16 dp side insets; the selected one is secondaryContainer with a check. [wrap] = flow onto more
+ * lines (inside a card) instead of scrolling sideways. [categories] (one per label, null = neutral) gives a chip the
+ * category look of tokens.md section 2: gradient dot, on-container label, border = on-container at 70 % over white,
+ * category container when selected.
+ */
 @Composable
-fun ChipRow(labels: List<String>, selected: Int, onSelect: (Int) -> Unit) {
-    val s = MaterialTheme.colorScheme
-    Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = ScreenPadding, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        labels.forEachIndexed { i, label ->
-            FilterChip(
-                selected = i == selected,
-                onClick = { onSelect(i) },
-                label = { Text(label, maxLines = 1) },
-                leadingIcon = if (i == selected) ({ Glyph(R.drawable.ms_check, s.onSecondaryContainer, 18.dp) }) else null,
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = s.secondaryContainer,
-                    selectedLabelColor = s.onSecondaryContainer,
-                ),
-                border = FilterChipDefaults.filterChipBorder(
-                    enabled = true,
-                    selected = i == selected,
-                    borderColor = s.outline,
-                    selectedBorderColor = Color.Transparent,
-                ),
-            )
-        }
+fun ChipRow(
+    labels: List<String>,
+    selected: Int,
+    wrap: Boolean = false,
+    categories: List<String?> = emptyList(),
+    onSelect: (Int) -> Unit,
+) {
+    require(categories.isEmpty() || categories.size == labels.size) {
+        "ChipRow: expected ${labels.size} categories (one per label) or none, got ${categories.size}"
+    }
+    val chips: @Composable () -> Unit = {
+        labels.forEachIndexed { i, label -> RelumeChip(label, i == selected, categories.getOrNull(i)) { onSelect(i) } }
+    }
+    val gap = Arrangement.spacedBy(8.dp)
+    val padding = Modifier.fillMaxWidth().padding(horizontal = ScreenPadding, vertical = 8.dp)
+    if (wrap) {
+        FlowRow(padding, horizontalArrangement = gap, verticalArrangement = gap) { chips() }
+    } else {
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = ScreenPadding, vertical = 8.dp), horizontalArrangement = gap) { chips() }
     }
 }
 
-/** Two-line list row: leading slot, headline, supporting text, trailing slot; min 56/72 dp. */
+@Composable
+private fun RelumeChip(label: String, selected: Boolean, category: String?, onClick: () -> Unit) {
+    val s = MaterialTheme.colorScheme
+    if (category == null) {
+        FilterChip(
+            selected = selected,
+            onClick = onClick,
+            label = { Text(label, maxLines = 1) },
+            leadingIcon = if (selected) ({ Glyph(R.drawable.ms_check, s.onSecondaryContainer, BUTTON_ICON_SIZE) }) else null,
+            colors = FilterChipDefaults.filterChipColors(
+                selectedContainerColor = s.secondaryContainer,
+                selectedLabelColor = s.onSecondaryContainer,
+            ),
+            border = FilterChipDefaults.filterChipBorder(
+                enabled = true,
+                selected = selected,
+                borderColor = s.outline,
+                selectedBorderColor = Color.Transparent,
+            ),
+        )
+        return
+    }
+    val (first, second) = categoryPastels(category)
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label, maxLines = 1) },
+        leadingIcon = {
+            Box(Modifier.size(CHIP_DOT_BOX), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(CHIP_DOT).clip(CircleShape).background(Brush.linearGradient(listOf(first.onContainer, second.container))))
+            }
+        },
+        colors = FilterChipDefaults.filterChipColors(
+            labelColor = first.onContainer,
+            selectedContainerColor = first.container,
+            selectedLabelColor = first.onContainer,
+        ),
+        border = FilterChipDefaults.filterChipBorder(
+            enabled = true,
+            selected = selected,
+            borderColor = lerp(s.surfaceContainerLowest, first.onContainer, CATEGORY_CHIP_BORDER_MIX),
+            selectedBorderColor = Color.Transparent,
+        ),
+    )
+}
+
+/**
+ * MD3 search bar (m3.css `.searchbar`): 56 dp, fully rounded, surfaceContainerHigh fill, no border, search glyph on
+ * the 16 dp inset, [placeholder] while empty, optional [trailing] 48 dp icon button.
+ */
+@Composable
+fun SearchBar(
+    value: String,
+    onChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    trailing: @Composable (() -> Unit)? = null,
+) {
+    val s = MaterialTheme.colorScheme
+    val text = MaterialTheme.typography.bodyLarge
+    BasicTextField(
+        value = value,
+        onValueChange = onChange,
+        modifier = modifier.fillMaxWidth(),
+        singleLine = true,
+        textStyle = text.copy(color = s.onSurface),
+        cursorBrush = SolidColor(s.secondary),
+        decorationBox = { field ->
+            Row(
+                Modifier.fillMaxWidth().height(SEARCH_BAR_HEIGHT).clip(RoundedCornerShape(50)).background(s.surfaceContainerHigh)
+                    .padding(start = LIST_LEADING, end = if (trailing == null) LIST_LEADING else 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Glyph(R.drawable.ms_search)
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                    if (value.isEmpty()) Txt(placeholder, style = text, color = s.onSurfaceVariant, maxLines = 1)
+                    field()
+                }
+                trailing?.invoke()
+            }
+        },
+    )
+}
+
+/** Two-line list row: leading slot, headline, supporting text, trailing slot; min 56/72 dp, insets 16 / 24 dp. */
 @Composable
 fun ListRow(
     headline: String,
@@ -405,7 +590,8 @@ fun ListRow(
     trailing: @Composable (() -> Unit)? = null,
 ) {
     Row(
-        modifier.fillMaxWidth().heightIn(min = if (supporting == null) 56.dp else 72.dp).padding(horizontal = 16.dp, vertical = 8.dp),
+        modifier.fillMaxWidth().heightIn(min = if (supporting == null) ONE_LINE_ROW else TWO_LINE_ROW)
+            .padding(start = LIST_LEADING, end = LocalListTrailing.current, top = 8.dp, bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -418,15 +604,15 @@ fun ListRow(
     }
 }
 
-/** Settings-style row: title and help text on the left, switch on the right; the whole row toggles. */
+/** Settings-style row: title and help text on the left, switch on the right; the whole row toggles. 56 / 72 dp. */
 @Composable
 fun SwitchRow(title: String, help: String?, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .heightIn(min = 56.dp)
+            .heightIn(min = if (help == null) ONE_LINE_ROW else TWO_LINE_ROW)
             .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onChange)
-            .padding(horizontal = 16.dp),
+            .padding(start = LIST_LEADING, end = LocalListTrailing.current, top = 12.dp, bottom = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -438,15 +624,15 @@ fun SwitchRow(title: String, help: String?, checked: Boolean, enabled: Boolean =
     }
 }
 
-/** Radio row: the whole row is the 48 dp target. */
+/** Two-line radio row (radio, name and supporting line, trailing label): 72 dp, the whole row is the target. */
 @Composable
 fun RadioRow(selected: Boolean, enabled: Boolean = true, onSelect: () -> Unit, content: @Composable RowScope.() -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .heightIn(min = TouchTarget)
+            .heightIn(min = TWO_LINE_ROW)
             .selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onSelect)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(start = LIST_LEADING, end = LocalListTrailing.current, top = 8.dp, bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -534,24 +720,23 @@ fun Hairline(modifier: Modifier = Modifier) {
 }
 
 /**
- * App tile. Shows the server icon at [iconUrl] when there is one, the initials tile (two-container gradient picked
- * from the label) while it loads, when [iconUrl] is null and when the fetch fails (logged with package path and status).
+ * App tile (m3.css `.tile`): corner 0.3 x size, two-container gradient of the app's [category] (neutral grey when
+ * unknown). Shows the server icon at [iconUrl] when there is one, the initials while it loads, when [iconUrl] is null
+ * and when the fetch fails (logged with package path and status).
  */
 @Composable
-fun AppTile(label: String, iconUrl: String?, api: RelumeApi?, size: Dp = 40.dp) {
-    val r = MaterialTheme.relume
-    val pairs = listOf(r.pink to r.lavender, r.coral to r.amber, r.amber to r.coral, r.teal to r.blue, r.blue to r.teal, r.lavender to r.pink, r.green to r.teal)
-    val (first, second) = pairs[label.hashCode().mod(pairs.size)]
+fun AppTile(label: String, iconUrl: String?, api: RelumeApi?, size: Dp = 40.dp, category: String? = null) {
+    val (first, second) = categoryPastels(category)
     val icon by produceState<ImageBitmap?>(null, iconUrl, api) { value = if (iconUrl != null && api != null) loadIcon(api, iconUrl) else null }
     Box(
-        Modifier.size(size).clip(RoundedCornerShape(size / 4)).background(Brush.linearGradient(listOf(first.container, second.container))),
+        Modifier.size(size).clip(RoundedCornerShape(size * TILE_CORNER_RATIO)).background(Brush.linearGradient(listOf(first.container, second.container))),
         contentAlignment = Alignment.Center,
     ) {
         val bmp = icon
         if (bmp != null) {
             Image(bmp, contentDescription = label, modifier = Modifier.size(size))
         } else {
-            Txt(initials(label), style = TextStyle(fontSize = if (size > 48.dp) 18.sp else 13.sp, fontWeight = FontWeight.Medium), color = first.onContainer)
+            Txt(initials(label), style = TextStyle(fontSize = (size.value * TILE_FONT_RATIO).sp, fontWeight = FontWeight.SemiBold), color = first.onContainer)
         }
     }
 }

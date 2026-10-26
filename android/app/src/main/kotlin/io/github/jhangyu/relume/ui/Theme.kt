@@ -79,6 +79,9 @@ val RelumeTypography = Typography(
     labelSmall = style(11, 16, FontWeight.Medium, 0.5),
 )
 
+/** Full-width bottom action (m3.css `.btn.large`, tokens.md section 4): 14 sp. */
+val LargeButtonText = style(14, 20, FontWeight.Medium, 0.1)
+
 /** Monospace slot for versions, tags and log lines. */
 val MonoSmall = TextStyle(fontSize = 11.sp, lineHeight = 16.sp, fontFamily = FontFamily.Monospace)
 
