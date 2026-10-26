@@ -156,14 +156,10 @@ class DeviceRoutesTest(helpers.DataTestCase):
             devices.delete_device(req(params={'id': d}))
         self.assertEqual(cm.exception.status, 404)
 
-    def test_assignments_same_package_400(self):
-        add_catalog_item(1, 'com.google.android.youtube', source_id='morphe')
-        add_catalog_item(2, 'com.google.android.youtube', source_id='morphe-beta')
-        add_catalog_item(3, 'com.reddit.frontpage', source_id='morphe')
+    def test_assignments_unknown_item_400(self):
+        add_catalog_item(1, 'com.google.android.youtube')
+        add_catalog_item(3, 'com.reddit.frontpage')
         d = add_device()
-        with self.assertRaises(HttpError) as cm:
-            devices.put_assignments(req(params={'id': d}, body={'item_ids': [1, 2]}))
-        self.assertEqual(cm.exception.message, 'two apps with package com.google.android.youtube')
         with self.assertRaises(HttpError):
             devices.put_assignments(req(params={'id': d}, body={'item_ids': [99]}))
         st, body = devices.put_assignments(req(params={'id': d}, body={'item_ids': [1, 3]}))

@@ -1,9 +1,8 @@
-import json
 from unittest import mock
 
 from webui import build, db, ota, projects
 from webui.tests import helpers
-from webui.tests.device_helpers import (FakeAdb, add_app_device, add_catalog_item, add_device, add_group, add_job, assign,
+from webui.tests.device_helpers import (FakeAdb, add_app_device, add_catalog_item, add_device, add_job, assign,
                                         pinfo, report, req)
 
 YT, YTM, GMS = 'com.google.android.youtube', 'com.google.android.apps.youtube.music', 'app.revanced.android.gms'
@@ -149,16 +148,14 @@ class PlanTest(helpers.DataTestCase):
         self.assertEqual(pcalls, [['x86_64', 'x86']])
         self.assertEqual(ota.abis_of({'abi_list': ''}), ['universal'])
 
-    def test_assigned_items_catalog_order_incl_disabled(self):
-        add_group(10, 1)
-        add_group(20, 0)
-        add_catalog_item(1, 'a.b.one', group_id=10, position=0)
-        add_catalog_item(2, 'a.b.two', group_id=20, position=1)
-        add_catalog_item(3, 'a.b.three', group_id=20, position=0, enabled=0)
-        add_catalog_item(4, 'a.b.four', group_id=None, position=0)
+    def test_assigned_items_id_order_incl_disabled(self):
+        add_catalog_item(1, 'a.b.one')
+        add_catalog_item(2, 'a.b.two')
+        add_catalog_item(3, 'a.b.three', enabled=0)
+        add_catalog_item(4, 'a.b.four')
         d = add_device()
-        assign(d, 1, 2, 3, 4)
-        self.assertEqual([i['item_id'] for i in ota.assigned_items(d)], [3, 2, 1, 4])
+        assign(d, 4, 3, 2, 1)
+        self.assertEqual([i['item_id'] for i in ota.assigned_items(d)], [1, 2, 3, 4])
         self.assertEqual([i['item_id'] for i in ota.assigned_items(d, [4, 2])], [2, 4])
 
     def test_get_devices_no_adb(self):
@@ -272,7 +269,7 @@ class AppPlanTest(helpers.DataTestCase):
         self.assertEqual(step['download'], {'url': '/api/artifacts/50/download', 'file_name': 'x.apk', 'size': 1,
                                             'sha256': 'bb', 'signer_sha256': 'aa', 'version_code': 1,
                                             'version_name': '19.47.53', 'artifact_id': 50})
-        self.assertEqual(step['display_name'], f'{YT} · src')
+        self.assertEqual(step['display_name'], YT)
 
     def test_incomplete_project_becomes_error_step(self):
         seams(self, assigned=[1], infos={1: dict(pinfo(), sha256=None)})
@@ -295,4 +292,3 @@ class AppPlanTest(helpers.DataTestCase):
         self.assertEqual(second, first)
         rows = db.conn().execute("SELECT id, target, trigger, options FROM jobs WHERE kind = 'upstream'").fetchall()
         self.assertEqual([(r['id'], r['target'], r['trigger']) for r in rows], [(p['pull_job_id'], '{"upstream_id":23}', 'manual')])
-        self.assertEqual(json.loads(rows[0]['options'])['rebuild'], False)

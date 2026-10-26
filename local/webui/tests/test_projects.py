@@ -12,7 +12,7 @@ import zipfile
 from unittest import mock
 
 from webui import catalog, db, jobs, projects, server, upstream
-from webui.tests.catalog_rows import CatalogCase, FakeLog
+from webui.tests.catalog_rows import CatalogCase, FakeLog, add_item, builtin_id
 
 API = upstream.API
 FIX = pathlib.Path(__file__).parent / "fixtures" / "catalog"
@@ -89,7 +89,7 @@ class MigrationTest(unittest.TestCase):
         self.assertEqual([tuple(r) for r in c.execute("SELECT device_id, project_id FROM device_projects")], [(5, 1)])
         i = c.execute("SELECT kind, ref_id, version_name, upstream_tag FROM ota_installs").fetchone()
         self.assertEqual(tuple(i), ("project", 1, "7.2.1", "7.2.1"))
-        self.assertEqual(c.execute("SELECT COUNT(*) FROM bundle_info").fetchone()[0], 1)
+        self.assertEqual(c.execute("SELECT COUNT(*) FROM bundle_info").fetchone()[0], 0)  # 010: tag v1 is not downloaded_tag
         self.assertEqual(c.execute("PRAGMA foreign_key_check").fetchall(), [])
         self.assertIn("project_ids", [r[1] for r in c.execute("PRAGMA table_info(ota_jobs)")])
         self.assertEqual(c.execute("PRAGMA foreign_keys").fetchone()[0], 1)
@@ -259,8 +259,7 @@ class CrudRouteTest(ProjectCase):
                               "JOIN upstream u ON u.id = p.upstream_id WHERE p.id = ?", (b["id"],)).fetchone()
         self.assertEqual((r["kind"], r["repo"], r["channel"], r["tag"], r["asset_regex"], r["display_name"], r["auto_push"],
                           r["package"]), ("project", "mihonapp/mihon", "stable", None, self.BODY["asset_regex"], "Mihon", 1, None))
-        self.assertEqual(self.jobs_of("upstream"), [({"upstream_id": r["upstream_id"]}, "manual",
-                                                     {"rebuild": False, "notify": True})])
+        self.assertEqual(self.jobs_of("upstream"), [({"upstream_id": r["upstream_id"]}, "manual", {"notify": True})])
         self.assertEqual(db.conn().execute("SELECT id FROM jobs").fetchone()[0], b["job_id"])
         for bad in ({"channel": "tag"}, {"asset_regex": "("}, {"auto_push": 1}, {"display_name": ""}, {"device_ids": [1, 1]}):
             self.assertEqual(self.status_of(projects.post_project, json=dict(self.BODY, **bad)), 400, bad)
@@ -296,7 +295,7 @@ class CrudRouteTest(ProjectCase):
         st, p = self.call(projects.put_project, json={"asset_regex": r"^microg.*\.apk$", "display_name": "G"}, method="PUT", id=1)
         self.assertEqual((st, p["asset_regex"], p["downloaded_tag"], p["latest_tag"], p["label"]), (200, r"^microg.*\.apk$", None, "v1", "G"))
         self.assertEqual((p["signer_sha256"], p["signer_since"]), (AB, "v1"))
-        self.assertEqual(self.jobs_of("upstream"), [({"upstream_id": 9}, "manual", {"rebuild": False, "notify": True})])
+        self.assertEqual(self.jobs_of("upstream"), [({"upstream_id": 9}, "manual", {"notify": True})])
         self.call(projects.put_project, json={"auto_push": True}, method="PUT", id=1)
         self.assertEqual(len(self.jobs_of("upstream")), 1)
         self.assertEqual(self.error(projects.put_project, json={"repo": "a/b"}, method="PUT", id=1), (400, "repo cannot change"))
@@ -318,7 +317,7 @@ class CrudRouteTest(ProjectCase):
         st, p = self.call(projects.put_project, json={"channel": "prerelease"}, method="PUT", id=1)
         self.assertEqual((p["upstream_id"], p["channel"], p["latest_tag"], p["downloaded_tag"]), (9, "prerelease", None, None))
         self.assertIsNone(db.conn().execute("SELECT notified_tag FROM upstream WHERE id=9").fetchone()[0])
-        self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM upstream").fetchone()[0], 4)
+        self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM upstream").fetchone()[0], 3)
         with db.tx() as c:
             c.execute("INSERT INTO upstream(id, kind, repo, channel) VALUES (10,'project','MorpheApp/MicroG-RE','stable')")
         self.assertEqual(self.error(projects.put_project, json={"channel": "stable"}, method="PUT", id=1), (409, "project exists"))
@@ -329,8 +328,7 @@ class CrudRouteTest(ProjectCase):
             add_project(c)
             add_device(c, 1)
             add_device(c, 2)
-            c.execute("INSERT INTO app(package) VALUES (?)", (GMS,))
-            c.execute("INSERT INTO item(id, source_id, package, key, variants) VALUES (8,'morphe',?,'gms','[]')", (GMS,))
+            add_item(c, GMS, builtin_id(c), id=8)
             c.execute("INSERT INTO device_assignments(device_id, item_id) VALUES (2,8)")
         self.assertEqual(self.error(projects.put_project, json={"device_ids": [1, 2]}, method="PUT", id=1),
                          (400, f"two apps with package {GMS}"))
@@ -681,8 +679,7 @@ class ReleaseTest(ProjectCase):
         projects.check_assignment([1, 2], [1])  # project 1 package unknown: no conflict yet
         projects.check_assignment([], [1, 2])
         for items, projs, msg in (([7], [], "unknown item 7"), ([], [5], "unknown project 5"),
-                                  ([1], [2], "two apps with package com.google.android.youtube"),
-                                  ([1, 3], [], "two apps with package com.google.android.youtube")):
+                                  ([1], [2], "two apps with package com.google.android.youtube")):
             with self.assertRaises(server.HttpError) as cm:
                 projects.check_assignment(items, projs)
             self.assertEqual((cm.exception.status, cm.exception.message), (400, msg))

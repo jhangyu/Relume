@@ -19,13 +19,12 @@ def first_abi(dev):
 
 
 def assigned_items(device_id, item_ids=None):
-    """Assigned items in catalog order (groups by position, Ungrouped last); disabled items included."""
+    """Assigned items in item id order; disabled items included."""
     rows = db.conn().execute(
-        "SELECT item.id AS item_id, item.package, COALESCE(item.display_name, "
-        "COALESCE(app.display_name, item.package) || ' · ' || source.name) AS display_name "
-        'FROM device_assignments da JOIN item ON item.id = da.item_id JOIN source ON source.id = item.source_id '
-        'LEFT JOIN app ON app.package = item.package LEFT JOIN grp ON grp.id = item.group_id WHERE da.device_id = ? '
-        'ORDER BY grp.position IS NULL, grp.position, item.position, item.id', (device_id,)).fetchall()
+        "SELECT item.id AS item_id, item.package, COALESCE(item.display_name, store_app.name, item.package) AS display_name "
+        'FROM device_assignments da JOIN item ON item.id = da.item_id '
+        'LEFT JOIN store_app ON store_app.package = item.package WHERE da.device_id = ? ORDER BY item.id',
+        (device_id,)).fetchall()
     items = [dict(r) for r in rows]
     if item_ids is not None:
         wanted = set(item_ids)

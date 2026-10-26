@@ -95,7 +95,7 @@ class NotifyTest(helpers.DataTestCase):
                                                       'fail_detail': 'x' * 5000})
         self.assertEqual(len(text), 2000)
         self.assertTrue(text.endswith('\nhttp://nas:47000/builds.html?job=5'))
-        self.assertTrue(text.startswith('Build failed: com.google.android.youtube · src: patch_failed: x'))
+        self.assertTrue(text.startswith('Build failed: com.google.android.youtube · Morphe Patches: patch_failed: x'))
 
     def _project(self, display_name):
         with db.tx() as c:
@@ -115,9 +115,8 @@ class NotifyTest(helpers.DataTestCase):
         self._project(None)
         text = notify.format_message('upstream.new_version', {'upstream_id': 23, 'tag': '7.2.2', 'item_ids': [], 'job_id': None})
         self.assertEqual(text, 'New version: MicroG-RE 7.2.2\nhttp://nas:47000/projects.html')
-        with db.tx() as c:
-            c.execute("INSERT INTO upstream(id, kind, repo, channel) VALUES (2,'patches','MorpheApp/morphe-patches','stable')")
-        text = notify.format_message('upstream.new_version', {'upstream_id': 2, 'tag': 'v1', 'item_ids': [1], 'job_id': None})
+        builtin = db.conn().execute("SELECT id FROM upstream WHERE repo = 'MorpheApp/morphe-patches'").fetchone()[0]
+        text = notify.format_message('upstream.new_version', {'upstream_id': builtin, 'tag': 'v1', 'item_ids': [1], 'job_id': None})
         self.assertEqual(text, 'New upstream version: MorpheApp/morphe-patches v1 (1 items)\nhttp://nas:47000/')
 
     def test_retry_after_honoured(self):

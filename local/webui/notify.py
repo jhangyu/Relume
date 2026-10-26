@@ -67,9 +67,9 @@ def _one(sql, args, default):
 
 
 def _label(item_id):
-    return _one("SELECT COALESCE(item.display_name, app.display_name || ' · ' || source.name) FROM item "
-                'JOIN app ON app.package = item.package JOIN source ON source.id = item.source_id WHERE item.id = ?',
-                (item_id,), f'item {item_id}')
+    return _one("SELECT COALESCE(item.display_name, store_app.name, item.package) || ' · ' || bundle.name FROM item "
+                'JOIN bundle ON bundle.id = item.bundle_id LEFT JOIN store_app ON store_app.package = item.package '
+                'WHERE item.id = ?', (item_id,), f'item {item_id}')
 
 
 def _project_label(col, value):
