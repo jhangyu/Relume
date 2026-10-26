@@ -34,9 +34,13 @@ LABEL = re.compile(r'^[A-Za-z0-9][A-Za-z0-9-]{0,62}$')
 
 
 class HttpError(Exception):
-    def __init__(self, status, message):
+    """code = machine-readable reason a client branches on; extra = more JSON keys sent with it."""
+    def __init__(self, status, message, code=None, **extra):
         super().__init__(message)
-        self.status, self.message = status, message
+        self.status, self.message, self.code, self.extra = status, message, code, extra
+
+    def body(self):
+        return {'error': self.message, **({'code': self.code} if self.code else {}), **self.extra}
 
 
 class FileResponse:
@@ -168,7 +172,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static(url.path)
             self._send(self._api(method, url))
         except HttpError as e:
-            self._json(e.status, {'error': e.message})
+            self._json(e.status, e.body())
         except sqlite3.OperationalError as e:
             if 'locked' in str(e):
                 self._json(503, {'error': 'database busy'})
