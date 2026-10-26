@@ -28,3 +28,8 @@ Spec: `docs/superpowers/specs/2026-10-26-polish-batch-design.md`. Only the user 
 - Reviewer nit: projects.py:272-273 a project deleted between two queries makes GET /api/apps return 500.
 - Pre-existing: Followed projects have no versionCode drift check (ota.py:85-95).
 - Pre-existing: a device token can call POST /api/projects/{id}/install.
+
+## Amendment (user, after device test)
+- Followed apps in Apps (web and Android) show only Install; the Download action is removed (code deleted, not hidden).
+- Followed apps show their real app icon. Root cause of the missing icon is found and fixed at the cause.
+- Acceptance: grep finds no Download action for followed apps in apps.js and the Android Apps code; Linux gate and Android leg green; backend reviewer merge-ready for any backend change; debug APK from final HEAD installed on 10AFCF269C007FB.
