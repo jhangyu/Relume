@@ -3,7 +3,7 @@
 Frozen by the lead 2026-10-26 from plan §0 at commit time; only the user may change it. Parking lot at the bottom.
 
 
-**End state.** The spec's server, migration, web and Android changes are on main, the Python + shell suite passes on macOS and in the Linux gate within 90 s, the Android leg passes, migration 010 is verified on a backup copy of the live database, and the round-2 reviewer reports zero blockers; release, redeploy and the new companion release are then the user's steps.
+**End state.** The spec's server, migration, web and Android changes are on main, the Python + shell suite passes in the Linux gate within 90 s, the Android leg passes, migration 010 is verified on a backup copy of the live database, and the round-2 reviewer reports zero blockers; release, redeploy and the new companion release are then the user's steps.
 
 **In scope.**
 1. Server: migration 010, catalog layer, enabled-app model, build flow, update run, global schedule, APKMirror locator, HTTP API (spec §1–§6).
@@ -15,7 +15,7 @@ Frozen by the lead 2026-10-26 from plan §0 at commit time; only the user may ch
 **Out of scope.** A second catalog (awesome-morphe); GitLab release download; cron schedules; `bundles.json` `featured[]`; release, Portainer redeploy, Clean up press, companion release (user, spec §11); on-device checks; any change to `android/tokens.md`, `android/m3.css` or other mockup files.
 
 **Acceptance (mechanical; run on main after round 2 or the fix round).**
-1. macOS suite: `python3 scripts/test.py --legs python,shell` → exit 0, `skipped: 0` per leg, wall time ≤ 90 s.
+1. Removed by the user (2026-10-26): the macOS suite is not an acceptance gate; item 2 (Linux gate) is the only Python/shell judge. Known macOS-only failures: no setpriv, os.killpg EPERM, BSD realpath without -e.
 2. Linux gate: `docker build -f local/Dockerfile --target app -t relume-gate . && docker run --rm -v "$PWD:/repo" -w /repo relume-gate env -u RELUME_VERSION python3 scripts/test.py --legs python,shell` → exit 0, wall time ≤ 90 s.
 3. Android leg: `ANDROID_HOME=/opt/homebrew/share/android-commandlinetools python3 scripts/test.py --legs android` → exit 0.
 4. Every committed test in plan §3 exists and ran: `grep -n "def <name>"` / `grep -n "fun <name>"` → one hit each, and its id appears in the gate 1/3 output.
