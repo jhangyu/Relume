@@ -16,6 +16,7 @@ import kotlinx.serialization.json.put
 
 private const val FEATURED_TOP = 3
 private const val FEATURED_RECENT = 3
+private const val DEFAULT_SORT = "bundles"
 
 /** One marketplace request (origin, sort, page size); null when it failed and the error is already shown. */
 typealias FeaturedFetch = suspend (origin: String?, sort: String, perPage: Int) -> MarketList?
@@ -31,6 +32,9 @@ suspend fun featuredApps(fetch: FeaturedFetch): List<MarketApp>? {
     val recent = fetch(null, "updated", FEATURED_RECENT) ?: return null
     return (top.apps + builtin.apps + recent.apps.filter { it.updatedAt != null }).distinctBy { it.packageName }
 }
+
+/** "1 bundle", "2 bundles"; [many] for irregular plurals ("patches"). */
+fun plural(n: Int, one: String, many: String = one + "s"): String = "$n " + if (n == 1) one else many
 
 /** True while pages after [MarketList.page] exist on the server. */
 val MarketList.hasMore get() = page * perPage < total
@@ -48,9 +52,22 @@ class MarketModel(private val host: AppModel) {
         private set
     var category by mutableStateOf<String?>(null)
         private set
+
+    /** Server sort key of the list: bundles (default, as on the web), stars, updated or name. */
+    var sort by mutableStateOf(DEFAULT_SORT)
+        private set
+
+    /** Origin filter of the list: null (all), official, builtin or custom. */
+    var origin by mutableStateOf<String?>(null)
+        private set
     var list by mutableStateOf<MarketList?>(null)
         private set
-    var featured by mutableStateOf<List<MarketApp>>(emptyList())
+
+    /** App count of the whole catalog (the last unfiltered page 1), for the search placeholder. */
+    var universe by mutableStateOf<Int?>(null)
+        private set
+    /** Featured row; null until its requests finished (the list keeps its slot), empty when there is none. */
+    var featured by mutableStateOf<List<MarketApp>?>(null)
         private set
     var detail by mutableStateOf<MarketDetail?>(null)
         private set
@@ -103,13 +120,24 @@ class MarketModel(private val host: AppModel) {
         load()
     }
 
+    fun selectSort(key: String) {
+        sort = key
+        load()
+    }
+
+    fun selectOrigin(o: String?) {
+        origin = o
+        load()
+    }
+
     /** The list (page 1) and the featured row: on first show and after the catalog changed. */
     fun loadAll() {
         load()
         host.viewModelScope.launch {
+            // A failed request is shown in [error]; the row then stays empty instead of holding its slot.
             featured = featuredApps { origin, sort, perPage ->
                 host.call { it.marketplace(null, null, origin, sort, null, perPage) }
-            } ?: return@launch
+            }.orEmpty()
         }
     }
 
@@ -117,7 +145,9 @@ class MarketModel(private val host: AppModel) {
     fun load() {
         listJob?.cancel()
         listJob = host.viewModelScope.launch {
-            list = host.call { it.marketplace(query, category, null, null, null) } ?: return@launch
+            val page = host.call { it.marketplace(query, category, origin, sort, null) } ?: return@launch
+            if (query.isBlank() && category == null && origin == null) universe = page.total
+            list = page
         }
     }
 
@@ -126,7 +156,7 @@ class MarketModel(private val host: AppModel) {
         val current = list ?: return
         if (listJob?.isActive == true || !current.hasMore) return
         listJob = host.viewModelScope.launch {
-            list = nextMarketPage(current) { p -> host.call { it.marketplace(query, category, null, null, p) } } ?: return@launch
+            list = nextMarketPage(current) { p -> host.call { it.marketplace(query, category, origin, sort, p) } } ?: return@launch
         }
     }
 
@@ -174,9 +204,12 @@ class MarketModel(private val host: AppModel) {
     fun reset() {
         query = ""
         category = null
+        sort = DEFAULT_SORT
+        origin = null
         listJob?.cancel()
         list = null
-        featured = emptyList()
+        universe = null
+        featured = null
         detail = null
         detailMissing = false
         patchChanges = emptyMap()
