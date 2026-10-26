@@ -4,7 +4,6 @@ import hashlib
 import json
 import os
 import re
-import urllib.parse
 
 from . import build, catalog, db, devices, events, jobs, projects, server
 from .server import HttpError, is_int
@@ -263,7 +262,7 @@ def _item_download(a):
 
 
 def _project_download(p):
-    return {'url': f"/api/projects/{p['project_id']}/apks/{urllib.parse.quote(p['file'])}", 'file_name': p['file'],
+    return {'url': projects.apk_url(p['project_id'], p['file']), 'file_name': p['file'],
             'size': p['size'], 'sha256': p['sha256'], 'signer_sha256': p['signer_sha256'],
             'version_code': p['version_code'], 'version_name': p['version_name'], 'tag': p['tag']}
 

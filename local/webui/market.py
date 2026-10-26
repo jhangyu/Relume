@@ -1,6 +1,6 @@
 """Marketplace HTTP API (spec marketplace §6): every new route, on top of apps, catalog, apklocate and build.
 No route here is session-only: the Android app reaches all of them with its device token."""
-from . import apklocate, apps, build, catalog, db
+from . import apklocate, apps, build, catalog, db, projects
 from .server import HttpError, is_int, validate_package
 
 SORTS = ("name", "bundles", "stars", "updated")
@@ -107,7 +107,8 @@ def get_marketplace_app(req):
 
 
 def list_apps(req):
-    return 200, {"apps": [_with_download(a) for a in apps.list_enabled()]}
+    return 200, {"apps": [_with_download(a) for a in apps.list_enabled()],
+                 "followed": projects.followed_apps()}
 
 
 def enable_app(req):

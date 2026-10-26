@@ -159,7 +159,7 @@ class DeviceTokenTest(MarketCase):
         self.enterContext(mock.patch.object(catalog, 'delete_custom', side_effect=deleted.append))
         st, _, body = http('GET', self.base + '/api/marketplace', headers=bearer)
         self.assertEqual((st, json.loads(body)['total']), (200, 1))
-        self.assertEqual(http('GET', self.base + '/api/apps', headers=bearer)[::2], (200, b'{"apps": []}'))
+        self.assertEqual(http('GET', self.base + '/api/apps', headers=bearer)[::2], (200, b'{"apps": [], "followed": []}'))
         st, _, body = http('POST', self.base + '/api/sources', {'url': 'https://github.com/o/r', 'engine': 'morphe'},
                            headers=bearer)
         self.assertEqual((st, json.loads(body)), (201, {'bundle_id': 7}))

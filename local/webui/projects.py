@@ -5,6 +5,7 @@ import re
 import shutil
 import sqlite3
 import tempfile
+import urllib.parse
 import zipfile
 from pathlib import Path
 
@@ -84,6 +85,10 @@ def pick_apk(facts, abis):
             if f["abi"] == abi:
                 return f
     return None
+
+
+def apk_url(project_id, file):
+    return f"/api/projects/{project_id}/apks/{urllib.parse.quote(file)}"
 
 
 def label(row):
@@ -259,6 +264,25 @@ def project_devices(project_id):
     return [x[0] for x in db.conn().execute(
         "SELECT dp.device_id FROM device_projects dp JOIN devices d ON d.id = dp.device_id "
         "WHERE dp.project_id = ? AND d.kind = 'adb' ORDER BY dp.device_id", (project_id,))]
+
+
+def followed_apps():
+    """Apps-list entries of Followed projects (spec polish 1): only what Download and Install need."""
+    out = []
+    for (pid,) in db.conn().execute("SELECT id FROM project ORDER BY id").fetchall():
+        r = _row(pid)
+        tag = r["downloaded_tag"]
+        facts = _apks(r["upstream_id"], tag) if tag else None
+        blocked = bool(_alert(r, facts))
+        out.append({"id": pid, "source": "followed", "name": label(r), "package": r["package"],
+                    "icon_url": f"/api/apps/{r['package']}/icon" if r["package"] else None,
+                    "repo": r["repo"], "version": tag if facts else None, "blocked": blocked,
+                    "files": [] if blocked else [
+                        {"name": f["file"], "abi": f["abi"], "size": f["size"], "version_name": f["version_name"],
+                         "version_code": f["version_code"], "url": apk_url(pid, f["file"])}
+                        for f in sorted(facts or (), key=lambda f: f["file"])],
+                    "device_ids": project_devices(pid)})
+    return out
 
 
 # ---- routes (§6) ----
