@@ -23,3 +23,8 @@ Spec: `docs/superpowers/specs/2026-10-26-polish-batch-design.md`. Only the user 
 **Round budget:** 2 implementation rounds.
 
 ## Parking lot
+- Two tests sit near the 1 s cap under parallel load: test_apps needs_build_matrix (1.169 s) and test_device_otajob auto_push_target_runs_project_only (1.027 s) in the first Linux gate run of round 1; rerun green.
+- Reviewer nit: ota.py:674 re-reads the phone even when no install ran; a cancelled job or unreachable phone can wait up to 60 s more.
+- Reviewer nit: projects.py:272-273 a project deleted between two queries makes GET /api/apps return 500.
+- Pre-existing: Followed projects have no versionCode drift check (ota.py:85-95).
+- Pre-existing: a device token can call POST /api/projects/{id}/install.
