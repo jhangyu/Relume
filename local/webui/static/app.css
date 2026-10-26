@@ -169,6 +169,7 @@ input[type=checkbox], input[type=radio] { accent-color: var(--colorBrandBackgrou
 /* ---------- Card ---------- */
 .card { background: var(--colorNeutralBackground1); border-radius: var(--borderRadiusXLarge); box-shadow: var(--shadow4); }
 .card-pad { padding: var(--spacingXL) var(--spacingXXL); }
+.card-head h2 { white-space: nowrap; flex: none; }
 .card-head { display: flex; align-items: center; gap: var(--spacingM); padding: var(--spacingL) var(--spacingXXL); border-bottom: 1px solid var(--colorNeutralStroke3); }
 .section { margin-top: 36px; }
 .section-head { display: flex; align-items: baseline; gap: var(--spacingM); margin-bottom: var(--spacingL); }
@@ -209,7 +210,7 @@ input[type=checkbox], input[type=radio] { accent-color: var(--colorBrandBackgrou
 .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(520px, 100vw); background: var(--colorNeutralBackground1); box-shadow: var(--shadow64); display: flex; flex-direction: column; z-index: 30; animation: slide-in var(--durationGentle) var(--curveDecelerateMid); }
 .drawer-head { display: flex; align-items: flex-start; gap: 14px; padding: 24px 24px 16px; }
 .drawer-body { flex: 1; overflow: auto; padding: 0 24px 24px; }
-.drawer-foot { display: flex; gap: 8px; justify-content: flex-end; padding: 16px 24px; border-top: 1px solid var(--colorNeutralStroke2); }
+.drawer-foot { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; padding: 16px 24px; border-top: 1px solid var(--colorNeutralStroke2); }
 .scrim { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 29; }
 @keyframes slide-in { from { transform: translateX(40px); opacity: 0; } }
 dialog { border: 0; border-radius: var(--borderRadiusXLarge); box-shadow: var(--shadow64); padding: 24px; width: min(600px, calc(100vw - 32px)); }
@@ -269,10 +270,18 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
 .dot.on { background: var(--colorStatusSuccessForeground1); box-shadow: 0 0 0 3px var(--colorStatusSuccessBackground1); }
 .dot.off { background: var(--colorNeutralForeground3); }
 .only-m { display: none !important; }
-.log { background: #1f1f1f; color: #d4d4d8; border-radius: var(--borderRadiusLarge); padding: 16px; height: 420px; overflow: auto; font-size: 12.5px; line-height: 1.65; margin: 0; }
+.log { background: var(--colorNeutralBackground2); color: var(--colorNeutralForeground2); border-radius: var(--borderRadiusLarge); padding: 16px 20px; height: 420px; overflow: auto; font: 12px/20px var(--fontFamilyMonospace); margin: 0; }
 .log div { white-space: pre-wrap; word-break: break-all; }
 @media (max-width: 900px) {
   .only-m { display: inline-flex !important; }
   .grid2, .grid3, .grid4 { grid-template-columns: minmax(0, 1fr); }
   .toast { left: 12px; right: 12px; }
 }
+
+/* Notification channel picker (settings): radio card with a coloured initials tile */
+.rcard { position: relative; display: block; border: 1px solid var(--colorNeutralStroke2); border-radius: var(--borderRadiusXLarge); padding: 12px 14px; cursor: pointer; }
+.rcard:hover { border-color: var(--colorNeutralStroke1); }
+.rcard:has(input:checked) { border: 2px solid var(--colorBrandBackground); padding: 11px 13px; background: var(--colorBrandBackground2); }
+.rcard input { position: absolute; top: 12px; right: 12px; margin: 0; }
+.rc { display: flex; align-items: center; gap: 12px; padding-right: 24px; font-weight: 600; }
+.ico { display: grid; place-items: center; flex: none; border-radius: 8px; color: #fff; font-size: 11px; font-weight: 700; }

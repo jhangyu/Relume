@@ -24,7 +24,7 @@ const featured = new Map();
 const gallery = $('#gallery'), detail = $('#detail');
 
 const stars = n => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
-const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const starBadge = n => (n ? html`<span class="row" style="gap:3px">${icon('star')}${stars(n)}</span>` : '');
 const authorColor = s => AUTHOR_COLORS[[...s].reduce((h, c) => h + c.charCodeAt(0), 0) % AUTHOR_COLORS.length];
 
@@ -34,7 +34,7 @@ function renderNotice() {
   const errs = [...feed.feeds.filter(f => f.last_error).map(f => `Catalog feed ${f.feed}: ${f.last_error}`),
     ...feed.sources.filter(s => s.last_error).map(s => `Source ${s.repo}: ${s.last_error}`)];
   const skipped = feed.feeds.flatMap(f => f.skipped.map(s => `${f.feed} skipped ${s.where}${s.repo ? ` (${s.repo})` : ''}: ${s.error}`));
-  $('#notice').innerHTML = html`${errs.length ? html`<div class="msgbar err">${icon('error')}<div class="grow"><div class="strong">The last catalog refresh failed</div>${errs.map(e => html`<div>${e}</div>`)}</div></div>` : ''}${skipped.length ? html`<div class="msgbar warn">${icon('warning')}<div class="grow"><details><summary>${plural(skipped.length, 'catalog entry')} skipped as invalid</summary>${skipped.map(e => html`<div class="mono">${e}</div>`)}</details></div></div>` : ''}`;
+  $('#notice').innerHTML = html`${errs.length ? html`<div class="msgbar err">${icon('error')}<div class="grow"><div class="strong">The last catalog refresh failed</div>${errs.map(e => html`<div>${e}</div>`)}</div></div>` : ''}${skipped.length ? html`<div class="msgbar warn">${icon('warning')}<div class="grow"><details><summary>${plural(skipped.length, 'catalog entry', 'catalog entries')} skipped as invalid</summary>${skipped.map(e => html`<div class="mono">${e}</div>`)}</details></div></div>` : ''}`;
 }
 
 function renderStats() {
@@ -45,13 +45,14 @@ function renderStats() {
   $('#stats').innerHTML = html`<span><b>${S.universe.toLocaleString()}</b> apps</span><span><b>${official.reduce((n, f) => n + f.bundle_count, 0).toLocaleString()}</b> community bundles</span><span>${okAt ? html`Official catalog refreshed <b>${fmt.rel(okAt)}</b>` : 'Official catalog never refreshed'}</span>${builtin ? html`<span>Built-in <span class="mono">${builtin.repo}</span></span>` : ''}<span><b>${custom}</b> custom source${custom === 1 ? '' : 's'}</span>`;
 }
 
+// ponytail: the list API carries no description, so the blurb falls back to bundle count and category
 function featureCard(a, kicker, big) {
   featured.set(a.package, a);
+  const blurb = a.description || `${plural(a.bundle_count, 'bundle')}${a.category ? ` for ${a.category.toLowerCase()}` : ''}.`;
   return html`<button class="feature" type="button" data-feature="${a.package}" data-cat="${catSlug(a.category)}">
-<div style="display:grid;gap:10px;position:relative"><span class="kicker">${big ? icon('sparkle') : ''}${kicker}</span>
-${big ? html`<div class="row" style="justify-content:space-between;align-items:flex-start"><h2 class="title2">${a.name || a.package}</h2>${iconTile(a, 's96')}</div>`
-    : html`<div class="row" style="gap:14px">${iconTile(a, 's72')}<h2 class="subtitle1">${a.name || a.package}</h2></div>`}</div>
-<div class="row wrap" style="position:relative"><span class="chip-w">${plural(a.bundle_count, 'bundle')}</span>${a.stars ? html`<span class="chip-w">${icon('star')}${stars(a.stars)} top bundle</span>` : ''}${a.enabled ? html`<span class="chip-w">${icon('check')}Enabled</span>` : ''}</div></button>`;
+${big ? html`<div class="row" style="justify-content:space-between;align-items:flex-start;position:relative"><div style="display:grid;gap:10px"><span class="kicker">${icon('sparkle', 'i-16')}${kicker}</span><h2 class="title2">${a.name || a.package}</h2><p>${blurb}</p></div>${iconTile(a, 's96')}</div>`
+  : html`<div style="display:grid;gap:10px;position:relative"><span class="kicker">${kicker}</span><div class="row" style="gap:14px">${iconTile(a, 's72')}<h2 class="subtitle1">${a.name || a.package}</h2></div><p>${blurb}</p></div>`}
+<div class="row wrap" style="position:relative"><span class="chip-w">${plural(a.bundle_count, 'bundle')}</span>${big && a.stars ? html`<span class="chip-w">${icon('star', 'i-16')}${stars(a.stars)} top bundle</span>` : ''}${a.enabled ? html`<span class="chip-w">${icon('check', 'i-16')}Enabled</span>` : ''}</div></button>`;
 }
 
 async function renderHero() {
@@ -66,7 +67,7 @@ async function renderHero() {
 
 // ---------- gallery ----------
 function renderCats() {
-  $('#cats').innerHTML = html`<button class="pill" type="button" aria-pressed="${S.category === '' ? 'true' : 'false'}" data-f="">All</button>${S.categories.map(c => html`<button class="pill" type="button" aria-pressed="${S.category === c.name ? 'true' : 'false'}" data-f="${c.name}" data-cat="${catSlug(c.name)}"><span class="dot"></span>${c.name} <span class="n">${c.count}</span></button>`)}`;
+  $('#cats').innerHTML = html`<button class="pill" type="button" aria-pressed="${S.category === '' ? 'true' : 'false'}" data-f="">All <span class="n">${S.universe}</span></button>${S.categories.map(c => html`<button class="pill" type="button" aria-pressed="${S.category === c.name ? 'true' : 'false'}" data-f="${c.name}" data-cat="${catSlug(c.name)}"><span class="dot"></span>${c.name} <span class="n">${c.count}</span></button>`)}`;
 }
 
 function card(a) {
@@ -85,8 +86,8 @@ function renderGallery() {
   e.hidden = !none;
   if (none) {
     e.innerHTML = html`${S.universe === 0
-      ? html`${icon('store')}<h2 class="subtitle1">The Marketplace is empty</h2><p class="subtle-text">The app catalog has not been downloaded yet. Refresh it to list the community apps and bundles.</p><button class="btn primary" type="button" data-act="refresh">${icon('sync')}Refresh catalog</button>`
-      : html`${icon('search')}<h2 class="subtitle1">No apps match</h2><p class="subtle-text">Change the search, category or origin filter.</p>`}`;
+      ? html`${icon('store', 'i-48')}<h2 class="subtitle1">The Marketplace is empty</h2><p class="subtle-text">The app catalog has not been downloaded yet. Refresh it to list the community apps and bundles.</p><button class="btn primary" type="button" data-act="refresh">${icon('sync')}Refresh catalog</button>`
+      : html`${icon('search', 'i-48')}<h2 class="subtitle1">No apps match</h2><p class="subtle-text">Change the search, category or origin filter.</p>`}`;
   }
   $('#count').textContent = none ? '' : `Showing ${S.apps.length} of ${S.total.toLocaleString()}`;
   $('#more').hidden = S.apps.length >= S.total;
@@ -141,9 +142,9 @@ function bundleCard(b) {
   const ok = b.selectable;
   return html`<label class="bundle"><input type="radio" name="bundle" value="${b.bundle_id}" data-bundle ${b.bundle_id === D.bundleId ? html`checked` : ''} ${ok ? '' : html`disabled`}>
 <div class="row"><span class="au" style="background:${authorColor(b.author || b.name)}">${(b.author || b.name || '?')[0].toUpperCase()}</span><div class="grow"><div class="strong">${b.name}</div><div class="mono subtle-text">${b.repo}</div></div></div>
-<div class="row wrap"><span class="origin ${b.origin}">${ORIGIN[b.origin] || b.origin}</span><span class="caption">${ENGINE[b.engine] || b.engine}</span></div>
+<div class="row wrap"><span class="origin ${b.origin}">${ORIGIN[b.origin] || b.origin}</span>${b.engine === 'morphe' ? '' : html`<span class="caption">${ENGINE[b.engine] || b.engine}</span>`}</div>
 ${ok ? '' : html`<div class="caption">${b.not_selectable_reason}</div>`}
-<div class="stat">${b.stars != null ? html`<span>${icon('star')}${stars(b.stars)}</span>` : ''}<span>${b.patches.length ? plural(b.patches.length, 'patch') : 'Module, no patch list'}</span>${b.updated_at ? html`<span>${fmt.rel(b.updated_at)}</span>` : ''}</div></label>`;
+<div class="stat">${b.stars != null ? html`<span>${icon('star')}${stars(b.stars)}</span>` : ''}<span>${b.patches.length ? plural(b.patches.length, 'patch', 'patches') : 'Module, no patch list'}</span>${b.updated_at ? html`<span>${fmt.rel(b.updated_at)}</span>` : ''}</div></label>`;
 }
 
 function patchRow(p) {
@@ -156,7 +157,7 @@ function patchesSection() {
   if (!b) return html`<div class="msgbar info">${icon('info')}<div class="grow">Choose a bundle to see its patches.</div></div>`;
   if (!b.patches.length) return html`<div class="msgbar info">${icon('info')}<div class="grow">${b.name} has no patch list for this app. It is applied as it is.</div></div>`;
   return html`<div class="patches"><div class="patches-bar">
-<label class="input grow" style="min-width:180px;max-width:320px">${icon('search')}<span class="sr-only">Filter patches</span><input type="search" data-r="filter" placeholder="Filter ${b.patches.length} patches" value="${D.filter}"></label>
+<label class="input grow" style="min-width:180px;max-width:320px">${icon('search', 'i-16')}<span class="sr-only">Filter patches</span><input type="search" data-r="filter" placeholder="Filter ${b.patches.length} patches" value="${D.filter}"></label>
 <span class="badge brand" data-r="on"></span><span class="badge" data-r="off"></span><span class="badge lav" data-r="chg" hidden></span><div class="grow"></div>
 <button class="btn subtle small" type="button" data-act="allon">All on</button><button class="btn subtle small" type="button" data-act="reset">Reset to defaults</button></div>
 <div class="patch-list">${b.patches.map(patchRow)}</div></div>`;
@@ -184,7 +185,7 @@ function updateBar() {
   if (!btn) return;
   btn.disabled = !b;
   const on = b ? b.patches.filter(isOn).length : 0;
-  $('[data-r=sum]', detail).textContent = b ? `${b.name}${b.patches.length ? ` · ${plural(on, 'patch')} on` : ''} · version Auto (newest the bundle supports)` : 'Choose a patch bundle';
+  $('[data-r=sum]', detail).textContent = b ? `${b.name}${b.patches.length ? ` · ${plural(on, 'patch', 'patches')} on` : ''} · version Auto (newest the bundle supports)` : 'Choose a patch bundle';
 }
 
 function factsHtml() {
@@ -193,7 +194,7 @@ function factsHtml() {
   const dl = DL[m.download && m.download.state] || DL_NONE;
   return html`<dl class="facts"><dt>Category</dt><dd>${m.category || '—'}</dd>
 <dt>Bundles</dt><dd>${Object.entries(counts).map(([o, n]) => `${n} ${ORIGIN[o].toLowerCase()}`).join(', ')}</dd>
-${b && b.versions.length ? html`<dt>Versions</dt><dd class="mono">${b.versions[0]} (${plural(b.versions.length, 'version')})</dd>` : ''}
+${b && b.versions.length ? html`<dt>Versions</dt><dd class="mono">${b.versions.length > 1 ? `${b.versions[b.versions.length - 1]} – ${b.versions[0]}` : b.versions[0]}</dd>` : ''}
 <dt>APKMirror</dt><dd><span class="badge ${dl[0] === 'info' ? '' : dl[0]}">${icon(dl[1])}${dl[2]}</span></dd></dl>`;
 }
 
@@ -201,10 +202,12 @@ function sourceStep() {
   const dl = D.meta.download, st = DL[dl && dl.state] || DL_NONE;
   return html`<div class="src-box"><div class="msgbar ${st[0]}" role="status">${icon(st[1])}<div class="grow"><div class="strong">${st[2]}</div>${st[3] ? html`<div>${st[3]}</div>` : ''}${dl && dl.error ? html`<div>${dl.error}</div>` : ''}${dl && dl.retry_at ? html`<div>Next try ${fmt.abs(dl.retry_at)}</div>` : ''}</div></div>
 <div class="field"><label for="u-am">APKMirror listing URL <span class="subtle-text" style="font-weight:400">(optional)</span></label>
-<span class="input">${icon('link')}<input id="u-am" data-r="am" value="${D.am}" placeholder="https://www.apkmirror.com/apk/org/app/" autocomplete="off"></span><div class="hint">The page that lists all versions of the app, not a single release.</div></div>
+<div class="row"><span class="input grow">${icon('link', 'i-16')}<input id="u-am" data-r="am" value="${D.am}" placeholder="https://www.apkmirror.com/apk/org/app/" autocomplete="off"></span><button class="btn" type="button" data-act="paste" aria-label="Paste from clipboard">${icon('paste')}Paste</button></div><div class="hint">The page that lists all versions of the app, not a single release.</div></div>
 <div class="field"><label for="u-ap">APKPure URL <span class="subtle-text" style="font-weight:400">(optional fallback)</span></label>
-<span class="input">${icon('link')}<input id="u-ap" data-r="ap" value="${D.ap}" placeholder="https://apkpure.com/…/${D.pkg}" autocomplete="off"></span></div></div>`;
+<span class="input">${icon('link', 'i-16')}<input id="u-ap" data-r="ap" value="${D.ap}" placeholder="https://apkpure.com/…/${D.pkg}" autocomplete="off"></span></div></div>`;
 }
+
+const patchTitle = () => `Patches in ${cur() ? cur().name : 'the bundle'} for ${D.meta.name || D.meta.package}`;
 
 function renderDetail() {
   const m = D.meta;
@@ -215,7 +218,7 @@ ${m.description ? html`<p class="subtle-text">${m.description}</p>` : ''}<div da
     ? html`<div class="work"><div class="msgbar ok">${icon('check')}<div class="grow"><div class="strong">${m.name || m.package} is enabled</div><div>Change its bundle, patches or download source in <a href="/apps.html?app=${m.app_id}">Apps</a>.</div></div></div></div>`
     : html`<div class="work">
 <div><div class="step-h"><span class="step-n">1</span><h3 class="subtitle2">Choose one patch bundle</h3><span class="caption">One bundle per app · you can switch later in Apps</span></div><div class="bundles" role="radiogroup" aria-label="Patch bundle">${m.bundles.map(bundleCard)}</div></div>
-<div><div class="step-h"><span class="step-n">2</span><h3 class="subtitle2">Patches</h3><span class="caption">Defaults come from the bundle · your changes stay across versions</span></div><div data-r="patchsec">${patchesSection()}</div></div>
+<div><div class="step-h"><span class="step-n">2</span><h3 class="subtitle2" data-r="ptitle">${patchTitle()}</h3><span class="caption">Defaults come from the bundle · your changes stay across versions</span></div><div data-r="patchsec">${patchesSection()}</div></div>
 <div><div class="step-h"><span class="step-n">3</span><h3 class="subtitle2">Download source</h3></div>${sourceStep()}</div>
 <div class="enable-bar"><div class="grow"><div class="strong" data-r="sum"></div><div class="caption">Enabling builds the app right away. A download URL is optional.</div></div>
 <button class="btn primary large" type="button" data-r="enable" data-act="enable">${icon('check')}Enable and build</button></div></div>`;
@@ -281,6 +284,10 @@ detail.addEventListener('click', e => {
   const a = e.target.closest('[data-act]');
   if (!a) return;
   const b = cur();
+  if (a.dataset.act === 'paste') {
+    navigator.clipboard.readText().then(t => { const i = $('[data-r=am]', detail); i.value = t.trim(); D.am = i.value; }).catch(err => toast(`Cannot read the clipboard: ${err.message}`, 'error'));
+    return;
+  }
   if (a.dataset.act === 'close') closeApp();
   else if (a.dataset.act === 'enable') enable();
   else if (a.dataset.act === 'allon' || a.dataset.act === 'reset') {
@@ -297,6 +304,7 @@ detail.addEventListener('change', e => {
     D.filter = '';
     $('[data-r=patchsec]', detail).innerHTML = html`${patchesSection()}`;
     $('[data-r=facts]', detail).innerHTML = html`${factsHtml()}`;
+    $('[data-r=ptitle]', detail).textContent = patchTitle();
     marks();
   } else if (t.matches('[data-patch]')) {
     setFlip(t.dataset.patch, t.checked);

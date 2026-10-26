@@ -4,13 +4,16 @@
 .hero { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr); gap: 16px; }
 .hero > *, .gallery > *, .detail > * { min-width: 0; }
 .mono { overflow-wrap: anywhere; }
-.feature { position: relative; overflow: hidden; border-radius: var(--borderRadius3XLarge); padding: 24px; min-height: 196px; display: flex; flex-direction: column; justify-content: space-between; gap: 16px; color: #fff; background: linear-gradient(135deg, var(--c1), var(--c2)); box-shadow: var(--shadow8); cursor: pointer; border: 0; text-align: left; transition: transform var(--durationNormal) var(--curveDecelerateMid), box-shadow var(--durationNormal); }
+.feature { position: relative; overflow: hidden; border-radius: var(--borderRadius3XLarge); padding: 24px; min-height: 196px; display: flex; flex-direction: column; justify-content: space-between; color: #fff; background: linear-gradient(135deg, var(--c1), var(--c2)); box-shadow: var(--shadow8); cursor: pointer; border: 0; text-align: left; transition: transform var(--durationNormal) var(--curveDecelerateMid), box-shadow var(--durationNormal); }
 .feature:hover { transform: translateY(-2px); box-shadow: var(--shadow28); }
 .feature::before { content: ""; position: absolute; width: 320px; height: 320px; right: -90px; top: -120px; border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,.28), transparent 65%); }
 .feature .kicker { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; opacity: .92; display: flex; align-items: center; gap: 6px; }
 .feature .tile { box-shadow: 0 8px 24px rgba(0,0,0,.25), inset 0 0 0 1px rgba(255,255,255,.35); }
+.feature p { opacity: .95; max-width: 34ch; }
 .feature .chip-w { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 999px; background: rgba(255,255,255,.2); font-size: 12px; font-weight: 600; backdrop-filter: blur(6px); }
 .stats { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 20px; color: var(--colorNeutralForeground3); font-size: 13px; }
+.hero[hidden] + .stats { margin-top: 0; }
+.empty .i-48 { width: 48px; height: 48px; }
 .stats b { color: var(--colorNeutralForeground1); font-weight: 600; }
 .toolbar { position: sticky; top: 60px; z-index: 4; display: flex; flex-direction: column; gap: 12px; padding: 14px 0; background: rgba(250,250,250,.92); backdrop-filter: blur(20px); }
 .cats { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px; }
@@ -65,6 +68,7 @@
   .app { padding: 14px; } .app .tile { --s: 48px; }
   .detail { grid-template-columns: 1fr; } .detail aside { border-right: 0; border-bottom: 1px solid var(--colorNeutralStroke3); padding: 20px; }
   .detail .work { padding: 20px 16px; }
+  .enable-bar .grow { flex-basis: 100%; }
 }
 </style>
 <script type="module" src="/static/index.js"></script></head><body><a class="skip" href="#main">Skip to content</a>
@@ -73,8 +77,8 @@
 <button class="icon-btn menu-btn" type="button" data-nav-toggle aria-label="Open navigation" title="Open navigation"><svg class="i" aria-hidden="true"><use href="#i-menu"/></svg></button>
 <h1 class="subtitle1 hide-m">Marketplace</h1><div class="grow hide-m"></div>
 <label class="input search large q-wrap"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Search apps</span><input id="q" type="search" placeholder="Search apps or packages" autocomplete="off"></label>
-<button class="btn" id="refresh" type="button" aria-label="Refresh catalog" title="Refresh catalog"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg><span class="hide-m">Refresh catalog</span></button>
-<button class="btn" id="add-source" type="button" aria-label="Add custom source" title="Add custom source"><svg class="i" aria-hidden="true"><use href="#i-github"/></svg><span class="hide-m">Add custom source</span></button>
+<button class="btn" id="refresh" style="min-width:0" type="button" aria-label="Refresh catalog" title="Refresh catalog"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg><span class="hide-m">Refresh catalog</span></button>
+<button class="btn" id="add-source" style="min-width:0" type="button" aria-label="Add custom source" title="Add custom source"><svg class="i" aria-hidden="true"><use href="#i-github"/></svg><span class="hide-m">Add custom source</span></button>
 </header>
 <main id="main" class="content">
 <div id="notice" class="stack-sm" role="status"></div>

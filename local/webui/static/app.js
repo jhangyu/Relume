@@ -56,9 +56,9 @@ export function logStream(jobId, onText, onEnd) {
   return es;
 }
 
-const rtf = new Intl.RelativeTimeFormat([], { numeric: 'auto' });
+const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
 export const fmt = {
-  abs: iso => (iso ? new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '—'),
+  abs: iso => (iso ? new Date(iso).toLocaleString('en', { dateStyle: 'medium', timeStyle: 'short' }) : '—'),
   rel: iso => {
     if (!iso) return '—';
     const s = Math.round((Date.parse(iso) - Date.now()) / 1000), a = Math.abs(s);
@@ -102,13 +102,13 @@ export function ask(dlg) {
 
 // Build states of spec §6.2 (`app.status.state`) and the badge class each one wears.
 export const STATUS = {
-  building: { label: 'Building', cls: 'brand' },
-  queued: { label: 'Queued', cls: '' },
-  failed: { label: 'Failed', cls: 'err' },
-  update_available: { label: 'Update available', cls: 'warn' },
-  needs_download_url: { label: 'Needs URL', cls: 'warn' },
-  not_built: { label: 'Not built', cls: '' },
-  up_to_date: { label: 'Up to date', cls: 'ok' },
+  building: { label: 'Building', cls: 'brand', icon: 'sync' },
+  queued: { label: 'Queued', cls: '', icon: 'history' },
+  failed: { label: 'Failed', cls: 'err', icon: 'error' },
+  update_available: { label: 'Update available', cls: 'lav', icon: 'sparkle' },
+  needs_download_url: { label: 'Needs URL', cls: 'warn', icon: 'link' },
+  not_built: { label: 'Not built', cls: '', icon: 'history' },
+  up_to_date: { label: 'Up to date', cls: 'ok', icon: 'check' },
 };
 
 // Root icons.js set as one inline sprite, injected once by shell().
@@ -154,7 +154,7 @@ const SPRITE = html`
 </svg>
 `;
 
-export const icon = name => html`<svg class="i" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+export const icon = (name, cls = '') => html`<svg class="i ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 
 // Store category name -> accent key of app.css `[data-cat=…]` (unknown names stay neutral grey).
 const CATS = [['social', /social|communicat/i], ['video', /video|photo|entertain/i], ['music', /music|audio/i],
@@ -254,7 +254,7 @@ export function shell() {
       api('GET', '/api/apps'),
     ]);
     const n = run.jobs.length, m = queued.jobs.length, d = s.server.disk;
-    box.innerHTML = html`<span class="row"><span class="dot ${n ? 'on' : ''}" aria-hidden="true"></span>${n ? 'Worker busy' : 'Idle'} · ${n} running · ${m} queued</span><span class="mono">Disk ${fmt.gb(d.total - d.free)} / ${fmt.gb(d.total)} GB · ${s.server.arch}</span>`;
+    box.innerHTML = html`<span class="row"><span class="dot ${n ? 'on' : 'off'}" aria-hidden="true"></span>${n ? 'Worker busy' : 'Idle'} · ${n} running · ${m} queued</span><span>Disk ${fmt.gb(d.total - d.free)} / ${fmt.gb(d.total)} GB · ${s.server.arch}</span>`;
     count.textContent = apps.apps.length;
     count.hidden = false;
     count.setAttribute('aria-label', `${apps.apps.length} enabled apps`);
