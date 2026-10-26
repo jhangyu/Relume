@@ -26,9 +26,15 @@ Frozen by the lead 2026-10-26 from plan §0 at commit time; only the user may ch
 9. Pages render: the scratch render check (plan §8) passes for `/`, `/apps.html`, `/schedules.html`, `/builds.html`, `/devices.html`, `/projects.html`, `/settings.html` (headless Chrome, page has `<main`, no `Uncaught` or failed resource in the log; run by the reviewer, plan §6).
 10. Round-2 reviewer (fresh, opus): 0 blockers on the commits of rounds 1–2.
 
-**Round budget.** 2 implementation rounds + at most 1 fix round. Budget spent with acceptance open → stop and report the failure trail to the user.
+11. Added by the user (2026-10-26): two front-end reviewers, one for web and one for Android, compare the implementation with the chosen mockups (candidate 2: web/ as is, android/ revised). They pay special attention to centring, alignment and spacing between components. Every difference goes back to an implementer and is fixed until both reviewers pass.
+
+**Round budget.** 2 implementation rounds + at most 1 fix round; front-end mockup fixes (item 11) loop until both front-end reviewers pass (user, 2026-10-26). Budget spent with acceptance open → stop and report the failure trail to the user.
 
 ## Parking lot
 
 - Migration 010 drops `app.display_name` without copying it to `store_app`. Apps that are not in the catalog store (for example Tasker) then show their package name until a catalog or custom source names them. Source: impl-migration report, .claude/tmp/mp-1.1/report.md.
 - Android DTOs guessed in f5e23ff (CustomSource, OtaSchedule, PatchView) must be checked against the real API in round 2.
+- Round-2 review nit N2: apklocate.throttle holds the module lock while it waits, so POST /api/apps/{id}/locate can block up to 10 s (apklocate.py:188-195).
+- Round-2 review nit N3: PUT on a disabled app with a first URL saves the URL and then answers 409 app_disabled (market.py:142-146).
+- Round-2 review parking lot section: docs/logs/2026-10-26-mp-round2-review.md (Parking lot).
+- Plan §4 greps 3 and 5 were corrected by the lead (f3b2962) after the review found false positives; item 6 is judged with the corrected greps.
