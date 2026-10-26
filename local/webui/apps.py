@@ -19,7 +19,7 @@ VERSIONS_MAX_AGE = timedelta(hours=24)   # the build refreshes the APKMirror ver
 URL_COLUMN = {'apkmirror': 'apkmirror_list_url', 'apkpure': 'apkpure_url'}   # download kind -> app column it needs
 
 ROW_SQL = """SELECT i.*, b.origin, b.repo, b.engine, b.name AS bundle_name, b.upstream_id AS bundle_upstream_id,
-  u.downloaded_tag AS bundle_tag, s.name AS store_name, a.apkmirror_list_url, a.apkmirror_example_url,
+  u.downloaded_tag AS bundle_tag, s.name AS store_name, s.category AS store_category, a.apkmirror_list_url, a.apkmirror_example_url,
   a.apkmirror_example_url2, a.apkpure_url, a.apkmirror_versions, a.apkmirror_checked_at, a.apkm_state
   FROM item i JOIN bundle b ON b.id = i.bundle_id JOIN app a ON a.package = i.package
   LEFT JOIN upstream u ON u.id = b.upstream_id LEFT JOIN store_app s ON s.package = i.package"""
@@ -74,7 +74,7 @@ def _status(r, st):
 def _app_obj(r, st):
     ls = st['last_success']
     return {'id': r['id'], 'package': r['package'], 'name': _label(r), 'enabled': bool(r['enabled']),
-            'icon_url': f"/api/apps/{r['package']}/icon", 'version_mode': r['version_mode'],
+            'icon_url': f"/api/apps/{r['package']}/icon", 'category': r['store_category'], 'version_mode': r['version_mode'],
             'bundle': {'bundle_id': r['bundle_id'], 'name': r['bundle_name'], 'origin': r['origin'],
                        'engine': r['engine'], 'tag': r['bundle_tag']},
             'app_version': ls['app_version'] if ls else None, 'status': _status(r, st)}

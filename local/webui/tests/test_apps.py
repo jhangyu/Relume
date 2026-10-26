@@ -252,6 +252,13 @@ class EnableTest(AppsCase):
         self.assertEqual(self.http_status(apps.check_update, 1), (409, "app_disabled"))
         self.assertEqual(self.http_status(apps.rebuild, 1), (409, "app_disabled"))
 
+    def test_app_object_category_is_store_lookup_or_null(self):
+        self.bundles({"bundle_id": self.builtin, "patches": []})
+        with db.tx() as c:
+            c.execute("UPDATE store_app SET category = 'Social' WHERE package = ?", (YT,))
+        self.assertEqual(apps.get(1)["category"], "Social")
+        self.assertIsNone(apps.enable("com.example.app", self.builtin)["category"])
+
     def test_enable_with_unknown_patch_is_400(self):
         self.bundles({"bundle_id": self.builtin, "patches": [{"name": "Hide ads"}]})
         self.assertEqual(self.http_status(apps.enable, "com.example.app", self.builtin, {"Nope": True}), (400, "patch_unknown"))
