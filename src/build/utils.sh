@@ -41,21 +41,6 @@ req() {
 	wget -nv -O "$out" --header="User-Agent: $user_agent" --header="Content-Type: application/octet-stream" --header="Accept-Language: en-US,en;q=0.9" --header="Connection: keep-alive" --header="Upgrade-Insecure-Requests: 1" --header="Cache-Control: max-age=0" --header="Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8" "${cookie_args[@]}" --keep-session-cookies --timeout=30 "$1" || { [[ "$out" != "-" ]] && rm -f "$out"; return 1; }
 }
 
-# Highest compatible version of package $1 across the *.mpp in the work dir.
-detect_version() {
-	if [[ -z "$version" && "$lock_version" != "1" ]]; then
-		local jars=(morphe-desktop-*.jar) mpps=(*.mpp)
-		[[ -f "${jars[0]}" && -f "${mpps[0]}" ]] || return 0
-		version=$(java -jar "${jars[0]}" list-patches --with-packages --with-versions --with-options --patches "${mpps[@]}" | awk -v pkg="$1" '
-			BEGIN { found = 0; printing = 0 }
-			/Index:/ { if (printing) exit; found = 0 }
-			/Package name: / { if ($3 == pkg) found = 1 }
-			/Compatible versions:/ { if (found) printing = 1; next }
-			printing && $1 ~ /^[0-9]+\./ { print $1 }
-		' | sort -V | tail -n1)
-	fi
-}
-
 _fs_get() {
 	local url=$1
 	local max_retries=3
@@ -165,7 +150,6 @@ get_apk() {
 		base_apk="$apk_name.apk"
 	fi
 
-	detect_version "$pkg_name"
 	export version
 
 	green_log "[+] Detected version: ${version:-latest} [$pkg_name]"
@@ -422,7 +406,6 @@ get_apkpure() {
 		return 1
 	fi
 
-	detect_version "$pkg_name"
 	export version
 
 	local base_apk

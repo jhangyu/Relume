@@ -47,27 +47,14 @@ cd "$work" || fail internal "cannot enter $work"
 mkdir -p download release
 init_ua
 
-# symlinks keep the detect_version globs (morphe-desktop-*.jar, *.mpp) working
 ln -sf "$cli_jar" . || fail internal "cannot link $cli_jar"
 for f in "${patches_files[@]}"; do ln -sf "$f" . || fail internal "cannot link $f"; done
 
-# ---- version (rule: catalog §4.2) ----
+# ---- version (resolved by the server, apps part §4.2): value null = newest on APKMirror ----
 echo "::step::version"
-mode=$(j .version.mode)
-value=$(j .version.value)
+version=$(j .version.value)
 allow_near=0
 [[ "$(jq -r '.version.near' "$job")" == true ]] && allow_near=1
-version=""
-lock_version=""
-case "$mode" in
-pinned) version=$value ;;
-latest) lock_version=1 ;;
-auto)
-	detect_version "$package"
-	[[ -n "$version" ]] || fail version_unresolved "no compatible version for $package in the patches"
-	;;
-*) fail internal "unknown version mode $mode" ;;
-esac
 printed_version=""
 if [[ -n "$version" ]]; then
 	echo "::version::$version"

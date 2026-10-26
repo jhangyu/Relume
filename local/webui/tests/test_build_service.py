@@ -10,20 +10,17 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from webui import build, db, events, jobs, server, settings
+from webui import apps, build, catalog, db, events, jobs, server, settings
 from webui.tests import helpers
+from webui.tests.catalog_rows import add_item as add_item_row, builtin_id
 
 FIX = Path(__file__).parent / "fixtures" / "build"
 JOB_FIXTURE = json.loads((db.REPO_ROOT / "src" / "build" / "test-fixtures" / "job.json").read_text())
 YT = "com.google.android.youtube"
 
 
-def add_item(c, iid=1, package=YT, key="youtube", group_id=None):
-    c.execute("INSERT OR IGNORE INTO upstream(id, kind, repo, channel, downloaded_tag) VALUES (1,'cli','c/c','stable','v1.0.0'),(2,'patches','p/p','stable','v1.2.3')")
-    c.execute("INSERT OR IGNORE INTO source(id, name, upstream_id, cli_upstream_id) VALUES ('morphe','Morphe',2,1)")
-    c.execute("INSERT OR IGNORE INTO app(package) VALUES (?)", (package,))
-    c.execute("INSERT INTO item(id, source_id, package, key, group_id, position, variants) VALUES (?, 'morphe', ?, ?, ?, 0, '[]')",
-              (iid, package, key, group_id))
+def add_item(c, iid=1, package=YT):
+    assert add_item_row(c, package, builtin_id(c), id=iid) == iid
 
 
 def add_job(c, item_id, status="running"):
@@ -76,29 +73,28 @@ class StreamLog:
         return p.wait()
 
 
-class FakeCatalog:
-    class UpstreamMissing(Exception):
-        pass
+class FakeApps:
+    """apps.job_input / stale_overrides / inputs_sha stand-in; catalog.set_apkmirror_versions is recorded."""
 
     def __init__(self, up):
-        self.up, self.missing, self.key, self.versions = up, False, "youtube", []
+        self.up, self.missing, self.package, self.versions = up, False, YT, []
 
     def job_input(self, item_id):
         if self.missing:
-            raise self.UpstreamMissing("source upstream 2 not downloaded")
+            raise catalog.UpstreamMissing("bundle 1 (MorpheApp/morphe-patches) not downloaded")
         j = {k: v for k, v in JOB_FIXTURE.items() if k not in ("job_id", "work_dir")}
-        j.update(item_id=item_id, key=self.key, patches_files=[str(self.up / "patches-1.0.0.mpp")],
+        j.update(item_id=item_id, package=self.package, patches_files=[str(self.up / "patches-1.0.0.mpp")],
                  cli_jar=str(self.up / "morphe-desktop-1.0.0-all.jar"))
         return j
 
     def stale_overrides(self, item_id):
         return ["Gone"]
 
+    def inputs_sha(self, item_id):
+        return "sha-of-inputs"
+
     def set_apkmirror_versions(self, package, versions):
         self.versions.append((package, versions))
-
-    def enabled_group_items(self, group_id):
-        return [r[0] for r in db.conn().execute("SELECT id FROM item WHERE ifnull(group_id, 0) = ? ORDER BY id", (group_id,))]
 
 
 class BuildCase(helpers.DataTestCase):
@@ -108,9 +104,11 @@ class BuildCase(helpers.DataTestCase):
         self.up.mkdir()
         (self.up / "patches-1.0.0.mpp").write_bytes(b"p")
         (self.up / "morphe-desktop-1.0.0-all.jar").write_bytes(b"c")
-        self.cat = FakeCatalog(self.up)
-        for attr, val in (("catalog", self.cat), ("RUNNER", str(FIX / "runner-ok.sh"))):
-            self.enterContext(mock.patch.object(build, attr, val))
+        self.cat = FakeApps(self.up)
+        for name in ("job_input", "stale_overrides", "inputs_sha"):
+            self.enterContext(mock.patch.object(apps, name, getattr(self.cat, name)))
+        self.enterContext(mock.patch.object(catalog, "set_apkmirror_versions", self.cat.set_apkmirror_versions))
+        self.enterContext(mock.patch.object(build, "RUNNER", str(FIX / "runner-ok.sh")))
         self.events = []
         self.enterContext(mock.patch.object(events, "emit", side_effect=lambda t, pl: self.events.append((t, pl))))
         with db.tx() as c:
@@ -167,8 +165,8 @@ class HandlerFailTest(BuildCase):
         self.assertIsNone(log.argv)
 
     def test_each_fail_code(self):
-        for code in ("version_unresolved", "apk_not_listed", "download_failed", "merge_failed", "patch_failed", "internal"):
-            self.cat.key = code
+        for code in ("apk_not_listed", "download_failed", "merge_failed", "patch_failed", "internal"):
+            self.cat.package = code
             job, log, err = self.run_handler("runner-fail.sh")
             self.assertEqual((self.bj(job)["fail_code"], str(err)), (code, f"{code}: detail of {code}"))
         self.assertEqual(self.events[-1], ("build.failed", {"item_id": 1, "job_id": job.id, "fail_code": "internal", "fail_detail": "detail of internal"}))
@@ -276,11 +274,12 @@ class HandlerOkTest(BuildCase):
         self.assertIsNone(err)
         rows = db.conn().execute("SELECT * FROM artifacts WHERE job_id = ? ORDER BY id", (job.id,)).fetchall()
         self.assertEqual([Path(r["path"]).name for r in rows],
-                         ["morphe-youtube-universal-20.1.0-v1.2.3.apk", "morphe-youtube-arm64-v8a-20.1.0-v1.2.3.apk"])
+                         [f"{YT}-universal-20.1.0-v1.2.3.apk", f"{YT}-arm64-v8a-20.1.0-v1.2.3.apk"])
         self.assertTrue(all(Path(r["path"]).is_file() for r in rows))
         self.assertEqual([(r["size"], r["sha256"], r["signer_sha256"]) for r in rows], [(1, "aa", "bb"), (3, "cc", "bb")])
         b = self.bj(job)
-        self.assertEqual((b["app_version"], b["patches_version"], b["cli_version"], b["fail_code"]), ("20.1.0", "v1.2.3", "v1.0.0", None))
+        self.assertEqual((b["app_version"], b["patches_version"], b["cli_version"], b["fail_code"], b["inputs_sha"]),
+                         ("20.1.0", "v1.2.3", "v1.0.0", None, "sha-of-inputs"))
         self.assertEqual(self.events[-1], ("build.succeeded", {"item_id": 1, "job_id": job.id, "app_version": "20.1.0",
                                                                "patches_version": "v1.2.3", "artifacts": [r["id"] for r in rows]}))
         self.assertFalse((self.data / "work" / str(job.id)).exists())
@@ -379,19 +378,17 @@ class RetentionTest(BuildCase):
 
     def test_run_retention_all_items(self):
         with db.tx() as c:
-            add_item(c, 2, "com.reddit.frontpage", "reddit")
+            add_item(c, 2, "com.reddit.frontpage")
         a, b = self.build_n(2, 1), self.build_n(2, 2)
         with mock.patch.object(settings, "get", side_effect=lambda k, d=None: 1 if k == "artifact_retention" else d):
             build.run_retention()
         self.assertEqual((self.job_ids_with_files(1), self.job_ids_with_files(2)), (a[-1:], b[-1:]))
 
-    def test_latest_artifact_and_forget(self):
+    def test_latest_artifact(self):
         self.assertIsNone(build.latest_artifact(1, "arm64-v8a"))
         self.build_n(1)
         self.assertEqual(build.latest_artifact(1, "arm64-v8a")["abi"], "arm64-v8a")
         self.assertEqual(build.latest_artifact(1, "x86")["abi"], "universal")
-        build.forget_item(1)
-        self.assertFalse((self.data / "artifacts" / "1").exists())
 
 
 class StatusTest(BuildCase):
@@ -407,36 +404,17 @@ class StatusTest(BuildCase):
 
     def test_never_built(self):
         self.assertEqual(build.item_status([1]), {1: {"last_build": None, "last_success": None, "active_job": None}})
-        self.assertTrue(build.needs_build(1))
 
-    def test_success_and_tags(self):
+    def test_success(self):
         jid = self.finished("success")
         st = build.item_status([1])[1]
         self.assertEqual(st["last_build"], {"job_id": jid, "status": "success", "reason": None, "fail_code": None})
         self.assertEqual(st["last_success"]["patches_version"], "v1.2.3")
-        self.assertFalse(build.needs_build(1))
-        with db.tx() as c:
-            c.execute("UPDATE upstream SET downloaded_tag = 'v1.3.0' WHERE id = 2")
-        self.assertTrue(build.needs_build(1))
-        with db.tx() as c:
-            c.execute("UPDATE upstream SET downloaded_tag = 'v1.2.3' WHERE id = 2")
-            c.execute("UPDATE upstream SET downloaded_tag = 'v1.1.0' WHERE id = 1")
-        self.assertTrue(build.needs_build(1))
-
-    def test_latest_mode_compares_apkmirror_newest(self):
-        self.finished("success")  # built app 20.1.0
-        for mode, versions, want in (("latest", '["20.1.0","19.0.0"]', False), ("latest", '["20.2.0","20.1.0"]', True),
-                                     ("latest", None, False), ("auto", '["20.2.0"]', False), ("pinned", '["20.2.0"]', False)):
-            with db.tx() as c:
-                c.execute("UPDATE item SET version_mode = ? WHERE id = 1", (mode,))
-                c.execute("UPDATE app SET apkmirror_versions = ? WHERE package = ?", (versions, YT))
-            self.assertIs(build.needs_build(1), want, (mode, versions))
 
     def test_failed_newest(self):
         self.finished("success")
         self.finished("failed")
         self.assertEqual(build.item_status([1])[1]["last_build"]["fail_code"], "patch_failed")
-        self.assertTrue(build.needs_build(1))
 
     def test_active_job_steps(self):
         queued = self.job(status="queued")
@@ -448,58 +426,19 @@ class StatusTest(BuildCase):
         self.assertEqual(st, {"job_id": running.id, "status": "running", "step": "patch", "step_index": 2, "step_count": 3})
 
 
-class AppcheckTest(BuildCase):
-    """appcheck job: version list stored, rebuild only for latest-mode items with both switches on and a newer app."""
-
-    def setUp(self):
-        super().setUp()
-        with db.tx() as c:
-            c.execute("UPDATE app SET apkmirror_list_url = 'https://apkmirror.invalid/yt/' WHERE package = ?", (YT,))
-            # item 1: latest, both on, never built. 2: Update off. 3: version mode auto. 4: Build off. 5: up to date.
-            for iid, mode, enabled, auto_update in ((1, "latest", 1, 1), (2, "latest", 1, 0), (3, "auto", 1, 1),
-                                                    (4, "latest", 0, 1), (5, "latest", 1, 1)):
-                if iid > 1:
-                    c.execute("INSERT INTO source(id, name, upstream_id, cli_upstream_id) VALUES (?, ?, 2, 1)", (f"s{iid}", f"S{iid}"))
-                    c.execute("INSERT INTO item(id, source_id, package, key, position, variants) VALUES (?, ?, ?, 'youtube', 0, '[]')",
-                              (iid, f"s{iid}", YT))
-                c.execute("UPDATE item SET version_mode = ?, enabled = ?, auto_update = ? WHERE id = ?", (mode, enabled, auto_update, iid))
-            jid = add_job(c, 5, "success")
-            c.execute("INSERT INTO build_jobs(job_id, item_id, app_version, patches_version, cli_version) VALUES (?, 5, '2.0', 'v1.2.3', 'v1.0.0')", (jid,))
-            add_artifact(c, 5, jid)
-        self.n = 100
-
-    def check(self, script, rebuild=True, package=YT):
-        self.enterContext(mock.patch.object(build, "CHECK_VERSIONS", str(FIX / script)))
-        self.n += 1
-        job = SimpleNamespace(id=self.n, target={"package": package}, options={"rebuild": rebuild}, cancel_event=threading.Event())
-        build.appcheck_handler(job, StreamLog())
-
-    def queued_builds(self):
-        return [json.loads(r[0])["item_id"] for r in db.conn().execute("SELECT target FROM jobs WHERE kind = 'build' AND status = 'queued' ORDER BY id")]
-
-    def test_rebuild_selects_latest_items_with_both_switches_and_newer_app(self):
-        self.check("check-ok.sh")
-        self.assertEqual(self.cat.versions, [(YT, ["2.0", "1.0"])])
-        self.assertEqual(self.queued_builds(), [1])
-
-    def test_no_rebuild_only_stores_versions(self):
-        self.check("check-ok.sh", rebuild=False)
-        self.assertEqual(self.cat.versions, [(YT, ["2.0", "1.0"])])
-        self.assertEqual(self.queued_builds(), [])
-
-    def test_fetch_failure_names_package(self):
-        with self.assertRaises(jobs.JobFailed) as cm:
-            self.check("check-fail.sh")
-        self.assertIn(YT, cm.exception.reason)
-        self.assertIn("fetch failed", cm.exception.reason)
-        self.assertEqual(self.queued_builds(), [])
-
-    def test_no_list_url_fails_naming_package(self):
-        with db.tx() as c:
-            c.execute("UPDATE app SET apkmirror_list_url = NULL WHERE package = ?", (YT,))
-        with self.assertRaises(jobs.JobFailed) as cm:
-            self.check("check-ok.sh")
-        self.assertIn(YT, cm.exception.reason)
+class CleanupTest(BuildCase):
+    def test_cleanup_plan_lists_orphan_artifact_and_upstream_dirs(self):
+        up = db.conn().execute("SELECT id FROM upstream ORDER BY id LIMIT 1").fetchone()[0]
+        keep = [self.data / "artifacts" / "1" / "5", self.data / "upstream" / str(up) / "v1"]
+        gone = [self.data / "artifacts" / "77" / "9", self.data / "upstream" / "999" / "v1"]
+        for d in keep + gone:
+            d.mkdir(parents=True)
+            (d / "f.bin").write_bytes(b"12345")
+        _, _, orphans = build._cleanup_plan()
+        self.assertEqual(orphans, [d.parent for d in gone])
+        out = build.cleanup(apply=True)
+        self.assertEqual((out["orphan_dirs"], out["bytes"]), (2, 10))
+        self.assertEqual([d.exists() for d in keep + gone], [True, True, False, False])
 
 
 if __name__ == "__main__":

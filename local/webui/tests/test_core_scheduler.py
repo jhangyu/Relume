@@ -101,7 +101,6 @@ class FireTest(DataTestCase):
 class RoutesTest(DataTestCase):
     def setUp(self):
         super().setUp()
-        db.conn().execute("INSERT INTO upstream(id, kind, repo, channel) VALUES (1,'cli','a/b','stable')")
         self.base = serve(self)
         self.c = login(self.base)
 

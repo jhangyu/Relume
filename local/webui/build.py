@@ -4,19 +4,14 @@ import os
 import re
 import shutil
 import threading
-import time
-import zipfile
-from datetime import datetime
 from pathlib import Path
 
-from . import catalog, db, events, jobs, server, settings
+from . import apps, catalog, db, events, jobs, server, settings
 
 ARTIFACT_RETENTION_DEFAULT = 1  # successful builds kept per item
 RUNNER = str(db.REPO_ROOT / "src" / "build" / "build-item.sh")
-FAIL_CODES = ("upstream_missing", "version_unresolved", "apk_not_listed", "download_failed",
+FAIL_CODES = ("upstream_missing", "apk_not_listed", "download_failed",
               "merge_failed", "patch_failed", "timeout", "internal")
-CHECK_VERSIONS = str(db.REPO_ROOT / "src" / "build" / "check-versions.sh")
-CHECK_TIMEOUT = 300  # one list-page request with solver retries
 SOLVER_ENV = ("FLARESOLVERR_URL", "CFBYPASS_URL", "APKM_SOLVER_URL")  # passed to the isolated runner
 FAILED_PATCH_PREFIX = "ERROR: FAILED: "  # patcher CLI line for a patch that did not apply
 _steps = {}
@@ -86,8 +81,8 @@ def _read_result(work):
         return None
 
 
-def artifact_name(source_id, key, variant, app_version, upstream_tag):
-    return f"{source_id}-{key}-{variant}-{server.safe_remote(app_version)}-{server.safe_remote(upstream_tag)}.apk"
+def artifact_name(package, variant, app_version, upstream_tag):
+    return f"{package}-{variant}-{server.safe_remote(app_version)}-{server.safe_remote(upstream_tag)}.apk"
 
 
 def _register(job, item_id, inp, work, result, failed_patches):
@@ -96,7 +91,7 @@ def _register(job, item_id, inp, work, result, failed_patches):
     now, ids = db.utcnow(), []
     with db.tx() as c:
         for v in result["variants"]:
-            target = dest / artifact_name(inp["source_id"], inp["key"], v["name"], result["app_version"], inp["upstream_tag"])
+            target = dest / artifact_name(inp["package"], v["name"], result["app_version"], inp["upstream_tag"])
             # copy from the fd validated now, not the path validated earlier
             with jobs.open_runner_file(work, v["file"]) as src, open(target, "xb") as out:
                 shutil.copyfileobj(src, out, 1 << 20)
@@ -117,10 +112,11 @@ def handler(job, log):
     work = db.DATA / "work" / str(job.id)
     try:
         try:
-            inp = catalog.job_input(item_id)
+            inp = apps.job_input(item_id)
         except catalog.UpstreamMissing as e:
             _fail(job, item_id, "upstream_missing", str(e))
-        for name in catalog.stale_overrides(item_id):
+        sha = apps.inputs_sha(item_id)
+        for name in apps.stale_overrides(item_id):
             log.line(f"[!] stale override dropped: {name}")
         work.mkdir(parents=True, exist_ok=True)
         work.chmod(0o770)  # the isolated runner uid shares the server's gid
@@ -131,8 +127,8 @@ def handler(job, log):
         if inp["options_file_json"] is not None:
             (work / "options.json").write_text(json.dumps(inp["options_file_json"]))
         with db.tx() as c:
-            c.execute("INSERT INTO build_jobs(job_id, item_id, patches_version, cli_version) VALUES (?, ?, ?, ?)",
-                      (job.id, item_id, inp["upstream_tag"], inp["cli_tag"]))
+            c.execute("INSERT INTO build_jobs(job_id, item_id, patches_version, cli_version, inputs_sha) VALUES (?, ?, ?, ?, ?)",
+                      (job.id, item_id, inp["upstream_tag"], inp["cli_tag"], sha))
         missing = [p for p in [*inp["patches_files"], inp["cli_jar"]] if not Path(p).is_file()]
         if missing:
             _fail(job, item_id, "upstream_missing", f"missing file {Path(missing[0]).name}")
@@ -162,42 +158,6 @@ def handler(job, log):
             _steps.pop(job.id, None)
 
 
-def appcheck_handler(job, log):
-    """appcheck job (spec per-app §3.2): refresh the APKMirror version list of one package, optionally rebuild."""
-    package = job.target["package"]
-    row = db.conn().execute("SELECT apkmirror_list_url FROM app WHERE package = ?", (package,)).fetchone()
-    if row is None or not row["apkmirror_list_url"]:
-        raise jobs.JobFailed(f"{package}: no APKMirror list URL")
-    work = db.DATA / "work" / str(job.id)
-    try:
-        work.mkdir(parents=True, exist_ok=True)
-        work.chmod(0o770)  # the isolated runner uid shares the server's gid
-        m = _Markers(job.id, package)
-        try:
-            rc = jobs.run_isolated(log, ["bash", CHECK_VERSIONS, row["apkmirror_list_url"]], jobs.runner_path(work),
-                                   env_keys=SOLVER_ENV, timeout=CHECK_TIMEOUT, on_line=m.feed)
-        except jobs.JobFailed as e:
-            if str(e) == "cancelled":
-                raise
-            raise jobs.JobFailed(f"{package}: version check {e}")
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
-    if job.cancel_event.is_set():
-        return
-    if rc != 0 or m.versions is None:
-        raise jobs.JobFailed(f"{package}: version check failed: {m.last_err or f'runner exited {rc} without versions'}")
-    log.line(f"[+] {package}: APKMirror newest {m.versions[0]} ({len(m.versions)} versions)")
-    if (job.options or {}).get("rebuild"):
-        pressed = job.target.get("pressed", ())  # items a user asked to update by hand: rebuilt even with Update off
-        ids = [r[0] for r in db.conn().execute(
-            "SELECT id FROM item WHERE package = ? AND version_mode = 'latest' AND enabled = 1 "
-            f"AND (auto_update = 1 OR id IN ({','.join('?' * len(pressed))})) ORDER BY id",
-            (package, *pressed)) if needs_build(r[0])]
-        for iid in ids:
-            jobs.enqueue("build", {"item_id": iid}, "upstream")
-        log.line(f"[+] rebuild enqueued for {len(ids)} item(s)")
-
-
 def _artifact_obj(r):
     d = dict(r)
     path = d.pop("path")
@@ -218,7 +178,6 @@ def detail(job_id):
 
 def register():
     jobs.register("build", handler, detail)
-    jobs.register("appcheck", appcheck_handler)
 
 
 def start():
@@ -247,17 +206,22 @@ def run_retention(item_id=None):
             shutil.rmtree(db.DATA / "artifacts" / str(iid) / str(old), ignore_errors=True)
 
 
-def forget_item(item_id):
-    shutil.rmtree(db.DATA / "artifacts" / str(item_id), ignore_errors=True)
-
-
 def _files(path):
     return [f for f in path.rglob("*") if f.is_file()] if path.is_dir() else [path]
 
 
+def _orphan_dirs(c, name, table):
+    """<DATA>/<name>/<id> dirs whose row in table is gone (migration 010 deletes rows, SQL cannot delete files)."""
+    base = db.DATA / name
+    ids = {r[0] for r in c.execute(f"SELECT id FROM {table}")}  # table is one of the fixed names below
+    return [d for d in sorted(base.iterdir()) if d.is_dir() and not (d.name.isdigit() and int(d.name) in ids)] \
+        if base.is_dir() else []
+
+
 def _cleanup_plan():
-    """What clean-up removes (spec cleanup): artifacts of Build-off items, apk-cache of packages no Build-on item
-    uses, cache files of other versions than the newest success build of a Build-on item. Active-job items are skipped."""
+    """What clean-up removes (spec cleanup, apps part §6): artifacts of disabled apps, apk-cache of packages no
+    enabled app uses, cache files of other versions than the newest success build of an enabled app, artifacts/<id>
+    dirs without an item row and upstream/<id> dirs without an upstream row. Active-job items are skipped."""
     c = db.conn()
     items = c.execute("SELECT id, package, enabled FROM item").fetchall()
     status = item_status([r["id"] for r in items])
@@ -280,18 +244,18 @@ def _cleanup_plan():
             paths.append(d)
         else:  # file name = <vkey>-<type>-<arch>-<dpi>.<ext>; a version that is a hyphen-prefix of another is kept (safe side)
             paths += [f for f in sorted(d.iterdir()) if not any(f.name.startswith(k + "-") for k in keep[d.name])]
-    return off, paths
+    return off, paths, _orphan_dirs(c, "artifacts", "item") + _orphan_dirs(c, "upstream", "upstream")
 
 
 def cleanup(apply):
-    off, paths = _cleanup_plan()
+    off, paths, orphans = _cleanup_plan()
     dirs = [db.DATA / "artifacts" / str(i) for i in off]
-    out = {"bytes": sum(f.stat().st_size for p in dirs + paths for f in _files(p)),
-           "artifact_items": len(off), "cache_files": sum(len(_files(p)) for p in paths)}
+    out = {"bytes": sum(f.stat().st_size for p in dirs + paths + orphans for f in _files(p)),
+           "artifact_items": len(off), "cache_files": sum(len(_files(p)) for p in paths), "orphan_dirs": len(orphans)}
     if apply:
         with db.tx() as t:
             t.executemany("DELETE FROM artifacts WHERE item_id = ?", [(i,) for i in off])
-        for p in dirs + paths:
+        for p in dirs + paths + orphans:
             shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
     return out
 
@@ -343,49 +307,15 @@ def item_status(item_ids):
 
 
 def needs_build(item_id):
+    """Apps part §4.3: never built, last build failed, artifacts cleaned up, or the build inputs changed."""
     st = item_status([item_id])[item_id]
     ls, lb = st["last_success"], st["last_build"]
     if ls is None or lb["status"] == "failed":
         return True
     if not db.conn().execute("SELECT 1 FROM artifacts WHERE item_id = ?", (item_id,)).fetchone():
         return True  # cleaned up: the build is gone
-    r = db.conn().execute("""SELECT u.downloaded_tag AS p, c.downloaded_tag AS cl, i.version_mode, a.apkmirror_versions AS vs
-        FROM item i JOIN source s ON s.id = i.source_id JOIN app a ON a.package = i.package
-        JOIN upstream u ON u.id = s.upstream_id JOIN upstream c ON c.id = s.cli_upstream_id WHERE i.id = ?""", (item_id,)).fetchone()
-    if r is None:
-        return False
-    if r["p"] != ls["patches_version"] or r["cl"] != ls["cli_version"]:
-        return True
-    newest = json.loads(r["vs"] or "[]")[:1]
-    return r["version_mode"] == "latest" and bool(newest) and newest[0] != ls["app_version"]
-
-
-def _item_exists(iid):
-    if not db.conn().execute("SELECT 1 FROM item WHERE id = ?", (iid,)).fetchone():
-        raise server.HttpError(404, "item not found")
-
-
-def _require_build_on(ids):
-    off = [i for i in ids if not db.conn().execute("SELECT enabled FROM item WHERE id = ?", (i,)).fetchone()[0]]
-    if off:
-        raise server.HttpError(409, f"build switch is off: item {', '.join(map(str, off))}")
-
-
-def post_item_build(req):
-    iid = req.params["id"]
-    _item_exists(iid)
-    _require_build_on([iid])
-    return 200, {"job_id": jobs.enqueue("build", {"item_id": iid}, "manual")}
-
-
-def post_builds(req):
-    ids = (req.json or {}).get("item_ids")
-    if not isinstance(ids, list) or not ids or not all(map(server.is_int, ids)):
-        raise server.HttpError(400, "invalid item_ids")
-    for i in ids:
-        _item_exists(i)
-    _require_build_on(ids)
-    return 200, {"job_ids": [jobs.enqueue("build", {"item_id": i}, "manual") for i in ids]}
+    sha = db.conn().execute("SELECT inputs_sha FROM build_jobs WHERE job_id = ?", (ls["job_id"],)).fetchone()[0]
+    return sha != apps.inputs_sha(item_id)  # NULL for builds before migration 010: rebuilt once
 
 
 def get_cleanup(req):
@@ -396,10 +326,10 @@ def post_cleanup(req):
     return 200, cleanup(apply=True)
 
 
-def list_item_artifacts(req):
-    iid = req.params["id"]
-    _item_exists(iid)
-    return 200, {"artifacts": [_artifact_obj(r) for r in db.conn().execute("SELECT * FROM artifacts WHERE item_id = ? ORDER BY id DESC", (iid,))]}
+def list_artifacts(item_id):
+    if not db.conn().execute("SELECT 1 FROM item WHERE id = ?", (item_id,)).fetchone():
+        raise server.HttpError(404, f"app {item_id} not found")
+    return [_artifact_obj(r) for r in db.conn().execute("SELECT * FROM artifacts WHERE item_id = ? ORDER BY id DESC", (item_id,))]
 
 
 def download_artifact(req):
@@ -416,52 +346,8 @@ def download_artifact(req):
                                headers={k: str(v) for k, v in headers.items()})
 
 
-def group_zip_files(group_id):
-    files = []
-    for iid in catalog.enabled_group_items(group_id):
-        jid = _newest_success_job(iid)
-        if jid is not None:
-            files += [(Path(r[0]), Path(r[0]).name) for r in db.conn().execute("SELECT path FROM artifacts WHERE job_id = ? ORDER BY id", (jid,))]
-    return files
-
-
-def _slug(name):
-    return re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-.").lower() or "group"
-
-
-def download_group(req):
-    gid = req.params["id"]
-    if gid == 0:
-        name = "ungrouped"
-    else:
-        r = db.conn().execute("SELECT name FROM grp WHERE id = ?", (gid,)).fetchone()
-        if r is None:
-            raise server.HttpError(404, "group not found")
-        name = r[0]
-    files = group_zip_files(gid)
-    if not files:
-        raise server.HttpError(404, "no artifacts")
-
-    def write(f):
-        # ZIP_STORED: APKs are already compressed; each file is opened right before it is written (spec build §3.4)
-        with zipfile.ZipFile(f, "w", zipfile.ZIP_STORED, allowZip64=True) as z:
-            for path, arc in files:
-                try:
-                    src = open(path, "rb")
-                except FileNotFoundError:
-                    continue
-                with src, z.open(zipfile.ZipInfo(arc, time.localtime()[:6]), "w", force_zip64=True) as dst:
-                    shutil.copyfileobj(src, dst, 1 << 20)
-
-    return server.StreamResponse(write, f"{_slug(name)}-{datetime.now().strftime('%Y%m%d')}.zip")
-
-
 ROUTES = [
-    ("POST", "/api/items/{id}/build", post_item_build),
-    ("POST", "/api/builds", post_builds),
     ("GET", "/api/cleanup", get_cleanup),
     ("POST", "/api/cleanup", post_cleanup),
-    ("GET", "/api/items/{id}/artifacts", list_item_artifacts),
     ("GET", "/api/artifacts/{id}/download", download_artifact),
-    ("GET", "/api/groups/{id}/download", download_group),
 ]

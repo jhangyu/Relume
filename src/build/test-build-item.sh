@@ -13,7 +13,7 @@ new_env() {
 	T=$(mktemp -d)
 	export SHIM_LOG=$T/shim.log SHIM_SERVE=$T/serve SHIM_FIXTURES=$FIX
 	export PATH="$FIX/bin:$PATH" RELUME_APKEDITOR=$T/APKEditor.jar RELUME_APK_CACHE=$T/cache
-	unset SHIM_PATCH_FAIL SHIM_EMPTY SHIM_LIST_PATCHES
+	unset SHIM_PATCH_FAIL SHIM_EMPTY
 	mkdir -p "$SHIM_SERVE" "$T/work" "$T/up" "$T/cache" "$T/m"
 	printf '<manifest/>' > "$T/m/AndroidManifest.xml"
 	printf 'x' > "$T/m/classes.dex"
@@ -85,9 +85,12 @@ new_env; make_job '.'; export SHIM_PATCH_FAIL=1
 rc=$(run_runner); unset SHIM_PATCH_FAIL
 if [ "$rc" != 0 ] && [ "$(fail_lines)" = 1 ] && grep -q '^::fail::patch_failed::' "$T/out.txt"; then pass runner_patch_failed; else fail runner_patch_failed "rc=$rc"; fi
 
-new_env; make_job '.version.mode="auto" | .version.value=null'; export SHIM_LIST_PATCHES=/dev/null
-rc=$(run_runner); unset SHIM_LIST_PATCHES
-if [ "$rc" != 0 ] && grep -q '^::fail::version_unresolved::' "$T/out.txt"; then pass runner_version_unresolved; else fail runner_version_unresolved "rc=$rc"; fi
+new_env; make_job '.version.value=null'
+rc=$(run_runner)
+if [ "$rc" = 0 ] && [ "$(grep -c '^::version::' "$T/out.txt")" = 1 ] && [ "$(jq -r '.app_version' "$T/work/result.json")" != 1.0.0 ] &&
+	[ "$(jq -r '.app_version' "$T/work/result.json")" != "" ]; then
+	pass runner_version_null_takes_downloaded
+else fail runner_version_null_takes_downloaded "rc=$rc $(grep '^::' "$T/out.txt" | head -5)"; fi
 
 new_env; make_job '.recipe.variants[].download.kind="apkmirror"'
 rc=$(run_runner)

@@ -12,7 +12,7 @@ patch)
 	;;
 list-patches)
 	[ "${SHIM_EMPTY:-0}" = 1 ] && exit 0
-	cat "${SHIM_LIST_PATCHES:-$SHIM_FIXTURES/list-patches.txt}"
+	cat "$SHIM_FIXTURES/list-patches.txt"
 	;;
 options-create)
 	out="" prev=""
