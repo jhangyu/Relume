@@ -40,7 +40,7 @@ Relume stops being configured as "patch source × app" items. It reads the commu
 
 ## 6. UI
 
-- Web: Fluent 2. Android: Material Design 3, colourful (dynamic-colour style). Icon buttons are SVG.
+- Web: Fluent 2. Android: Material Design 3, colourful (dynamic-colour style). Light theme only on both; no dark UI (any existing dark-mode code is removed). Icon buttons are SVG.
 - Platform scope: web has every page. Android has Marketplace, Apps and Schedules (global interval + OTA schedules) with the same behaviour as web; devices/OTA management, Follow projects, settings and build history stay web-only. Android today uses a custom Fluent theme (`ui/Theme.kt`, `ui/Components.kt`), so MD3 replaces that component set; minSdk 29 needs a fallback palette where dynamic colour is unavailable (API < 31).
 - **Marketplace** tab: all catalog apps (official + built-in + custom), filter by store category, search, sort; expand an app to see its available bundles and, per bundle, the patches it offers for this app; pick one bundle, toggle patches, enable.
 - **Apps** tab: enabled apps only. Columns: app name, app version, patch bundle used, status. Actions: check for update, rebuild, download. Here the user can also change the bundle, toggle patches and set the version mode.
