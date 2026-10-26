@@ -175,7 +175,7 @@ document.addEventListener('keydown', e => {
 $('#q').addEventListener('input', e => { S.q = e.target.value.trim().toLowerCase(); rows(); });
 $$('input[name=f]').forEach(r => r.addEventListener('change', () => { S.filter = r.value; rows(); }));
 
-$('#checkAll').addEventListener('click', async () => {
+$('#pullAll').addEventListener('click', async () => {
   const r = await Promise.allSettled(S.projects.map(pull));
   const bad = r.filter(x => x.status === 'rejected');
   toast(bad.length ? `${bad[0].reason.message} (${bad.length} of ${r.length} failed)` : `Checking ${r.length} projects`, bad.length ? 'error' : 'ok');
