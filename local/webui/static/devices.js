@@ -60,7 +60,7 @@ async function loadDevices() {
 async function loadDiscovered() {
   const r = await api('GET', '/api/devices/discovered');
   const rows = [...r.pairing.map(p => ({ ...p, mode: 'pair' })), ...r.connect.map(c => ({ ...c, mode: 'conn' }))];
-  $('#scan').textContent = `Scanned ${new Date().toLocaleTimeString()}`;
+  $('#scan').textContent = `Scanned ${new Date().toLocaleTimeString('en')}`;
   $('#disc').innerHTML = html`${rows.length ? rows.map(x => html`<li><span class="dot on" aria-hidden="true"></span><span>${x.name} <span class="xs muted mono">${x.host}:${x.port}</span> <span class="badge">${x.mode === 'pair' ? 'Pairing mode' : x.device_id ? `Known: ${(D.devices.find(d => d.id === x.device_id) || {}).name || x.device_id}` : 'Paired'}</span></span>${x.mode === 'pair' ? html`<button class="btn primary small" type="button" data-pair="${x.host}" data-port="${x.port}">Pair</button>` : html`<span></span>`}</li>`) : html`<li><span></span><span class="sm muted">No devices discovered — enter IP and ports below</span><span></span></li>`}`;
 }
 

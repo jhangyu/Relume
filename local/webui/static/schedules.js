@@ -4,7 +4,7 @@ const DAYS = ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Satu
 const UI_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const PRESET_HOURS = [1, 3, 6, 12, 24];
 const DEFAULT_SPEC = { every: 'day', at: '04:00' };
-const R = { ota: [], devices: [], cur: null, global: null };
+const R = { ota: [], devices: [], cur: null, global: null, lastRun: null };
 
 const uiToSpec = u => (u + 6) % 7;
 const specToUi = d => (d + 1) % 7;
@@ -54,6 +54,16 @@ function renderGlobal() {
   $('#g-rel').textContent = g.enabled && g.next_run_at ? fmt.rel(g.next_run_at) : '';
   $('#g-last').textContent = g.last_run_at ? `Last run ${fmt.abs(g.last_run_at)}` : 'Never run';
   $('#g-sub').textContent = `${sentence(s)}. Enabling a new app builds it at once, without waiting.`;
+}
+
+// Outcome of the newest update-run job (scheduled or manual), as the job reports it.
+const RUN_BADGE = { success: ['ok', 'Succeeded'], failed: ['err', 'Failed'], running: ['brand', 'Running'], queued: ['', 'Waiting'], cancelled: ['', 'Cancelled'] };
+function renderLastRun() {
+  const j = R.lastRun, box = $('#g-run-out');
+  box.hidden = !j;
+  if (!j) return;
+  const [cls, label] = RUN_BADGE[j.status] || ['', j.status];
+  box.innerHTML = html`<span class="caption">Last update run</span><span class="badge ${cls}">${label}</span>${j.reason ? html`<span class="caption" style="color:var(--colorStatusDangerForeground1)">${j.reason}</span>` : ''}<a class="caption" href="/builds.html?job=${j.id}">View log</a>`;
 }
 
 async function putGlobal(body, msg) {
@@ -162,11 +172,13 @@ $('#list').addEventListener('click', async e => {
 });
 
 async function load() {
-  const [{ schedules }, settings, g] = await Promise.all([api('GET', '/api/schedules'), api('GET', '/api/settings'), api('GET', '/api/schedule')]);
+  const [{ schedules }, settings, g, { jobs }] = await Promise.all([api('GET', '/api/schedules'), api('GET', '/api/settings'), api('GET', '/api/schedule'), api('GET', '/api/jobs?kind=upstream&limit=20')]);
+  R.lastRun = jobs.find(j => j.schedule_id === g.id) || null;
   R.ota = schedules.filter(s => s.kind === 'ota');
   R.global = g;
   $('#srvtime').textContent = `Server time ${new Date(settings.server.now).toLocaleString('en', { timeZone: settings.server.tz, weekday: 'short', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · ${settings.server.tz}`;
   renderGlobal();
+  renderLastRun();
   renderList();
 }
 

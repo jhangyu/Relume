@@ -4,7 +4,7 @@ const qs = new URLSearchParams(location.search);
 const ITEM = qs.get('item') ? Number(qs.get('item')) : null;
 const STEPS = ['version', 'download', 'patch', 'verify', 'store'];
 const STEP_RE = /^(\d\d:\d\d:\d\d) ::step::(\w+)(?:::(.*))?$/;
-const B = { items: new Map(), schedules: new Map(), sel: null, es: null, text: '', marks: [], last: null, pct: 0, filt: ITEM ? 'item' : '' };
+const B = { items: new Map(), projects: new Map(), projectIds: new Map(), schedules: new Map(), jobs: new Map(), sel: null, es: null, text: '', marks: [], last: null, pct: 0, filt: ITEM ? 'item' : '' };
 const RESULT = { success: 'Succeeded', failed: 'Failed', cancelled: 'Cancelled' };
 const DAY_MS = 86400000;
 const dayStart = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -26,23 +26,46 @@ function dur(a, b) {
 
 const triggerText = j => (j.trigger === 'schedule' ? `schedule "${B.schedules.get(j.schedule_id) || j.schedule_id}"`
   : j.trigger === 'upstream' ? 'patch update' : j.trigger === 'after_build' ? 'after build' : 'manual');
-const itemOf = j => B.items.get(j.target.item_id) || { label: `app ${j.target.item_id}`, bundle_name: '', enabled: false, abis: [] };
+const KINDS = ['build', 'upstream'];
+// The subject of a job: the app, or for upstream jobs the whole update run or a followed project.
+function itemOf(j) {
+  const t = j.target;
+  if (j.kind === 'upstream' && t.all) return { label: 'Update run', bundle_name: 'All enabled apps', enabled: true, plain: true };
+  if (j.kind === 'upstream' && t.upstream_id) return { label: B.projects.get(t.upstream_id) || `Project ${t.upstream_id}`, bundle_name: 'Project pull', enabled: true, plain: true };
+  const it = B.items.get(t.item_id) || { label: `app ${t.item_id}`, bundle_name: '', enabled: false, abis: [] };
+  return j.kind === 'upstream' ? { ...it, bundle_name: 'Update check' } : it;
+}
+const tileOf = (it, cls) => (it.plain ? html`<span class="tile ${cls}" data-cat="tools" aria-hidden="true">${it.label.slice(0, 2)}</span>` : iconTile(it, cls));
+// Newest-first jobs of both kinds, trimmed to `limit`.
+async function listJobs(params, limit) {
+  const all = await Promise.all(KINDS.map(kind => api('GET', `/api/jobs?${new URLSearchParams({ ...params, kind, limit })}`)));
+  return all.flatMap(r => r.jobs).sort((a, b) => b.id - a.id).slice(0, limit);
+}
+// Retry of a finished job per spec §7.6: the route that starts the same work again.
+function retryRoute(j) {
+  const t = j.target;
+  if (j.kind === 'build') return `/api/apps/${t.item_id}/build`;
+  if (t.item_id) return `/api/apps/${t.item_id}/check`;
+  if (t.all) return '/api/schedule/run';
+  return `/api/projects/${B.projectIds.get(t.upstream_id)}/pull`;
+}
 
 async function loadRefs() {
-  const [apps, sch] = await Promise.all([api('GET', '/api/apps'), api('GET', '/api/schedules')]);
+  const [apps, sch, prj] = await Promise.all([api('GET', '/api/apps'), api('GET', '/api/schedules'), api('GET', '/api/projects')]);
+  prj.projects.forEach(p => { B.projects.set(p.upstream_id, p.label); B.projectIds.set(p.upstream_id, p.id); });
   apps.apps.forEach(a => B.items.set(a.id, { ...a, label: a.name, bundle_name: a.bundle.name }));
   sch.schedules.forEach(s => B.schedules.set(s.id, s.name));
 }
 
 async function renderQueue() {
-  const [r, q] = await Promise.all([api('GET', '/api/jobs?kind=build&status=running'), api('GET', '/api/jobs?kind=build&status=queued&limit=100')]);
-  const rows = [...r.jobs, ...q.jobs.reverse()];
-  $('#qsum').textContent = `${r.jobs.length} running · ${q.jobs.length} queued`;
+  const [running, queued] = await Promise.all([listJobs({ status: 'running' }, 100), listJobs({ status: 'queued' }, 100)]);
+  const rows = [...running, ...queued.reverse()];
+  $('#qsum').textContent = `${running.length} running · ${queued.length} queued`;
   $('#queue').innerHTML = html`<div class="label" style="padding:0 4px 4px">Queue</div>${rows.length ? rows.map(j => {
     const it = itemOf(j), running = j.status === 'running', ver = (j.detail && j.detail.app_version) || it.app_version;
-    return html`<a class="job ${j.id === B.sel ? 'on' : ''}" href="?job=${j.id}" data-sel="${j.id}">${iconTile(it, 's40')}<div class="row"><span class="strong grow">${it.label}</span>${running ? html`<span class="caption">#${j.id}</span>` : html`<span class="badge">Queued</span>`}</div><div class="caption">${[it.bundle_name, ver].filter(Boolean).join(' · ')}</div>${running ? html`<div class="progress" role="progressbar" aria-label="${it.label} build progress" aria-valuenow="${j.id === B.sel ? B.pct : 0}" aria-valuemin="0" aria-valuemax="100"><span style="width:${j.id === B.sel ? B.pct : 0}%"></span></div>` : html`<div class="caption">Started by ${triggerText(j)}</div>`}</a>`;
+    return html`<a class="job ${j.id === B.sel ? 'on' : ''}" href="?job=${j.id}" data-sel="${j.id}">${tileOf(it, 's40')}<div class="row"><span class="strong grow">${it.label}</span>${running ? html`<span class="caption">#${j.id}</span>` : html`<span class="badge">Queued</span>`}</div><div class="caption">${[it.bundle_name, ver].filter(Boolean).join(' · ')}</div>${running ? html`<div class="progress" role="progressbar" aria-label="${it.label} build progress" aria-valuenow="${j.id === B.sel ? B.pct : 0}" aria-valuemin="0" aria-valuemax="100"><span style="width:${j.id === B.sel ? B.pct : 0}%"></span></div>` : html`<div class="caption">Started by ${triggerText(j)}</div>`}</a>`;
   }) : html`<div class="caption" style="padding:4px">Nothing running or waiting.</div>`}`;
-  return r.jobs[0];
+  return running[0];
 }
 
 function lineClass(t) {
@@ -110,16 +133,17 @@ const warnPatches = j => (j.detail && j.detail.failed_patches || []).length ? ht
 
 function actions(j) {
   const it = itemOf(j), arts = (j.detail && j.detail.artifacts) || [];
+  B.jobs.set(j.id, j);
   const log = html`<button class="icon-btn" type="button" data-sel="${j.id}" aria-label="View log of ${it.label} build ${j.id}" data-tip="View log">${icon('builds')}</button>`;
   if (j.status === 'success' && arts.length === 1) return html`${log}<a class="icon-btn" href="${arts[0].download_url}" download aria-label="Download ${it.label} ${arts[0].version_name || ''} APK" data-tip="Download APK">${icon('download')}</a>`;
   if (j.status === 'success' && arts.length) return html`${log}<details class="dd"><summary class="icon-btn" aria-label="Download ${it.label} APK" data-tip="Download APK">${icon('download')}</summary><div class="menu">${arts.map(a => html`<a href="${a.download_url}" download>${a.variant} · ${a.abi}</a>`)}</div></details>`;
   if (j.status === 'success') return log;
-  return html`${log}<button class="icon-btn" type="button" data-retry="${j.target.item_id}" aria-label="Retry ${it.label} build" data-tip="Retry" ${it.enabled === false ? html`disabled` : ''}>${icon('rebuild')}</button>`;
+  return html`${log}<button class="icon-btn" type="button" data-retry="${j.id}" aria-label="Retry ${it.label} ${j.kind === 'build' ? 'build' : 'update'}" data-tip="Retry" ${it.enabled === false ? html`disabled` : ''}>${icon('rebuild')}</button>`;
 }
 
 function historyRow(j) {
   const it = itemOf(j), [cls] = JOB_BADGE[j.status], d = j.detail || {}, bundle = [it.bundle_name, d.patches_version].filter(Boolean).join(' ');
-  return html`<tr data-id="${j.id}" data-q="${`${it.label} ${bundle}`.toLowerCase()}" ${j.id === B.sel ? html`aria-current="true"` : ''}><td><div class="row">${iconTile(it, 's32')}<span class="strong">${it.label}</span></div></td><td>${bundle || '—'}</td><td class="mono">${d.app_version || '—'}</td><td>${when(j.started_at)}</td><td>${dur(j.started_at, j.finished_at)}</td><td><span class="badge ${cls}">${RESULT[j.status] || j.status}</span>${j.status === 'failed' && j.reason ? html` <span class="caption danger">${j.reason}</span>` : ''} ${warnPatches(j)}</td><td style="text-align:right">${actions(j)}</td></tr>`;
+  return html`<tr data-id="${j.id}" data-q="${`${it.label} ${bundle}`.toLowerCase()}" ${j.id === B.sel ? html`aria-current="true"` : ''}><td><div class="row">${tileOf(it, 's32')}<span class="strong">${it.label}</span></div></td><td>${bundle || '—'}</td><td class="mono">${d.app_version || '—'}</td><td>${when(j.started_at)}</td><td>${dur(j.started_at, j.finished_at)}</td><td><span class="badge ${cls}">${RESULT[j.status] || j.status}</span>${j.status === 'failed' && j.reason ? html` <span class="caption danger">${j.reason}</span>` : ''} ${warnPatches(j)}</td><td style="text-align:right">${actions(j)}</td></tr>`;
 }
 
 function applySearch() {
@@ -128,11 +152,11 @@ function applySearch() {
 }
 
 async function renderHistory(append) {
-  const p = new URLSearchParams({ kind: 'build', limit: '25' });
-  if (B.filt === 'item') p.set('item_id', ITEM);
-  else if (B.filt) p.set('status', B.filt);
-  if (append && oldest) p.set('before_id', oldest);
-  const { jobs } = await api('GET', `/api/jobs?${p}`);
+  const p = {};
+  if (B.filt === 'item') p.item_id = ITEM;
+  else if (B.filt) p.status = B.filt;
+  if (append && oldest) p.before_id = oldest;
+  const jobs = await listJobs(p, 25);
   const done = jobs.filter(j => j.status !== 'queued' && j.status !== 'running');
   if (jobs.length) oldest = jobs[jobs.length - 1].id;
   const rows = html`${done.map(historyRow)}`;
@@ -158,7 +182,7 @@ document.addEventListener('click', async e => {
       await select(Number(sel.dataset.sel));
       $('.live').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-    if (retry) await act('POST', `/api/apps/${retry.dataset.retry}/build`, {}, 'Build queued');
+    if (retry) await act('POST', retryRoute(B.jobs.get(Number(retry.dataset.retry))), {}, 'Retry queued');
     if (retry) await refresh();
   } catch (_) { /* act() showed it */ }
 });
