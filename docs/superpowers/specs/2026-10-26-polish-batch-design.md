@@ -4,7 +4,7 @@ Date: 2026-10-26. Base: `main` at `ea95acb`.
 
 ## End state
 
-The 8 fixes below are committed on `main`, and the debug APK built from that HEAD is installed on phone `10AFCF269C007FB`.
+The 9 fixes below are committed on `main`, and the debug APK built from that HEAD is installed on phone `10AFCF269C007FB`.
 
 ## Requirements
 
@@ -16,6 +16,8 @@ The 8 fixes below are committed on `main`, and the debug APK built from that HEA
 6. **Marketplace controls.** "Refresh catalog", "Add custom source", the "All origins" select and the "Most bundles" select use the shared rounded Fluent button and select classes.
 7. **Schedules Repeat and At.** These controls use the same shared Fluent classes.
 8. **Android server URL.** Settings has a "Server URL" row. It opens a dialog to edit the URL. Before saving, the app calls `/api/health` on the new URL and checks that it is reachable and compatible. On failure it shows the error and does not save. On success it saves, clears the login state and returns to the login screen.
+
+9. **Marketplace auto-load.** Scrolling the Marketplace list loads the next page automatically when the end comes into view (web: `IntersectionObserver` on a sentinel; Android: load when the last item becomes visible). Remove the manual "Load more" button. Applies to web and Android.
 
 Rule for items 2 and 4–7: delete per-page hand-made control styles. All controls use one set of component classes in `app.css`.
 

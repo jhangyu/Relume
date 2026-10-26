@@ -2,9 +2,9 @@
 
 Spec: `docs/superpowers/specs/2026-10-26-polish-batch-design.md`. Only the user can change this contract.
 
-**End state:** the 8 fixes in the spec are committed on `main`, and the debug APK built from that HEAD is installed on phone `10AFCF269C007FB`.
+**End state:** the 9 fixes in the spec are committed on `main`, and the debug APK built from that HEAD is installed on phone `10AFCF269C007FB`.
 
-**In scope:** spec requirements 1–8, Android debug rebuild and install.
+**In scope:** spec requirements 1–9, Android debug rebuild and install.
 
 **Out of scope:** push, `companion-v*` tag, companion release, the earlier marketplace parking lot, final UI review (the user does it), test runner.
 
@@ -15,6 +15,7 @@ Spec: `docs/superpowers/specs/2026-10-26-polish-batch-design.md`. Only the user 
 4. Every icon in the web sprite comes from Fluent UI System Icons; no hand-drawn inline SVG icons remain in pages; no new package or build step.
 5. Apps search box and its buttons, Marketplace buttons and selects, Schedules Repeat and At use shared `app.css` classes; per-page hand-made control styles are deleted.
 6. Android Settings has a Server URL editor that checks `/api/health` before saving, and on success clears login and returns to the login screen.
+6b. Marketplace (web and Android) loads the next page automatically on scroll; no "Load more" button remains.
 7. No new tests. UI-type tests in changed areas are deleted. Linux gate (python, shell) and Android leg are green.
 8. Backend reviewer verdict: merge-ready.
 9. Debug APK from final HEAD: `adb install` reports Success on `10AFCF269C007FB`.
