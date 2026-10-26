@@ -34,3 +34,8 @@ Spec: `docs/superpowers/specs/2026-10-26-polish-batch-design.md`. Only the user 
 - Followed apps show their real app icon. Root cause of the missing icon is found and fixed at the cause.
 - Acceptance: grep finds no Download action for followed apps in apps.js and the Android Apps code; Linux gate and Android leg green; backend reviewer merge-ready for any backend change; debug APK from final HEAD installed on 10AFCF269C007FB.
 - Followed apps show the same version comparison as built apps. Lead ruling after evidence (built apps have no per-phone fields in the API; Android compares on the phone, web shows only the version): Android compares this phone's installed versionName with `followed.files[].version_name` through the same code built apps use; web shows the latest version the same way built rows do. No backend field is added.
+- Amendment done: e970595, 4ab7271, 7ad14de, edc406d; db.tx fix 1064a41 (SQLite disk I/O came from a member opening the live DB on the host). Second backend review merge-ready. Debug APK 7ad14de installed on 10AFCF269C007FB.
+- Reviewer-2 nit: projects.py:546-547 a failed icon extraction is not cached, so an unreadable APK restarts Java on every icon load.
+- Reviewer-2 nit: projects.py:560-563 a failed icon write leaves the temp file in the release folder.
+- Reviewer-2 nit: re-pulling a release during its first icon extraction can fail that pull job once (upstream.py:344-345).
+- Reviewer-2 parking lot: no nosniff header on served files; a failed COMMIT can leave the connection in a transaction (pre-existing); the icon is served while a signer alert blocks the APK.
