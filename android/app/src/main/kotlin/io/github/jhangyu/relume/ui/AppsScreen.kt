@@ -1,6 +1,5 @@
 package io.github.jhangyu.relume.ui
 
-import android.os.Build
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -208,10 +207,9 @@ private fun PhonePill(installing: Boolean, phone: PhoneState, target: String?, i
     }
 }
 
-/** Followed-project app: the head and the phone row with only Download and Install (spec req 1). */
+/** Followed-project app: the head and the phone row with only Install. */
 @Composable
 private fun FollowedCard(app: FollowedApp, phone: PhoneState, installing: Boolean, model: AppModel) {
-    val apk = app.apkFor(Build.SUPPORTED_ABIS.toList())
     Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerLowest) {
         Column(Modifier.padding(top = 16.dp)) {
             Row(Modifier.padding(horizontal = 16.dp).padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -225,7 +223,6 @@ private fun FollowedCard(app: FollowedApp, phone: PhoneState, installing: Boolea
             Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 PhonePill(installing, phone, app.version, app.packageName?.let(model.installed::get))
                 Spacer(Modifier.weight(1f))
-                if (apk != null) ActionButton("Download", { model.download(app, apk) }, kind = ButtonKind.Text, size = ButtonSize.Small)
                 if (!installing && !app.blocked && app.files.isNotEmpty() && (phone == PhoneState.NotInstalled || phone == PhoneState.Update)) {
                     ActionButton(if (phone == PhoneState.Update) "Update" else "Install", { model.beginInstall(StepKind.PROJECT, app.id) }, kind = ButtonKind.Install, icon = R.drawable.ms_install_mobile, size = ButtonSize.Small)
                 }

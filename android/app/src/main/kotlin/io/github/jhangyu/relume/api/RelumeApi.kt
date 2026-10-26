@@ -21,7 +21,7 @@ class ApiError(val status: Int, override val message: String, val path: String) 
 }
 
 /** All HTTP calls of the app (spec 5, 10). [token] is read for every request; null sends no Authorization. */
-class RelumeApi(val url: ServerUrl, val token: () -> String?) {
+class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
 
     suspend fun health(): Health = get(HEALTH_PATH)
 

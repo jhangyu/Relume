@@ -1,9 +1,6 @@
 package io.github.jhangyu.relume.ui
 
 import android.app.Application
-import android.app.DownloadManager
-import android.net.Uri
-import android.os.Environment
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -17,7 +14,6 @@ import io.github.jhangyu.relume.api.BundleOption
 import io.github.jhangyu.relume.api.CleanupReport
 import io.github.jhangyu.relume.api.DeviceView
 import io.github.jhangyu.relume.api.FollowedApp
-import io.github.jhangyu.relume.api.FollowedFile
 import io.github.jhangyu.relume.api.Health
 import io.github.jhangyu.relume.api.InstalledPackage
 import io.github.jhangyu.relume.api.InstallPlan
@@ -269,18 +265,6 @@ class AppModel(application: Application) : AndroidViewModel(application) {
             val fresh = scopedPlan(p.kind, p.refId) ?: return@launch
             evaluate(p.kind, p.refId, fresh)
         }
-    }
-
-    /** Download: the system DownloadManager saves the followed APK to Downloads and shows progress and failures itself. */
-    fun download(app: FollowedApp, file: FollowedFile) {
-        val a = checkNotNull(api) { "download of ${app.name} without a signed-in client" }
-        val token = checkNotNull(a.token()) { "download of ${app.name} without a device token" }
-        val request = DownloadManager.Request(Uri.parse(a.url.resolve(file.url).toString()))
-            .addRequestHeader("Authorization", "Bearer $token")
-            .setTitle(app.name)
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, file.name)
-        relume.getSystemService(DownloadManager::class.java).enqueue(request)
     }
 
     private fun start(p: InstallPlan) {

@@ -342,7 +342,7 @@ data class AppObject(
     val category: String? = null,
 )
 
-/** One Followed-project app in `GET /api/apps` `followed`: only Download and Install apply. */
+/** One Followed-project app in `GET /api/apps` `followed`: only Install applies. */
 @Serializable
 data class FollowedApp(
     val id: Int,
@@ -352,11 +352,7 @@ data class FollowedApp(
     val version: String?,
     val blocked: Boolean,
     val files: List<FollowedFile>,
-) {
-    /** The APK for this phone: first match of the phone ABIs in order, then `universal` (backend `pick_apk` rule); null if none. */
-    fun apkFor(abis: List<String>): FollowedFile? =
-        abis.firstNotNullOfOrNull { abi -> files.firstOrNull { it.abi == abi } } ?: files.firstOrNull { it.abi == "universal" }
-}
+)
 
 @Serializable
 data class FollowedFile(val name: String, val abi: String?, val url: String)
