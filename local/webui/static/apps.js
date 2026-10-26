@@ -92,7 +92,6 @@ function followedRow(p) {
 <div><span class="origin">${icon('follow')}Followed project</span><div class="mono subtle-text">github.com/${p.repo}</div></div>
 <div class="st">${p.blocked ? html`<span><span class="badge err">Signer changed</span></span><span class="caption"><a href="/projects.html">Confirm on Followed projects</a></span>` : !p.version ? html`<span class="caption">Not downloaded yet</span>` : ''}</div>
 <div class="acts">
-<span class="dd"><button class="icon-btn" type="button" data-act="dl" aria-label="Download ${p.name} APK" title="Download APK" data-tip="Download APK" aria-haspopup="true" ${p.files.length ? '' : html`disabled`}>${icon('download')}</button></span>
 <button class="icon-btn" type="button" data-act="install" aria-label="${tip}: ${p.name}" title="${tip}" data-tip="${tip}" ${noInstall ? html`disabled` : ''}>${icon('devices')}</button>
 </div></div>`;
 }
@@ -130,10 +129,6 @@ async function openMenu(btn, a) {
   const host = btn.parentElement;
   S.menuOpen = true;
   host.insertAdjacentHTML('beforeend', html`<div class="menu" role="menu"><span class="caption">Loading…</span></div>`);
-  if (a.source === 'followed') {
-    $('.menu', host).innerHTML = html`${a.files.map(f => html`<a role="menuitem" href="${f.url}" download>${f.abi || '?'} · ${f.name} · ${fmt.bytes(f.size)}</a>`)}`;
-    return;
-  }
   await fillDownloads($('.menu', host), a.id);
 }
 
