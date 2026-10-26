@@ -57,14 +57,14 @@ class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
         send<JsonObject>("POST", "/api/me/logout", EMPTY)
     }
 
-    suspend fun marketplace(q: String?, category: String?, origin: String?, sort: String?, page: Int?): MarketList {
+    suspend fun marketplace(q: String?, category: String?, origin: String?, sort: String?, page: Int?, perPage: Int = MARKET_PAGE_SIZE): MarketList {
         val query = listOfNotNull(
             q?.takeIf { it.isNotBlank() }?.let { "q=" + enc(it) },
             category?.let { "category=" + enc(it) },
             origin?.let { "origin=$it" },
             sort?.let { "sort=$it" },
             page?.let { "page=$it" },
-            "per_page=$MARKET_PAGE_SIZE",
+            "per_page=$perPage",
         )
         return get("/api/marketplace" + query.joinToString("&", prefix = "?"))
     }

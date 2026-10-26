@@ -40,7 +40,7 @@ private fun FeedStatus.errors(): List<String> =
 /** Marketplace tab: search, category chips, featured carousel, two-line app list. */
 @Composable
 fun MarketplaceScreen(model: MarketModel, onOpen: (String) -> Unit, onAddSource: () -> Unit) {
-    LaunchedEffect(Unit) { if (model.list == null) model.load() }
+    LaunchedEffect(Unit) { if (model.list == null) model.loadAll() }
     val list = model.list
     val categories = list?.categories.orEmpty()
     val selected = categories.indexOfFirst { it.name == model.category } + 1
@@ -66,8 +66,7 @@ fun MarketplaceScreen(model: MarketModel, onOpen: (String) -> Unit, onAddSource:
                 item { EmptyCatalog(list.feed, model.refreshing, model::refreshCatalog) }
             }
             if (list != null && unfiltered) {
-                val featured = featuredApps(list.apps)
-                if (featured.isNotEmpty()) item { Featured(featured, onOpen) }
+                if (model.featured.isNotEmpty()) item { Featured(model.featured, onOpen) }
             }
             items(list?.apps.orEmpty(), key = { it.packageName }) { app ->
                 ListRow(
@@ -80,6 +79,13 @@ fun MarketplaceScreen(model: MarketModel, onOpen: (String) -> Unit, onAddSource:
                         else Glyph(R.drawable.ms_chevron_right)
                     },
                 )
+            }
+            if (list != null && list.hasMore) {
+                // Composed when the user scrolls near the end: fetch the next page, once per loaded list.
+                item(key = "more") {
+                    LaunchedEffect(list) { model.loadMore() }
+                    Txt("Loading more…", Modifier.padding(ScreenPadding), color = muted())
+                }
             }
             if (list != null && list.apps.isEmpty() && (!unfiltered || list.total > 0)) {
                 item { Txt("No apps match.", Modifier.padding(ScreenPadding), color = muted()) }
