@@ -63,4 +63,17 @@ class MarketFilterTest {
         assertEquals("2.0", versionRange(listOf("2.0")))
         assertNull(versionRange(emptyList()))
     }
+
+    @Test
+    fun failedFirstLoadKeepsItsErrorUntilALoadSucceeds() = runBlocking {
+        val failed = ListState().reload({ null }, { "HTTP 502 /api/marketplace: bad gateway" })
+        assertEquals("HTTP 502 /api/marketplace: bad gateway", failed.error)
+        assertNull(failed.list)
+        assertEquals(false, failed.emptyCatalog)
+        // A request that was not sent (no failure text) does not clear the recorded error.
+        assertEquals(failed.error, failed.reload({ null }, { null }).error)
+        val ok = failed.reload({ page(1, 2, 0) }, { null })
+        assertNull(ok.error)
+        assertEquals(true, ok.emptyCatalog)
+    }
 }

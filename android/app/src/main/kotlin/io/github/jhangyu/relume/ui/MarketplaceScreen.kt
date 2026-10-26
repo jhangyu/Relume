@@ -82,7 +82,10 @@ fun MarketplaceScreen(model: MarketModel, onOpen: (String) -> Unit, onAddSource:
             IconAction(R.drawable.ms_add_link, "Add custom source", onAddSource, IconTone.Link)
             Avatar()
         })
-        model.error?.let { Banner("Request failed", Tone.Danger, Modifier.padding(horizontal = ScreenPadding), detail = it, action = "Dismiss", onAction = model::dismissError) }
+        val listError = model.listLoad.error
+        // The list failure has its own banner with Retry, kept until a load succeeds; this one is for every other request.
+        model.error?.takeIf { it != listError }?.let { Banner("Request failed", Tone.Danger, Modifier.padding(horizontal = ScreenPadding), detail = it, action = "Dismiss", onAction = model::dismissError) }
+        listError?.let { Banner("Could not load the Marketplace", Tone.Danger, Modifier.padding(horizontal = ScreenPadding), detail = it, action = "Retry", onAction = model::loadAll) }
         var originMenu by remember { mutableStateOf(false) }
         SearchBar(
             model.query, model::search,
@@ -103,8 +106,8 @@ fun MarketplaceScreen(model: MarketModel, onOpen: (String) -> Unit, onAddSource:
         ) { i -> model.selectCategory(if (i == 0) null else categories[i - 1].name) }
         PullToRefreshBox(isRefreshing = model.refreshing, onRefresh = model::refreshCatalog, modifier = Modifier.weight(1f)) {
             LazyColumn(Modifier.fillMaxSize(), state = listState) {
-                if (list != null && unfiltered && list.total == 0) {
-                    item(key = "empty") { EmptyCatalog(list.feed, model.refreshing, model::refreshCatalog) }
+                if (unfiltered && model.listLoad.emptyCatalog) {
+                    item(key = "empty") { EmptyCatalog(checkNotNull(list).feed, model.refreshing, model::refreshCatalog) }
                 }
                 val featured = model.featured
                 if (unfiltered && featured == null) {
@@ -112,6 +115,9 @@ fun MarketplaceScreen(model: MarketModel, onOpen: (String) -> Unit, onAddSource:
                     item(key = "featured") { Spacer(Modifier.height(FEATURED_HEIGHT + FEATURED_PADDING * 2)) }
                 } else if (unfiltered && !featured.isNullOrEmpty()) {
                     item(key = "featured") { Featured(featured, model, onOpen) }
+                }
+                if (list == null && listError == null) {
+                    item(key = "loading") { Txt("Loading…", Modifier.padding(ScreenPadding), color = muted()) }
                 }
                 if (list != null && list.total > 0) item(key = "header") { AllAppsHeader(model) }
                 items(list?.apps.orEmpty(), key = { it.packageName }) { app -> AppRow(app, model, onOpen) }

@@ -53,6 +53,21 @@ suspend fun nextMarketPage(list: MarketList, fetch: suspend (page: Int) -> Marke
     return next.copy(apps = (list.apps + next.apps).distinctBy { it.packageName })
 }
 
+/** The shown page-1 list and why the last page-1 load failed; [error] stays until a load succeeds. */
+data class ListState(val list: MarketList? = null, val error: String? = null) {
+    /** The server answered with an empty catalog; never true before a load succeeded. */
+    val emptyCatalog get() = list != null && list.total == 0
+}
+
+/**
+ * One page-1 load: a page replaces the list and clears the error. A failure keeps the shown list and records [failure]
+ * (null when the request was not sent, e.g. signed out: the old error stays), so a failed first load is never a silent empty list.
+ */
+suspend fun ListState.reload(fetch: suspend () -> MarketList?, failure: () -> String?): ListState {
+    val page = fetch() ?: return copy(error = failure() ?: error)
+    return ListState(page)
+}
+
 /** Marketplace list, its filters and the selected app detail. Server calls and 401 handling go through [host]. */
 class MarketModel(private val host: AppModel) {
     var query by mutableStateOf("")
@@ -67,8 +82,9 @@ class MarketModel(private val host: AppModel) {
     /** Origin filter of the list: null (all), official, builtin or custom. */
     var origin by mutableStateOf<String?>(null)
         private set
-    var list by mutableStateOf<MarketList?>(null)
+    var listLoad by mutableStateOf(ListState())
         private set
+    val list get() = listLoad.list
 
     /** App count of the whole catalog (the last unfiltered page 1), for the search placeholder. */
     var universe by mutableStateOf<Int?>(null)
@@ -152,9 +168,9 @@ class MarketModel(private val host: AppModel) {
     fun load() {
         listJob?.cancel()
         listJob = host.viewModelScope.launch {
-            val page = host.call { it.marketplace(query, category, origin, sort, null) } ?: return@launch
-            if (query.isBlank() && category == null && origin == null) universe = page.total
-            list = page
+            listLoad = listLoad.reload({ host.call { it.marketplace(query, category, origin, sort, null) } }, { host.error })
+            val page = listLoad.list
+            if (listLoad.error == null && page != null && query.isBlank() && category == null && origin == null) universe = page.total
         }
     }
 
@@ -163,7 +179,8 @@ class MarketModel(private val host: AppModel) {
         val current = list ?: return
         if (listJob?.isActive == true || !current.hasMore) return
         listJob = host.viewModelScope.launch {
-            list = nextMarketPage(current) { p -> host.call { it.marketplace(query, category, origin, sort, p) } } ?: return@launch
+            val more = nextMarketPage(current) { p -> host.call { it.marketplace(query, category, origin, sort, p) } } ?: return@launch
+            listLoad = listLoad.copy(list = more)
         }
     }
 
@@ -214,7 +231,7 @@ class MarketModel(private val host: AppModel) {
         sort = DEFAULT_SORT
         origin = null
         listJob?.cancel()
-        list = null
+        listLoad = ListState()
         universe = null
         featured = null
         detail = null
