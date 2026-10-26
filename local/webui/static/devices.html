@@ -10,8 +10,11 @@
 .alert{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:var(--borderRadiusLarge);background:var(--colorNeutralBackground3);font-size:13px}.alert.err{background:var(--colorStatusDangerBackground1);color:var(--colorStatusDangerForeground1)}.alert.warn{background:var(--colorStatusWarningBackground1);color:var(--colorStatusWarningForeground1)}.alert.ok{background:var(--colorStatusSuccessBackground1);color:var(--colorStatusSuccessForeground1)}
 .alist{list-style:none;padding:0;margin:.5rem 0 0;border:1px solid var(--colorNeutralStroke2);border-radius:var(--borderRadiusLarge)}
 .alist li{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:.625rem;align-items:center;padding:.5rem .75rem;border-bottom:1px solid var(--colorNeutralStroke3)}.alist li:last-child{border-bottom-width:0}
+.alist.two li{grid-template-columns:minmax(0,1fr) auto}#scan{white-space:nowrap;flex:none}#disc .dot{justify-self:center}
+.card .dlg-actions .btn.subtle:first-child{margin-left:-12px}.card .dlg-actions .btn.subtle:last-child{margin-right:-12px}
+#ota th:first-child,#ota td:first-child{padding-left:24px}#ota th:last-child,#ota td:last-child{padding-right:24px}
 .newer{color:var(--colorStatusWarningForeground1)}
-#disc{list-style:none;padding:0;margin:0}#disc li{display:grid;grid-template-columns:16px minmax(0,1fr) auto;gap:.625rem;align-items:center;padding:.625rem 1rem;border-top:1px solid var(--colorNeutralStroke3)}
+#disc{list-style:none;padding:0;margin:0}#disc li{display:grid;grid-template-columns:16px minmax(0,1fr) auto;gap:.625rem;align-items:center;padding:.625rem 1.5rem;border-top:1px solid var(--colorNeutralStroke3)}
 [data-rename]:focus{outline:2px solid var(--colorBrandForeground1);outline-offset:2px}
 </style>
 <script type="module" src="/static/devices.js"></script></head><body><a class="skip" href="#main">Skip to content</a>
