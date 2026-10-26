@@ -46,14 +46,19 @@ class _SameOriginRedirect(urllib.request.HTTPRedirectHandler):
 opener = urllib.request.build_opener(_SameOriginRedirect)
 
 
-def http_get(url, headers=None, timeout=30):
-    """(status, lower-cased headers, body). HTTP errors are returned; network errors raise OSError."""
+def http_get(url, headers=None, timeout=30, max_bytes=None):
+    """(status, lower-cased headers, body, final URL after redirects). HTTP errors are returned; network errors raise
+    OSError; a body over max_bytes raises ValueError."""
     req = urllib.request.Request(url, headers=headers or {})
     try:
-        with opener.open(req, timeout=timeout) as r:
-            return r.status, {k.lower(): v for k, v in r.headers.items()}, r.read()
+        r = opener.open(req, timeout=timeout)
     except urllib.error.HTTPError as e:
-        return e.code, {k.lower(): v for k, v in e.headers.items()}, e.read()
+        r = e
+    with r:
+        body = r.read() if max_bytes is None else r.read(max_bytes + 1)
+        if max_bytes is not None and len(body) > max_bytes:
+            raise ValueError(f"{url}: body over {max_bytes} bytes")
+        return r.status, {k.lower(): v for k, v in r.headers.items()}, body, r.geturl()
 
 
 def tag_dir(upstream_id, tag):
@@ -111,7 +116,7 @@ def _release_url(row):
 
 def fetch(row):
     try:
-        status, headers, body = http_get(_release_url(row), gh_headers(settings.github_token()))
+        status, headers, body, _ = http_get(_release_url(row), gh_headers(settings.github_token()))
     except OSError as e:
         raise CheckError(("network error: " + str(e).splitlines()[0]) if str(e) else "network error")
     if status == 401:

@@ -338,6 +338,67 @@ def upstream_row(c, kind, repo, channel, tag, asset_regex):
                      (kind, repo, channel, tag, asset_regex)).lastrowid
 
 
+GITLAB_REASON = "GitLab releases not supported"
+# engine -> CLI upstream (repo, channel, tag, asset regex); replaces source.cli_upstream_id
+ENGINE_CLI = {"morphe": ("MorpheApp/morphe-desktop", "stable", None, r"^morphe-desktop-.*-all\.jar$"),
+              "lspatch": ("JingMatrix/LSPatch", "stable", None, r"^lspatch-.*-release\.jar$"),
+              "npatch": ("7723mod/NPatch", "tag", "v1.0.5", r"^jar-.*-release\.jar$")}
+
+
+def _bundle_row(bundle_id):
+    r = db.conn().execute("SELECT * FROM bundle WHERE id = ?", (bundle_id,)).fetchone()
+    if r is None:
+        raise server.HttpError(404, f"bundle {bundle_id} not found")
+    return r
+
+
+def engine_cli(engine):
+    """Upstream id of the engine's CLI row; the row is created on first use (the migration keeps the live ones)."""
+    repo, channel, tag, rx = ENGINE_CLI[engine]
+    r = db.conn().execute("SELECT id FROM upstream WHERE repo = ? AND channel = ? AND ifnull(tag, '') = ifnull(?, '')",
+                          (repo, channel, tag)).fetchone()
+    if r is not None:
+        return r["id"]
+    with db.tx() as c:
+        return upstream_row(c, "cli", repo, channel, tag, rx)
+
+
+def ensure_upstream(bundle_id):
+    """Release tracker of a bundle, created on first enable. A catalog branch maps to the prerelease channel."""
+    b = _bundle_row(bundle_id)
+    if b["host"] != "github":
+        raise server.HttpError(409, f"bundle {bundle_id} ({b['host']}:{b['repo']}): {GITLAB_REASON}",
+                               code="bundle_not_selectable")
+    if b["upstream_id"] is not None:
+        return b["upstream_id"]
+    kind = "patches" if b["engine"] == "morphe" else "module"
+    with db.tx() as c:
+        uid = upstream_row(c, kind, b["repo"], "prerelease" if b["branch"] else "stable", None, b["asset_regex"])
+        c.execute("UPDATE bundle SET upstream_id = ? WHERE id = ?", (uid, bundle_id))
+    return uid
+
+
+def patch_list(bundle_id, package):
+    """(downloaded tag, file names, bundle_info patches or None) of the bundle's release for one package."""
+    uid = _bundle_row(bundle_id)["upstream_id"]
+    tag = None if uid is None else db.conn().execute(
+        "SELECT downloaded_tag FROM upstream WHERE id = ?", (uid,)).fetchone()[0]
+    if not tag:
+        return None, [], None
+    d = upstream.tag_dir(uid, tag)
+    files = sorted(p.name for p in d.iterdir() if p.is_file()) if d.is_dir() else []
+    b = db.conn().execute("SELECT patches FROM bundle_info WHERE upstream_id = ? AND tag = ? AND package = ?",
+                          (uid, tag, package)).fetchone()
+    return tag, files, (json.loads(b[0]) if b else None)
+
+
+def bundle_versions(bundle_id, package):
+    """Versions the catalog lists for the bundle and package, newest first; [] = none listed."""
+    r = db.conn().execute("SELECT versions FROM bundle_app WHERE bundle_id = ? AND package = ?",
+                          (bundle_id, package)).fetchone()
+    return [] if r is None else json.loads(r[0])
+
+
 # ---- sources (catalog §6) ----
 
 def _source(sid):
@@ -753,7 +814,7 @@ def fetch_icon(package):
     """Play og:title / og:image (catalog §3.2-3.3). False on any failure (UI shows a letter tile)."""
     now = db.utcnow()
     try:
-        st, _, body = upstream.http_get(PLAY_URL.format(package), {"User-Agent": "Mozilla/5.0"}, timeout=20)
+        st, _, body, _ = upstream.http_get(PLAY_URL.format(package), {"User-Agent": "Mozilla/5.0"}, timeout=20)
         if st != 200:
             raise ValueError(f"play http {st}")
         og = dict(OG_RE.findall(body.decode("utf-8", "replace")))
@@ -761,7 +822,7 @@ def fetch_icon(package):
         img = html.unescape(og.get("image", ""))
         if not img.startswith("https://"):
             raise ValueError("no og:image")
-        st, headers, data = upstream.http_get(img, {"User-Agent": "Mozilla/5.0"}, timeout=20)
+        st, headers, data, _ = upstream.http_get(img, {"User-Agent": "Mozilla/5.0"}, timeout=20)
         ext = ICON_EXT.get(headers.get("content-type", "").split(";")[0].strip())
         if st != 200 or not ext or not data:
             raise ValueError("bad icon response")

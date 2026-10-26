@@ -83,7 +83,7 @@ def check_token_file():
 
 
 def fetch_rate_limit(token):
-    status, headers, body = upstream.http_get(RATE_URL, upstream.gh_headers(token), timeout=10)
+    status, headers, body, _ = upstream.http_get(RATE_URL, upstream.gh_headers(token), timeout=10)
     return status, json.loads(body) if status == 200 else {}, headers
 
 

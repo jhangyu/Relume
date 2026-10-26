@@ -246,6 +246,9 @@ class PullTest(CatalogCase):
 
 
 
+BODY = b"0123456789"
+
+
 class RedirectAuthTest(unittest.TestCase):
     """The GitHub token never follows a redirect to another origin or scheme."""
 
@@ -260,8 +263,10 @@ class RedirectAuthTest(unittest.TestCase):
                 self.send_response(302 if target else 200)
                 if target:
                     self.send_header("Location", target)
-                self.send_header("Content-Length", "0")
+                self.send_header("Content-Length", "0" if target else str(len(BODY)))
                 self.end_headers()
+                if not target:
+                    self.wfile.write(BODY)
 
             def log_message(self, *a):
                 pass
@@ -276,16 +281,24 @@ class RedirectAuthTest(unittest.TestCase):
     def test_cross_host_redirect_drops_authorization(self):
         b, b_seen = self.serve()
         a, _ = self.serve(lambda s: self.url(b, "/x"))
-        status, _, _ = upstream.http_get(self.url(a, "/a"), upstream.gh_headers("SECRET"))
+        status, _, _, _ = upstream.http_get(self.url(a, "/a"), upstream.gh_headers("SECRET"))
         self.assertEqual(status, 200)
         self.assertIn("/x", b_seen)
         self.assertIsNone(b_seen["/x"])
 
     def test_same_origin_redirect_keeps_authorization(self):
         a, seen = self.serve(lambda s: self.url(s, "/y"))
-        status, _, _ = upstream.http_get(self.url(a, "/a"), upstream.gh_headers("SECRET"))
+        status, _, _, _ = upstream.http_get(self.url(a, "/a"), upstream.gh_headers("SECRET"))
         self.assertEqual(status, 200)
         self.assertEqual(seen["/y"], "Bearer SECRET")
+
+    def test_http_get_returns_final_url_and_caps_body(self):
+        b, _ = self.serve()
+        a, _ = self.serve(lambda s: self.url(b, "/x"))
+        status, _, body, final = upstream.http_get(self.url(a, "/a"), max_bytes=len(BODY))
+        self.assertEqual((status, body, final), (200, BODY, self.url(b, "/x")))
+        with self.assertRaisesRegex(ValueError, f"/a: body over {len(BODY) - 1} bytes"):
+            upstream.http_get(self.url(a, "/a"), max_bytes=len(BODY) - 1)
 
     def test_https_to_http_redirect_drops_authorization(self):
         req = urllib.request.Request("https://api.github.com/a", headers={"Authorization": "Bearer S"})
