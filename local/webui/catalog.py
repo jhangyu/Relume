@@ -1,23 +1,105 @@
-"""Catalog: sources, apps, items, groups, patches, job input, seed (spec Part 2)."""
+"""Catalog layer (marketplace spec §2): feeds, parsers, apply, built-in and custom sources, patch lists, icons."""
 import html
 import json
+import os
 import re
+import shutil
 import threading
-import traceback
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from urllib.parse import urlsplit
 
-from . import build, db, jobs, projects, scheduler, server, upstream
+from . import db, server, upstream
 
 ABIS = ("arm64-v8a", "armeabi-v7a", "x86", "x86_64", "universal")
-COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+UNIVERSAL = '*'
+FEED_RANK = {"builtin": 0, "custom": 1, "official": 2}   # lower wins on de-dup
+ICON_HOSTS = frozenset({"play-lh.googleusercontent.com", "lh3.googleusercontent.com", "lh3.ggpht.com",
+                        "raw.githubusercontent.com", "avatars.githubusercontent.com"})
+ICON_MAX_BYTES = 256 * 1024
+PLAY_PAGE_MAX_BYTES = 4 * 1024 * 1024
+FEED_MAX_BYTES = 16 * 1024 * 1024
+PLAY_ICON_SIZE = "=s256-rw"
+ICON_TIMEOUT = 10
+FEED_TIMEOUT = 30
+GITLAB_REASON = "GitLab releases not supported"
+# engine -> CLI upstream (repo, channel, tag, asset regex); replaces source.cli_upstream_id
+ENGINE_CLI = {"morphe": ("MorpheApp/morphe-desktop", "stable", None, r"^morphe-desktop-.*-all\.jar$"),
+              "lspatch": ("JingMatrix/LSPatch", "stable", None, r"^lspatch-.*-release\.jar$"),
+              "npatch": ("7723mod/NPatch", "tag", "v1.0.5", r"^jar-.*-release\.jar$")}
+ENGINES = {'morphe': {'kind': 'patches'},
+           'lspatch': {'kind': 'module', 'max_sigbypass': 3},
+           'npatch': {'kind': 'module', 'max_sigbypass': 4}}
+MAX_MODULE_PACKAGES = 20
+GITLAB_REPO = re.compile(r"^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)+$")   # GitLab allows nested groups
+LIST_URL = "https://raw.githubusercontent.com/{}/{}/patches-list.json"
+PLAY_URL = "https://play.google.com/store/apps/details?id={}&hl=en"
+PLAY_HOST = "play.google.com"
+OG_IMAGE_RE = re.compile(r'<meta[^>]+property="og:image"[^>]+content="([^"]*)"')
+SIZE_SUFFIX_RE = re.compile(r"=[^=/]*$")
+ICON_EXT = {"image/png": "png", "image/webp": "webp", "image/jpeg": "jpg"}
 
-ITEM_SQL = """SELECT i.*, s.name AS source_name, s.engine, a.display_name AS app_name, a.icon_file,
-  u.id AS u_id, u.repo AS u_repo, u.channel AS u_channel, u.downloaded_tag AS u_downloaded_tag,
-  u.latest_tag AS u_latest_tag, u.checked_at AS u_checked_at, u.check_error AS u_check_error
-  FROM item i JOIN source s ON s.id = i.source_id JOIN app a ON a.package = i.package
-  JOIN upstream u ON u.id = s.upstream_id LEFT JOIN grp g ON g.id = i.group_id"""
-ORDER_SQL = " ORDER BY g.position IS NULL, g.position, i.position, i.id"
+
+class CatalogInvalid(ValueError):
+    """A feed or patch list breaks the accepted grammar: '<path>: expected <x>, got <y>'."""
+
+
+class CatalogRefreshFailed(Exception):
+    """Some feed or list failed; everything that succeeded is applied."""
+
+
+class CatalogRefreshBusy(Exception):
+    """Another refresh holds the lock."""
+
+
+class UpstreamMissing(Exception):
+    """A needed upstream has no downloaded tag (build fails upstream_missing)."""
+
+
+@dataclass(frozen=True)
+class Patch:
+    name: str
+    description: str | None
+    default_enabled: bool | None
+    packages: tuple[str, ...]   # () = universal
+
+
+@dataclass(frozen=True)
+class Bundle:
+    host: str
+    repo: str
+    branch: str | None
+    name: str
+    author: str
+    description: str | None
+    stars: int
+    updated_at: str | None
+    apps: dict   # package -> versions newest first; () = any version
+    patches: tuple[Patch, ...]
+
+
+@dataclass(frozen=True)
+class StoreApp:
+    package: str
+    name: str
+    category: str
+    description: str | None
+    icon_url: str | None
+
+
+@dataclass(frozen=True)
+class Skip:
+    where: str
+    repo: str | None
+    error: str
+
+
+@dataclass(frozen=True)
+class Catalog:
+    bundles: tuple[Bundle, ...]
+    store: dict
+    duplicates: tuple[str, ...]
+    skipped: tuple[Skip, ...]
 
 
 def version_key(v):
@@ -28,66 +110,626 @@ def version_key(v):
     return tuple(int(p) if p.isdigit() else -1 for p in re.split(r"[.\-+_]", v)) + (0,)
 
 
-def _j(text):
-    return None if text is None else json.loads(text)
+def _newest_first(versions):
+    return tuple(sorted(set(versions), key=version_key, reverse=True))
 
 
-# ---- target resolution (core §4) ----
+# ---- parsing (catalog part §1.3, spec §2.1) ----
 
-def enabled_group_items(group_id):
-    """Ids of the enabled items of a group (0 = ungrouped) in display order."""
-    rows = db.conn().execute(
-        "SELECT i.id, i.group_id, i.enabled FROM item i LEFT JOIN grp g ON g.id = i.group_id" + ORDER_SQL).fetchall()
-    return [r["id"] for r in rows if r["enabled"] and (r["group_id"] or 0) == group_id]
+def _need(ok, path, expected, got):
+    if not ok:
+        raise CatalogInvalid(f"{path}: expected {expected}, got {got!r}"[:300])
 
 
-# ---- item object (catalog §6) ----
-
-def _item_obj(r, st):
-    variants = json.loads(r["variants"])
-    return {
-        "id": r["id"],
-        "label": r["display_name"] or f'{r["app_name"] or r["package"]} · {r["source_name"]}',
-        "display_name": r["display_name"], "source_id": r["source_id"], "source_name": r["source_name"],
-        "engine": r["engine"], "package": r["package"], "key": r["key"], "enabled": bool(r["enabled"]),
-        "auto_update": bool(r["auto_update"]), "group_id": r["group_id"], "position": r["position"],
-        "icon_url": f'/api/apps/{r["package"]}/icon' if r["icon_file"] else None,
-        "abis": [v["abi"] for v in variants],
-        "upstream": {"id": r["u_id"], "repo": r["u_repo"], "channel": r["u_channel"],
-                     "downloaded_tag": r["u_downloaded_tag"], "latest_tag": r["u_latest_tag"],
-                     "checked_at": r["u_checked_at"], "check_error": r["u_check_error"]},
-        "last_build": st.get("last_build"), "last_success": st.get("last_success"), "active_job": st.get("active_job"),
-    }
+def _text(v, path, optional=False):
+    if optional and v is None:
+        return None
+    _need(isinstance(v, str) and (optional or v.strip()), path, "a string" if optional else "a non-empty string", v)
+    return v
 
 
-def item_objects(where_sql="", args=()):
-    sql = ITEM_SQL + (" WHERE " + where_sql if where_sql else "") + ORDER_SQL
-    rows = db.conn().execute(sql, args).fetchall()
-    status = build.item_status([r["id"] for r in rows]) if rows else {}
-    return [_item_obj(r, status.get(r["id"]) or {}) for r in rows]
+def _package(v, path):
+    _need(isinstance(v, str) and server.PACKAGE.match(v), path, "a package name", v)
+    return v
 
 
-def _groups():
-    return [dict(r) for r in db.conn().execute("SELECT id, name, color, position FROM grp ORDER BY position, id")]
+def _compat_entry(e, path):
+    """One compatibility entry (three dialects) -> {package: [versions]}."""
+    out = {}
+    if isinstance(e, dict):
+        for pkg, vs in e.items():
+            _package(pkg, f"{path}.{pkg}")
+            _need(isinstance(vs, list) and all(isinstance(x, str) for x in vs), f"{path}.{pkg}", "a list of versions", vs)
+            out.setdefault(pkg, []).extend(vs)
+        return out
+    _need(isinstance(e, list), path, "a list or an object", type(e).__name__)
+    for i, x in enumerate(e):
+        p = f"{path}[{i}]"
+        _need(isinstance(x, dict), p, "an object", x)
+        out.setdefault(_package(x.get("packageName"), f"{p}.packageName"), []).extend(_targets(x, p))
+    return out
 
 
-def _group(gid):
-    r = db.conn().execute("SELECT id, name, color, position FROM grp WHERE id = ?", (gid,)).fetchone()
+def _targets(x, path):
+    """Versions of one {packageName, targets|versions} record; a target without version adds none."""
+    if "versions" in x:
+        vs = x["versions"]
+        _need(isinstance(vs, list) and all(isinstance(v, str) for v in vs), f"{path}.versions", "a list of strings", vs)
+        return vs
+    ts = x.get("targets")
+    _need(ts is None or isinstance(ts, list), f"{path}.targets", "a list or null", ts)
+    out = []
+    for j, t in enumerate(ts or ()):
+        _need(isinstance(t, dict), f"{path}.targets[{j}]", "an object", t)
+        _need(t.get("version") is None or isinstance(t["version"], str), f"{path}.targets[{j}].version",
+              "a string or nothing", t.get("version"))
+        if t.get("version") is not None:
+            out.append(t["version"])
+    return out
+
+
+def _patch(q, path, compat):
+    _need(isinstance(q, dict), path, "an object", q)
+    name = _text(q.get("name"), f"{path}.name")
+    desc = _text(q.get("description"), f"{path}.description", optional=True)
+    dflt = q.get("default", q.get("use"))
+    _need("default" not in q or "use" not in q or q["default"] == q["use"], path, "equal default and use",
+          (q.get("default"), q.get("use")))
+    _need(dflt is None or isinstance(dflt, bool), f"{path}.default", "true, false or nothing", dflt)
+    _need(not ("compatiblePackagesKey" in q and "compatibilityKey" in q), path,
+          "one of compatiblePackagesKey/compatibilityKey", "both")
+    key = q.get("compatiblePackagesKey", q.get("compatibilityKey"))
+    if key is None:
+        return Patch(name, desc, dflt, ()), {}
+    _need(server.is_int(key) and 0 <= key < len(compat), f"{path}.compatiblePackagesKey",
+          f"an index < {len(compat)}", key)
+    entry = compat[key]
+    if isinstance(entry, CatalogInvalid):
+        raise entry
+    return Patch(name, desc, dflt, tuple(entry)), entry
+
+
+def _bundle(b, path, compat):
+    _need(isinstance(b, dict), path, "an object", type(b).__name__)
+    host = b.get("source")
+    _need(host in ("github", "gitlab"), f"{path}.source", "github or gitlab", host)
+    repo = b.get("repo")
+    _need(isinstance(repo, str) and (server.REPO if host == "github" else GITLAB_REPO).match(repo), f"{path}.repo",
+          "owner/name", repo)
+    branch = b.get("branch")
+    _need(branch is None or (isinstance(branch, str) and server.SLUG.match(branch)), f"{path}.branch",
+          "a branch name or nothing", branch)
+    stars, updated = b.get("stars"), b.get("updatedAt")
+    _need(server.is_int(stars), f"{path}.stars", "an integer", stars)
+    _need(updated is None or server.is_int(updated), f"{path}.updatedAt", "epoch milliseconds or null", updated)
+    patches = b.get("patches")
+    _need(isinstance(patches, list), f"{path}.patches", "a list", type(patches).__name__)
+    apps, out = {}, []
+    for i, q in enumerate(patches):
+        p, entry = _patch(q, f"{path}.patches[{i}]", compat)
+        out.append(p)
+        for pkg, vs in entry.items():
+            apps.setdefault(pkg, []).extend(vs)
+    return Bundle(host, repo, branch, _text(b.get("name"), f"{path}.name"), _text(b.get("author"), f"{path}.author"),
+                  _text(b.get("repoDescription"), f"{path}.repoDescription", optional=True) or None, stars,
+                  None if updated is None else db.iso(datetime.fromtimestamp(updated / 1000, timezone.utc)),
+                  {pkg: _newest_first(vs) for pkg, vs in apps.items()}, tuple(out))
+
+
+def _store_app(pkg, v, path):
+    _package(pkg, path)
+    _need(isinstance(v, dict), path, "an object", type(v).__name__)
+    icon = v.get("iconUrl")
+    _need(icon is None or (isinstance(icon, str) and icon.startswith("https://")), f"{path}.iconUrl",
+          "an https URL or nothing", icon)
+    desc = _text(v.get("description"), f"{path}.description", optional=True)
+    return StoreApp(pkg, _text(v.get("name"), f"{path}.name"), _text(v.get("category"), f"{path}.category"),
+                    None if desc is None else html.unescape(desc), icon)
+
+
+def _json_root(raw):
+    try:
+        return json.loads(raw)
+    except ValueError as e:
+        raise CatalogInvalid(f"$: expected JSON, got {e}")
+
+
+def parse_official(raw):
+    """bundles.json -> Catalog. Raises CatalogInvalid only for a bad file; a bad bundle or store value is skipped."""
+    d = _json_root(raw)
+    _need(isinstance(d, dict), "$", "an object", type(d).__name__)
+    for key, typ in (("bundles", list), ("compatibilities", list), ("store", dict)):
+        _need(isinstance(d.get(key), typ), key, typ.__name__, type(d.get(key)).__name__)
+    compat = []
+    for i, e in enumerate(d["compatibilities"]):
+        try:
+            compat.append(_compat_entry(e, f"compatibilities[{i}]"))
+        except CatalogInvalid as err:   # only bundles pointing here are skipped
+            compat.append(err)
+    seen, bundles, dups, skipped = set(), [], [], []
+    for i, b in enumerate(d["bundles"]):
+        try:
+            x = _bundle(b, f"bundles[{i}]", compat)
+        except CatalogInvalid as err:
+            repo = b.get("repo") if isinstance(b, dict) and isinstance(b.get("repo"), str) else None
+            skipped.append(Skip(f"bundles[{i}]", repo, str(err)))
+            continue
+        key = (x.host, x.repo, x.branch or "")
+        if key in seen:   # first record wins, the repo is listed
+            dups.append(x.repo)
+            continue
+        seen.add(key)
+        bundles.append(x)
+    store = {}
+    for pkg, v in d["store"].items():
+        try:
+            store[pkg] = _store_app(pkg, v, f"store.{pkg}")
+        except CatalogInvalid as err:
+            skipped.append(Skip(f"store.{pkg}", None, str(err)))
+    return Catalog(tuple(bundles), store, tuple(dups), tuple(skipped))
+
+
+def parse_patches_list(raw):
+    """patches-list.json -> (version, patches, package -> versions, package -> name, skipped). Patch dicts:
+    {name, description, default_enabled, packages}; packages [] = universal. A bad patch entry is skipped."""
+    d = _json_root(raw)
+    _need(isinstance(d, dict), "$", "an object", type(d).__name__)
+    _need(isinstance(d.get("version"), str), "version", "a string", d.get("version"))
+    _need(isinstance(d.get("patches"), list), "patches", "a list", type(d.get("patches")).__name__)
+    patches, apps, names, skipped = [], {}, {}, []
+    for i, q in enumerate(d["patches"]):
+        path = f"patches[{i}]"
+        try:
+            _need(isinstance(q, dict), path, "an object", q)
+            _need(isinstance(q.get("default"), bool), f"{path}.default", "true or false", q.get("default"))
+            cps = q.get("compatiblePackages")
+            _need(cps is None or isinstance(cps, list), f"{path}.compatiblePackages", "a list or null", cps)
+            pkgs = {}
+            for j, cp in enumerate(cps or ()):
+                p = f"{path}.compatiblePackages[{j}]"
+                _need(isinstance(cp, dict), p, "an object", cp)
+                pkg = _package(cp.get("packageName"), f"{p}.packageName")
+                pkgs[pkg] = (_targets(cp, p), _text(cp.get("name"), f"{p}.name", optional=True))
+            p = {"name": _text(q.get("name"), f"{path}.name"),
+                 "description": _text(q.get("description"), f"{path}.description", optional=True),
+                 "default_enabled": q["default"], "packages": sorted(pkgs)}
+        except CatalogInvalid as err:
+            skipped.append(Skip(path, None, str(err)))
+            continue
+        patches.append(p)
+        for pkg, (vs, name) in pkgs.items():
+            apps.setdefault(pkg, []).extend(vs)
+            if name:
+                names.setdefault(pkg, name)
+    return d["version"], patches, {k: list(_newest_first(v)) for k, v in apps.items()}, names, skipped
+
+
+# ---- refresh and apply (catalog part §1.2, §1.4, §3.3) ----
+
+FEEDS = (("official", "https://morphe-patches.software/data/bundles.json", parse_official),)
+FEEDS_ORIGINS = frozenset(f[0] for f in FEEDS)
+_refresh_lock = threading.Lock()
+
+
+def _feed_path(feed):
+    return db.DATA / "catalog" / f"{feed}.json"
+
+
+def _skip_dicts(skipped):
+    return [{"where": s.where, "repo": s.repo, "error": s.error} for s in skipped]
+
+
+def _fetch_feed(feed, url, parse, log):
+    """True when a new copy was stored. Raises on any failure; the last good copy stays."""
+    row = db.conn().execute("SELECT etag FROM catalog_feed WHERE feed = ?", (feed,)).fetchone()
+    path = _feed_path(feed)
+    headers = {"User-Agent": "Relume"}   # public data: no GitHub token
+    if row and row["etag"] and path.is_file():
+        headers["If-None-Match"] = row["etag"]
+    st, hdr, body, _ = upstream.http_get(url, headers, timeout=FEED_TIMEOUT, max_bytes=FEED_MAX_BYTES)
+    now = db.utcnow()
+    if st == 304:
+        with db.tx() as c:
+            c.execute("UPDATE catalog_feed SET last_attempt_at = ? WHERE feed = ?", (now, feed))
+        log.line(f"[+] catalog {feed}: not modified")
+        return False
+    if st != 200:
+        raise ValueError(f"{url}: expected HTTP 200 or 304, got {st}")
+    cat = parse(body)
+    part = path.with_name(path.name + ".part")
+    part.write_bytes(body)
+    os.replace(part, path)
+    for s in cat.skipped:
+        log.line(f"[!] catalog {feed}: skipped {s.where}{' (' + s.repo + ')' if s.repo else ''}: {s.error}")
+    with db.tx() as c:   # the ETag is stored only together with a good copy
+        c.execute("""INSERT INTO catalog_feed(feed, etag, last_attempt_at, last_ok_at, last_error, duplicates, skipped)
+            VALUES (?, ?, ?, ?, NULL, ?, ?) ON CONFLICT(feed) DO UPDATE SET etag = excluded.etag,
+            last_attempt_at = excluded.last_attempt_at, last_ok_at = excluded.last_ok_at, last_error = NULL,
+            duplicates = excluded.duplicates, skipped = excluded.skipped""",
+                  (feed, hdr.get("etag"), now, now, json.dumps(list(cat.duplicates)),
+                   json.dumps(_skip_dicts(cat.skipped))))
+    log.line(f"[+] catalog {feed}: {len(cat.bundles)} bundles, {len(cat.skipped)} skipped")
+    return True
+
+
+def _feed_failed(feed, error, log):
+    with db.tx() as c:
+        c.execute("""INSERT INTO catalog_feed(feed, last_attempt_at, last_error) VALUES (?, ?, ?)
+            ON CONFLICT(feed) DO UPDATE SET last_attempt_at = excluded.last_attempt_at,
+            last_error = excluded.last_error""", (feed, db.utcnow(), error))
+    log.line(f"[!] catalog {feed}: {error}")
+
+
+def _write_rows(c, bundle_id, apps, patches):
+    """Replace a bundle's browse rows. patches: (package or UNIVERSAL, name, description, default_enabled)."""
+    c.execute("DELETE FROM bundle_app WHERE bundle_id = ?", (bundle_id,))
+    c.execute("DELETE FROM bundle_patch WHERE bundle_id = ?", (bundle_id,))
+    c.executemany("INSERT INTO bundle_app(bundle_id, package, versions) VALUES (?, ?, ?)",
+                  [(bundle_id, pkg, json.dumps(list(vs))) for pkg, vs in apps.items()])
+    # ponytail: a second patch with the same name for the same package is dropped (first wins)
+    c.executemany("INSERT OR IGNORE INTO bundle_patch(bundle_id, package, name, description, default_enabled) "
+                  "VALUES (?, ?, ?, ?, ?)", [(bundle_id, *p[:3], None if p[3] is None else int(p[3])) for p in patches])
+    c.executemany("INSERT OR IGNORE INTO store_app(package, name) VALUES (?, ?)", [(p, p) for p in apps])
+
+
+def _bundle_used(c, bundle_id):
+    return [r[0] for r in c.execute("SELECT id FROM item WHERE bundle_id = ? ORDER BY id", (bundle_id,))]
+
+
+def _apply(log):
+    """Merge the last good copy of every feed by (host, repo, branch) in FEED_RANK order and write it in one tx."""
+    merged, store = {}, {}
+    for feed, _, parse in sorted(FEEDS, key=lambda f: FEED_RANK[f[0]]):
+        path = _feed_path(feed)
+        if not path.is_file():
+            continue
+        cat = parse(path.read_bytes())
+        for b in cat.bundles:
+            merged.setdefault((b.host, b.repo, b.branch or ""), (feed, b))
+        for pkg, s in cat.store.items():
+            store.setdefault(pkg, s)
+    with db.tx() as c:
+        rows = {(r["host"], r["repo"], r["branch"] or ""): r for r in c.execute("SELECT * FROM bundle")}
+        for key, (origin, b) in merged.items():
+            r = rows.get(key)
+            if r is not None and r["origin"] not in FEEDS_ORIGINS:
+                continue   # a built-in or custom bundle owns the repo
+            cols = (origin, b.name, b.author, b.description, b.stars, b.updated_at)
+            if r is None:
+                bid = c.execute("""INSERT INTO bundle(origin, name, author, description, stars, updated_at, host, repo,
+                    branch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", (*cols, b.host, b.repo, b.branch)).lastrowid
+            else:
+                bid = r["id"]
+                c.execute("""UPDATE bundle SET origin = ?, name = ?, author = ?, description = ?, stars = ?,
+                    updated_at = ?, listed = 1 WHERE id = ?""", (*cols, bid))
+            _write_rows(c, bid, b.apps, [(pkg or UNIVERSAL, p.name, p.description, p.default_enabled)
+                                         for p in b.patches for pkg in (p.packages or (None,))])
+        gone = [r for key, r in rows.items() if r["origin"] in FEEDS_ORIGINS and key not in merged]
+        for r in gone:
+            if _bundle_used(c, r["id"]):
+                c.execute("UPDATE bundle SET listed = 0 WHERE id = ?", (r["id"],))   # builds continue from the repo
+            else:
+                c.execute("DELETE FROM bundle WHERE id = ?", (r["id"],))
+        for s in store.values():
+            c.execute("""INSERT INTO store_app(package, name, category, description, icon_url) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(package) DO UPDATE SET name = excluded.name, category = excluded.category,
+                description = excluded.description, icon_url = excluded.icon_url,
+                icon_file = CASE WHEN icon_url IS excluded.icon_url THEN icon_file END,
+                icon_tried_url = CASE WHEN icon_url IS excluded.icon_url THEN icon_tried_url END""",
+                      (s.package, s.name, s.category, s.description, s.icon_url))
+    log.line(f"[+] catalog applied: {len(merged)} bundles, {len(gone)} left the feeds")
+
+
+def _get_list(repo, tag):
+    """Raw patches-list.json of a release tag."""
+    url = LIST_URL.format(repo, tag)
+    st, _, body, _ = upstream.http_get(url, {"User-Agent": "Relume"}, timeout=FEED_TIMEOUT, max_bytes=FEED_MAX_BYTES)
+    if st == 404:
+        raise CatalogInvalid(f"{repo} has no patches-list.json at {tag}")
+    if st != 200:
+        raise ValueError(f"{url}: expected HTTP 200, got {st}")
+    return body
+
+
+def _store_list(c, bundle_id, tag, parsed):
+    _, patches, apps, names, skipped = parsed
+    _write_rows(c, bundle_id, apps, [(pkg, p["name"], p["description"], p["default_enabled"])
+                                     for p in patches for pkg in (p["packages"] or [UNIVERSAL])])
+    for pkg, name in names.items():   # catalog store rows (category set) win
+        c.execute("UPDATE store_app SET name = ? WHERE package = ? AND category IS NULL", (name, pkg))
+    err = "skipped: " + "; ".join(s.error for s in skipped) if skipped else None
+    c.execute("UPDATE bundle SET list_tag = ?, list_error = ? WHERE id = ?", (tag, err, bundle_id))
+
+
+def _refresh_list(b, log):
+    """Built-in / custom Morphe bundle: re-read patches-list.json when the latest release tag changed."""
+    try:
+        row = upstream.check(b["upstream_id"])
+        if row["check_error"]:
+            raise ValueError(f"release check: {row['check_error']}")
+        tag = row["latest_tag"]
+        if tag == b["list_tag"]:
+            return
+        parsed = parse_patches_list(_get_list(b["repo"], tag))
+    except (OSError, ValueError, upstream.TokenRejected, upstream.RateLimited) as e:
+        with db.tx() as c:
+            c.execute("UPDATE bundle SET list_error = ? WHERE id = ?", (str(e), b["id"]))
+        log.line(f"[!] patch list {b['repo']}: {e}")
+        raise
+    with db.tx() as c:
+        _store_list(c, b["id"], tag, parsed)
+    log.line(f"[+] patch list {b['repo']} {tag}: {len(parsed[1])} patches, {len(parsed[4])} skipped")
+
+
+def refresh(log):
+    """Fetch every feed, apply what succeeded, refresh built-in/custom lists; then raise CatalogRefreshFailed when
+    anything failed. A concurrent caller gets CatalogRefreshBusy."""
+    if not _refresh_lock.acquire(blocking=False):
+        raise CatalogRefreshBusy("catalog refresh already running")
+    try:
+        errors, fetched = [], False
+        for feed, url, parse in FEEDS:
+            try:
+                fetched = _fetch_feed(feed, url, parse, log) or fetched
+            except (OSError, ValueError) as e:   # CatalogInvalid is a ValueError
+                _feed_failed(feed, str(e), log)
+                errors.append(f"{feed}: {e}")
+        empty = not db.conn().execute(f"SELECT 1 FROM bundle WHERE origin IN ({','.join('?' * len(FEEDS_ORIGINS))})",
+                                      tuple(FEEDS_ORIGINS)).fetchone()
+        if fetched or empty:
+            _apply(log)
+        for b in db.conn().execute("""SELECT * FROM bundle WHERE origin IN ('builtin', 'custom') AND engine = 'morphe'
+                AND upstream_id IS NOT NULL ORDER BY id""").fetchall():
+            try:
+                _refresh_list(b, log)
+            except (OSError, ValueError, upstream.TokenRejected, upstream.RateLimited) as e:
+                errors.append(f"{b['repo']}: {e}")
+        if errors:
+            raise CatalogRefreshFailed("; ".join(errors))
+    finally:
+        _refresh_lock.release()
+
+
+# ---- read API (spec §2.5) ----
+
+def feed_status():
+    c = db.conn()
+    feeds = []
+    for feed, _, _ in FEEDS:
+        r = c.execute("SELECT * FROM catalog_feed WHERE feed = ?", (feed,)).fetchone()
+        n = c.execute("""SELECT COUNT(DISTINCT b.id), COUNT(DISTINCT a.package) FROM bundle b
+            LEFT JOIN bundle_app a ON a.bundle_id = b.id WHERE b.origin = ? AND b.listed = 1""", (feed,)).fetchone()
+        feeds.append({"feed": feed, "origin": feed, "last_ok_at": r and r["last_ok_at"],
+                      "last_attempt_at": r and r["last_attempt_at"], "last_error": r and r["last_error"],
+                      "bundle_count": n[0], "app_count": n[1],
+                      "duplicates": json.loads(r["duplicates"]) if r and r["duplicates"] else [],
+                      "skipped": json.loads(r["skipped"]) if r and r["skipped"] else []})
+    sources = [{"bundle_id": r["id"], "origin": r["origin"], "repo": r["repo"], "list_tag": r["list_tag"],
+                "last_error": r["list_error"]} for r in c.execute(
+        "SELECT * FROM bundle WHERE origin IN ('builtin', 'custom') ORDER BY origin, id")]
+    return {"feeds": feeds, "sources": sources}
+
+
+def _origins(seen):
+    return sorted(seen, key=FEED_RANK.__getitem__)
+
+
+def market_apps():
+    """Every package a listed bundle targets, with metadata aggregated over those bundles."""
+    apps = {}
+    for r in db.conn().execute("""SELECT a.package, a.versions, b.origin, b.stars, b.updated_at, s.name, s.category,
+            s.description FROM bundle_app a JOIN bundle b ON b.id = a.bundle_id
+            JOIN store_app s ON s.package = a.package WHERE b.listed = 1"""):
+        o = apps.setdefault(r["package"], {"package": r["package"], "name": r["name"], "category": r["category"],
+                                           "description": r["description"], "origins": set(), "bundle_count": 0,
+                                           "stars": None, "versions": set(), "updated_at": None})
+        o["origins"].add(r["origin"])
+        o["bundle_count"] += 1
+        o["versions"].update(json.loads(r["versions"]))
+        if r["stars"] is not None and (o["stars"] is None or r["stars"] > o["stars"]):
+            o["stars"] = r["stars"]
+        if r["updated_at"] and (o["updated_at"] is None or r["updated_at"] > o["updated_at"]):
+            o["updated_at"] = r["updated_at"]
+    out = []
+    for o in apps.values():
+        vs = o.pop("versions")
+        out.append(dict(o, origins=_origins(o["origins"]),
+                        newest_version=max(vs, key=version_key) if vs else None))
+    return sorted(out, key=lambda o: (o["name"].lower(), o["package"]))
+
+
+def app_bundles(package):
+    """Every bundle that targets the package (listed or kept for an app). KeyError for an unknown package."""
+    c = db.conn()
+    rows = c.execute("""SELECT b.*, a.versions FROM bundle_app a JOIN bundle b ON b.id = a.bundle_id
+        WHERE a.package = ?""", (package,)).fetchall()
+    if not rows:
+        raise KeyError(package)
+    out = []
+    for r in sorted(rows, key=lambda r: (FEED_RANK[r["origin"]], -(r["stars"] or 0), r["repo"])):
+        patches = [{"name": p["name"], "description": p["description"],
+                    "default_enabled": None if p["default_enabled"] is None else bool(p["default_enabled"])}
+                   for p in c.execute("""SELECT name, description, default_enabled FROM bundle_patch
+                       WHERE bundle_id = ? AND package IN (?, ?) ORDER BY name""", (r["id"], package, UNIVERSAL))]
+        selectable = r["host"] == "github"
+        out.append({"bundle_id": r["id"], "origin": r["origin"], "host": r["host"], "repo": r["repo"],
+                    "branch": r["branch"], "name": r["name"], "author": r["author"], "description": r["description"],
+                    "stars": r["stars"], "updated_at": r["updated_at"], "engine": r["engine"],
+                    "listed": bool(r["listed"]), "selectable": selectable,
+                    "not_selectable_reason": None if selectable else GITLAB_REASON, "list_tag": r["list_tag"],
+                    "versions": json.loads(r["versions"]), "patches": patches})
+    return out
+
+
+# ---- bundle -> upstream (catalog part §4) ----
+
+def upstream_row(c, kind, repo, channel, tag, asset_regex):
+    r = c.execute("SELECT id, kind FROM upstream WHERE repo = ? AND channel = ? AND ifnull(tag, '') = ifnull(?, '')",
+                  (repo, channel, tag)).fetchone()
+    if r is not None:
+        if r["kind"] != kind:
+            raise server.HttpError(400, "upstream kind conflict")
+        if asset_regex is not None:  # one regex per shared upstream row: an edit must not be silently dropped
+            c.execute("UPDATE upstream SET asset_regex = ? WHERE id = ?", (asset_regex, r["id"]))
+        return r["id"]
+    return c.execute("INSERT INTO upstream(kind, repo, channel, tag, asset_regex) VALUES (?, ?, ?, ?, ?)",
+                     (kind, repo, channel, tag, asset_regex)).lastrowid
+
+
+def _bundle_row(bundle_id):
+    r = db.conn().execute("SELECT * FROM bundle WHERE id = ?", (bundle_id,)).fetchone()
     if r is None:
-        raise server.HttpError(404, "group not found")
-    return dict(r)
+        raise server.HttpError(404, f"bundle {bundle_id} not found")
+    return r
 
 
-def catalog_view():
-    groups = [dict(g, items=[]) for g in _groups()]
-    by_id = {g["id"]: g for g in groups}
-    ungrouped = []
-    for it in item_objects():
-        (by_id[it["group_id"]]["items"] if it["group_id"] in by_id else ungrouped).append(it)
-    return {"groups": groups, "ungrouped": ungrouped}
+def engine_cli(engine):
+    """Upstream id of the engine's CLI row; the row is created on first use (the migration keeps the live ones)."""
+    repo, channel, tag, rx = ENGINE_CLI[engine]
+    r = db.conn().execute("SELECT id FROM upstream WHERE repo = ? AND channel = ? AND ifnull(tag, '') = ifnull(?, '')",
+                          (repo, channel, tag)).fetchone()
+    if r is not None:
+        return r["id"]
+    with db.tx() as c:
+        return upstream_row(c, "cli", repo, channel, tag, rx)
 
 
-# ---- validation helpers ----
+def ensure_upstream(bundle_id):
+    """Release tracker of a bundle, created on first enable. A catalog branch maps to the prerelease channel."""
+    b = _bundle_row(bundle_id)
+    if b["host"] != "github":
+        raise server.HttpError(409, f"bundle {bundle_id} ({b['host']}:{b['repo']}): {GITLAB_REASON}",
+                               code="bundle_not_selectable")
+    if b["upstream_id"] is not None:
+        return b["upstream_id"]
+    with db.tx() as c:
+        uid = upstream_row(c, ENGINES[b["engine"]]["kind"], b["repo"], "prerelease" if b["branch"] else "stable",
+                           None, b["asset_regex"])
+        c.execute("UPDATE bundle SET upstream_id = ? WHERE id = ?", (uid, bundle_id))
+    return uid
+
+
+def patch_list(bundle_id, package):
+    """(downloaded tag, file names, bundle_info patches or None) of the bundle's release for one package."""
+    uid = _bundle_row(bundle_id)["upstream_id"]
+    tag = None if uid is None else db.conn().execute(
+        "SELECT downloaded_tag FROM upstream WHERE id = ?", (uid,)).fetchone()[0]
+    if not tag:
+        return None, [], None
+    d = upstream.tag_dir(uid, tag)
+    files = sorted(p.name for p in d.iterdir() if p.is_file()) if d.is_dir() else []
+    b = db.conn().execute("SELECT patches FROM bundle_info WHERE upstream_id = ? AND tag = ? AND package = ?",
+                          (uid, tag, package)).fetchone()
+    return tag, files, (json.loads(b[0]) if b else None)
+
+
+def bundle_versions(bundle_id, package):
+    """Versions the catalog lists for the bundle and package, newest first; [] = none listed."""
+    r = db.conn().execute("SELECT versions FROM bundle_app WHERE bundle_id = ? AND package = ?",
+                          (bundle_id, package)).fetchone()
+    return [] if r is None else json.loads(r[0])
+
+
+# ---- custom sources (catalog part §3.2, spec §2.3) ----
+
+def list_custom():
+    c = db.conn()
+    return [{"bundle_id": r["id"], "repo": r["repo"], "name": r["name"], "engine": r["engine"],
+             "asset_regex": r["asset_regex"], "list_tag": r["list_tag"], "list_error": r["list_error"],
+             "packages": [x[0] for x in c.execute("SELECT package FROM bundle_app WHERE bundle_id = ? ORDER BY package",
+                                                  (r["id"],))]}
+            for r in c.execute("SELECT * FROM bundle WHERE origin = 'custom' ORDER BY id")]
+
+
+def _module_fields(asset_regex, packages):
+    if not isinstance(asset_regex, str) or not asset_regex:
+        raise server.HttpError(400, f"asset_regex: expected a regular expression for module sources, got {asset_regex!r}")
+    try:
+        re.compile(asset_regex)
+    except re.error as e:
+        raise server.HttpError(400, f"asset_regex: expected a regular expression, got {asset_regex!r} ({e})")
+    if (not isinstance(packages, (list, tuple)) or not 1 <= len(packages) <= MAX_MODULE_PACKAGES
+            or len(set(packages)) != len(packages)):
+        raise server.HttpError(400, f"packages: expected 1-{MAX_MODULE_PACKAGES} distinct packages, got {packages!r}")
+    return [server.validate_package(p, "packages") for p in packages]
+
+
+def add_custom(url, engine, asset_regex=None, packages=()):
+    """New custom bundle (GitHub only). Morphe: its release must carry patches-list.json; module: regex + packages.
+    A repo already listed by a feed is converted in place, so an enabled app keeps its bundle."""
+    if engine not in ENGINES:
+        raise server.HttpError(400, f"engine: expected one of {', '.join(ENGINES)}, got {engine!r}")
+    repo = server.validate_repo(url, "url")
+    module = ENGINES[engine]["kind"] == "module"
+    if module:
+        packages = _module_fields(asset_regex, packages)
+    elif asset_regex is not None or packages:
+        raise server.HttpError(400, f"asset_regex and packages are only for module engines, got engine {engine}")
+    r = db.conn().execute("SELECT * FROM bundle WHERE host = 'github' AND repo = ? AND branch IS NULL",
+                          (repo,)).fetchone()
+    if r is not None and r["origin"] not in FEEDS_ORIGINS:
+        raise server.HttpError(409, f"{repo} is already a {r['origin']} source")
+    if r is not None and r["engine"] != engine:
+        raise server.HttpError(409, f"{repo} is a catalog {r['engine']} bundle, got engine {engine}")
+    parsed = tag = None
+    if not module:   # fetch before writing: a refused repo leaves nothing stored
+        try:
+            rel, _ = upstream.fetch({"kind": "patches", "repo": repo, "channel": "stable", "tag": None,
+                                     "asset_regex": None})
+        except (upstream.CheckError, upstream.TokenRejected, upstream.RateLimited) as e:
+            raise server.HttpError(400, f"{repo}: release check: {e}")
+        tag = rel["tag_name"]
+        try:
+            raw = _get_list(repo, tag)
+        except CatalogInvalid as e:   # "<repo> has no patches-list.json at <tag>"
+            raise server.HttpError(400, str(e))
+        except (OSError, ValueError) as e:
+            raise server.HttpError(400, f"{repo}: {e}")
+        try:
+            parsed = parse_patches_list(raw)
+        except CatalogInvalid as e:
+            raise server.HttpError(400, f"{repo} patches-list.json at {tag}: {e}")
+    with db.tx() as c:
+        uid = upstream_row(c, ENGINES[engine]["kind"], repo, "stable", None, asset_regex)
+        if r is None:
+            bid = c.execute("""INSERT INTO bundle(origin, host, repo, engine, name, asset_regex, upstream_id)
+                VALUES ('custom', 'github', ?, ?, ?, ?, ?)""", (repo, engine, repo, asset_regex, uid)).lastrowid
+        else:
+            bid = r["id"]
+            c.execute("UPDATE bundle SET origin = 'custom', listed = 1, upstream_id = ? WHERE id = ?", (uid, bid))
+        if module:
+            _write_rows(c, bid, {p: () for p in packages}, [])
+        else:
+            _store_list(c, bid, tag, parsed)
+    return bid
+
+
+def delete_custom(bundle_id):
+    r = _bundle_row(bundle_id)
+    if r["origin"] != "custom":
+        raise server.HttpError(404, f"bundle {bundle_id}: expected a custom source, got origin {r['origin']}")
+    uid = r["upstream_id"]
+    with db.tx() as c:
+        used = _bundle_used(c, bundle_id)
+        if used:
+            raise server.HttpError(409, f"custom source {r['repo']} is used by apps {used}", code="source_in_use",
+                                   item_ids=used)
+        c.execute("DELETE FROM bundle WHERE id = ?", (bundle_id,))
+        keep = uid is None or c.execute("""SELECT EXISTS(SELECT 1 FROM bundle WHERE upstream_id = ?)
+            OR EXISTS(SELECT 1 FROM project WHERE upstream_id = ?)""", (uid, uid)).fetchone()[0]
+        if not keep:
+            c.execute("DELETE FROM upstream WHERE id = ?", (uid,))
+    if not keep:
+        shutil.rmtree(db.DATA / "upstream" / str(uid), ignore_errors=True)
+
+
+# ---- enabled-app validation helpers (used by apps.py) ----
+
+URL_RE = re.compile(r"^https://[^\s\"'<>]+$")
+ARCH_RE = re.compile(r"^([A-Za-z0-9_][A-Za-z0-9 ._+-]*)?$")   # no leading . or - (grep option); seed has 'arm64-v8a + armeabi-v7a' (icysymmetra.sh)
+MINVER_RE = re.compile(r"^[A-Za-z0-9 .+-]*$")
+DOWNLOAD_DEFAULT = {"kind": "apkmirror", "type": "apk", "arch": None, "dpi": None, "minver": None, "url": None}
+
 
 def _name(v, field="name"):
     if not isinstance(v, str) or not v.strip() or len(v) > 80:
@@ -95,94 +737,8 @@ def _name(v, field="name"):
     return v.strip()
 
 
-def _check_color(v):
-    if v is not None and not (isinstance(v, str) and COLOR_RE.match(v)):
-        raise server.HttpError(400, "invalid color")
-    return v
-
-
-# ---- group routes (catalog §3.1) ----
-
-def get_catalog(req):
-    return 200, catalog_view()
-
-
-def list_groups(req):
-    return 200, {"groups": _groups()}
-
-
-def _next_position(c, table_where, args=()):
-    return c.execute(f"SELECT IFNULL(MAX(position), -1) + 1 FROM {table_where}", args).fetchone()[0]
-
-
-def post_group(req):
-    b = req.json or {}
-    name, color = _name(b.get("name")), _check_color(b.get("color"))
-    with db.tx() as c:
-        pos = _next_position(c, "grp")
-        gid = c.execute("INSERT INTO grp(name, color, position) VALUES (?, ?, ?)", (name, color, pos)).lastrowid
-    return 201, {"id": gid}
-
-
-def put_group(req):
-    gid = req.params["id"]
-    _group(gid)
-    b = req.json or {}
-    with db.tx() as c:
-        if "name" in b:
-            c.execute("UPDATE grp SET name = ? WHERE id = ?", (_name(b["name"]), gid))
-        if "color" in b:
-            c.execute("UPDATE grp SET color = ? WHERE id = ?", (_check_color(b["color"]), gid))
-    return 200, _group(gid)
-
-
-def delete_group(req):
-    gid = req.params["id"]
-    _group(gid)
-    with db.tx() as c:
-        start = _next_position(c, "item WHERE group_id IS NULL")
-        moved = [r[0] for r in c.execute("SELECT id FROM item WHERE group_id = ? ORDER BY position, id", (gid,))]
-        for n, iid in enumerate(moved):
-            c.execute("UPDATE item SET group_id = NULL, position = ? WHERE id = ?", (start + n, iid))
-        c.execute("DELETE FROM grp WHERE id = ?", (gid,))
-        for n, (g,) in enumerate(c.execute("SELECT id FROM grp ORDER BY position, id").fetchall()):
-            c.execute("UPDATE grp SET position = ? WHERE id = ?", (n, g))
-    return 200, {"ok": True}
-
-
-def put_groups_order(req):
-    ids = server.int_list((req.json or {}).get("ids"), "ids")
-    with db.tx() as c:
-        if set(ids) != {r[0] for r in c.execute("SELECT id FROM grp")}:
-            raise server.HttpError(400, "ids must list every group once")
-        for n, g in enumerate(ids):
-            c.execute("UPDATE grp SET position = ? WHERE id = ?", (n, g))
-    return 200, {"ok": True}
-
-
-def put_group_items_order(req):
-    gid = req.params["id"]
-    if gid != 0:
-        _group(gid)
-    ids = server.int_list((req.json or {}).get("item_ids"), "item_ids")
-    target = None if gid == 0 else gid
-    with db.tx() as c:
-        if not set(ids) <= {r[0] for r in c.execute("SELECT id FROM item")}:
-            raise server.HttpError(400, "unknown item id")
-        rest = [r[0] for r in c.execute("SELECT id FROM item WHERE group_id IS ? ORDER BY position, id", (target,))
-                if r[0] not in ids]
-        for n, iid in enumerate(ids + rest):
-            c.execute("UPDATE item SET group_id = ?, position = ? WHERE id = ?", (target, n, iid))
-    return 200, {"ok": True}
-
-
-
-KEYSTORE_DIR = db.REPO_ROOT / "src" / "keystore"
-URL_RE = re.compile(r"^https://[^\s\"'<>]+$")
-ARCH_RE = re.compile(r"^([A-Za-z0-9_][A-Za-z0-9 ._+-]*)?$")   # no leading . or - (grep option); seed has 'arm64-v8a + armeabi-v7a' (icysymmetra.sh)
-MINVER_RE = re.compile(r"^[A-Za-z0-9 .+-]*$")
-DOWNLOAD_DEFAULT = {"kind": "apkmirror", "type": "apk", "arch": None, "dpi": None, "minver": None, "url": None}
-APP_URL_FIELDS = ("apkmirror_list_url", "apkmirror_example_url", "apkmirror_example_url2", "apkpure_url")
+def display_name(v):
+    return None if v is None else _name(v, "display_name")
 
 
 def _opt(v, rx, field):
@@ -236,25 +792,8 @@ def validate_variants(variants):
     return out
 
 
-# --- Xposed module items (2026-10-19-webui-design.md) ---
-ENGINES = {'morphe': {'kind': 'patches'},
-           'lspatch': {'kind': 'module', 'max_sigbypass': 3},
-           'npatch': {'kind': 'module', 'max_sigbypass': 4}}
-
-
 def is_module(engine):
     return ENGINES.get(engine, {}).get('kind') == 'module'
-
-
-def _engine_of_source(source_id):
-    r = db.conn().execute('SELECT engine FROM source WHERE id=?', (source_id,)).fetchone()
-    return r['engine'] if r else None
-
-
-def _engine_of_item(item_id):
-    r = db.conn().execute('SELECT s.engine FROM item i JOIN source s ON s.id = i.source_id WHERE i.id=?',
-                          (item_id,)).fetchone()
-    return r['engine'] if r else None
 
 
 def validate_engine_options(engine, value):
@@ -282,687 +821,100 @@ def check_xposed_variants(variants):
             raise server.HttpError(400, 'download.type must be apk or bundle for module items')
 
 
-def xposed_item_rules(body, item_id=None):
-    """POST /api/items (item_id None) and PUT /api/items/{id}; normalizes body['engine_options'] in place."""
-    if not isinstance(body, dict):
-        return
-    if body.get('source_id') is not None:
-        engine = _engine_of_source(body['source_id'])
-    else:
-        engine = _engine_of_item(item_id) if item_id is not None else None
-    if engine is None:
-        return  # unknown source or item: the caller's own checks answer 400/404
-    if item_id is None and is_module(engine):  # POST defaults for module items
-        body.setdefault('engine_options', {'sigbypass': 0, 'injectdex': False})
-        if body.get('variants') is None:
-            body['variants'] = [dict(v, strip_libs=None) for v in default_variants()]
-    if item_id is None or 'engine_options' in body:
-        body['engine_options'] = validate_engine_options(engine, body.get('engine_options'))
-    if is_module(engine) and 'variants' in body:
-        check_xposed_variants(body['variants'])
-
-
-def xposed_source_rules(body, source_id=None):
-    """POST /api/sources (source_id None) and PUT /api/sources/{id}."""
-    if not isinstance(body, dict):
-        return
-    engine = body.get('engine') or (_engine_of_source(source_id) if source_id else 'morphe')
-    if engine != 'morphe' and not body.get('asset_regex') and (source_id is None or 'repo' in body):
-        raise server.HttpError(400, 'asset_regex required for module sources')
-
-
-def reject_module_item(item_id):
-    if is_module(_engine_of_item(item_id)):
-        raise server.HttpError(409, 'not a patches item')
-
-
-def check_version_mode(item_id, body):
-    if isinstance(body, dict) and body.get('version_mode') == 'auto' and is_module(_engine_of_item(item_id)):
-        raise server.HttpError(400, 'auto version not available for module items')
-
-
-def display_name(v):
-    return None if v is None else _name(v, "display_name")
-
-
-def upstream_row(c, kind, repo, channel, tag, asset_regex):
-    r = c.execute("SELECT id, kind FROM upstream WHERE repo = ? AND channel = ? AND ifnull(tag, '') = ifnull(?, '')",
-                  (repo, channel, tag)).fetchone()
-    if r is not None:
-        if r["kind"] != kind:
-            raise server.HttpError(400, "upstream kind conflict")
-        if asset_regex is not None:  # one regex per shared upstream row: an edit must not be silently dropped
-            c.execute("UPDATE upstream SET asset_regex = ? WHERE id = ?", (asset_regex, r["id"]))
-        return r["id"]
-    return c.execute("INSERT INTO upstream(kind, repo, channel, tag, asset_regex) VALUES (?, ?, ?, ?, ?)",
-                     (kind, repo, channel, tag, asset_regex)).lastrowid
-
-
-GITLAB_REASON = "GitLab releases not supported"
-# engine -> CLI upstream (repo, channel, tag, asset regex); replaces source.cli_upstream_id
-ENGINE_CLI = {"morphe": ("MorpheApp/morphe-desktop", "stable", None, r"^morphe-desktop-.*-all\.jar$"),
-              "lspatch": ("JingMatrix/LSPatch", "stable", None, r"^lspatch-.*-release\.jar$"),
-              "npatch": ("7723mod/NPatch", "tag", "v1.0.5", r"^jar-.*-release\.jar$")}
-
-
-def _bundle_row(bundle_id):
-    r = db.conn().execute("SELECT * FROM bundle WHERE id = ?", (bundle_id,)).fetchone()
-    if r is None:
-        raise server.HttpError(404, f"bundle {bundle_id} not found")
-    return r
-
-
-def engine_cli(engine):
-    """Upstream id of the engine's CLI row; the row is created on first use (the migration keeps the live ones)."""
-    repo, channel, tag, rx = ENGINE_CLI[engine]
-    r = db.conn().execute("SELECT id FROM upstream WHERE repo = ? AND channel = ? AND ifnull(tag, '') = ifnull(?, '')",
-                          (repo, channel, tag)).fetchone()
-    if r is not None:
-        return r["id"]
-    with db.tx() as c:
-        return upstream_row(c, "cli", repo, channel, tag, rx)
-
-
-def ensure_upstream(bundle_id):
-    """Release tracker of a bundle, created on first enable. A catalog branch maps to the prerelease channel."""
-    b = _bundle_row(bundle_id)
-    if b["host"] != "github":
-        raise server.HttpError(409, f"bundle {bundle_id} ({b['host']}:{b['repo']}): {GITLAB_REASON}",
-                               code="bundle_not_selectable")
-    if b["upstream_id"] is not None:
-        return b["upstream_id"]
-    kind = "patches" if b["engine"] == "morphe" else "module"
-    with db.tx() as c:
-        uid = upstream_row(c, kind, b["repo"], "prerelease" if b["branch"] else "stable", None, b["asset_regex"])
-        c.execute("UPDATE bundle SET upstream_id = ? WHERE id = ?", (uid, bundle_id))
-    return uid
-
-
-def patch_list(bundle_id, package):
-    """(downloaded tag, file names, bundle_info patches or None) of the bundle's release for one package."""
-    uid = _bundle_row(bundle_id)["upstream_id"]
-    tag = None if uid is None else db.conn().execute(
-        "SELECT downloaded_tag FROM upstream WHERE id = ?", (uid,)).fetchone()[0]
-    if not tag:
-        return None, [], None
-    d = upstream.tag_dir(uid, tag)
-    files = sorted(p.name for p in d.iterdir() if p.is_file()) if d.is_dir() else []
-    b = db.conn().execute("SELECT patches FROM bundle_info WHERE upstream_id = ? AND tag = ? AND package = ?",
-                          (uid, tag, package)).fetchone()
-    return tag, files, (json.loads(b[0]) if b else None)
-
-
-def bundle_versions(bundle_id, package):
-    """Versions the catalog lists for the bundle and package, newest first; [] = none listed."""
-    r = db.conn().execute("SELECT versions FROM bundle_app WHERE bundle_id = ? AND package = ?",
-                          (bundle_id, package)).fetchone()
-    return [] if r is None else json.loads(r[0])
-
-
-# ---- sources (catalog §6) ----
-
-def _source(sid):
-    r = db.conn().execute("""SELECT s.*, u.repo, u.channel, u.tag, u.asset_regex FROM source s
-        JOIN upstream u ON u.id = s.upstream_id WHERE s.id = ?""", (sid,)).fetchone()
-    if r is None:
-        raise server.HttpError(404, "source not found")
-    return dict(r)
-
-
-def _source_fields(b):
-    engine = b.get("engine", "morphe")
-    if engine not in ENGINES:
-        raise server.HttpError(400, "invalid engine")
-    channel = b.get("channel")
-    if channel not in ("stable", "prerelease", "tag"):
-        raise server.HttpError(400, "invalid channel")
-    tag = b.get("tag")
-    if channel == "tag":
-        tag = server.validate_slug(tag, "tag")
-    elif tag is not None:
-        raise server.HttpError(400, "tag is only for channel tag")
-    rx = b.get("asset_regex")
-    if rx is not None:
-        try:
-            re.compile(rx)
-        except (re.error, TypeError):
-            raise server.HttpError(400, "invalid asset_regex")
-    ks = server.validate_slug(b.get("keystore", "morphe.keystore"), "keystore")
-    if not (KEYSTORE_DIR / ks).is_file():
-        raise server.HttpError(400, "keystore not found")
-    cli = b.get("cli_upstream_id")
-    r = db.conn().execute("SELECT kind FROM upstream WHERE id = ?", (cli,)).fetchone() if server.is_int(cli) else None
-    if r is None or r["kind"] != "cli":
-        raise server.HttpError(400, "invalid cli_upstream_id")
-    return {"name": _name(b.get("name")), "engine": engine, "repo": server.validate_repo(b.get("repo"), "repo"),
-            "channel": channel, "tag": tag, "asset_regex": rx, "keystore": ks, "cli_upstream_id": cli}
-
-
-def list_sources(req):
-    rows = db.conn().execute("SELECT id FROM source ORDER BY id").fetchall()
-    return 200, {"sources": [_source(r[0]) for r in rows]}
-
-
-def post_source(req):
-    xposed_source_rules(req.json)
-    b = req.json or {}
-    sid = server.validate_slug(b.get("id"), "id")
-    f = _source_fields(b)
-    with db.tx() as c:
-        if c.execute("SELECT 1 FROM source WHERE id = ?", (sid,)).fetchone():
-            raise server.HttpError(409, "source exists")
-        uid = upstream_row(c, ENGINES[f["engine"]]["kind"], f["repo"], f["channel"], f["tag"], f["asset_regex"])
-        c.execute("INSERT INTO source(id, name, upstream_id, cli_upstream_id, engine, keystore) VALUES (?, ?, ?, ?, ?, ?)",
-                  (sid, f["name"], uid, f["cli_upstream_id"], f["engine"], f["keystore"]))
-    return 201, {"id": sid}
-
-
-def put_source(req):
-    xposed_source_rules(req.json, req.params["id"])
-    sid = req.params["id"]
-    _source(sid)
-    f = _source_fields(req.json or {})
-    with db.tx() as c:
-        uid = upstream_row(c, ENGINES[f["engine"]]["kind"], f["repo"], f["channel"], f["tag"], f["asset_regex"])
-        c.execute("UPDATE source SET name = ?, upstream_id = ?, cli_upstream_id = ?, engine = ?, keystore = ? WHERE id = ?",
-                  (f["name"], uid, f["cli_upstream_id"], f["engine"], f["keystore"], sid))
-    return 200, _source(sid)
-
-
-def delete_source(req):
-    """Without ?cascade=1 a source with items is refused (409). With it, every item of the source is deleted with its
-    artifacts first (all-or-nothing: any active job refuses the whole delete). Upstream rows are never deleted."""
-    sid = req.params["id"]
-    _source(sid)
-    ids = [r[0] for r in db.conn().execute("SELECT id FROM item WHERE source_id = ?", (sid,))]
-    if ids and req.query.get("cascade") != "1":
-        raise server.HttpError(409, "source has items")
-    busy = [i for i, st in build.item_status(ids).items() if st["active_job"]]
-    if busy:
-        raise server.HttpError(409, f"source {sid}: items {busy} have a queued or running build")
-    for iid in ids:
-        build.forget_item(iid)
-    with db.tx() as c:
-        c.execute("DELETE FROM item WHERE source_id = ?", (sid,))
-        c.execute("DELETE FROM source WHERE id = ?", (sid,))
-    return 200, {"ok": True}
-
-
-# ---- items (catalog §6) ----
-
-def _group_id(v):
-    if v is None or v == 0:
-        return None
-    if not server.is_int(v):
-        raise server.HttpError(400, "invalid group_id")
-    _group(v)
-    return v
-
-
-def _default_key(package):
-    key = re.sub(r"[^a-z0-9._-]", "-", package.rsplit(".", 1)[-1].lower()).lstrip(".-")
-    return key or "app"
-
-
-def item_detail(iid):
-    objs = item_objects("i.id = ?", (iid,))
-    if not objs:
-        raise server.HttpError(404, "item not found")
-    r = db.conn().execute("""SELECT i.version_mode, i.version_pin, i.allow_nearest, i.variants, i.engine_options,
-        a.apkmirror_versions, a.apkmirror_checked_at FROM item i JOIN app a ON a.package = i.package WHERE i.id = ?""",
-                          (iid,)).fetchone()
-    deps = projects.item_projects(iid)
-    o = objs[0]
-    o.update(version={"mode": r["version_mode"], "pin": r["version_pin"], "allow_nearest": bool(r["allow_nearest"])},
-             variants=json.loads(r["variants"]), engine_options=_j(r["engine_options"]), project_ids=deps,
-             apkmirror={"versions": _j(r["apkmirror_versions"]), "checked_at": r["apkmirror_checked_at"]})
-    return o
-
-
-def list_items(req):
-    return 200, {"items": item_objects()}  # list responses are wrapped
-
-
-def get_item(req):
-    return 200, item_detail(req.params["id"])
-
-
-def post_item(req):
-    xposed_item_rules(req.json)
-    b = req.json or {}
-    src = _source(server.validate_slug(b.get("source_id"), "source_id")) if isinstance(b.get("source_id"), str) else None
-    if src is None:
-        raise server.HttpError(400, "invalid source_id")
-    pkg = server.validate_package(b.get("package"), "package")
-    gid = _group_id(b.get("group_id"))
-    variants = validate_variants(b["variants"]) if b.get("variants") is not None else default_variants()
-    eo = b.get("engine_options")
-    dn = display_name(b.get("display_name"))
-    with db.tx() as c:
-        if c.execute("SELECT 1 FROM item WHERE source_id = ? AND package = ?", (src["id"], pkg)).fetchone():
-            raise server.HttpError(409, "item exists")
-        c.execute("INSERT OR IGNORE INTO app(package) VALUES (?)", (pkg,))
-        pos = _next_position(c, "item WHERE group_id IS ?", (gid,))
-        iid = c.execute("""INSERT INTO item(source_id, package, key, display_name, group_id, position, variants, engine_options,
-            enabled, auto_update) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0)""", (src["id"], pkg, _default_key(pkg), dn, gid, pos, json.dumps(variants),
-                                                 None if eo is None else json.dumps(eo))).lastrowid
-        up = c.execute("SELECT kind, downloaded_tag FROM upstream WHERE id = ?", (src["upstream_id"],)).fetchone()
-        need_pull = bool(up["kind"] == "patches" and (not up["downloaded_tag"] or not c.execute(
-            "SELECT 1 FROM bundle_info WHERE upstream_id = ? AND tag = ? AND package = ?",
-            (src["upstream_id"], up["downloaded_tag"], pkg)).fetchone()))
-    if need_pull:
-        jobs.enqueue("upstream", {"upstream_id": src["upstream_id"]}, "manual", options={"rebuild": False})
-    return 201, {"id": iid}
-
-
-def put_item(req):
-    xposed_item_rules(req.json, req.params["id"])
-    iid = req.params["id"]
-    cur = item_detail(iid)
-    b = req.json or {}
-    for fixed in ("source_id", "package"):
-        if fixed in b and b[fixed] != cur[fixed]:
-            raise server.HttpError(400, f"{fixed} cannot change")
-    sets = {}
-    if "display_name" in b:
-        sets["display_name"] = display_name(b["display_name"])
-    if "variants" in b:
-        sets["variants"] = json.dumps(validate_variants(b["variants"]))
-    if "engine_options" in b:
-        eo = b["engine_options"]
-        sets["engine_options"] = None if eo is None else json.dumps(eo)
-    for flag in ("enabled", "auto_update"):
-        if flag in b:
-            if not isinstance(b[flag], bool):
-                raise server.HttpError(400, f"invalid {flag}")
-            sets[flag] = int(b[flag])
-    deps = None
-    if "project_ids" in b:
-        deps = server.int_list(b["project_ids"], "project_ids")
-        known = {r[0] for r in db.conn().execute("SELECT id FROM project")}
-        if not set(deps) <= known:
-            raise server.HttpError(400, "unknown project")
-    with db.tx() as c:
-        if "group_id" in b:
-            gid = _group_id(b["group_id"])
-            if gid != cur["group_id"]:
-                sets["group_id"] = gid
-                sets["position"] = _next_position(c, "item WHERE group_id IS ?", (gid,))
-        for col, val in sets.items():  # col comes from the fixed names above
-            c.execute(f"UPDATE item SET {col} = ? WHERE id = ?", (val, iid))
-        if deps is not None:
-            c.execute("DELETE FROM item_dependency WHERE item_id = ?", (iid,))
-            c.executemany("INSERT INTO item_dependency(item_id, project_id) VALUES (?, ?)", [(iid, d) for d in deps])
-    return 200, item_detail(iid)
-
-
-def delete_item(req):
-    iid = req.params["id"]
-    item_detail(iid)
-    st = build.item_status([iid]).get(iid) or {}
-    if st.get("active_job"):
-        raise server.HttpError(409, "build queued or running")
-    build.forget_item(iid)
-    with db.tx() as c:
-        c.execute("DELETE FROM item WHERE id = ?", (iid,))
-    return 200, {"ok": True}
-
-
-# ---- apps ----
-
-def _app(pkg):
-    r = db.conn().execute("SELECT package, display_name, " + ", ".join(APP_URL_FIELDS) +
-                          " FROM app WHERE package = ?", (pkg,)).fetchone()
-    if r is None:
-        raise server.HttpError(404, "app not found")
-    return dict(r)
-
-
-def put_app(req):
-    pkg = server.validate_package(req.params["pkg"], "package")
-    _app(pkg)
-    b = req.json or {}
-    with db.tx() as c:
-        if "display_name" in b:
-            c.execute("UPDATE app SET display_name = ? WHERE package = ?", (display_name(b["display_name"]), pkg))
-        for f in APP_URL_FIELDS:  # f from the fixed tuple
-            if f in b:
-                c.execute(f"UPDATE app SET {f} = ? WHERE package = ?", (_opt(b[f], URL_RE, f), pkg))
-    return 200, _app(pkg)
-
-
-class UpstreamMissing(Exception):
-    """A needed upstream has no downloaded tag (build fails upstream_missing)."""
-
-
-def _item_row(iid):
-    r = db.conn().execute("SELECT i.*, s.upstream_id, s.cli_upstream_id, s.engine FROM item i JOIN source s ON s.id = i.source_id WHERE i.id = ?",
-                          (iid,)).fetchone()
-    if r is None:
-        raise server.HttpError(404, "item not found")
-    return r
-
-
-def _bundle(r):
-    """(tag, file names, bundle patches or None) for the item's downloaded patches tag."""
-    tag = db.conn().execute("SELECT downloaded_tag FROM upstream WHERE id = ?", (r["upstream_id"],)).fetchone()[0]
-    if not tag:
-        return None, [], None
-    d = upstream.tag_dir(r["upstream_id"], tag)
-    files = sorted(p.name for p in d.iterdir() if p.is_file()) if d.is_dir() else []
-    b = db.conn().execute("SELECT patches FROM bundle_info WHERE upstream_id = ? AND tag = ? AND package = ?",
-                          (r["upstream_id"], tag, r["package"])).fetchone()
-    return tag, files, (json.loads(b[0]) if b else None)
-
-
-def get_patches(req):
-    reject_module_item(req.params["id"])
-    r = _item_row(req.params["id"])
-    tag, files, bundle = _bundle(r)
-    ov = json.loads(r["patch_overrides"])
-    if bundle is None:
-        return 200, {"tag": tag, "files": files, "patches": [], "stale_overrides": [], "compatible_versions": [], "unavailable": True}
-    names = {p["name"] for p in bundle}
-    patches = []
-    for p in bundle:
-        o = ov.get(p["name"], {})
-        values = o.get("options", {})
-        patches.append({"name": p["name"], "description": p["description"], "default_enabled": p["default_enabled"],
-                        "enabled": o.get("enabled", p["default_enabled"]),
-                        "options": [dict(x, value=values.get(x["key"], x["default"])) for x in p["options"]],
-                        "compatible_versions": p["compatible_versions"]})
-    union = sorted({v for p in bundle for v in p["compatible_versions"]}, key=version_key, reverse=True)
-    return 200, {"tag": tag, "files": files, "patches": patches, "stale_overrides": sorted(n for n in ov if n not in names),
-                 "compatible_versions": union, "unavailable": False}
-
-
-def _type_ok(t, v):
-    if v is None:
-        return True
-    t = (t or "").split("<")[0].rsplit(".", 1)[-1].lower()  # CLI prints kotlin.String, kotlin.collections.List<…>
-    if t.endswith("array") or t.endswith("list") or t.startswith("list"):
-        return isinstance(v, list)
-    if t in ("boolean", "bool"):
-        return isinstance(v, bool)
-    if t in ("int", "integer", "long"):
-        return server.is_int(v)
-    if t in ("float", "double"):
-        return isinstance(v, (int, float)) and not isinstance(v, bool)
-    if t == "string":
-        return isinstance(v, str)
-    return isinstance(v, (str, int, float, bool, list))
-
-
-def put_patches(req):
-    reject_module_item(req.params["id"])
-    r = _item_row(req.params["id"])
-    _, _, bundle = _bundle(r)
-    if bundle is None:
-        raise server.HttpError(409, "patch list unavailable")
-    ov = (req.json or {}).get("overrides")
-    if not isinstance(ov, dict):
-        raise server.HttpError(400, "invalid overrides")
-    by_name = {p["name"]: p for p in bundle}
-    # stale entries (not in this bundle) stay server-side; the body replaces the bundle entries ({} = reset)
-    clean = {n: v for n, v in json.loads(r["patch_overrides"]).items() if n not in by_name}
-    for name, o in ov.items():
-        if name not in by_name:
-            raise server.HttpError(400, f"unknown patch: {name}")
-        if not isinstance(o, dict) or set(o) - {"enabled", "options"}:
-            raise server.HttpError(400, f"invalid override: {name}")
-        e = {}
-        if "enabled" in o:
-            if not isinstance(o["enabled"], bool):
-                raise server.HttpError(400, f"invalid enabled: {name}")
-            e["enabled"] = o["enabled"]
-        if "options" in o:
-            if not isinstance(o["options"], dict):
-                raise server.HttpError(400, f"invalid options: {name}")
-            types = {x["key"]: x["type"] for x in by_name[name]["options"]}
-            for k, v in o["options"].items():
-                if k not in types:
-                    raise server.HttpError(400, f"unknown option: {name}.{k}")
-                if not _type_ok(types[k], v):
-                    raise server.HttpError(400, f"invalid value: {name}.{k}")
-            e["options"] = o["options"]
-        clean[name] = e
-    with db.tx() as c:
-        c.execute("UPDATE item SET patch_overrides = ? WHERE id = ?", (json.dumps(clean, sort_keys=True), r["id"]))
-    return get_patches(req)
-
-
-def put_version(req):
-    check_version_mode(req.params["id"], req.json)
-    r = _item_row(req.params["id"])
-    b = req.json or {}
-    mode = b.get("version_mode")
-    if mode not in ("auto", "pinned", "latest"):
-        raise server.HttpError(400, "invalid version_mode")
-    pin = server.validate_slug(b.get("version_pin"), "version_pin") if mode == "pinned" else None
-    near = b.get("allow_nearest", False)
-    if not isinstance(near, bool):
-        raise server.HttpError(400, "invalid allow_nearest")
-    with db.tx() as c:
-        c.execute("UPDATE item SET version_mode = ?, version_pin = ?, allow_nearest = ? WHERE id = ?", (mode, pin, int(near), r["id"]))
-    return 200, item_detail(r["id"])
-
-
-def stale_overrides(item_id):
-    r = _item_row(item_id)
-    _, _, bundle = _bundle(r)
-    if bundle is None:
-        return []
-    names = {p["name"] for p in bundle}
-    return sorted(n for n in json.loads(r["patch_overrides"]) if n not in names)
-
-
-def _versions_due(checked_at):
-    if checked_at is None:
-        return True
-    t = db.parse_iso(checked_at)
-    return t < datetime.now(timezone.utc) - timedelta(hours=24)
-
-
-def job_input(item_id):
-    r = db.conn().execute("""SELECT i.*, s.engine, s.keystore, s.upstream_id, s.cli_upstream_id,
-        a.apkmirror_list_url, a.apkmirror_example_url, a.apkmirror_example_url2, a.apkpure_url, a.apkmirror_checked_at,
-        u.downloaded_tag AS up_tag, c.downloaded_tag AS cli_tag
-        FROM item i JOIN source s ON s.id = i.source_id JOIN app a ON a.package = i.package
-        JOIN upstream u ON u.id = s.upstream_id JOIN upstream c ON c.id = s.cli_upstream_id WHERE i.id = ?""",
-                          (item_id,)).fetchone()
-    if r is None:
-        raise UpstreamMissing(f"item {item_id} not found")
-    if not r["up_tag"]:
-        raise UpstreamMissing(f"source upstream {r['upstream_id']} not downloaded")
-    if not r["cli_tag"]:
-        raise UpstreamMissing(f"cli upstream {r['cli_upstream_id']} not downloaded")
-    pdir, cdir = upstream.tag_dir(r["upstream_id"], r["up_tag"]), upstream.tag_dir(r["cli_upstream_id"], r["cli_tag"])
-    files = sorted(str(p) for p in pdir.iterdir() if p.is_file()) if pdir.is_dir() else []
-    jars = sorted(str(p) for p in cdir.glob("*.jar")) if cdir.is_dir() else []
-    if not files or not jars:
-        raise UpstreamMissing("downloaded files missing on disk")
-    options = None
-    if r["engine"] == "morphe":
-        stale = set(stale_overrides(item_id))
-        ov = {k: v for k, v in json.loads(r["patch_overrides"]).items() if k not in stale}
-        options = [{"patches": ov} for _ in files]
-    return {
-        "item_id": r["id"], "source_id": r["source_id"], "package": r["package"], "key": r["key"],
-        "engine": r["engine"], "engine_options": _j(r["engine_options"]),
-        "upstream_tag": r["up_tag"], "cli_tag": r["cli_tag"], "patches_files": files, "cli_jar": jars[0],
-        "options_file_json": options,
-        "version": {"mode": r["version_mode"], "value": r["version_pin"], "near": bool(r["allow_nearest"])},
-        "apkmirror": {"list_url": r["apkmirror_list_url"], "example_url": r["apkmirror_example_url"],
-                      "example_url2": r["apkmirror_example_url2"], "versions_due": _versions_due(r["apkmirror_checked_at"])},
-        "apkpure_url": r["apkpure_url"], "keystore": r["keystore"], "recipe": {"variants": json.loads(r["variants"])},
-    }
-
-
 def set_apkmirror_versions(package, versions):
     with db.tx() as c:
         c.execute("UPDATE app SET apkmirror_versions = ?, apkmirror_checked_at = ? WHERE package = ?",
                   (json.dumps(list(versions)), db.utcnow(), package))
 
 
-PLAY_URL = "https://play.google.com/store/apps/details?id={}&hl=en"
-OG_RE = re.compile(r'<meta[^>]+property="og:(title|image)"[^>]+content="([^"]*)"')
-ICON_EXT = {"image/png": "png", "image/webp": "webp", "image/jpeg": "jpg"}
-_icon_wake = threading.Event()
+# ---- icons (catalog part §5, spec §2.6) ----
+
+class _IconFailed(Exception):
+    def __init__(self, url, reason):
+        super().__init__(f"{url}: {reason}")
 
 
-def fetch_icon(package):
-    """Play og:title / og:image (catalog §3.2-3.3). False on any failure (UI shows a letter tile)."""
-    now = db.utcnow()
-    try:
-        st, _, body, _ = upstream.http_get(PLAY_URL.format(package), {"User-Agent": "Mozilla/5.0"}, timeout=20)
-        if st != 200:
-            raise ValueError(f"play http {st}")
-        og = dict(OG_RE.findall(body.decode("utf-8", "replace")))
-        title = html.unescape(og.get("title", "")).removesuffix(" - Apps on Google Play").strip()
-        img = html.unescape(og.get("image", ""))
-        if not img.startswith("https://"):
-            raise ValueError("no og:image")
-        st, headers, data, _ = upstream.http_get(img, {"User-Agent": "Mozilla/5.0"}, timeout=20)
-        ext = ICON_EXT.get(headers.get("content-type", "").split(";")[0].strip())
-        if st != 200 or not ext or not data:
-            raise ValueError("bad icon response")
-        d = db.DATA / "icons"
-        d.mkdir(parents=True, exist_ok=True)
-        name = f"{package}.{ext}"
-        (d / name).write_bytes(data)
-    except (OSError, ValueError):
-        with db.tx() as c:
-            c.execute("UPDATE app SET icon_fetched_at = ? WHERE package = ?", (now, package))
-        return False
-    with db.tx() as c:
-        c.execute("UPDATE app SET icon_file = ?, icon_fetched_at = ? WHERE package = ?", (name, now, package))
-        if title:
-            c.execute("UPDATE app SET display_name = ? WHERE package = ? AND display_name IS NULL", (title, package))
-    return True
+def _icon_url_ok(url, hosts):
+    s = urlsplit(url)
+    return s.scheme == "https" and s.hostname in hosts
 
 
-def _icon_loop():
-    while True:
+def _icon_get(url, hosts, max_bytes):
+    """(headers, body) of a 200 answer whose request and final URL are https on an allowed host."""
+    if not _icon_url_ok(url, hosts):
+        raise ValueError(f"expected https on {', '.join(sorted(hosts))}, got {url}")
+    st, hdr, body, final = upstream.http_get(url, {"User-Agent": "Mozilla/5.0"}, timeout=ICON_TIMEOUT,
+                                             max_bytes=max_bytes)
+    if not _icon_url_ok(final, hosts):
+        raise ValueError(f"redirect left the allowed hosts: expected https on {', '.join(sorted(hosts))}, got {final}")
+    if st != 200:
+        raise ValueError(f"expected HTTP 200, got {st}")
+    return hdr, body
+
+
+def _fetch_icon(package, icon_url):
+    """Icon file name in DATA/icons; the catalog URL, else the Play page og:image. Raises (url, reason)."""
+    url = icon_url
+    if url is None:
+        page = PLAY_URL.format(package)
         try:
-            for (pkg,) in db.conn().execute("SELECT package FROM app WHERE icon_fetched_at IS NULL ORDER BY package").fetchall():
-                fetch_icon(pkg)
-        except Exception:  # keep the fetcher alive; the error goes to the server log
-            traceback.print_exc()
-        _icon_wake.wait(3600)
-        _icon_wake.clear()
-
-
-def start():
-    threading.Thread(target=_icon_loop, name="catalog-icons", daemon=True).start()
+            _, body = _icon_get(page, {PLAY_HOST}, PLAY_PAGE_MAX_BYTES)
+        except (OSError, ValueError) as e:
+            raise _IconFailed(page, e)
+        m = OG_IMAGE_RE.search(body.decode("utf-8", "replace"))
+        if m is None:
+            raise _IconFailed(page, "expected an og:image meta tag, got none")
+        url = SIZE_SUFFIX_RE.sub(PLAY_ICON_SIZE, html.unescape(m[1]))
+    try:
+        hdr, data = _icon_get(url, ICON_HOSTS, ICON_MAX_BYTES)
+    except (OSError, ValueError) as e:
+        raise _IconFailed(url, e)
+    ctype = hdr.get("content-type", "").split(";")[0].strip()
+    if ctype not in ICON_EXT or not data:
+        raise _IconFailed(url, f"expected a non-empty {'/'.join(ICON_EXT)} image, got {ctype or 'no type'} "
+                               f"({len(data)} bytes)")
+    d = db.DATA / "icons"
+    d.mkdir(parents=True, exist_ok=True)
+    name = f"{package}.{ICON_EXT[ctype]}"
+    (d / name).write_bytes(data)
+    return name
 
 
 def get_icon(req):
+    """Cached icon, fetched lazily on a miss. A failure is logged, remembered per source URL and answered 404."""
     pkg = server.validate_package(req.params["pkg"], "package")
-    r = db.conn().execute("SELECT icon_file FROM app WHERE package = ?", (pkg,)).fetchone()
-    path = db.DATA / "icons" / r["icon_file"] if r and r["icon_file"] else None
+    r = db.conn().execute("SELECT icon_url, icon_file, icon_tried_url FROM store_app WHERE package = ?",
+                          (pkg,)).fetchone()
+    if r is None:
+        raise server.HttpError(404, f"no icon: {pkg} is in no catalog")
+    path = db.DATA / "icons" / r["icon_file"] if r["icon_file"] else None
     if path is None or not path.is_file():
-        raise server.HttpError(404, "no icon")
+        source = r["icon_url"] or PLAY_URL.format(pkg)
+        if r["icon_tried_url"] == source:
+            raise server.HttpError(404, f"no icon: {source} failed before")
+        try:
+            name = _fetch_icon(pkg, r["icon_url"])
+        except _IconFailed as e:
+            print(f"icon {pkg}: {e}", flush=True)
+            with db.tx() as c:
+                c.execute("UPDATE store_app SET icon_tried_url = ? WHERE package = ?", (source, pkg))
+            raise server.HttpError(404, f"no icon: {e}")
+        with db.tx() as c:
+            c.execute("UPDATE store_app SET icon_file = ?, icon_tried_url = NULL WHERE package = ?", (name, pkg))
+        path = db.DATA / "icons" / name
     return server.FileResponse(str(path), cache_seconds=86400)
 
 
 def post_icon_refresh(req):
     pkg = server.validate_package(req.params["pkg"], "package")
-    _app(pkg)
     with db.tx() as c:
-        c.execute("UPDATE app SET icon_fetched_at = NULL WHERE package = ?", (pkg,))
-    _icon_wake.set()
+        if not c.execute("UPDATE store_app SET icon_file = NULL, icon_tried_url = NULL WHERE package = ?",
+                         (pkg,)).rowcount:
+            raise server.HttpError(404, f"{pkg} is in no catalog")
     return 200, {"ok": True}
 
 
-SEED_PATH = Path(__file__).with_name("catalog-seed.json")
-# seed key -> (table, columns, order) ; insert order follows the foreign keys
-SEED_TABLES = {
-    "upstreams": ("upstream", ("id", "kind", "repo", "channel", "tag", "asset_regex"), "id"),
-    "apps": ("app", ("package", "display_name", "apkmirror_list_url", "apkmirror_example_url",
-                     "apkmirror_example_url2", "apkpure_url"), "package"),
-    "sources": ("source", ("id", "name", "upstream_id", "cli_upstream_id", "engine", "keystore"), "id"),
-    "groups": ("grp", ("id", "name", "color", "position"), "id"),
-    "items": ("item", ("id", "source_id", "package", "key", "display_name", "group_id", "position", "enabled",
-                       "version_mode", "version_pin", "allow_nearest", "variants", "patch_overrides", "engine_options"), "id"),
-    "projects": ("project", ("id", "upstream_id", "package", "display_name", "auto_push"), "id"),
-}
-JSON_COLS = {"variants", "patch_overrides", "engine_options"}
-BOOL_COLS = {"enabled", "allow_nearest", "auto_push"}
-DAILY_SCHEDULE = ("Daily update", "app", {"all": True}, {"every": "day", "at": "09:00"},
-                  {"update": True, "build": True, "force": False, "notify": True})
-
-
-def _to_db(col, v):
-    if col in JSON_COLS:
-        return None if v is None else json.dumps(v, sort_keys=True)
-    if col in BOOL_COLS:
-        return int(bool(v))
-    return v
-
-
-def _from_db(col, v):
-    if col in JSON_COLS:
-        return None if v is None else json.loads(v)
-    if col in BOOL_COLS:
-        return bool(v)
-    return v
-
-
-def seed_import(path=None):
-    """Import the seed only into empty catalog tables (catalog §8). True when imported."""
-    data = json.loads(Path(path or SEED_PATH).read_text())
-    with db.tx() as c:
-        if c.execute("SELECT EXISTS(SELECT 1 FROM source) OR EXISTS(SELECT 1 FROM item)").fetchone()[0]:
-            return False
-        for key, (table, cols, _) in SEED_TABLES.items():  # names from the fixed table above
-            for row in data.get(key, []):
-                c.execute(f"INSERT INTO {table}({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
-                          [_to_db(k, row.get(k)) for k in cols])
-        c.executemany("INSERT INTO item_dependency(item_id, project_id) VALUES (?, ?)",
-                      [tuple(x) for x in data.get("item_dependencies", [])])
-    name, kind, target, spec, options = DAILY_SCHEDULE
-    if not db.conn().execute("SELECT 1 FROM schedules WHERE kind = ? AND name = ?", (kind, name)).fetchone():
-        scheduler.create(name, kind, target, spec, options)  # computes next_run_at
-    return True
-
-
-def export_seed():
-    c = db.conn()
-    out = {}
-    for key, (table, cols, order) in SEED_TABLES.items():
-        out[key] = [{k: _from_db(k, r[k]) for k in cols}
-                    for r in c.execute(f"SELECT {', '.join(cols)} FROM {table} ORDER BY {order}")]
-    out["item_dependencies"] = [list(r) for r in c.execute(
-        "SELECT item_id, project_id FROM item_dependency ORDER BY item_id, project_id")]
-    return out
-
-
-def seed_text():
-    """Exact bytes of catalog-seed.json; `python3 -m webui export-seed` prints this (ci §4.4)."""
-    return json.dumps(export_seed(), indent=2, sort_keys=True, ensure_ascii=False) + "\n"
-
-
 ROUTES = [
-    ("GET", "/api/catalog", get_catalog),
-    ("GET", "/api/groups", list_groups),
-    ("POST", "/api/groups", post_group),
-    ("PUT", "/api/groups/order", put_groups_order),
-    ("PUT", "/api/groups/{id}", put_group),
-    ("DELETE", "/api/groups/{id}", delete_group),
-    ("PUT", "/api/groups/{id}/items/order", put_group_items_order),
-    ("GET", "/api/sources", list_sources),
-    ("POST", "/api/sources", post_source),
-    ("PUT", "/api/sources/{id}", put_source),
-    ("DELETE", "/api/sources/{id}", delete_source),
-    ("GET", "/api/items", list_items),
-    ("POST", "/api/items", post_item),
-    ("GET", "/api/items/{id}", get_item),
-    ("PUT", "/api/items/{id}", put_item),
-    ("DELETE", "/api/items/{id}", delete_item),
-    ("PUT", "/api/apps/{pkg}", put_app),
-    ("GET", "/api/items/{id}/patches", get_patches),
-    ("PUT", "/api/items/{id}/patches", put_patches),
-    ("PUT", "/api/items/{id}/version", put_version),
     ("GET", "/api/apps/{pkg}/icon", get_icon),
     ("POST", "/api/apps/{pkg}/icon/refresh", post_icon_refresh),
 ]

@@ -476,6 +476,10 @@ def accept_signer(req):
     return 200, _obj(pid)
 
 
+def post_pull(req):
+    return 200, {"job_id": _enqueue_pull(_get(req.params["id"])["upstream_id"])}
+
+
 def download_apk(req):
     r = _get(req.params["id"])
     tag = r["downloaded_tag"]
@@ -499,4 +503,5 @@ ROUTES = [
     ("PUT", "/api/projects/{id}", put_project),
     ("DELETE", "/api/projects/{id}", delete_project),
     ("POST", "/api/projects/{id}/signer/accept", accept_signer),
+    ("POST", "/api/projects/{id}/pull", post_pull),
 ]

@@ -1,0 +1,34 @@
+{"bundles": [
+  {"source": "github", "repo": "alice/yt-patches", "name": "Alice", "author": "alice", "repoDescription": "YouTube extras",
+   "stars": 40, "updatedAt": 1790726400000, "hotRank": 1, "patches": [
+    {"name": "Hide ads", "description": "No ads.", "default": true, "compatiblePackagesKey": 0},
+    {"name": "Spoof", "use": false, "compatibilityKey": 1},
+    {"name": "Universal theme", "description": "Any app."}]},
+  {"source": "github", "repo": "bob/reddit-patches", "name": "Bob", "author": "bob", "stars": 5, "updatedAt": null,
+   "patches": [
+    {"name": "Hide ads", "default": true, "compatiblePackagesKey": 2},
+    {"name": "Any version", "compatiblePackagesKey": 3}]},
+  {"source": "gitlab", "repo": "group/sub/gl-patches", "name": "GL", "author": "gl", "stars": 1, "updatedAt": 1780000000000,
+   "patches": [{"name": "Speed", "compatiblePackagesKey": 1}]},
+  {"source": "github", "repo": "carol/dev-patches", "branch": "dev", "name": "Carol", "author": "carol", "stars": 2,
+   "patches": [{"name": "Unlock", "compatiblePackagesKey": 4}]},
+  {"source": "github", "repo": "alice/yt-patches", "name": "Alice again", "author": "alice", "stars": 40, "hotRank": 9,
+   "patches": []},
+  {"source": "github", "repo": "bad/compat", "name": "Bad", "author": "bad", "stars": 0,
+   "patches": [{"name": "X", "compatiblePackagesKey": 99}]}
+],
+"compatibilities": [
+  [{"packageName": "com.google.android.youtube", "name": "YouTube",
+    "targets": [{"version": "20.12.46"}, {"version": "20.14.1", "isExperimental": true}, {}]}],
+  {"com.reddit.frontpage": ["2025.10.0"]},
+  [{"packageName": "com.reddit.frontpage", "name": "Reddit", "versions": ["2025.12.0"]}],
+  [{"packageName": "com.reddit.frontpage", "targets": null}],
+  [{"packageName": "com.example.cards", "targets": [{"versionCodes": [1]}]}]
+],
+"store": {
+  "com.reddit.frontpage": {"name": "Reddit", "category": "Social", "description": "Front page &amp; more",
+                           "iconUrl": "https://play-lh.googleusercontent.com/reddit=s128-rw", "firstSeen": 1},
+  "com.example.cards": {"name": "Cards", "category": "Games"},
+  "com.bad.store": {"name": "", "category": "Tools"}
+},
+"featured": []}

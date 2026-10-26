@@ -143,10 +143,12 @@ def fetch(row):
 
 
 def affected_items(upstream_id):
-    rows = db.conn().execute("""SELECT i.id FROM item i JOIN source s ON s.id = i.source_id
-        WHERE s.upstream_id = ? OR s.cli_upstream_id = ?
-        UNION SELECT x.item_id FROM item_dependency x JOIN project p ON p.id = x.project_id
-        WHERE p.upstream_id = ? ORDER BY 1""", (upstream_id, upstream_id, upstream_id)).fetchall()
+    """Enabled items whose bundle uses the row, whose engine uses it as CLI, or that depend on its project."""
+    engines = [e for e in catalog.ENGINE_CLI if catalog.engine_cli(e) == upstream_id]
+    rows = db.conn().execute(f"""SELECT i.id FROM item i JOIN bundle b ON b.id = i.bundle_id
+        WHERE i.enabled = 1 AND (b.upstream_id = ? OR b.engine IN ({','.join('?' * len(engines))}))
+        UNION SELECT i.id FROM item i JOIN item_dependency x ON x.item_id = i.id JOIN project p ON p.id = x.project_id
+        WHERE i.enabled = 1 AND p.upstream_id = ? ORDER BY 1""", (upstream_id, *engines, upstream_id)).fetchall()
     return [r[0] for r in rows]
 
 
@@ -174,31 +176,6 @@ def _check(upstream_id, job_id=None):
 
 def check(upstream_id, job_id=None):
     return _check(upstream_id, job_id)[0]
-
-
-def _all_rows():
-    rows = [dict(r) for r in db.conn().execute("SELECT * FROM upstream ORDER BY id")]
-    for r in rows:
-        r["source_ids"] = [x[0] for x in db.conn().execute(
-            "SELECT id FROM source WHERE upstream_id = ? OR cli_upstream_id = ? ORDER BY id", (r["id"], r["id"]))]
-    return rows
-
-
-def check_all():
-    for (uid,) in db.conn().execute("SELECT id FROM upstream ORDER BY id").fetchall():
-        try:
-            check(uid)
-        except (TokenRejected, RateLimited):
-            break
-    return _all_rows()
-
-
-def list_upstreams(req):
-    return 200, {"upstreams": _all_rows()}
-
-
-def post_check(req):
-    return 200, {"upstreams": check_all()}
 
 
 
@@ -290,11 +267,7 @@ def merge_bundle(list_text, options_text, package):
 
 def inspect_row(upstream_id, tag, log):
     files = sorted(str(p) for p in tag_dir(upstream_id, tag).iterdir() if p.is_file())
-    clis = [r[0] for r in db.conn().execute(
-        "SELECT DISTINCT cli_upstream_id FROM source WHERE upstream_id = ? ORDER BY 1", (upstream_id,))]
-    if not clis:
-        return
-    cli = _row(clis[0])
+    cli = _row(catalog.engine_cli("morphe"))
     jars = sorted(tag_dir(cli["id"], cli["downloaded_tag"]).glob("*.jar")) if cli["downloaded_tag"] else []
     if not jars:
         log.line("[!] inspect skipped: CLI not downloaded")
@@ -387,11 +360,15 @@ def _prune(upstream_id):
             keep.append(d.name)
         else:
             shutil.rmtree(d, ignore_errors=True)
+    with db.tx() as c:   # bundle_info of pruned tags
+        for (tag,) in c.execute("SELECT DISTINCT tag FROM bundle_info WHERE upstream_id = ?", (upstream_id,)).fetchall():
+            if tag_dir(upstream_id, tag).name not in keep:
+                c.execute("DELETE FROM bundle_info WHERE upstream_id = ? AND tag = ?", (upstream_id, tag))
 
 
 def _packages(upstream_id):
-    return [r[0] for r in db.conn().execute("""SELECT DISTINCT i.package FROM item i JOIN source s ON s.id = i.source_id
-        WHERE s.upstream_id = ? ORDER BY 1""", (upstream_id,))]
+    return [r[0] for r in db.conn().execute("""SELECT DISTINCT i.package FROM item i JOIN bundle b ON b.id = i.bundle_id
+        WHERE b.upstream_id = ? ORDER BY 1""", (upstream_id,))]
 
 
 def _inspected(row):
@@ -425,8 +402,9 @@ def _fetch_row(upstream_id, log, job_id=None):
     _prune(upstream_id)
     return True
 
-def pull(upstream_id, log, rebuild=False, job_id=None, pressed=()):
-    """pressed: item ids a user asked to update by hand, rebuilt even when their Update switch is off."""
+
+def pull(upstream_id, log, job_id=None):
+    """Check, download, prune and inspect one row. True when a new tag was downloaded."""
     try:
         row = _row(upstream_id)
     except KeyError:
@@ -436,82 +414,24 @@ def pull(upstream_id, log, rebuild=False, job_id=None, pressed=()):
     row = _row(upstream_id)
     if not new and _inspected(row):
         log.line("[+] up to date")
-        return
+        return False
     if row["kind"] == "patches":
-        for (cli_id,) in db.conn().execute("SELECT DISTINCT cli_upstream_id FROM source WHERE upstream_id = ?",
-                                           (upstream_id,)).fetchall():
-            if _row(cli_id)["downloaded_tag"] is None:
-                log.line(f"[+] CLI upstream {cli_id} not downloaded, pulling it first")
-                _fetch_row(cli_id, log, job_id)
+        cli_id = catalog.engine_cli("morphe")
+        if _row(cli_id)["downloaded_tag"] is None:
+            log.line(f"[+] CLI upstream {cli_id} not downloaded, pulling it first")
+            _fetch_row(cli_id, log, job_id)
         inspect_row(upstream_id, row["downloaded_tag"], log)
-    if new and rebuild:
-        affected = affected_items(upstream_id)
-        ids = [r[0] for r in db.conn().execute(
-            f"SELECT id FROM item WHERE enabled = 1 AND (auto_update = 1 OR id IN ({','.join('?' * len(pressed))})) "
-            f"AND id IN ({','.join('?' * len(affected))}) ORDER BY id",
-            [*pressed, *affected])]
-        for iid in ids:
-            jobs.enqueue("build", {"item_id": iid}, "upstream")
-        log.line(f"[+] rebuild enqueued for {len(ids)} item(s)")
+    return new
 
 
 def _handler(job, log):
-    pull(job.target["upstream_id"], log, rebuild=bool((job.options or {}).get("rebuild", False)), job_id=job.id,
-         pressed=job.target.get("pressed", ()))
+    """{upstream_id}: one pull (Follow projects, OTA). {all} / {item_id}: the update run of apps.py."""
+    if "upstream_id" in job.target:
+        pull(job.target["upstream_id"], log, job_id=job.id)
+        return
+    from . import apps   # apps imports this module
+    apps.run_update(job, log)
 
 
 def register():
     jobs.register("upstream", _handler)
-
-
-def post_pull(req):
-    uid = req.params["id"]
-    if not db.conn().execute("SELECT 1 FROM upstream WHERE id = ?", (uid,)).fetchone():
-        raise server.HttpError(404, "upstream not found")
-    opts = req.json if isinstance(req.json, dict) else {}
-    return 200, {"job_id": jobs.enqueue("upstream", {"upstream_id": uid}, "manual", options=opts)}
-
-
-def item_update_jobs(item_ids, project_ids, trigger, schedule_id, options):
-    """Update work for items and projects: every upstream they depend on plus one appcheck per latest-mode package."""
-    c = db.conn()
-    ups = {}  # upstream id -> items that asked for it
-    packages = {}
-    for iid in item_ids:
-        item = c.execute("SELECT package, version_mode FROM item WHERE id = ?", (iid,)).fetchone()
-        if item["version_mode"] == "latest":
-            packages.setdefault(item["package"], set()).add(iid)
-        for u in (*c.execute("SELECT s.upstream_id, s.cli_upstream_id FROM item i JOIN source s ON s.id = i.source_id "
-                             "WHERE i.id = ?", (iid,)).fetchone(),
-                  *(r[0] for r in c.execute("SELECT p.upstream_id FROM item_dependency d JOIN project p "
-                                            "ON p.id = d.project_id WHERE d.item_id = ?", (iid,)))):
-            ups.setdefault(u, set()).add(iid)
-    for pid in project_ids:
-        for r in c.execute("SELECT upstream_id FROM project WHERE id = ?", (pid,)):
-            ups.setdefault(r[0], set())
-
-    def target(key, value, asked):
-        # only a hand-pressed Update overrides the Update switch; scheduled work keeps honoring it
-        return {key: value, "pressed": sorted(asked)} if trigger == "manual" and asked else {key: value}
-    ids = [jobs.enqueue("upstream", target("upstream_id", u, ups[u]), trigger, schedule_id, options) for u in sorted(ups)]
-    ids += [jobs.enqueue("appcheck", target("package", p, packages[p]), trigger, schedule_id, options) for p in sorted(packages)]
-    return ids
-
-
-def post_item_update(req):
-    iid = req.params["id"]
-    if not db.conn().execute("SELECT 1 FROM item WHERE id = ?", (iid,)).fetchone():
-        raise server.HttpError(404, "item not found")
-    body = req.json if isinstance(req.json, dict) else {}
-    rebuild = body.get("rebuild", False)
-    if not isinstance(rebuild, bool):
-        raise server.HttpError(400, "rebuild must be a boolean")
-    return 200, {"job_ids": item_update_jobs([iid], [], "manual", None, {"rebuild": rebuild, "notify": True})}
-
-
-ROUTES = [
-    ("POST", "/api/items/{id}/update", post_item_update),
-    ("GET", "/api/upstreams", list_upstreams),
-    ("POST", "/api/upstreams/check", post_check),
-    ("POST", "/api/upstreams/{id}/pull", post_pull),
-]

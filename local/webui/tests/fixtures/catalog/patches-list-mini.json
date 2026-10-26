@@ -1,0 +1,11 @@
+{"version": "1.48.0", "patches": [
+  {"name": "Hide ads", "description": "Removes ads.", "default": true, "category": null, "options": [],
+   "compatiblePackages": [
+    {"packageName": "com.google.android.youtube", "name": "YouTube",
+     "targets": [{"version": "20.12.46"}, {"version": "20.14.1", "isExperimental": true}]},
+    {"packageName": "com.google.android.apps.youtube.music", "name": "YouTube Music", "targets": [{"version": "8.10.52"}]}]},
+  {"name": "Spoof client", "description": null, "default": false,
+   "compatiblePackages": [{"packageName": "com.google.android.youtube", "name": "YouTube", "targets": null}]},
+  {"name": "Change package name", "description": "Any app.", "default": false, "compatiblePackages": null},
+  {"name": "", "default": true, "compatiblePackages": null}
+]}

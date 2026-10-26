@@ -1,18 +1,16 @@
-"""Inspector, patch selection, version pin and job input tests (spec catalog §4, §5.2-5.3, §10)."""
+"""Inspector tests: CLI output parser, isolated inspect run, re-inspect on pull (spec catalog §4, §5.2-5.3)."""
 import json
 import os
 import re
 import unittest
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
-from webui import catalog, db, upstream
+from webui import db, upstream
 from webui.tests.catalog_rows import CatalogCase, FakeLog
 from webui.tests.test_catalog_upstream import API, fix
 
 FIX = Path(__file__).parent / "fixtures" / "catalog"
-JOB_FIXTURE = json.loads((db.REPO_ROOT / "src" / "build" / "test-fixtures" / "job.json").read_text())
 YT = "com.google.android.youtube"
 TEXT = """Index: 0
 Name: Hide ads
@@ -77,110 +75,22 @@ class ParserTest(unittest.TestCase):
 class PatchesCase(CatalogCase):
     def setUp(self):
         super().setUp()
-        self.ptag = self.data / "upstream" / "2" / "v1"
+        self.cli = self.basic["cli"]
+        self.pat = db.conn().execute("SELECT upstream_id FROM bundle WHERE id = ?", (self.basic["builtin"],)).fetchone()[0]
+        self.ptag = self.data / "upstream" / str(self.pat) / "v1"
         self.ptag.mkdir(parents=True)
         (self.ptag / "patches-1.mpp").write_bytes(b"x")
         with db.tx() as c:
-            c.execute("UPDATE upstream SET downloaded_tag='v1' WHERE id=2")
-            c.execute("INSERT INTO bundle_info(upstream_id, tag, package, patches) VALUES (2,'v1',?,?)",
-                      (YT, json.dumps(upstream.merge_bundle(TEXT, "[]", YT))))
-            c.execute("UPDATE item SET patch_overrides=? WHERE id=1",
-                      (json.dumps({"Hide ads": {"enabled": False}, "Gone": {"enabled": True}}),))
+            c.execute("UPDATE upstream SET downloaded_tag='v1' WHERE id=?", (self.pat,))
+            c.execute("INSERT INTO bundle_info(upstream_id, tag, package, patches) VALUES (?,'v1',?,?)",
+                      (self.pat, YT, json.dumps(upstream.merge_bundle(TEXT, "[]", YT))))
 
     def add_cli(self):
-        d = self.data / "upstream" / "1" / "v1.18.1"
+        d = self.data / "upstream" / str(self.cli) / "v1.18.1"
         d.mkdir(parents=True)
         (d / "morphe-desktop-1.18.1-all.jar").write_bytes(b"x")
         with db.tx() as c:
-            c.execute("UPDATE upstream SET downloaded_tag='v1.18.1' WHERE id=1")
-
-
-class PatchesRouteTest(PatchesCase):
-    def test_get_patches(self):
-        st, b = self.call(catalog.get_patches, method="GET", id=1)
-        self.assertEqual((b["tag"], b["files"], b["unavailable"]), ("v1", ["patches-1.mpp"], False))
-        self.assertEqual([(p["name"], p["enabled"]) for p in b["patches"]], [("Hide ads", False), ("Spoof", False)])
-        self.assertEqual(b["stale_overrides"], ["Gone"])
-        self.assertEqual(b["compatible_versions"], ["20.13.41", "20.12.46"])
-        self.assertEqual(b["patches"][0]["options"][0]["value"], "full")
-
-    def test_get_patches_unavailable(self):
-        st, b = self.call(catalog.get_patches, method="GET", id=2)
-        self.assertEqual((b["unavailable"], b["patches"], b["stale_overrides"]), (True, [], []))
-
-    def test_put_patches_validation(self):
-        ok = {"Hide ads": {"enabled": True, "options": {"mode": "lite", "count": 4}}}
-        self.assertEqual(self.call(catalog.put_patches, json={"overrides": ok}, method="PUT", id=1)[0], 200)
-        stored = json.loads(db.conn().execute("SELECT patch_overrides FROM item WHERE id=1").fetchone()[0])
-        self.assertEqual(stored, {"Gone": {"enabled": True}, "Hide ads": {"enabled": True, "options": {"mode": "lite", "count": 4}}})
-        self.call(catalog.put_patches, json={"overrides": {}}, method="PUT", id=1)
-        stored = json.loads(db.conn().execute("SELECT patch_overrides FROM item WHERE id=1").fetchone()[0])
-        self.assertEqual(stored, {"Gone": {"enabled": True}})
-        bads = [{"Nope": {"enabled": True}}, {"Gone": {"enabled": False}}, {"Hide ads": {"options": {"nokey": 1}}},
-                {"Hide ads": {"options": {"count": "4"}}}, {"Hide ads": {"enabled": "yes"}}, {"Hide ads": {"extra": 1}}]
-        for bad in bads:
-            self.assertEqual(self.status_of(catalog.put_patches, json={"overrides": bad}, method="PUT", id=1), 400, bad)
-        self.assertEqual(self.status_of(catalog.put_patches, json={"overrides": {}}, method="PUT", id=2), 409)
-
-    def test_cli_type_names(self):
-        self.assertTrue(catalog._type_ok("kotlin.Boolean", True))
-        self.assertFalse(catalog._type_ok("kotlin.Boolean", "true"))
-        self.assertTrue(catalog._type_ok("kotlin.collections.List<kotlin.String>", ["a"]))
-        self.assertFalse(catalog._type_ok("kotlin.String", 3))
-
-    def test_put_version(self):
-        self.assertEqual(self.status_of(catalog.put_version, json={"version_mode": "pinned"}, method="PUT", id=1), 400)
-        st, it = self.call(catalog.put_version, json={"version_mode": "pinned", "version_pin": "20.12.46"}, method="PUT", id=1)
-        self.assertEqual(it["version"], {"mode": "pinned", "pin": "20.12.46", "allow_nearest": False})
-        st, it = self.call(catalog.put_version, json={"version_mode": "latest", "version_pin": "x", "allow_nearest": True}, method="PUT", id=1)
-        self.assertEqual(it["version"], {"mode": "latest", "pin": None, "allow_nearest": True})
-        self.assertEqual(self.status_of(catalog.put_version, json={"version_mode": "auto", "allow_nearest": "x"}, method="PUT", id=1), 400)
-        self.assertEqual(self.status_of(catalog.put_version, json={"version_mode": "never"}, method="PUT", id=1), 400)
-
-
-class JobInputTest(PatchesCase):
-    def test_upstream_missing(self):
-        with self.assertRaises(catalog.UpstreamMissing):
-            catalog.job_input(1)  # CLI not downloaded
-        self.add_cli()
-        with db.tx() as c:
-            c.execute("UPDATE upstream SET downloaded_tag=NULL WHERE id=2")
-        with self.assertRaises(catalog.UpstreamMissing):
-            catalog.job_input(1)
-
-    def test_shape_matches_runner_fixture(self):
-        self.add_cli()
-        j = catalog.job_input(1)
-        self.assertEqual(set(j), set(JOB_FIXTURE) - {"job_id", "work_dir"})
-        self.assertEqual(set(j["recipe"]["variants"][0]), set(JOB_FIXTURE["recipe"]["variants"][0]))
-        self.assertEqual(set(j["recipe"]["variants"][0]["download"]), set(JOB_FIXTURE["recipe"]["variants"][0]["download"]))
-        self.assertEqual(set(j["version"]), set(JOB_FIXTURE["version"]))
-        self.assertEqual(set(j["apkmirror"]), set(JOB_FIXTURE["apkmirror"]))
-        self.assertEqual(j["options_file_json"], [{"patches": {"Hide ads": {"enabled": False}}}])
-        self.assertEqual(j["patches_files"], [str(self.ptag / "patches-1.mpp")])
-        self.assertTrue(j["cli_jar"].endswith("morphe-desktop-1.18.1-all.jar"))
-        self.assertEqual(catalog.stale_overrides(1), ["Gone"])
-
-    def test_empty_overrides(self):
-        self.add_cli()
-        with db.tx() as c:
-            c.execute("UPDATE item SET patch_overrides='{}' WHERE id=1")
-        self.assertEqual(catalog.job_input(1)["options_file_json"], [{"patches": {}}])
-
-    def test_versions_due(self):
-        self.add_cli()
-        self.assertTrue(catalog.job_input(1)["apkmirror"]["versions_due"])
-        for hours, due in ((25, True), (1, False)):
-            t = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
-            with db.tx() as c:
-                c.execute("UPDATE app SET apkmirror_checked_at=? WHERE package=?", (t, YT))
-            self.assertEqual(catalog.job_input(1)["apkmirror"]["versions_due"], due)
-
-    def test_set_apkmirror_versions(self):
-        catalog.set_apkmirror_versions(YT, ["20.14.1", "20.13.41"])
-        it = catalog.item_detail(1)
-        self.assertEqual(it["apkmirror"]["versions"], ["20.14.1", "20.13.41"])
-        self.assertIsNotNone(it["apkmirror"]["checked_at"])
+            c.execute("UPDATE upstream SET downloaded_tag='v1.18.1' WHERE id=?", (self.cli,))
 
 
 class InspectRowTest(PatchesCase):
@@ -189,8 +99,8 @@ class InspectRowTest(PatchesCase):
         with db.tx() as c:
             c.execute("DELETE FROM bundle_info")
         with mock.patch.object(upstream, "INSPECT", str(FIX / "fake-inspect.sh")):
-            upstream.inspect_row(2, "v1", FakeLog())
-        pk = {r[0] for r in db.conn().execute("SELECT package FROM bundle_info WHERE upstream_id=2 AND tag='v1'")}
+            upstream.inspect_row(self.pat, "v1", FakeLog())
+        pk = {r[0] for r in db.conn().execute("SELECT package FROM bundle_info WHERE upstream_id=? AND tag='v1'", (self.pat,))}
         self.assertEqual(pk, {YT, "com.reddit.frontpage"})
 
     def test_inspect_failure_writes_nothing(self):
@@ -199,7 +109,7 @@ class InspectRowTest(PatchesCase):
             c.execute("DELETE FROM bundle_info")
         log = FakeLog()
         with mock.patch.object(upstream, "INSPECT", str(FIX / "fake-inspect-fail.sh")):
-            upstream.inspect_row(2, "v1", log)
+            upstream.inspect_row(self.pat, "v1", log)
         self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM bundle_info").fetchone()[0], 0)
         self.assertTrue(any(l.startswith("[!] inspect failed for") for l in log.lines))
 
@@ -214,7 +124,7 @@ class InspectRowTest(PatchesCase):
         script.write_text(f'ln -s {secret} "$3/list-patches.txt"\ncp {FIX}/options.json "$3/"\n')
         log = FakeLog()
         with mock.patch.object(upstream, "INSPECT", str(script)):
-            upstream.inspect_row(2, "v1", log)
+            upstream.inspect_row(self.pat, "v1", log)
         self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM bundle_info").fetchone()[0], 0)
         self.assertTrue(any(l.startswith("[!] inspect failed for") for l in log.lines), log.lines)
 
@@ -237,31 +147,28 @@ class InspectRowTest(PatchesCase):
         log = FakeLog()
         with mock.patch.object(upstream, "INSPECT", str(script)), \
                 mock.patch.dict(os.environ, {"RELUME_RUNNER_UID": "10001", "RELUME_RUNNER_DATA": str(view)}):
-            upstream.inspect_row(2, "v1", log)
+            upstream.inspect_row(self.pat, "v1", log)
         self.assertEqual(log.runs[0][:2], ["setpriv", "--reuid=10001"])
-        for want in ("UID 10001", f"CLI {view}/upstream/1/v1.18.1/morphe-desktop-1.18.1-all.jar",
-                     f"FILE {view}/upstream/2/v1/patches-1.mpp", "CapEff:\t0000000000000000", "DENIED"):
+        for want in ("UID 10001", f"CLI {view}/upstream/{self.cli}/v1.18.1/morphe-desktop-1.18.1-all.jar",
+                     f"FILE {view}/upstream/{self.pat}/v1/patches-1.mpp", "CapEff:\t0000000000000000", "DENIED"):
             self.assertIn(want, log.lines)
         home = [l for l in log.lines if l.startswith("HOME ")]
         self.assertTrue(home and home[0] != "HOME " + os.environ.get("HOME", ""), home)
-        pk = {r[0] for r in db.conn().execute("SELECT package FROM bundle_info WHERE upstream_id=2 AND tag='v1'")}
+        pk = {r[0] for r in db.conn().execute("SELECT package FROM bundle_info WHERE upstream_id=? AND tag='v1'", (self.pat,))}
         self.assertEqual(pk, {YT, "com.reddit.frontpage"})
 
 
-class ReinspectTest(CatalogCase):
+class ReinspectTest(PatchesCase):
     def test_pull_reinspects_missing_bundle_with_same_tag(self):
-        d = self.data / "upstream" / "2" / "v1.47.0"
+        d = self.data / "upstream" / str(self.pat) / "v1.47.0"
         d.mkdir(parents=True)
         (d / "patches-1.47.0.mpp").write_bytes(b"hello")
-        c1 = self.data / "upstream" / "1" / "v1.18.1"
-        c1.mkdir(parents=True)
-        (c1 / "morphe-desktop-1.18.1-all.jar").write_bytes(b"x")
+        self.add_cli()
         with db.tx() as c:
-            c.execute("UPDATE upstream SET downloaded_tag='v1.47.0' WHERE id=2")
-            c.execute("UPDATE upstream SET downloaded_tag='v1.18.1' WHERE id=1")
+            c.execute("UPDATE upstream SET downloaded_tag='v1.47.0' WHERE id=?", (self.pat,))
         self.http({f"{API}/repos/MorpheApp/morphe-patches/releases/latest": (200, fix("release-stable.json"), {})})
         with mock.patch.object(upstream, "INSPECT", str(FIX / "fake-inspect.sh")):
-            upstream.pull(2, FakeLog())
+            upstream.pull(self.pat, FakeLog())
         self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM bundle_info WHERE tag='v1.47.0'").fetchone()[0], 2)
 
 
