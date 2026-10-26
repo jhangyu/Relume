@@ -1,7 +1,9 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Marketplace · Relume</title><link rel="stylesheet" href="/static/app.css"><link rel="manifest" href="/static/manifest.webmanifest"><meta name="theme-color" content="#ffffff"><link rel="icon" href="/static/favicon.svg" type="image/svg+xml"><link rel="icon" href="/static/icon-192.png" type="image/png" sizes="192x192"><link rel="apple-touch-icon" href="/static/icon-192.png">
 <style>
-.hero { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr); gap: 16px; }
+.hero { display: flex; gap: 16px; overflow-x: auto; scroll-snap-type: x proximity; padding-bottom: 4px; }
+.hero .feature { flex: 0 0 calc((100% - 32px) / 3.5); scroll-snap-align: start; }
+.hero .feature:first-child { flex-basis: calc((100% - 32px) / 3.5 * 1.4); }
 .hero > *, .gallery > *, .detail > * { min-width: 0; }
 .mono { overflow-wrap: anywhere; }
 .feature { position: relative; overflow: hidden; border-radius: var(--borderRadius3XLarge); padding: 24px; min-height: 196px; display: flex; flex-direction: column; justify-content: space-between; color: #fff; background: linear-gradient(135deg, var(--c1), var(--c2)); box-shadow: var(--shadow8); cursor: pointer; border: 0; text-align: left; transition: transform var(--durationNormal) var(--curveDecelerateMid), box-shadow var(--durationNormal); }
@@ -60,9 +62,9 @@
 .empty { display: grid; justify-items: center; gap: 12px; padding: 48px 24px; text-align: center; }
 .src-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--colorNeutralStroke3); flex-wrap: wrap; }
 .src-row:last-child { border-bottom: 0; }
-@media (max-width: 1100px) { .hero { grid-template-columns: minmax(0,1fr) minmax(0,1fr); } .hero .feature:first-child { grid-column: 1 / -1; } }
+@media (max-width: 1100px) { .hero .feature { flex-basis: 46%; } .hero .feature:first-child { flex-basis: 70%; } }
 @media (max-width: 900px) {
-  .hero { grid-template-columns: minmax(0,1fr); } .hero .feature:not(:first-child) { display: none; }
+  .hero .feature, .hero .feature:first-child { flex-basis: 86%; }
   .q-wrap { width: auto; flex: 1; }
   .gallery { grid-template-columns: repeat(auto-fill, minmax(156px, 1fr)); gap: 12px; }
   .app { padding: 14px; } .app .tile { --s: 48px; }

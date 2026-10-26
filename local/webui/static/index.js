@@ -55,12 +55,17 @@ ${big ? html`<div class="row" style="justify-content:space-between;align-items:f
 <div class="row wrap" style="position:relative"><span class="chip-w">${plural(a.bundle_count, 'bundle')}</span>${big && a.stars ? html`<span class="chip-w">${icon('star', 'i-16')}${stars(a.stars)} top bundle</span>` : ''}${a.enabled ? html`<span class="chip-w">${icon('check', 'i-16')}Enabled</span>` : ''}</div></button>`;
 }
 
+// Spec §2.7: top 3 by bundle count, the built-in apps, the 3 most recently updated (each app once, first label wins).
 async function renderHero() {
-  const top = async qs => (await api('GET', `/api/marketplace?${qs}&per_page=1`)).apps[0];
-  const [most, builtin, recent] = await Promise.all([top('sort=bundles'), top('origin=builtin&sort=bundles'), top('sort=updated')]);
+  const top = async qs => (await api('GET', `/api/marketplace?${qs}`)).apps;
+  const [most, builtin, recent] = await Promise.all([top('sort=bundles&per_page=3'), top('origin=builtin&sort=bundles&per_page=100'), top('sort=updated&per_page=3')]);
   featured.clear();
-  const cards = [most && featureCard(most, 'Featured · most bundles', true), builtin && featureCard(builtin, 'Built-in', false),
-    recent && featureCard(recent, 'Recently updated', false)].filter(Boolean);
+  const seen = new Set(), cards = [];
+  [[most, 'Most bundles'], [builtin, 'Built-in'], [recent, 'Recently updated']].forEach(([apps, kicker]) => apps.forEach(a => {
+    if (seen.has(a.package)) return;
+    seen.add(a.package);
+    cards.push(featureCard(a, cards.length ? kicker : 'Featured · most bundles', !cards.length));
+  }));
   $('#hero').hidden = !cards.length;
   $('#hero').innerHTML = html`${cards}`;
 }
