@@ -23,7 +23,6 @@ PLAY_ICON_SIZE = "=s256-rw"
 ICON_TIMEOUT = 10
 FEED_TIMEOUT = 30
 GITLAB_REASON = "GitLab releases not supported"
-# engine -> CLI upstream (repo, channel, tag, asset regex); replaces source.cli_upstream_id
 ENGINE_CLI = {"morphe": ("MorpheApp/morphe-desktop", "stable", None, r"^morphe-desktop-.*-all\.jar$"),
               "lspatch": ("JingMatrix/LSPatch", "stable", None, r"^lspatch-.*-release\.jar$"),
               "npatch": ("7723mod/NPatch", "tag", "v1.0.5", r"^jar-.*-release\.jar$")}
@@ -621,13 +620,6 @@ def patch_list(bundle_id, package):
     b = db.conn().execute("SELECT patches FROM bundle_info WHERE upstream_id = ? AND tag = ? AND package = ?",
                           (uid, tag, package)).fetchone()
     return tag, files, (json.loads(b[0]) if b else None)
-
-
-def bundle_versions(bundle_id, package):
-    """Versions the catalog lists for the bundle and package, newest first; [] = none listed."""
-    r = db.conn().execute("SELECT versions FROM bundle_app WHERE bundle_id = ? AND package = ?",
-                          (bundle_id, package)).fetchone()
-    return [] if r is None else json.loads(r[0])
 
 
 # ---- custom sources (catalog part §3.2, spec §2.3) ----

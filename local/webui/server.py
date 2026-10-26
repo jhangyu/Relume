@@ -361,6 +361,5 @@ def make_server(mods, host='0.0.0.0', port=47000):
     srv.daemon_threads = True
     routes = [(m, _compile(p), p, fn)
               for mod in load_modules(CORE) + list(mods) for (m, p, fn) in getattr(mod, 'ROUTES', [])]
-    # literal segments win over {param} ones (PUT /api/groups/order before PUT /api/groups/{id})
     srv.routes = sorted(routes, key=lambda r: r[2].count('{'))
     return srv

@@ -10,7 +10,6 @@ from pathlib import Path
 from . import apklocate, build, catalog, db, jobs, projects, scheduler, server, upstream
 
 KEYSTORE = {'morphe': 'morphe.keystore', 'lspatch': 'lspatch-signing.p12', 'npatch': 'fiorenmas.ks'}
-STATES = ('up_to_date', 'update_available', 'building', 'queued', 'failed', 'not_built', 'needs_download_url')
 SETTING_KEYS = ('bundle_id', 'version', 'project_ids', 'variants', 'engine_options', 'display_name')
 VERSION_MODES = ('auto', 'pinned', 'latest')
 MODULE_ENGINE_OPTIONS = {'sigbypass': 0, 'injectdex': False}   # engine default of a module bundle
@@ -522,10 +521,6 @@ def _want(r):
             return supported[0], supported[0]
     newest = (_j(r['apkmirror_versions']) or [None])[0]
     return None, newest   # latest, or auto with no compatible list: the runner takes the newest it sees
-
-
-def want_version(item_id):
-    return _want(_row(item_id))[1]
 
 
 def _overrides_in_use(r, patches):

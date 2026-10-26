@@ -211,7 +211,7 @@ def catalog_refresh(req):
     return 200, catalog.feed_status()
 
 
-def list_sources(req):
+def get_sources(req):
     return 200, {"sources": catalog.list_custom()}
 
 
@@ -248,7 +248,7 @@ ROUTES = [
     ("POST", "/api/schedule/run", run_schedule),
     ("GET", "/api/catalog/status", catalog_status),
     ("POST", "/api/catalog/refresh", catalog_refresh),
-    ("GET", "/api/sources", list_sources),
+    ("GET", "/api/sources", get_sources),
     ("POST", "/api/sources", add_source),
     ("DELETE", "/api/sources/{id}", delete_source),
 ]

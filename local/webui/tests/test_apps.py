@@ -66,16 +66,16 @@ class AppsCase(CatalogCase):
 
 
 class VersionTest(AppsCase):
-    def test_want_version_modes(self):
-        self.assertEqual((apps.want_version(1), apps.job_input(1)["version"]), ("20.13.41", {"value": "20.13.41", "near": False}))
+    def test_job_input_version_modes(self):
+        self.assertEqual(apps.job_input(1)["version"], {"value": "20.13.41", "near": False})
         self.set_item(1, version_mode="pinned", version_pin="20.12.46", allow_nearest=1)
-        self.assertEqual((apps.want_version(1), apps.job_input(1)["version"]), ("20.12.46", {"value": "20.12.46", "near": True}))
+        self.assertEqual(apps.job_input(1)["version"], {"value": "20.12.46", "near": True})
         with db.tx() as c:
             c.execute("UPDATE app SET apkmirror_versions = '[\"21.1.0\",\"20.13.41\"]' WHERE package IN (?, ?)", (YT, REDDIT))
         self.set_item(1, version_mode="latest", version_pin=None, allow_nearest=0)
-        self.assertEqual((apps.want_version(1), apps.job_input(1)["version"]), ("21.1.0", {"value": None, "near": False}))
+        self.assertEqual(apps.job_input(1)["version"], {"value": None, "near": False})
         # auto with an empty compatible list (Reddit: patch for any version) behaves like latest
-        self.assertEqual((apps.want_version(2), apps.job_input(2)["version"]), ("21.1.0", {"value": None, "near": False}))
+        self.assertEqual(apps.job_input(2)["version"], {"value": None, "near": False})
 
     def test_job_json_has_version_value_not_mode(self):
         j = apps.job_input(1)

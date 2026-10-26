@@ -85,7 +85,7 @@ def artifact_name(package, variant, app_version, upstream_tag):
     return f"{package}-{variant}-{server.safe_remote(app_version)}-{server.safe_remote(upstream_tag)}.apk"
 
 
-def _register(job, item_id, inp, work, result, failed_patches):
+def _register(job, item_id, inp, work, result, failed_patches, sha):
     dest = db.DATA / "artifacts" / str(item_id) / str(job.id)
     dest.mkdir(parents=True, exist_ok=True)
     now, ids = db.utcnow(), []
@@ -100,8 +100,8 @@ def _register(job, item_id, inp, work, result, failed_patches):
                                  (job.id, item_id, v["name"], v["abi"], v.get("package"), v.get("version_name"),
                                   v.get("version_code"), inp["upstream_tag"], v.get("signer_sha256"), str(target),
                                   target.stat().st_size, v.get("sha256"), now)).lastrowid)
-        c.execute("UPDATE build_jobs SET app_version = ?, patches_version = ?, cli_version = ?, failed_patches = ? WHERE job_id = ?",
-                  (result["app_version"], inp["upstream_tag"], inp["cli_tag"], json.dumps(failed_patches) if failed_patches else None, job.id))
+        c.execute("UPDATE build_jobs SET app_version = ?, patches_version = ?, cli_version = ?, failed_patches = ?, inputs_sha = ? WHERE job_id = ?",
+                  (result["app_version"], inp["upstream_tag"], inp["cli_tag"], json.dumps(failed_patches) if failed_patches else None, sha, job.id))
     run_retention(item_id)
     events.emit("build.succeeded", {"item_id": item_id, "job_id": job.id, "app_version": result["app_version"],
                                     "patches_version": inp["upstream_tag"], "artifacts": ids})
@@ -147,8 +147,10 @@ def handler(job, log):
             if m.fail_code:
                 _fail(job, item_id, m.fail_code, m.fail_detail or "")
             _fail(job, item_id, "internal", m.last_err or f"runner exited {rc} without result.json")
+        if inp["version"]["value"] is None:  # latest, or auto with no compatible list: the runner refreshed the APKMirror list
+            sha = apps.inputs_sha(item_id)
         try:
-            _register(job, item_id, inp, work, result, m.failed_patches)
+            _register(job, item_id, inp, work, result, m.failed_patches, sha)
         except OSError as e:
             shutil.rmtree(db.DATA / "artifacts" / str(item_id) / str(job.id), ignore_errors=True)
             _fail(job, item_id, "internal", f"artifact rejected: {e}")

@@ -285,6 +285,15 @@ class HandlerOkTest(BuildCase):
         self.assertFalse((self.data / "work" / str(job.id)).exists())
         self.assertEqual(len(build.detail(job.id)["artifacts"]), 2)
 
+    def test_latest_mode_fingerprints_the_version_built(self):
+        # past bug: the sha was taken before the runner refreshed the APKMirror list, so the next run rebuilt once
+        real = self.cat.job_input
+        self.enterContext(mock.patch.object(apps, "job_input", lambda i: dict(real(i), version={"value": None, "near": False})))
+        self.enterContext(mock.patch.object(apps, "inputs_sha", lambda i: "sha-" + (self.cat.versions[-1][1][0] if self.cat.versions else "none")))
+        job, log, err = self.run_handler()
+        self.assertIsNone(err)
+        self.assertEqual(self.bj(job)["inputs_sha"], "sha-20.1.0")
+
 
 class ArtifactSwapTest(BuildCase):
     """A leftover runner process swaps a validated artifact for a symlink before registration."""

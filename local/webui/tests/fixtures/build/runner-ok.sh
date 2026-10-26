@@ -2,6 +2,7 @@
 # Fake runner: success with two variants. $1 = job.json, cwd = work dir.
 echo "::step::version"
 echo "::version::20.1.0"
+echo "::apkm_versions::20.1.0,20.0.9"
 echo "::step::patch::1/2"
 mkdir -p release
 printf 'u' > release/universal.apk
