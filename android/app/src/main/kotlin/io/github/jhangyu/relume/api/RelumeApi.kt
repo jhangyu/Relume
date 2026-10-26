@@ -69,6 +69,9 @@ class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
         return get("/api/marketplace" + query.joinToString("&", prefix = "?"))
     }
 
+    /** Pull every catalog feed now; a failed feed comes back in the status, a total failure is an [ApiError] (502). */
+    suspend fun refreshCatalog(): FeedStatus = send("POST", "/api/catalog/refresh", EMPTY)
+
     suspend fun marketApp(pkg: String): MarketDetail = get("/api/marketplace/" + enc(pkg))
 
     suspend fun apps(): List<AppObject> = get<AppList>("/api/apps").apps

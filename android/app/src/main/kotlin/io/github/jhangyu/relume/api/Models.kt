@@ -458,7 +458,12 @@ data class OtaSchedule(
 data class CustomSource(
     @SerialName("bundle_id") val bundleId: Int,
     val repo: String,
+    val name: String,
     val engine: String,
+    @SerialName("asset_regex") val assetRegex: String?,
+    @SerialName("list_tag") val listTag: String?,
+    @SerialName("list_error") val listError: String?,
+    val packages: List<String>,
 )
 
 @Serializable

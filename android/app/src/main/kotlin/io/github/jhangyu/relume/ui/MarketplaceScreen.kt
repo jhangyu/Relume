@@ -1,24 +1,31 @@
 package io.github.jhangyu.relume.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.jhangyu.relume.R
 import io.github.jhangyu.relume.api.FeedStatus
+import io.github.jhangyu.relume.api.MarketApp
 
-private val ENGINES = listOf("morphe", "lspatch", "npatch")
+private val FEATURED_WIDTH = 200.dp
+private val FEATURED_HEIGHT = 112.dp
+private val FEATURED_RADIUS = 28.dp
 
 private fun FeedStatus.headline(total: Int): String {
     val official = feeds.filter { it.origin == "official" }.sumOf { it.bundleCount }
@@ -26,19 +33,26 @@ private fun FeedStatus.headline(total: Int): String {
     return "$total apps · $official community bundles · built-in · $custom custom"
 }
 
-/** Marketplace tab (thin first version): search, category chips, app list with tile and bundle count. */
+/** Every feed or source that failed, with the server's error text as is. */
+private fun FeedStatus.errors(): List<String> =
+    feeds.mapNotNull { f -> f.lastError?.let { "${f.feed}: $it" } } + sources.mapNotNull { s -> s.lastError?.let { "${s.repo}: $it" } }
+
+/** Marketplace tab: search, category chips, featured carousel, two-line app list. */
 @Composable
 fun MarketplaceScreen(model: MarketModel, onOpen: (String) -> Unit, onAddSource: () -> Unit) {
     LaunchedEffect(Unit) { if (model.list == null) model.load() }
     val list = model.list
     val categories = list?.categories.orEmpty()
     val selected = categories.indexOfFirst { it.name == model.category } + 1
+    val unfiltered = model.query.isEmpty() && model.category == null
 
     Column(Modifier.fillMaxSize()) {
         AppBar("Marketplace", actions = {
+            IconAction(R.drawable.ms_sync, "Refresh catalog", model::refreshCatalog, IconTone.Sync, enabled = !model.refreshing)
             IconAction(R.drawable.ms_add_link, "Add custom source", onAddSource, IconTone.Link)
             Avatar()
         })
+        model.error?.let { Banner("Request failed", Tone.Danger, Modifier.padding(horizontal = ScreenPadding), detail = it, action = "Dismiss", onAction = model::dismissError) }
         Field(
             "Search apps", model.query, model::search,
             Modifier.padding(horizontal = ScreenPadding), leadingIcon = R.drawable.ms_search,
@@ -48,6 +62,13 @@ fun MarketplaceScreen(model: MarketModel, onOpen: (String) -> Unit, onAddSource:
         }
         if (list != null) Txt(list.feed.headline(list.total), Modifier.padding(horizontal = ScreenPadding), style = MaterialTheme.typography.bodySmall, color = muted())
         LazyColumn(Modifier.weight(1f).fillMaxSize()) {
+            if (list != null && unfiltered && list.total == 0) {
+                item { EmptyCatalog(list.feed, model.refreshing, model::refreshCatalog) }
+            }
+            if (list != null && unfiltered) {
+                val featured = featuredApps(list.apps)
+                if (featured.isNotEmpty()) item { Featured(featured, onOpen) }
+            }
             items(list?.apps.orEmpty(), key = { it.packageName }) { app ->
                 ListRow(
                     app.name,
@@ -55,43 +76,55 @@ fun MarketplaceScreen(model: MarketModel, onOpen: (String) -> Unit, onAddSource:
                     supporting = "${app.bundleCount} bundles" + (app.category?.let { " · $it" } ?: ""),
                     leading = { AppTile(app.name, app.iconUrl, model.api) },
                     trailing = {
-                        if (app.enabled) Pill("Enabled", MaterialTheme.relume.green.container, MaterialTheme.relume.green.onContainer, R.drawable.ms_check)
+                        if (app.enabled) Pill("On", MaterialTheme.relume.green.container, MaterialTheme.relume.green.onContainer, R.drawable.ms_check)
                         else Glyph(R.drawable.ms_chevron_right)
                     },
                 )
             }
-            if (list != null && list.apps.isEmpty()) {
+            if (list != null && list.apps.isEmpty() && (!unfiltered || list.total > 0)) {
                 item { Txt("No apps match.", Modifier.padding(ScreenPadding), color = muted()) }
             }
         }
     }
 }
 
-/** Dialog behind the top-bar "Add custom source" button (URL, engine, module options). */
+/** Shown before the first catalog refresh: never a silent blank. */
 @Composable
-fun AddSourceDialog(model: MarketModel) {
-    if (!model.addSourceOpen) return
-    var url by remember { mutableStateOf("") }
-    var engine by remember { mutableStateOf(ENGINES.first()) }
-    var regex by remember { mutableStateOf("") }
-    var packages by remember { mutableStateOf("") }
-    val module = engine != ENGINES.first()
-    RDialog(model::closeAddSource) {
-        Txt("Add custom source", style = MaterialTheme.typography.headlineSmall)
-        Field("GitHub repository URL", url, { url = it }, leadingIcon = R.drawable.ms_link)
-        ChipRow(ENGINES, ENGINES.indexOf(engine)) { engine = ENGINES[it] }
-        if (module) {
-            Field("Asset regex", regex, { regex = it }, mono = true)
-            Field("Target packages (comma separated)", packages, { packages = it }, mono = true)
-        }
-        DialogButtons {
-            ActionButton("Cancel", model::closeAddSource, Modifier.weight(1f), kind = ButtonKind.Text)
-            ActionButton(
-                "Add",
-                { model.addSource(url.trim(), engine, regex.trim().takeIf { module && it.isNotEmpty() }, packages.split(',').map { it.trim() }.filter { it.isNotEmpty() }.takeIf { module && it.isNotEmpty() }) },
-                Modifier.weight(1f),
-                enabled = url.isNotBlank(),
-            )
+private fun EmptyCatalog(feed: FeedStatus, refreshing: Boolean, onRefresh: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(ScreenPadding), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Txt("The Marketplace is empty", style = MaterialTheme.typography.titleLarge)
+        Txt("No catalog has been loaded yet. Refresh the catalog to list apps and patch bundles.", color = muted())
+        feed.errors().forEach { Banner("Feed failed", Tone.Danger, detail = it) }
+        ActionButton(if (refreshing) "Refreshing…" else "Refresh catalog", onRefresh, Modifier.fillMaxWidth(), enabled = !refreshing, icon = R.drawable.ms_sync)
+    }
+}
+
+// ponytail: plain LazyRow of fixed-width cards, not HorizontalMultiBrowseCarousel (still @ExperimentalMaterial3Api). Swap when it is stable.
+@Composable
+private fun Featured(apps: List<MarketApp>, onOpen: (String) -> Unit) {
+    val r = MaterialTheme.relume
+    val hues = listOf(r.lavender, r.blue, r.teal, r.amber)
+    LazyRow(contentPadding = PaddingValues(horizontal = ScreenPadding, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(apps.size, key = { apps[it].packageName }) { i ->
+            val app = apps[i]
+            val hue = hues[i % hues.size]
+            Surface(
+                Modifier.width(FEATURED_WIDTH).height(FEATURED_HEIGHT).clickable { onOpen(app.packageName) },
+                shape = RoundedCornerShape(FEATURED_RADIUS),
+                color = hue.container,
+                contentColor = hue.onContainer,
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.SpaceBetween) {
+                    Txt("Featured", style = MaterialTheme.typography.labelMedium, color = hue.onContainer)
+                    Column {
+                        Txt(app.name, style = MaterialTheme.typography.titleLarge, color = hue.onContainer, maxLines = 1)
+                        Txt(
+                            "${app.bundleCount} bundles" + (app.stars?.let { " · $it ★" } ?: ""),
+                            style = MaterialTheme.typography.bodySmall, color = hue.onContainer, maxLines = 1,
+                        )
+                    }
+                }
+            }
         }
     }
 }
