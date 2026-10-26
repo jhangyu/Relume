@@ -86,7 +86,11 @@ fun MarketAppScreen(model: MarketModel, pkg: String, onBack: () -> Unit, onEnabl
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Txt(detail.name, style = MaterialTheme.typography.headlineSmall)
                         Txt(detail.packageName, style = Mono, color = muted(), maxLines = 1)
-                        CategoryTag(detail.category)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            CategoryTag(detail.category)
+                            // Supported versions of the chosen bundle, as a neutral tag.
+                            bundle?.let { versionRange(it.versions) }?.let { Pill(it, MaterialTheme.colorScheme.surfaceContainerHigh, muted()) }
+                        }
                     }
                 }
                 detail.description?.let { Txt(it, Modifier.padding(horizontal = ScreenPadding), style = MaterialTheme.typography.bodyMedium, color = muted()) }

@@ -36,6 +36,13 @@ suspend fun featuredApps(fetch: FeaturedFetch): List<MarketApp>? {
 /** "1 bundle", "2 bundles"; [many] for irregular plurals ("patches"). */
 fun plural(n: Int, one: String, many: String = one + "s"): String = "$n " + if (n == 1) one else many
 
+/** "oldest – newest" of a bundle's versions (the server sends them newest first); null when empty (any version). */
+fun versionRange(newestFirst: List<String>): String? = when (newestFirst.size) {
+    0 -> null
+    1 -> newestFirst.single()
+    else -> "${newestFirst.last()} – ${newestFirst.first()}"
+}
+
 /** True while pages after [MarketList.page] exist on the server. */
 val MarketList.hasMore get() = page * perPage < total
 

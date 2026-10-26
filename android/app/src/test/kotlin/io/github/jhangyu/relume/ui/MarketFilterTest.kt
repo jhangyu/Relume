@@ -56,4 +56,11 @@ class MarketFilterTest {
     fun featuredIsNullWhenARequestFails() = runBlocking {
         assertNull(featuredApps { _, _, _ -> null })
     }
+
+    @Test
+    fun versionRangeIsOldestToNewestOfANewestFirstList() {
+        assertEquals("1.12.10 – 1.12.12", versionRange(listOf("1.12.12", "1.12.11", "1.12.10")))
+        assertEquals("2.0", versionRange(listOf("2.0")))
+        assertNull(versionRange(emptyList()))
+    }
 }

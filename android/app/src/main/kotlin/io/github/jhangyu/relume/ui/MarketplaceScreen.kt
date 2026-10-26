@@ -217,7 +217,7 @@ private fun Featured(apps: List<MarketApp>, model: MarketModel, onOpen: (String)
                     visible >= FEATURED_FULL_MIN -> Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.SpaceBetween) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Txt("FEATURED", style = MaterialTheme.typography.labelMedium, color = first.onContainer)
-                            AppTile(app.name, app.iconUrl, model.api, size = FEATURED_TILE, category = app.category)
+                            AppTile(app.name, app.iconUrl, model.api, size = FEATURED_TILE, category = app.category, onWhite = true)
                         }
                         Column {
                             Txt(app.name, style = MaterialTheme.typography.titleLarge, color = first.onContainer, maxLines = 1)
@@ -227,7 +227,7 @@ private fun Featured(apps: List<MarketApp>, model: MarketModel, onOpen: (String)
                             )
                         }
                     }
-                    visible >= FEATURED_TILE_SMALL -> AppTile(app.name, app.iconUrl, model.api, size = FEATURED_TILE_SMALL, category = app.category)
+                    visible >= FEATURED_TILE_SMALL -> AppTile(app.name, app.iconUrl, model.api, size = FEATURED_TILE_SMALL, category = app.category, onWhite = true)
                 }
             }
         }
