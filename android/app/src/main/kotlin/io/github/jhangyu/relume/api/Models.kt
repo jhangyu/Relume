@@ -3,6 +3,7 @@ package io.github.jhangyu.relume.api
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
 /**
@@ -384,6 +385,13 @@ data class AppDetail(val app: AppObject, val settings: AppSettings)
 data class AppSettings(
     val version: VersionSettings,
     @SerialName("project_ids") val projectIds: List<Int>,
+    /** Build variants as stored (name, abi, download, exclude_splits, strip_libs); sent back whole on change. */
+    val variants: List<JsonObject>,
+    /** `{sigbypass, injectdex}` for Xposed module bundles, null for patch bundles. */
+    @SerialName("engine_options") val engineOptions: JsonObject?,
+    @SerialName("display_name") val displayName: String?,
+    /** Overrides kept from an earlier bundle whose patch names this bundle lacks. */
+    @SerialName("stale_overrides") val staleOverrides: List<String>,
 )
 
 @Serializable
@@ -393,6 +401,8 @@ data class VersionSettings(
     val pin: String?,
     @SerialName("allow_nearest") val allowNearest: Boolean,
     val supported: List<String>,
+    /** Versions on the APKMirror listing, newest first ([] before the first check). */
+    val apkmirror: List<String>,
 )
 
 @Serializable
@@ -414,7 +424,19 @@ data class PatchView(
     val description: String?,
     @SerialName("default_enabled") val defaultEnabled: Boolean?,
     val enabled: Boolean?,
+    val options: List<PatchOption>,
     @SerialName("compatible_versions") val compatibleVersions: List<String>,
+)
+
+/** One patch option: [default] from the bundle, [value] = the override or the default; [values] lists fixed choices. */
+@Serializable
+data class PatchOption(
+    val key: String,
+    val title: String?,
+    val type: String?,
+    val default: JsonElement?,
+    val values: List<String>,
+    val value: JsonElement?,
 )
 
 /** `spec` of a schedule: `hours` for every=hours, `at` for day and week, `days` for week. */

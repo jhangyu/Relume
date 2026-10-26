@@ -1,5 +1,6 @@
 package io.github.jhangyu.relume.api
 
+import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -104,5 +105,36 @@ class MarketParseTest {
         )
         assertEquals("09:00", day.spec.at)
         assertNull(day.nextRunAt)
+    }
+
+    @Test
+    fun appSettingsAndPatchesParse() {
+        val settings = ApiJson.decodeFromString(
+            AppSettingsEnvelope.serializer(),
+            """{"id": 12, "settings": {"version": {"mode": "pinned", "pin": "20.40.45", "allow_nearest": false,
+                 "supported": ["20.40.45"], "apkmirror": ["20.41.0", "20.40.45"]},
+               "project_ids": [3], "display_name": null, "engine_options": null, "stale_overrides": ["Old patch"],
+               "variants": [{"name": "arm64-v8a", "abi": "arm64-v8a", "download": {"kind": "apkmirror", "type": "apk"},
+                             "exclude_splits": null, "strip_libs": "arm64-v8a"}]}}""",
+        ).settings
+        assertEquals(listOf("20.41.0", "20.40.45"), settings.version.apkmirror)
+        assertEquals("arm64-v8a", (settings.variants.single()["abi"] as JsonPrimitive).content)
+        assertNull(settings.engineOptions)
+        assertEquals(listOf("Old patch"), settings.staleOverrides)
+
+        val view = ApiJson.decodeFromString(
+            PatchesView.serializer(),
+            """{"tag": "v1.48.0", "files": [], "stale_overrides": [], "compatible_versions": ["20.40.45"], "unavailable": false,
+                "patches": [{"name": "Custom branding", "description": "d", "default_enabled": true, "enabled": true,
+                  "compatible_versions": [],
+                  "options": [{"key": "appName", "title": "App name", "type": "String", "default": "YouTube",
+                               "values": [], "value": "YT"},
+                              {"key": "icon", "title": null, "type": null, "default": null, "values": ["a", "b"], "value": null}]}]}""",
+        )
+        val opts = view.patches.single().options
+        assertEquals(JsonPrimitive("YT"), opts[0].value)
+        assertEquals(JsonPrimitive("YouTube"), opts[0].default)
+        assertEquals(listOf("a", "b"), opts[1].values)
+        assertNull(opts[1].default)   // JSON null decodes to Kotlin null, not JsonNull
     }
 }
