@@ -14,15 +14,13 @@ The issue might be that your Android OS is preventing MicroG (GMS Core) from run
 
 ### Q: How do I use this repository for patching my own app?
 
-Run the Docker stack on your own machine (see "Run locally with Docker (Web UI)" in the [README](../README.md)), open the Web UI, pick an app in the catalog and start a build. Download the patched APK from the build result.
+Run the Docker stack on your own machine (see "Run locally with Docker (Web UI)" in the [README](../README.md)), open the Web UI, pick an app in the Marketplace, enable it and start a build. Download the patched APK from the build result.
 
 ---
 
 ### Q: How do I change patches, patch options or the app version?
 
-Patch selection, patch options and version pins live in the web UI ("Relume", `local/`): open an app, then use the Patches, Options and Version tabs. To keep these settings in the repository (the seed used by a fresh install), export the catalog and commit it:
-
-`docker compose -f local/docker-compose.yml exec app python3 -m webui export-seed > local/webui/catalog-seed.json`
+Patch selection, patch options and version pins live in the web UI ("Relume", `local/`): open an app from the Apps page, then use its settings.
 
 ---
 

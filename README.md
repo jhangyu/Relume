@@ -7,8 +7,8 @@
 
 ## What it does
 
-- Downloads the official APK of each app in the catalog, patches it with the configured patch source, signs it, and keeps the result as an artifact.
-- Apps and patch sources are defined in a catalog (`local/webui/catalog-seed.json`): YouTube, YouTube Music, Reddit, TikTok, Twitter/X, Instagram, Proton Mail/VPN and many more, each tied to a patch source such as Morphe, ReVanced Extended (anddea), Piko or Dropped Patches.
+- Downloads the official APK of each app you enable, patches it with the patch bundle you chose, signs it, and keeps the result as an artifact.
+- Apps come from the Marketplace: a built-in catalog plus community catalogs and custom sources you add (Morphe, LSPatch or NPatch). Pick an app, choose a bundle and patches, and enable it. All enabled apps are rebuilt on one global schedule.
 - Runs as a local Docker build with a Web UI (`local/`), using the build code in `src/build/`.
 - The Android companion app is released by pushing a tag `companion-vX.Y.Z`: CI builds and publishes it.
 
@@ -29,7 +29,7 @@ docker compose -f local/docker-compose.yml up -d --build
 
 Open `http://localhost:47000` (in bridge mode the port is `RELUME_WEB_PORT`). All settings are listed in `local/.env.example`; `RELUME_DATA_DIR` (default `local/data`) holds everything that regrows from an empty folder (database, logs, artifacts, caches, upstream downloads, work), so deleting it is safe. `RELUME_KEY_DIR` (default `local/key`, create it once with `mkdir local/key`) holds what must survive: the adb key and the GitHub token entered on the Settings page. Back it up. Without it every paired phone must be authorized again.
 
-On first start, open the Web UI and create the admin account (username + password). Forgot it: set `RELUME_ADMIN_PASSWORD` (at least 10 characters) in the `app` service environment and restart the container. At boot the admin password becomes that value and every browser session is signed out. Phone device tokens keep working. Remove the variable afterwards. It does nothing before the admin account exists. Web UI pages: app catalog (patches, options and version pin per app), builds, schedules, devices and settings. Helper command: `docker exec relume-app python3 -m webui export-seed`.
+On first start, open the Web UI and create the admin account (username + password). Forgot it: set `RELUME_ADMIN_PASSWORD` (at least 10 characters) in the `app` service environment and restart the container. At boot the admin password becomes that value and every browser session is signed out. Phone device tokens keep working. Remove the variable afterwards. It does nothing before the admin account exists. Web UI pages: Marketplace, apps (patches, options and version pin per app), builds, schedules, devices and settings.
 
 ### Portainer
 

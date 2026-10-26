@@ -275,8 +275,7 @@ def _app_project_step(p, action, reason):
             'needs': [], 'pull_job_id': None, 'signer_change': None, 'download': None}
     if reason == 'not downloaded':
         action, reason = 'error', 'NOT_DOWNLOADED'
-        step['pull_job_id'] = jobs.enqueue('upstream', {'upstream_id': p['upstream_id']}, 'manual',
-                                           options={'rebuild': False})
+        step['pull_job_id'] = jobs.enqueue('upstream', {'upstream_id': p['upstream_id']}, 'manual')
     elif reason == 'SIGNER_CHANGED':
         pinned = db.conn().execute('SELECT signer_sha256 FROM project WHERE id = ?', (p['project_id'],)).fetchone()[0]
         step['signer_change'] = {'pinned': pinned, 'offered': p['signer_alert']}
@@ -540,7 +539,7 @@ def _pull_project(job, step, log):
     """A project that was never downloaded is pulled by its upstream job, then installed. False = cancelled."""
     log.line(f"project {step['ref_id']} not downloaded: pulling upstream {step['upstream_id']}")
     jid = jobs.enqueue('upstream', {'upstream_id': step['upstream_id']}, job.trigger,
-                       options={'rebuild': False, 'notify': job.options.get('notify', True)})
+                       options={'notify': job.options.get('notify', True)})
     cond = jobs.log_condition(jid)  # notified when the upstream job ends and on any cancel (jobs.cancel)
     while True:
         seen = cond.mark()
