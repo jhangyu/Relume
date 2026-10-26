@@ -1,6 +1,7 @@
 """Enabled-app model, build input, rebuild fingerprint and update run (spec §3, apps part §4-§5, §8)."""
 import json
 import threading
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -86,9 +87,15 @@ class VersionTest(AppsCase):
         self.assertTrue(j["cli_jar"].endswith("morphe-desktop-1.18.1-all.jar"))
         self.assertEqual(apps.stale_overrides(1), ["Gone"])
         self.assertTrue(j["apkmirror"]["versions_due"])
-        with db.tx() as c:
-            c.execute("UPDATE app SET apkmirror_checked_at = ? WHERE package = ?", (db.utcnow(), YT))
-        self.assertFalse(apps.job_input(1)["apkmirror"]["versions_due"])
+        for hours, due in ((25, True), (1, False)):
+            t = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            with db.tx() as c:
+                c.execute("UPDATE app SET apkmirror_checked_at = ? WHERE package = ?", (t, YT))
+            self.assertEqual(apps.job_input(1)["apkmirror"]["versions_due"], due, hours)
+        catalog.set_apkmirror_versions(YT, ["20.14.1", "20.13.41"])
+        self.assertEqual(apps.get(1)["settings"]["version"]["apkmirror"], ["20.14.1", "20.13.41"])
+        self.set_item(1, patch_overrides="{}")
+        self.assertEqual(apps.job_input(1)["options_file_json"], [{"patches": {}}])
         with db.tx() as c:
             c.execute("DELETE FROM bundle_info WHERE package = ?", (YT,))
         with self.assertRaisesRegex(catalog.UpstreamMissing, f"patch list missing for {YT} at v1"):
@@ -96,6 +103,10 @@ class VersionTest(AppsCase):
         with db.tx() as c:
             c.execute("UPDATE upstream SET downloaded_tag = NULL WHERE id = ?", (self.basic["cli"],))
         with self.assertRaisesRegex(catalog.UpstreamMissing, "CLI upstream"):
+            apps.job_input(2)
+        with db.tx() as c:
+            c.execute("UPDATE upstream SET downloaded_tag = NULL WHERE id = ?", (self.up,))
+        with self.assertRaisesRegex(catalog.UpstreamMissing, "not downloaded"):
             apps.job_input(2)
 
     def test_version_settings_validation(self):
@@ -274,10 +285,14 @@ class PatchesTest(AppsCase):
         self.assertEqual((b["tag"], b["files"], b["unavailable"], b["stale_overrides"]), ("v1", ["patches-1.mpp"], False, ["Gone"]))
         self.assertEqual([(p["name"], p["enabled"]) for p in b["patches"]], [("Hide ads", False), ("Spoof", False)])
         self.assertEqual(b["patches"][0]["options"][0]["value"], "full")
+        self.assertEqual(b["compatible_versions"], ["20.13.41", "20.12.46"])
         ok = {"Hide ads": {"enabled": True, "options": {"mode": "lite"}}}
         apps.put_patches(1, {"overrides": ok})
         stored = json.loads(db.conn().execute("SELECT patch_overrides FROM item WHERE id = 1").fetchone()[0])
         self.assertEqual(stored, {"Gone": {"enabled": True}, "Hide ads": {"enabled": True, "options": {"mode": "lite"}}})
+        apps.put_patches(1, {"overrides": {}})
+        self.assertEqual(json.loads(db.conn().execute("SELECT patch_overrides FROM item WHERE id = 1").fetchone()[0]),
+                         {"Gone": {"enabled": True}})
         bads = [{"Nope": {"enabled": True}}, {"Gone": {"enabled": False}}, {"Hide ads": {"options": {"nokey": 1}}},
                 {"Hide ads": {"options": {"mode": 4}}}, {"Hide ads": {"enabled": "yes"}}, {"Hide ads": {"extra": 1}}]
         for bad in bads:
@@ -286,7 +301,8 @@ class PatchesTest(AppsCase):
         self.assertFalse(apps._type_ok("kotlin.Boolean", "true"))
         with db.tx() as c:
             c.execute("DELETE FROM bundle_info WHERE package = ?", (REDDIT,))
-        self.assertEqual(apps.get_patches(2)["unavailable"], True)
+        b = apps.get_patches(2)
+        self.assertEqual((b["unavailable"], b["patches"], b["stale_overrides"]), (True, [], []))
         self.assertEqual(self.http_status(apps.put_patches, 2, {"overrides": {}})[0], 409)
 
 
