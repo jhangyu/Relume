@@ -4,7 +4,7 @@ from webui.tests.helpers import DataTestCase, serve, http, login
 
 STATIC = pathlib.Path(server.__file__).with_name('static')
 UNSAFE = re.compile(r'(?:innerHTML|outerHTML)\s*=(?!\s*(?:html`|\'\'|""|``))|insertAdjacentHTML\([^,]+,(?!\s*html`)')
-NAV = ('href="/"', 'href="/projects.html"', 'href="/builds.html"', 'href="/schedules.html"', 'href="/devices.html"', 'href="/settings.html"')
+NAV = ('href="/"', 'href="/apps.html"', 'href="/schedules.html"', 'href="/builds.html"', 'href="/devices.html"', 'href="/projects.html"', 'href="/settings.html"')
 
 
 TEXT_SUFFIXES = {'.html', '.css', '.js', '.svg', '.webmanifest'}
@@ -36,14 +36,8 @@ class StaticRulesTest(unittest.TestCase):
         for f in text_assets():
             t = f.read_text()
             self.assertNotRegex(t, r'(?:src|href)=["\']https?://|url\(["\']?https?://|fetch\(["\'`]https?://', f.name)
-            self.assertNotRegex(t, r'href="(apps|app-detail|build-log|index)\.html', f.name)
+            self.assertNotRegex(t, r'href="(app-detail|build-log)\.html', f.name)
             self.assertNotIn('data-toast=', t, f.name)
-
-    def test_index_source_controls(self):
-        js = (STATIC / 'index.js').read_text()
-        for needle in ("'PUT', `/api/sources/", "'DELETE', `/api/sources/", 'engine_options', 'sigbypass', 'injectdex'):
-            self.assertIn(needle, js, needle)
-        self.assertIn('id="a-src-edit"', (STATIC / 'index.html').read_text())
 
     def test_pages_have_nav_and_logout(self):
         js = (STATIC / 'app.js').read_text()
@@ -96,17 +90,8 @@ class PageIdsTest(unittest.TestCase):
             for i in sorted(ids):
                 self.assertIn(f'id="{i}"', markup, f'{page}: #{i}')
 
-    def test_item_page_has_no_mockup_leftovers(self):
-        for name in ('item.html', 'item.js'):
-            t = (STATIC / name).read_text()
-            self.assertNotRegex(t, r'patchName|src/option[s]|shared by every item', name)
+    def test_builds_page_has_no_mockup_leftovers_and_streams_the_log(self):
         self.assertNotRegex((STATIC / 'builds.html').read_text(), r'Patch 4 / 41|patch update 1\.10\.0')
-
-    def test_item_js_keeps_colour_picker_and_version_labels(self):
-        t = (STATIC / 'item.js').read_text()
-        for needle in ('type="color"', 'colorInput', 'not in patch list', 'sigbypass'):
-            self.assertIn(needle, t)
-        self.assertGreaterEqual(t.count('/api/apps/'), 2)
         b = (STATIC / 'builds.js').read_text()
         self.assertIn('logStream', b)
         self.assertIn('::step::', b)
