@@ -63,7 +63,7 @@ function renderLastRun() {
   box.hidden = !j;
   if (!j) return;
   const [cls, label] = RUN_BADGE[j.status] || ['', j.status];
-  box.innerHTML = html`<span class="caption">Last update run</span><span class="badge ${cls}">${label}</span>${j.reason ? html`<span class="caption" style="color:var(--colorStatusDangerForeground1)">${j.reason}</span>` : ''}<a class="caption" href="/builds.html?job=${j.id}">View log</a>`;
+  box.innerHTML = html`<span class="caption">Last update run</span><span class="badge ${cls}">${label}</span>${j.reason ? html`<span class="caption" style="color:var(--colorStatusDangerForeground1)">${j.reason}</span>` : ''}<a class="caption" style="color:var(--colorBrandForeground1)" href="/builds.html?job=${j.id}">View log</a>`;
 }
 
 async function putGlobal(body, msg) {

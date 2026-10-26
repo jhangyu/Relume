@@ -6,7 +6,7 @@
 <main class="auth"><div style="width:100%;max-width:380px" class="stack">
 <div class="row between"><div class="brand" style="padding:0"><img class="logo" src="/static/favicon.svg" alt="" width="28" height="28">Relume</div></div>
 <form class="card" id="f">
-<div class="card-head" style="padding-top:1.5rem"><h1 style="font-size:1.25rem" id="title">Sign in</h1><p class="muted sm" id="sub">Single admin account for this build server.</p></div>
+<div class="card-head" style="padding-top:1.5rem"><h1 style="font-size:1.25rem;white-space:nowrap" id="title">Sign in</h1><p class="muted sm" id="sub">Single admin account for this build server.</p></div>
 <div class="card-pad stack">
 <div class="field"><label class="label" for="u">Username</label><input class="input" id="u" autocomplete="username" required autofocus maxlength="64" pattern="[A-Za-z0-9._\-]+" aria-describedby="err"></div>
 <div class="field"><label class="label" for="p">Password</label><div style="position:relative"><input class="input" id="p" type="password" autocomplete="current-password" required style="width:100%;padding-right:4.5rem" aria-describedby="err ph"><button type="button" class="btn subtle small" id="pwt" aria-controls="p" aria-pressed="false" style="position:absolute;right:2px;top:2px;height:calc(100% - 4px)">Show</button></div><p class="hint" id="ph" hidden>At least 10 characters. Username: letters, digits, <code>. _ -</code>.</p></div>
