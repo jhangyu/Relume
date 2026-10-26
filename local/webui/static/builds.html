@@ -13,9 +13,8 @@
 .log .t{color:var(--colorNeutralForeground3);font-weight:400}
 .filters{display:flex;flex-wrap:wrap;gap:8px;padding:12px 16px;border-bottom:1px solid var(--colorNeutralStroke2)}
 .tw{overflow-x:auto}
-.danger{color:var(--colorStatusDangerForeground1)}
 .table tr[aria-current=true] td{background:var(--colorBrandBackground2)}
-.table td:last-child .dd,.table td:last-child .icon-btn{vertical-align:middle}
+.table td:last-child>*{vertical-align:middle}
 .table td:last-child{white-space:nowrap}
 .table td:last-child .dd{display:inline-block}
 @media (max-width:900px){.live{grid-template-columns:1fr}.queue{border-right:0;border-bottom:1px solid var(--colorNeutralStroke3)}.log{height:240px}}
@@ -35,7 +34,7 @@
 <section class="section" aria-labelledby="h-t">
 <div class="section-head"><h2 class="subtitle1" id="h-t">History</h2><span class="caption" id="hsum"></span></div>
 <div class="card">
-<div class="filters"><label class="input search" style="width:240px"><svg class="i i-16" aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Search builds</span><input type="search" id="hq" placeholder="Search app or bundle"></label>
+<div class="filters"><label class="input search"><svg class="i i-16" aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Search builds</span><input type="search" id="hq" placeholder="Search app or bundle"></label>
 <span class="row wrap" id="pills"><button class="pill" type="button" data-filt="" aria-pressed="true">All</button><button class="pill" type="button" data-filt="success" aria-pressed="false">Succeeded</button><button class="pill" type="button" data-filt="failed" aria-pressed="false">Failed</button><button class="pill" type="button" data-filt="cancelled" aria-pressed="false">Cancelled</button><button class="pill" type="button" data-filt="item" id="pill-item" aria-pressed="false">This app</button></span></div>
 <div class="tw"><table class="table" id="hist"><thead><tr><th>App</th><th>Bundle</th><th>App version</th><th>Started</th><th>Duration</th><th>Result</th><th style="text-align:right">Actions</th></tr></thead><tbody></tbody></table></div>
 <div class="dlg-actions" style="justify-content:center;margin:0;padding:12px"><button class="btn small" type="button" id="older">Load older</button></div>
