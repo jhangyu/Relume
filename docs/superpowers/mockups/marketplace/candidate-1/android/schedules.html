@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Android · Schedules · Relume candidate 1</title>
+<link rel="stylesheet" href="md3.css">
+<style>
+.steps{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin:8px 12px 4px 0}
+.steps div{border-radius:var(--shapeS);background:var(--surfaceContainerLow);padding:6px 4px;text-align:center;display:grid;gap:0}
+.steps b{font:500 16px/22px var(--font);font-variant-numeric:tabular-nums}
+.steps span{font:500 10px/12px var(--font);color:var(--onSurfaceVariant)}
+.steps .hot{background:var(--primaryContainer);color:var(--onPrimaryContainer)}
+.steps .hot span{color:var(--onPrimaryContainer)}
+.ivs{display:flex;gap:8px;flex-wrap:wrap;padding:4px 0 8px}
+.vrow{display:flex;align-items:center;gap:16px;padding:8px 16px;min-height:64px}
+.vrow .t{flex:1;min-width:0}
+.vrow .h{font:400 16px/24px var(--font)}
+.vrow .s{font:400 14px/20px var(--font);color:var(--onSurfaceVariant)}
+</style>
+</head>
+<body data-palette="sunset">
+<script src="../icons.js"></script>
+<div class="page">
+  <h1>Android · Schedules</h1>
+  <p class="note">One card for the global update run (interval chips, last-run numbers per step, Run now) and a list of OTA schedules with inline switches. Editing an OTA schedule opens a full-screen dialog.</p>
+  <div class="switcher" id="pal"></div>
+  <div class="roles" aria-label="Colour roles of the selected palette"></div>
+  <div class="pages">
+
+  <figure class="figure">
+  <div class="phone">
+    <div class="status"><span>10:40</span><span class="cam"></span><span>5G ▮▮</span></div>
+    <div class="appbar"><h2>Schedules</h2><button class="ib" aria-label="Account and device settings"><span class="avatar">J</span></button></div>
+    <div class="scroll" style="padding-bottom:80px">
+      <div class="card">
+        <div class="row"><svg class="i" style="color:var(--primary)" aria-hidden="true"><use href="#i-sync"/></svg><span style="flex:1"><div class="ttl">Update run</div><div class="sup">Every 4 h from 02:00 · next 14:00</div></span><input type="checkbox" class="sw" checked aria-label="Update run enabled"></div>
+        <div class="ivs" role="radiogroup" aria-label="Interval">
+          <button class="chip" aria-pressed="false">1 h</button><button class="chip" aria-pressed="false">2 h</button><button class="chip" aria-pressed="true"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>4 h</button><button class="chip" aria-pressed="false">6 h</button><button class="chip" aria-pressed="false">12 h</button><button class="chip" aria-pressed="false">24 h</button>
+        </div>
+        <div class="sup" style="font-size:12px">Last run 10:00 · 3 m 41 s</div>
+        <div class="steps" aria-label="Last run per step">
+          <div><b>304</b><span>CATALOG</span></div><div class="hot"><b>1</b><span>BUNDLES</span></div><div class="hot"><b>2</b><span>APPS</span></div><div><b>1</b><span>BUILT</span></div><div><b>1</b><span>NOTIFIED</span></div>
+        </div>
+        <div class="acts"><button class="btn text">History</button><button class="btn text"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Run now</button></div>
+      </div>
+      <div class="sub">OTA schedules<span class="r">2</span></div>
+      <div class="vrow"><span class="tile t3" style="width:40px;height:40px"><svg class="i" aria-hidden="true"><use href="#i-phone"/></svg></span><div class="t"><div class="h">Nightly phones</div><div class="s">Daily 03:30 · Pixel 8, Galaxy S23</div></div><input type="checkbox" class="sw" checked aria-label="Nightly phones enabled"></div>
+      <div class="vrow"><span class="tile t2" style="width:40px;height:40px"><svg class="i" aria-hidden="true"><use href="#i-phone"/></svg></span><div class="t"><div class="h">Weekend tablet</div><div class="s">Sat 10:00 · Pixel Tablet · offline</div></div><input type="checkbox" class="sw" aria-label="Weekend tablet enabled"></div>
+      <div class="banner info"><svg class="i" aria-hidden="true"><use href="#i-info"/></svg><span>OTA pushes each device's assigned apps plus their Follow-project dependencies.</span></div>
+    </div>
+    <button class="fab"><svg class="i" aria-hidden="true"><use href="#i-add"/></svg>OTA schedule</button>
+    <nav class="navbar" aria-label="Main">
+      <a href="marketplace.html"><span class="pill"><svg class="i" aria-hidden="true"><use href="#i-store"/></svg></span>Marketplace</a>
+      <a href="apps.html"><span class="pill"><svg class="i" aria-hidden="true"><use href="#i-apps"/></svg></span><span class="badge">2</span>Apps</a>
+      <a href="schedules.html" aria-current="page"><span class="pill"><svg class="i" aria-hidden="true"><use href="#i-calendar"/></svg></span>Schedules</a>
+    </nav>
+    <div class="gesture"></div>
+  </div>
+  <figcaption>Schedules · global interval + OTA list, extended FAB to add</figcaption>
+  </figure>
+
+  <figure class="figure">
+  <div class="phone">
+    <div class="status"><span>10:41</span><span class="cam"></span><span>5G ▮▮</span></div>
+    <div class="appbar withnav"><button class="ib" aria-label="Close"><svg class="i" aria-hidden="true"><use href="#i-close"/></svg></button><h2>Edit OTA schedule</h2><button class="btn text">Save</button></div>
+    <div class="scroll">
+      <div class="tf"><label>Name</label><input value="Nightly phones" aria-label="Name"></div>
+      <div class="sub">Repeat</div>
+      <div class="seg" role="radiogroup" aria-label="Repeat">
+        <label><input type="radio" name="rp" checked><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Daily</label><label><input type="radio" name="rp"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Weekly</label><label><input type="radio" name="rp"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Cron</label>
+      </div>
+      <div class="tf"><label>Time</label><div class="val">03:30</div><span class="trail"><button class="ib" aria-label="Pick time"><svg class="i" aria-hidden="true"><use href="#i-calendar"/></svg></button></span></div>
+      <div class="sub">Devices</div>
+      <label class="vrow"><input type="checkbox" class="cb" checked aria-label="Pixel 8"><div class="t"><div class="h">Pixel 8</div><div class="s">4 apps · online</div></div></label>
+      <label class="vrow"><input type="checkbox" class="cb" checked aria-label="Galaxy S23"><div class="t"><div class="h">Galaxy S23</div><div class="s">2 apps · online</div></div></label>
+      <label class="vrow"><input type="checkbox" class="cb" aria-label="Pixel Tablet"><div class="t"><div class="h">Pixel Tablet</div><div class="s">3 apps · offline 2 d</div></div></label>
+      <div class="tf"><label>Retries if offline</label><input value="3" inputmode="numeric" aria-label="Retries if offline"><div class="help">10 min apart</div></div>
+      <div class="banner info"><svg class="i" aria-hidden="true"><use href="#i-info"/></svg><span>Every day at 03:30 to 2 devices, up to 3 retries.</span></div>
+      <div style="padding:8px 16px 16px"><button class="btn outlined wide" style="color:var(--error);border-color:var(--outlineVariant)"><svg class="i" aria-hidden="true"><use href="#i-delete"/></svg>Delete schedule</button></div>
+    </div>
+    <div class="gesture"></div>
+  </div>
+  <figcaption>OTA schedule editor · full-screen dialog</figcaption>
+  </figure>
+
+  </div>
+</div>
+<script src="mock.js"></script>
+</body>
+</html>

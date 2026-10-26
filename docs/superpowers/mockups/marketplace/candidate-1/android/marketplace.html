@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Android · Marketplace · Relume candidate 1</title>
+<link rel="stylesheet" href="md3.css">
+</head>
+<body data-palette="sunset">
+<script src="../icons.js"></script>
+<div class="page">
+  <h1>Android · Marketplace</h1>
+  <p class="note">Material 3, light. Dense two-line list rows with the numbers that decide a pick (bundles, patches, stars) on the second line. Navigation bar with three destinations; the account avatar opens the existing device settings (server, account, background check).</p>
+  <div class="switcher" id="pal"></div>
+  <div class="roles" aria-label="Colour roles of the selected palette"></div>
+  <div class="pages">
+
+  <!-- 1. Marketplace list -->
+  <figure class="figure">
+  <div class="phone">
+    <div class="status"><span>10:24</span><span class="cam"></span><span>5G ▮▮</span></div>
+    <div class="appbar"><h2>Marketplace</h2><button class="ib" aria-label="Refresh catalog"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg></button><button class="ib" aria-label="Account and device settings"><span class="avatar">J</span></button></div>
+    <div class="searchbar"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg><span>Search 1,211 apps</span><button class="ib" aria-label="Sort: most bundles"><svg class="i" aria-hidden="true"><use href="#i-sort"/></svg></button></div>
+    <div class="chips">
+      <button class="chip" aria-pressed="true"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Social &amp; Communication<svg class="i" aria-hidden="true"><use href="#i-chevronDown"/></svg></button>
+      <button class="chip" aria-pressed="false">Enabled <span class="n">6</span></button>
+      <button class="chip" aria-pressed="false">Built-in</button>
+      <button class="chip" aria-pressed="false">Custom</button>
+    </div>
+    <div class="scroll dense">
+      <div class="sub">71 apps<span class="r">Most bundles</span></div>
+      <div class="li"><span class="tile t1">I</span><span><div class="h">Instagram</div><div class="s">11 bundles · 68 patches</div></span><span class="meta"><span class="lab ok"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Enabled</span><span>★ 5.8k</span></span></div>
+      <div class="li"><span class="tile t2">T</span><span><div class="h">Telegram</div><div class="s">7 bundles · 14 patches</div></span><span class="meta">13.0.2<span>★ 940</span></span></div>
+      <div class="li"><span class="tile t3">RS</span><span><div class="h">Reddit Sync</div><div class="s">5 bundles · 25 patches</div></span><span class="meta">v23.06.30<span>★ 814</span></span></div>
+      <div class="li"><span class="tile t1">T</span><span><div class="h">TikTok</div><div class="s">5 bundles · 51 patches</div></span><span class="meta">47.5.3<span>★ 444</span></span></div>
+      <div class="li"><span class="tile t4">R</span><span><div class="h">Reddit</div><div class="s"><span class="org builtin">Built-in</span> + 4 · 26 patches</div></span><span class="meta"><span class="lab ok"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Enabled</span><span>★ 291</span></span></div>
+      <div class="li sel"><span class="tile t5">BF</span><span><div class="h">Boost for Reddit</div><div class="s">4 bundles · 48 patches</div></span><span class="meta">1.12.12<span>★ 814</span></span></div>
+      <div class="li"><span class="tile t3">T</span><span><div class="h">Threads</div><div class="s"><span class="org custom">Custom</span> + 3 · 5 patches</div></span><span class="meta"><span class="lab warn"><svg class="i" aria-hidden="true"><use href="#i-warning"/></svg>URL</span></span></div>
+      <div class="li"><span class="tile t2">F</span><span><div class="h">Facebook</div><div class="s">4 bundles · 19 patches</div></span><span class="meta">580.0.0<span>★ 1.3k</span></span></div>
+    </div>
+    <nav class="navbar" aria-label="Main">
+      <a href="marketplace.html" aria-current="page"><span class="pill"><svg class="i" aria-hidden="true"><use href="#i-store"/></svg></span>Marketplace</a>
+      <a href="apps.html"><span class="pill"><svg class="i" aria-hidden="true"><use href="#i-apps"/></svg></span><span class="badge">2</span>Apps</a>
+      <a href="schedules.html"><span class="pill"><svg class="i" aria-hidden="true"><use href="#i-calendar"/></svg></span>Schedules</a>
+    </nav>
+    <div class="gesture"></div>
+  </div>
+  <figcaption>Marketplace list · category filter chip, sort in the search bar, state on the right</figcaption>
+  </figure>
+
+  <!-- 2. App detail / enable -->
+  <figure class="figure">
+  <div class="phone">
+    <div class="status"><span>10:25</span><span class="cam"></span><span>5G ▮▮</span></div>
+    <div class="appbar withnav"><button class="ib" aria-label="Back"><svg class="i" aria-hidden="true"><use href="#i-back"/></svg></button><h2>Boost for Reddit</h2><button class="ib" aria-label="More options"><svg class="i" aria-hidden="true"><use href="#i-moreVert"/></svg></button></div>
+    <div class="scroll">
+      <div style="display:flex;gap:16px;align-items:center;padding:4px 16px 12px"><span class="tile lg t5">BF</span><div><div style="font:400 16px/24px var(--font)">Social &amp; Communication</div><div class="mono" style="font-size:12px;color:var(--onSurfaceVariant)">com.rubenmayayo.reddit</div></div></div>
+      <div class="kv"><div><b>4</b><span>BUNDLES</span></div><div><b>48</b><span>MAX PATCHES</span></div><div><b>1.12.12</b><span>NEWEST</span></div></div>
+      <div class="sub">Choose one bundle</div>
+      <label class="li sel" style="min-height:64px"><input type="radio" class="rd" name="b" checked aria-label="Patcheddit"><span><div class="h">Patcheddit <span class="org">Official catalog</span></div><div class="s">wchill · ★ 814 · 37 patches</div></span><span class="meta">10-23</span></label>
+      <label class="li" style="min-height:64px"><input type="radio" class="rd" name="b" aria-label="Brealorg"><span><div class="h">Brealorg <span class="org">Official catalog</span></div><div class="s">brealorg · ★ 103 · 48 patches</div></span><span class="meta">10-24</span></label>
+      <label class="li" style="min-height:64px"><input type="radio" class="rd" name="b" aria-label="RhubarbShoelaces"><span><div class="h">RhubarbShoelaces</div><div class="s">★ 13 · 1 patch</div></span><span class="meta">08-21</span></label>
+      <label class="li" style="min-height:56px;opacity:.5"><input type="radio" class="rd" name="b" disabled aria-label="Titandrive"><span><div class="h">Titandrive</div><div class="s">No patch for this app</div></span><span></span></label>
+      <div class="sub">Patches · 33 of 37 on<span class="r" style="color:var(--primary);font-weight:500">Defaults</span></div>
+      <div class="prow"><span><div class="h">Add Boost Search bottom navigation</div><div class="s">Default on</div></span><input type="checkbox" class="sw" checked aria-label="Add Boost Search bottom navigation"></div>
+      <div class="prow"><span><div class="h">Boost Morphe settings</div><div class="s">Default off</div></span><input type="checkbox" class="sw" aria-label="Boost Morphe settings"></div>
+      <div class="prow"><span><div class="h">Prefer high refresh rate</div><div class="s">Default off · <em>changed</em></div></span><input type="checkbox" class="sw" checked aria-label="Prefer high refresh rate"></div>
+      <div class="prow"><span><div class="h">Fix Boost target SDK 35</div><div class="s">Default off · <em>changed</em></div></span><input type="checkbox" class="sw" checked aria-label="Fix Boost target SDK 35 compatibility"></div>
+      <div class="prow"><span><div class="h">Disable Boost Crashlytics</div><div class="s">Default on</div></span><input type="checkbox" class="sw" checked aria-label="Disable Boost Crashlytics startup network calls"></div>
+    </div>
+    <div style="background:var(--surfaceContainer);padding:12px 16px;display:flex;align-items:center;gap:12px;flex:none">
+      <div style="flex:1;min-width:0"><div style="font:500 14px/20px var(--font)">Auto → 1.12.12</div><div style="font:400 12px/16px var(--font);color:var(--onSurfaceVariant)">APK from APKMirror, located on enable</div></div>
+      <button class="btn filled"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Enable</button>
+    </div>
+    <div class="gesture" style="background:var(--surfaceContainer)"></div>
+  </div>
+  <figcaption>App detail · pick one bundle, toggle patches, enable (first fetch + build starts at once)</figcaption>
+  </figure>
+
+  <!-- 3. Needs URL -->
+  <figure class="figure">
+  <div class="phone">
+    <div class="status"><span>10:27</span><span class="cam"></span><span>5G ▮▮</span></div>
+    <div class="appbar withnav"><button class="ib" aria-label="Back"><svg class="i" aria-hidden="true"><use href="#i-back"/></svg></button><h2>Threads</h2><button class="ib" aria-label="More options"><svg class="i" aria-hidden="true"><use href="#i-moreVert"/></svg></button></div>
+    <div class="scroll">
+      <div style="display:flex;gap:16px;align-items:center;padding:4px 16px 12px"><span class="tile lg t3">T</span><div><div style="font:400 16px/24px var(--font)">Enabled · Chiggi <span class="org custom">Custom</span></div><div class="mono" style="font-size:12px;color:var(--onSurfaceVariant)">com.instagram.barcelona</div></div></div>
+      <div class="banner warn"><svg class="i" aria-hidden="true"><use href="#i-warning"/></svg><span>Cannot build yet: no APKMirror listing.</span></div>
+      <div class="sub">Choose one bundle</div>
+      <label class="li sel" style="min-height:64px"><input type="radio" class="rd" checked aria-label="Chiggi"><span><div class="h">Chiggi</div><div class="s">jhangyu/morphe_patches · 4 patches</div></span><span></span></label>
+    </div>
+    <div class="scrim"></div>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="u-h">
+      <div class="handle"></div>
+      <h3 id="u-h">APKMirror listing not found</h3>
+      <p>Search for <span class="mono">com.instagram.barcelona</span> returned 6 apps, none with this exact package. Paste the listing URL to build.</p>
+      <div class="tf onsheet focus"><label>APKMirror listing URL</label><input aria-label="APKMirror listing URL" placeholder="apkmirror.com/apk/…"><span class="trail"><button class="ib" aria-label="Paste from clipboard"><svg class="i" aria-hidden="true"><use href="#i-paste"/></svg></button></span><div class="help">The app page, not a single version</div></div>
+      <div class="tf onsheet"><label>APKPure URL (optional)</label><input aria-label="APKPure URL, optional"></div>
+      <div class="btns"><button class="btn text">Later</button><button class="btn filled">Save and build</button></div>
+      <div class="gesture"></div>
+    </div>
+  </div>
+  <figcaption>Enable → APKMirror auto-locate failed → bottom sheet asks for the listing URL</figcaption>
+  </figure>
+
+  </div>
+</div>
+<script src="mock.js"></script>
+</body>
+</html>

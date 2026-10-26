@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#fafafa">
+<title>Marketplace · Relume (candidate 2)</title>
+<link rel="stylesheet" href="fluent.css">
+<style>
+  .hero { display: grid; grid-template-columns: minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr); gap: 16px; }
+  .hero > *, .gallery > *, .detail > * { min-width: 0; }
+  .mono { overflow-wrap: anywhere; }
+  .feature { position: relative; overflow: hidden; border-radius: var(--borderRadius3XLarge); padding: 24px; min-height: 196px; display: flex; flex-direction: column; justify-content: space-between; color: #fff; background: linear-gradient(135deg, var(--c1), var(--c2)); box-shadow: var(--shadow8); cursor: pointer; border: 0; text-align: left; transition: transform var(--durationNormal) var(--curveDecelerateMid), box-shadow var(--durationNormal); }
+  .feature:hover { transform: translateY(-2px); box-shadow: var(--shadow28); }
+  .feature::before { content: ""; position: absolute; width: 320px; height: 320px; right: -90px; top: -120px; border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,.28), transparent 65%); }
+  .feature .kicker { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; opacity: .92; display: flex; align-items: center; gap: 6px; }
+  .feature .tile { box-shadow: 0 8px 24px rgba(0,0,0,.25), inset 0 0 0 1px rgba(255,255,255,.35); }
+  .feature p { opacity: .95; max-width: 34ch; }
+  .feature .chip-w { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 999px; background: rgba(255,255,255,.2); font-size: 12px; font-weight: 600; backdrop-filter: blur(6px); }
+  .stats { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 20px; color: var(--colorNeutralForeground3); font-size: 13px; }
+  .stats b { color: var(--colorNeutralForeground1); font-weight: 600; }
+  .toolbar { position: sticky; top: 60px; z-index: 4; display: flex; flex-direction: column; gap: 12px; padding: 14px 0; background: rgba(250,250,250,.92); backdrop-filter: blur(20px); }
+  .cats { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px; }
+  .q-wrap { width: min(420px, 40vw); }
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 16px; }
+  .app { position: relative; display: flex; flex-direction: column; gap: 14px; padding: 18px; border-radius: var(--borderRadius2XLarge); background: linear-gradient(180deg, var(--tint), var(--colorNeutralBackground1) 62%); box-shadow: var(--shadow4); border: 1px solid transparent; cursor: pointer; text-align: left; transition: box-shadow var(--durationNormal), transform var(--durationNormal) var(--curveDecelerateMid); }
+  .app:hover { box-shadow: var(--shadow16); transform: translateY(-2px); }
+  .app[aria-expanded=true] { border-color: var(--c1); box-shadow: var(--shadow16); }
+  .app[aria-expanded=true]::after { content: ""; position: absolute; left: 50%; bottom: -17px; width: 16px; height: 16px; background: var(--colorNeutralBackground1); transform: translateX(-50%) rotate(45deg); border-radius: 3px; box-shadow: -1px -1px 0 rgba(0,0,0,.04); z-index: 2; }
+  .app .name { font: 600 16px/22px var(--fontFamilyBase); }
+  .app .meta { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--colorNeutralForeground3); margin-top: auto; }
+  .app .meta .i { width: 14px; height: 14px; }
+  .app .cat { font-size: 12px; color: var(--ink); font-weight: 600; }
+  .app .corner { position: absolute; top: 14px; right: 14px; }
+  /* expanded app panel */
+  .detail { grid-column: 1 / -1; display: grid; grid-template-columns: 300px 1fr; border-radius: var(--borderRadius3XLarge); background: var(--colorNeutralBackground1); box-shadow: var(--shadow16); overflow: hidden; animation: grow var(--durationGentle) var(--curveDecelerateMid); }
+  @keyframes grow { from { opacity: 0; transform: translateY(-6px); } }
+  .detail aside { padding: 28px; background: linear-gradient(170deg, var(--tint), var(--colorNeutralBackground1) 70%); border-right: 1px solid var(--colorNeutralStroke3); display: flex; flex-direction: column; gap: 16px; }
+  .facts { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; font-size: 13px; }
+  .facts dt { color: var(--colorNeutralForeground3); }
+  .facts dd { margin: 0; }
+  .detail .work { padding: 28px 32px; display: flex; flex-direction: column; gap: 28px; min-width: 0; }
+  .step-h { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .step-n { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff; background: var(--colorBrandBackground); }
+  .bundles { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .bundle { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 14px 14px 12px; border-radius: var(--borderRadiusXLarge); border: 1px solid var(--colorNeutralStroke2); background: var(--colorNeutralBackground1); cursor: pointer; transition: border-color var(--durationFast), box-shadow var(--durationFast); }
+  .bundle:hover { border-color: var(--colorNeutralStroke1); box-shadow: var(--shadow4); }
+  .bundle:has(input:checked) { border: 2px solid var(--colorBrandBackground); padding: 13px 13px 11px; background: var(--colorBrandBackground2); }
+  .bundle input { position: absolute; top: 14px; right: 14px; }
+  .bundle .au { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 700; flex: none; }
+  .bundle .stat { display: flex; gap: 12px; font-size: 12px; color: var(--colorNeutralForeground3); }
+  .bundle .stat span { display: inline-flex; align-items: center; gap: 3px; }
+  .bundle .stat .i { width: 13px; height: 13px; }
+  .patches { border: 1px solid var(--colorNeutralStroke2); border-radius: var(--borderRadiusXLarge); overflow: hidden; }
+  .patches-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; background: var(--colorNeutralBackground2); border-bottom: 1px solid var(--colorNeutralStroke2); }
+  .patch { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-bottom: 1px solid var(--colorNeutralStroke3); }
+  .patch:last-child { border-bottom: 0; }
+  .patch .pn { font-weight: 600; }
+  .patch .pd { font-size: 12px; line-height: 16px; color: var(--colorNeutralForeground3); }
+  .patch.changed { background: linear-gradient(90deg, var(--colorBrandBackground2), transparent 40%); }
+  .patch-list { max-height: 360px; overflow: auto; }
+  .src-box { display: grid; gap: 12px; }
+  .enable-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 20px; border-radius: var(--borderRadiusXLarge); background: var(--colorNeutralBackground3); }
+  @media (max-width: 1100px) { .hero { grid-template-columns: minmax(0,1fr) minmax(0,1fr); } .hero .feature:first-child { grid-column: 1 / -1; } }
+  @media (max-width: 900px) {
+    .hero { grid-template-columns: minmax(0,1fr); } .hero .feature:not(:first-child) { display: none; }
+    .q-wrap { width: auto; flex: 1; }
+    .gallery { grid-template-columns: repeat(auto-fill, minmax(156px, 1fr)); gap: 12px; }
+    .app { padding: 14px; } .app .tile { --s: 48px; }
+    .detail { grid-template-columns: 1fr; } .detail aside { border-right: 0; border-bottom: 1px solid var(--colorNeutralStroke3); padding: 20px; }
+    .detail .work { padding: 20px 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="nav" aria-label="Primary">
+    <div class="brand"><span class="logo" aria-hidden="true">R</span>Relume</div>
+    <a href="marketplace.html" aria-current="page"><svg class="i" aria-hidden="true"><use href="#i-store"/></svg>Marketplace</a>
+    <a href="apps.html"><svg class="i" aria-hidden="true"><use href="#i-apps"/></svg>Apps<span class="count" aria-label="6 enabled apps">6</span></a>
+    <a href="schedules.html"><svg class="i" aria-hidden="true"><use href="#i-schedule"/></svg>Schedules</a>
+    <div class="nav-section">Manage</div>
+    <a href="restyle-sample.html"><svg class="i" aria-hidden="true"><use href="#i-builds"/></svg>Builds</a>
+    <a href="#"><svg class="i" aria-hidden="true"><use href="#i-devices"/></svg>Devices</a>
+    <a href="#"><svg class="i" aria-hidden="true"><use href="#i-follow"/></svg>Followed projects</a>
+    <a href="#"><svg class="i" aria-hidden="true"><use href="#i-settings"/></svg>Settings</a>
+    <div class="foot"><span class="avatar" aria-hidden="true">AD</span><div class="grow"><div class="strong">Admin</div><div class="caption">relume.lan</div></div></div>
+  </nav>
+
+  <div class="main">
+    <header class="header">
+      <button class="icon-btn menu-btn" type="button" aria-label="Open navigation" onclick="document.body.classList.toggle('nav-open')"><svg class="i" aria-hidden="true"><use href="#i-menu"/></svg></button>
+      <h1 class="subtitle1 hide-m">Marketplace</h1>
+      <div class="grow hide-m"></div>
+      <label class="input search large q-wrap"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Search apps</span><input id="q" type="search" placeholder="Search 1,207 apps, packages or bundles"></label>
+      <button class="btn" style="min-width:0" type="button" aria-label="Add custom source" onclick="document.getElementById('dlg-custom').showModal()"><svg class="i" aria-hidden="true"><use href="#i-github"/></svg><span class="hide-m">Add custom source</span></button>
+    </header>
+
+    <main class="content">
+      <!-- Featured: store hero -->
+      <section class="hero" aria-label="Featured apps">
+        <button class="feature" data-cat="social" type="button">
+          <div class="row" style="justify-content:space-between;align-items:flex-start;position:relative">
+            <div style="display:grid;gap:10px">
+              <span class="kicker"><svg class="i i-16" aria-hidden="true"><use href="#i-sparkle"/></svg>Featured · most bundles</span>
+              <h2 class="title2">Instagram</h2>
+              <p>11 community bundles. Piko, HushGram, Kveld9 Extra and more: hide ads and suggested posts, download media.</p>
+            </div>
+            <span class="tile s96" data-cat="social" aria-hidden="true">Ig</span>
+          </div>
+          <div class="row" style="position:relative"><span class="chip-w">11 bundles</span><span class="chip-w"><svg class="i i-16" aria-hidden="true"><use href="#i-star"/></svg>5.8k top bundle</span></div>
+        </button>
+        <button class="feature" data-cat="video" type="button">
+          <div style="display:grid;gap:10px;position:relative">
+            <span class="kicker">Built-in</span>
+            <div class="row" style="gap:14px"><span class="tile s72" data-cat="video" aria-hidden="true">YT</span><h2 class="subtitle1">YouTube</h2></div>
+            <p>Morphe's own bundle. Ad-free, background play, SponsorBlock.</p>
+          </div>
+          <div class="row" style="position:relative"><span class="chip-w"><svg class="i i-16" aria-hidden="true"><use href="#i-check"/></svg>Enabled</span></div>
+        </button>
+        <button class="feature" data-cat="personalization" type="button">
+          <div style="display:grid;gap:10px;position:relative">
+            <span class="kicker">Trending this week</span>
+            <div class="row" style="gap:14px"><span class="tile s72" data-cat="personalization" aria-hidden="true">N</span><h2 class="subtitle1">Nova Launcher</h2></div>
+            <p>5 bundles, Doom ships 277 patches.</p>
+          </div>
+          <div class="row" style="position:relative"><span class="chip-w">5 bundles</span></div>
+        </button>
+      </section>
+      <div class="stats" role="status">
+        <span><b>1,207</b> apps</span><span><b>297</b> community bundles</span><span>Official catalog refreshed <b>2 h ago</b></span><span>Built-in <span class="mono">MorpheApp/morphe-patches</span></span><span><b>1</b> custom source</span>
+      </div>
+
+      <!-- Toolbar: category, search (mobile), sort, origin -->
+      <div class="toolbar">
+        <div class="row" style="gap:12px">
+          <div class="cats grow" role="group" aria-label="Category">
+            <button class="pill" type="button" aria-pressed="true" data-f="all">All <span class="n">1,207</span></button>
+            <button class="pill" type="button" aria-pressed="false" data-f="social" data-cat="social"><span class="dot"></span>Social &amp; Communication <span class="n">71</span></button>
+            <button class="pill" type="button" aria-pressed="false" data-f="video" data-cat="video"><span class="dot"></span>Video <span class="n">115</span></button>
+            <button class="pill" type="button" aria-pressed="false" data-f="music" data-cat="music"><span class="dot"></span>Music &amp; Audio <span class="n">62</span></button>
+            <button class="pill" type="button" aria-pressed="false" data-f="productivity" data-cat="productivity"><span class="dot"></span>Productivity <span class="n">182</span></button>
+            <button class="pill" type="button" aria-pressed="false" data-f="tools" data-cat="tools"><span class="dot"></span>Tools &amp; Utilities <span class="n">203</span></button>
+            <button class="pill" type="button" aria-pressed="false" data-f="personalization" data-cat="personalization"><span class="dot"></span>Personalization <span class="n">46</span></button>
+            <button class="pill" type="button" aria-pressed="false" data-f="maps" data-cat="maps"><span class="dot"></span>Maps &amp; Navigation <span class="n">60</span></button>
+            <button class="pill" type="button" aria-pressed="false" data-f="news" data-cat="news"><span class="dot"></span>News, Media &amp; Books <span class="n">46</span></button>
+          </div>
+          <label class="select"><span class="sr-only">Origin</span><select class="dropdown" id="origin" style="width:168px"><option value="">All origins</option><option value="official">Official catalog</option><option value="builtin">Built-in</option><option value="custom">Custom</option></select></label>
+          <label class="select"><span class="sr-only">Sort</span><select class="dropdown" id="sort" style="width:176px"><option value="bundles">Most bundles</option><option value="stars">Most stars</option><option value="updated">Recently updated</option><option value="name">Name A–Z</option></select></label>
+        </div>
+      </div>
+
+      <section class="gallery" id="gallery" aria-label="Apps">
+        <!-- data-*: cat, name, bundles, stars (top bundle), updated (days ago), origins -->
+        <button class="app" type="button" data-cat="social" data-name="Instagram" data-bundles="11" data-stars="5783" data-updated="1" data-origins="official" aria-expanded="false">
+          <span class="corner badge ok"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Enabled</span>
+          <span class="tile" data-cat="social" aria-hidden="true">Ig</span>
+          <div><div class="name">Instagram</div><div class="cat">Social &amp; Communication</div></div>
+          <div class="meta"><span>11 bundles</span><span class="row" style="gap:3px"><svg class="i" aria-hidden="true"><use href="#i-star"/></svg>5.8k</span></div>
+        </button>
+        <button class="app" type="button" data-cat="video" data-name="YouTube" data-bundles="1" data-stars="0" data-updated="2" data-origins="builtin" aria-expanded="false">
+          <span class="corner badge ok"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Enabled</span>
+          <span class="tile" data-cat="video" aria-hidden="true">YT</span>
+          <div><div class="name">YouTube</div><div class="cat">Video</div></div>
+          <div class="meta"><span class="origin builtin">Built-in</span><span>Morphe patches</span></div>
+        </button>
+        <button class="app" type="button" data-cat="social" data-name="Boost for Reddit" data-bundles="5" data-stars="814" data-updated="0" data-origins="official custom" aria-expanded="true" id="boost">
+          <span class="tile" data-cat="social" aria-hidden="true">B</span>
+          <div><div class="name">Boost for Reddit</div><div class="cat">Social &amp; Communication</div></div>
+          <div class="meta"><span>4 bundles + 1 custom</span><span class="row" style="gap:3px"><svg class="i" aria-hidden="true"><use href="#i-star"/></svg>814</span></div>
+        </button>
+        <!-- expanded panel is placed by script at the end of the clicked card's row -->
+        <section class="detail" id="detail" data-cat="social" aria-labelledby="d-name">
+          <aside>
+            <span class="tile s96" data-cat="social" aria-hidden="true">B</span>
+            <div>
+              <h2 class="title3" id="d-name">Boost for Reddit</h2>
+              <div class="mono subtle-text" style="margin-top:4px">com.rubenmayayo.reddit</div>
+            </div>
+            <p class="subtle-text">Boost for Reddit is a new browsing experience for the frontpage of internet.</p>
+            <dl class="facts">
+              <dt>Category</dt><dd>Social &amp; Communication</dd>
+              <dt>Bundles</dt><dd>4 official catalog, 1 custom</dd>
+              <dt>Versions</dt><dd class="mono">1.12.10 – 1.12.12</dd>
+              <dt>APKMirror</dt><dd><span class="badge warn"><svg class="i" aria-hidden="true"><use href="#i-warning"/></svg>Page not found</span></dd>
+            </dl>
+            <button class="btn subtle" type="button" style="justify-content:flex-start;min-width:0;padding:0" aria-label="Close app details" onclick="collapse()"><svg class="i" aria-hidden="true"><use href="#i-close"/></svg>Close</button>
+          </aside>
+          <div class="work">
+            <div>
+              <div class="step-h"><span class="step-n">1</span><h3 class="subtitle2">Choose one patch bundle</h3><span class="caption">One bundle per app · you can switch later in Apps</span></div>
+              <div class="bundles" role="radiogroup" aria-label="Patch bundle">
+                <label class="bundle"><input type="radio" name="b" checked>
+                  <div class="row"><span class="au" style="background:#0f6cbd">W</span><div class="grow"><div class="strong">Patcheddit</div><div class="mono subtle-text">wchill/patcheddit</div></div></div>
+                  <div class="row"><span class="origin official">Official catalog</span></div>
+                  <div class="stat"><span><svg class="i" aria-hidden="true"><use href="#i-star"/></svg>814</span><span>14 patches</span><span>3 d ago</span></div>
+                </label>
+                <label class="bundle"><input type="radio" name="b">
+                  <div class="row"><span class="au" style="background:#c239b3">B</span><div class="grow"><div class="strong">Brealorg</div><div class="mono subtle-text">brealorg/breal-morphe-patches</div></div></div>
+                  <div class="row"><span class="origin official">Official catalog</span></div>
+                  <div class="stat"><span><svg class="i" aria-hidden="true"><use href="#i-star"/></svg>103</span><span>78 patches</span><span>2 d ago</span></div>
+                </label>
+                <label class="bundle"><input type="radio" name="b">
+                  <div class="row"><span class="au" style="background:#8764b8">T</span><div class="grow"><div class="strong">Titandrive</div><div class="mono subtle-text">titandrive/morphe-catppuccin</div></div></div>
+                  <div class="row"><span class="origin official">Official catalog</span><span class="caption">Themes</span></div>
+                  <div class="stat"><span><svg class="i" aria-hidden="true"><use href="#i-star"/></svg>3</span><span>2 patches</span><span>2 d ago</span></div>
+                </label>
+                <label class="bundle"><input type="radio" name="b">
+                  <div class="row"><span class="au" style="background:#03787c">R</span><div class="grow"><div class="strong">RhubarbShoelaces</div><div class="mono subtle-text">rhubarbshoelaces/morphe-patches</div></div></div>
+                  <div class="row"><span class="origin official">Official catalog</span></div>
+                  <div class="stat"><span><svg class="i" aria-hidden="true"><use href="#i-star"/></svg>13</span><span>1 patch</span><span>2 mo ago</span></div>
+                </label>
+                <label class="bundle"><input type="radio" name="b">
+                  <div class="row"><span class="au" style="background:#5c2e91">J</span><div class="grow"><div class="strong">boost-tweaks</div><div class="mono subtle-text">jhangyu/boost-tweaks</div></div></div>
+                  <div class="row"><span class="origin custom">Custom</span><span class="caption">Xposed · LSPatch</span></div>
+                  <div class="stat"><span>Module, no patch list</span><span>added by you</span></div>
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <div class="step-h"><span class="step-n">2</span><h3 class="subtitle2">Patches in Patcheddit for Boost</h3><span class="caption">Defaults come from the bundle · your changes stay across versions</span></div>
+              <div class="patches">
+                <div class="patches-bar">
+                  <label class="input grow" style="min-width:180px;max-width:320px"><svg class="i i-16" aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Filter patches</span><input type="search" placeholder="Filter 14 patches"></label>
+                  <span class="badge brand">12 on</span><span class="badge">2 off</span><span class="badge lav">1 changed by you</span>
+                  <div class="grow"></div>
+                  <button class="btn subtle small" type="button">All on</button><button class="btn subtle small" type="button">Reset to defaults</button>
+                </div>
+                <div class="patch-list">
+                  <div class="patch"><div class="grow"><div class="pn">Spoof client</div><div class="pd">Restores functionality of the app by using custom client ID. <span class="badge gold" style="height:18px">Has options</span></div></div><label class="switch"><input type="checkbox" checked aria-label="Spoof client"><span class="track"></span></label></div>
+                  <div class="patch"><div class="grow"><div class="pn">Disable ads</div><div class="pd">Removes ads from feeds and comments.</div></div><label class="switch"><input type="checkbox" checked aria-label="Disable ads"><span class="track"></span></label></div>
+                  <div class="patch"><div class="grow"><div class="pn">Fix /r/all</div><div class="pd">Loads /r/all through Reddit's .json endpoint so the feed shows posts.</div></div><label class="switch"><input type="checkbox" checked aria-label="Fix /r/all"><span class="track"></span></label></div>
+                  <div class="patch"><div class="grow"><div class="pn">Fix /s/ links</div><div class="pd">Opens Reddit share links by resolving them to the post they point to.</div></div><label class="switch"><input type="checkbox" checked aria-label="Fix /s/ links"><span class="track"></span></label></div>
+                  <div class="patch"><div class="grow"><div class="pn">Fix Redgifs API</div><div class="pd">Fetches a fresh Redgifs API token so Redgifs videos load.</div></div><label class="switch"><input type="checkbox" checked aria-label="Fix Redgifs API"><span class="track"></span></label></div>
+                  <div class="patch"><div class="grow"><div class="pn">Fix missing audio in video downloads</div><div class="pd">Fixes audio missing in videos downloaded from v.redd.it.</div></div><label class="switch"><input type="checkbox" checked aria-label="Fix missing audio in video downloads"><span class="track"></span></label></div>
+                  <div class="patch changed"><div class="grow"><div class="pn">Automatically undelete Reddit content <span class="badge lav" style="height:18px">Changed · default on</span></div><div class="pd">Restores deleted and removed posts and comments.</div></div><label class="switch"><input type="checkbox" aria-label="Automatically undelete Reddit content"><span class="track"></span></label></div>
+                  <div class="patch"><div class="grow"><div class="pn">Add archive links to context menu</div><div class="pd">Adds "Open with Wayback Machine" and "Open with Archive.is" to the link menu.</div></div><label class="switch"><input type="checkbox" checked aria-label="Add archive links to context menu"><span class="track"></span></label></div>
+                  <div class="patch"><div class="grow"><div class="pn">Modify login WebView</div><div class="pd">Modifies the WebView used for logging in to prevent login issues.</div></div><label class="switch"><input type="checkbox" checked aria-label="Modify login WebView"><span class="track"></span></label></div>
+                  <div class="patch"><div class="grow"><div class="pn">Enable Android debugging <span class="badge" style="height:18px">Default off</span></div><div class="pd">Enables Android developer debugging capabilities.</div></div><label class="switch"><input type="checkbox" aria-label="Enable Android debugging"><span class="track"></span></label></div>
+                  <div class="patch"><div class="grow"><div class="pn">Hook exception handler <span class="badge" style="height:18px">Default off</span></div><div class="pd">For development only.</div></div><label class="switch"><input type="checkbox" aria-label="Hook exception handler"><span class="track"></span></label></div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div class="step-h"><span class="step-n">3</span><h3 class="subtitle2">Download source</h3></div>
+              <div class="src-box">
+                <div class="msgbar warn" id="src-msg" role="status"><svg class="i" aria-hidden="true"><use href="#i-warning"/></svg>
+                  <div class="grow"><div class="strong">APKMirror page not found</div><div>Relume searched APKMirror for <span class="mono">com.rubenmayayo.reddit</span>. 3 pages came back and none of them lists this exact package. Paste the APKMirror listing URL to continue.</div></div>
+                </div>
+                <div class="field">
+                  <label for="u-am">APKMirror listing URL <span class="subtle-text" style="font-weight:400">(required)</span></label>
+                  <div class="row"><span class="input grow"><svg class="i i-16" aria-hidden="true"><use href="#i-link"/></svg><input id="u-am" placeholder="www.apkmirror.com/apk/rubenmayayo/boost-for-reddit/" autocomplete="off"></span><button class="btn" type="button" aria-label="Paste from clipboard"><svg class="i" aria-hidden="true"><use href="#i-paste"/></svg>Paste</button></div>
+                  <div class="hint">The page that lists all versions of the app, not a single release.</div>
+                </div>
+                <div class="field">
+                  <label for="u-ap">APKPure URL <span class="subtle-text" style="font-weight:400">(optional fallback)</span></label>
+                  <span class="input"><svg class="i i-16" aria-hidden="true"><use href="#i-link"/></svg><input id="u-ap" placeholder="apkpure.com/…/com.rubenmayayo.reddit"></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="enable-bar">
+              <div class="grow"><div class="strong">Patcheddit · 12 patches · version Auto (newest the bundle supports)</div><div class="caption" id="en-hint">Add the APKMirror URL to enable. Enabling builds the app right away.</div></div>
+              <button class="btn primary large" type="button" id="enable" disabled><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Enable and build</button>
+            </div>
+          </div>
+        </section>
+        <button class="app" type="button" data-cat="social" data-name="Reddit" data-bundles="4" data-stars="291" data-updated="1" data-origins="official" aria-expanded="false">
+          <span class="corner badge ok"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Enabled</span>
+          <span class="tile" data-cat="social" aria-hidden="true">Re</span>
+          <div><div class="name">Reddit</div><div class="cat">Social &amp; Communication</div></div>
+          <div class="meta"><span>4 bundles</span><span class="row" style="gap:3px"><svg class="i" aria-hidden="true"><use href="#i-star"/></svg>291</span></div>
+        </button>
+        <button class="app" type="button" data-cat="video" data-name="Twitch" data-bundles="8" data-stars="1321" data-updated="4" data-origins="official" aria-expanded="false">
+          <span class="corner badge ok"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Enabled</span>
+          <span class="tile" data-cat="video" aria-hidden="true">Tw</span>
+          <div><div class="name">Twitch</div><div class="cat">Video</div></div>
+          <div class="meta"><span>8 bundles</span><span class="row" style="gap:3px"><svg class="i" aria-hidden="true"><use href="#i-star"/></svg>1.3k</span></div>
+        </button>
+        <button class="app" type="button" data-cat="productivity" data-name="Gboard" data-bundles="11" data-stars="1202" data-updated="3" data-origins="official" aria-expanded="false">
+          <span class="corner badge ok"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Enabled</span>
+          <span class="tile" data-cat="productivity" aria-hidden="true">G</span>
+          <div><div class="name">Gboard</div><div class="cat">Productivity</div></div>
+          <div class="meta"><span>11 bundles</span><span class="row" style="gap:3px"><svg class="i" aria-hidden="true"><use href="#i-star"/></svg>1.2k</span></div>
+        </button>
+        <button class="app" type="button" data-cat="music" data-name="YouTube Music" data-bundles="1" data-stars="0" data-updated="2" data-origins="builtin" aria-expanded="false">
+          <span class="tile" data-cat="music" aria-hidden="true">YM</span>
+          <div><div class="name">YouTube Music</div><div class="cat">Music &amp; Audio</div></div>
+          <div class="meta"><span class="origin builtin">Built-in</span><span>Morphe patches</span></div>
+        </button>
+        <button class="app" type="button" data-cat="personalization" data-name="Nova Launcher" data-bundles="5" data-stars="1266" data-updated="5" data-origins="official" aria-expanded="false">
+          <span class="tile" data-cat="personalization" aria-hidden="true">N</span>
+          <div><div class="name">Nova Launcher</div><div class="cat">Personalization</div></div>
+          <div class="meta"><span>5 bundles</span><span class="row" style="gap:3px"><svg class="i" aria-hidden="true"><use href="#i-star"/></svg>1.3k</span></div>
+        </button>
+        <button class="app" type="button" data-cat="social" data-name="TikTok" data-bundles="5" data-stars="444" data-updated="6" data-origins="official" aria-expanded="false">
+          <span class="tile" data-cat="social" aria-hidden="true">Tk</span>
+          <div><div class="name">TikTok</div><div class="cat">Social &amp; Communication</div></div>
+          <div class="meta"><span>5 bundles</span><span class="row" style="gap:3px"><svg class="i" aria-hidden="true"><use href="#i-star"/></svg>444</span></div>
+        </button>
+        <button class="app" type="button" data-cat="news" data-name="Twitter" data-bundles="5" data-stars="5783" data-updated="1" data-origins="official" aria-expanded="false">
+          <span class="tile" data-cat="news" aria-hidden="true">X</span>
+          <div><div class="name">Twitter</div><div class="cat">News, Media &amp; Books</div></div>
+          <div class="meta"><span>5 bundles</span><span class="row" style="gap:3px"><svg class="i" aria-hidden="true"><use href="#i-star"/></svg>5.8k</span></div>
+        </button>
+        <button class="app" type="button" data-cat="music" data-name="SoundCloud" data-bundles="4" data-stars="1266" data-updated="9" data-origins="official" aria-expanded="false">
+          <span class="tile" data-cat="music" aria-hidden="true">Sc</span>
+          <div><div class="name">SoundCloud</div><div class="cat">Music &amp; Audio</div></div>
+          <div class="meta"><span>4 bundles</span><span class="row" style="gap:3px"><svg class="i" aria-hidden="true"><use href="#i-star"/></svg>1.3k</span></div>
+        </button>
+        <button class="app" type="button" data-cat="news" data-name="Pinterest" data-bundles="7" data-stars="152" data-updated="12" data-origins="official" aria-expanded="false">
+          <span class="tile" data-cat="news" aria-hidden="true">P</span>
+          <div><div class="name">Pinterest</div><div class="cat">News, Media &amp; Books</div></div>
+          <div class="meta"><span>7 bundles</span><span class="row" style="gap:3px"><svg class="i" aria-hidden="true"><use href="#i-star"/></svg>152</span></div>
+        </button>
+        <button class="app" type="button" data-cat="maps" data-name="Waze" data-bundles="6" data-stars="220" data-updated="8" data-origins="official" aria-expanded="false">
+          <span class="tile" data-cat="maps" aria-hidden="true">W</span>
+          <div><div class="name">Waze</div><div class="cat">Maps &amp; Navigation</div></div>
+          <div class="meta"><span>6 bundles</span><span class="row" style="gap:3px"><svg class="i" aria-hidden="true"><use href="#i-star"/></svg>220</span></div>
+        </button>
+        <button class="app" type="button" data-cat="tools" data-name="Proton VPN" data-bundles="4" data-stars="1266" data-updated="7" data-origins="official" aria-expanded="false">
+          <span class="tile" data-cat="tools" aria-hidden="true">Pv</span>
+          <div><div class="name">Proton VPN</div><div class="cat">Tools &amp; Utilities</div></div>
+          <div class="meta"><span>4 bundles</span><span class="row" style="gap:3px"><svg class="i" aria-hidden="true"><use href="#i-star"/></svg>1.3k</span></div>
+        </button>
+        <button class="app" type="button" data-cat="social" data-name="Reddit Sync" data-bundles="5" data-stars="814" data-updated="3" data-origins="official" aria-expanded="false">
+          <span class="corner badge ok"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Enabled</span>
+          <span class="tile" data-cat="social" aria-hidden="true">Sy</span>
+          <div><div class="name">Reddit Sync</div><div class="cat">Social &amp; Communication</div></div>
+          <div class="meta"><span>5 bundles</span><span class="row" style="gap:3px"><svg class="i" aria-hidden="true"><use href="#i-star"/></svg>814</span></div>
+        </button>
+      </section>
+      <p class="caption" style="margin-top:24px;text-align:center">Showing 15 of 1,207 · more load as you scroll</p>
+    </main>
+  </div>
+</div>
+
+<!-- Add custom source -->
+<dialog id="dlg-custom" aria-labelledby="dc-t">
+  <h2 class="subtitle1" id="dc-t">Add a custom source</h2>
+  <p class="subtle-text" style="margin:6px 0 20px">A GitHub repo you trust. It appears in Marketplace next to the catalog with a <span class="origin custom">Custom</span> label.</p>
+  <div style="display:grid;gap:16px">
+    <div class="field"><label for="dc-url">GitHub repository URL</label><span class="input"><svg class="i i-16" aria-hidden="true"><use href="#i-github"/></svg><input id="dc-url" placeholder="github.com/owner/repo"></span></div>
+    <fieldset style="border:0;padding:0;margin:0;display:grid;gap:8px"><legend class="label" style="margin-bottom:8px">Engine</legend>
+      <label class="row"><input type="radio" name="eng" checked>Morphe patches</label>
+      <label class="row"><input type="radio" name="eng">Xposed module, packaged with LSPatch</label>
+      <label class="row"><input type="radio" name="eng">Xposed module, packaged with NPatch</label>
+    </fieldset>
+  </div>
+  <div class="dlg-actions"><button class="btn" type="button" onclick="this.closest('dialog').close()">Cancel</button><button class="btn primary" type="button" onclick="this.closest('dialog').close()">Add source</button></div>
+</dialog>
+
+<script src="../icons.js"></script>
+<script>
+// ponytail: mockup behaviour only — filter, sort, expand-in-row, URL gate.
+const g = document.getElementById('gallery'), detail = document.getElementById('detail');
+const cards = () => [...g.querySelectorAll('.app')];
+function cols() { return getComputedStyle(g).gridTemplateColumns.split(' ').length; }
+function place(card) {
+  const vis = cards().filter(c => !c.hidden), i = vis.indexOf(card), end = vis[Math.min(vis.length - 1, Math.floor(i / cols()) * cols() + cols() - 1)];
+  end.after(detail);
+}
+function collapse() { cards().forEach(c => c.setAttribute('aria-expanded', 'false')); detail.hidden = true; }
+g.addEventListener('click', e => {
+  const c = e.target.closest('.app'); if (!c) return;
+  const open = c.getAttribute('aria-expanded') === 'true';
+  collapse(); if (open) return;
+  c.setAttribute('aria-expanded', 'true');
+  // ponytail: only Boost has detail content; other cards reuse it with their own name/tile.
+  detail.dataset.cat = c.dataset.cat;
+  detail.querySelector('#d-name').textContent = c.dataset.name;
+  detail.querySelector('aside .tile').textContent = c.querySelector('.tile').textContent;
+  detail.querySelector('aside .tile').dataset.cat = c.dataset.cat;
+  detail.hidden = false; place(c);
+});
+function apply() {
+  const f = document.querySelector('.cats [aria-pressed=true]').dataset.f, q = document.getElementById('q').value.toLowerCase(), o = document.getElementById('origin').value;
+  cards().forEach(c => { c.hidden = !((f === 'all' || c.dataset.cat === f) && c.dataset.name.toLowerCase().includes(q) && (!o || c.dataset.origins.includes(o))); });
+  const k = document.getElementById('sort').value;
+  const s = cards().sort((a, b) => k === 'name' ? a.dataset.name.localeCompare(b.dataset.name) : k === 'updated' ? a.dataset.updated - b.dataset.updated : b.dataset[k] - a.dataset[k]);
+  s.forEach(c => g.append(c));
+  const open = cards().find(c => c.getAttribute('aria-expanded') === 'true' && !c.hidden);
+  if (open) place(open); else collapse();
+}
+document.querySelector('.cats').addEventListener('click', e => {
+  const p = e.target.closest('.pill'); if (!p) return;
+  document.querySelectorAll('.cats .pill').forEach(x => x.setAttribute('aria-pressed', x === p)); apply();
+});
+['q', 'origin', 'sort'].forEach(id => document.getElementById(id).addEventListener('input', apply));
+addEventListener('resize', () => { const o = cards().find(c => c.getAttribute('aria-expanded') === 'true'); if (o) place(o); });
+place(document.getElementById('boost'));
+// URL gate: Enable stays disabled until an APKMirror listing URL is given.
+document.getElementById('u-am').addEventListener('input', e => {
+  const ok = /apkmirror\.com\/apk\/[^/]+\/[^/]+/.test(e.target.value), m = document.getElementById('src-msg');
+  document.getElementById('enable').disabled = !ok;
+  m.className = 'msgbar ' + (ok ? 'ok' : 'warn');
+  m.querySelector('use').setAttribute('href', ok ? '#i-check' : '#i-warning');
+  m.querySelector('.strong').textContent = ok ? 'Listing URL looks right' : 'APKMirror page not found';
+  document.getElementById('en-hint').textContent = ok ? 'Relume checks the page shows com.rubenmayayo.reddit, then builds right away.' : 'Add the APKMirror URL to enable. Enabling builds the app right away.';
+});
+</script>
+</body>
+</html>

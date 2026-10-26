@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#fafafa">
+<title>Apps · Relume</title>
+<link rel="stylesheet" href="fluent.css">
+<style>
+.content{grid-template-columns:minmax(0,1fr)}
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1px;background:var(--colorNeutralStroke2);border-radius:var(--borderRadiusXLarge);overflow:hidden;box-shadow:var(--shadow4)}
+.kpi{all:unset;cursor:pointer;background:var(--colorNeutralBackground1);padding:10px 14px;display:grid;gap:2px}
+.kpi:hover{background:var(--colorNeutralBackground1Hover)}
+.kpi[aria-pressed=true]{box-shadow:inset 0 -3px 0 var(--colorCompoundBrandStroke)}
+.kpi .v{font-size:var(--fontSizeBase500);line-height:var(--lineHeightBase500);font-weight:var(--fontWeightSemibold);font-variant-numeric:tabular-nums}
+.kpi .l{font-size:12px;color:var(--colorNeutralForeground3);display:flex;align-items:center;gap:6px}
+.kpi .l .d{width:8px;height:8px;border-radius:50%}
+.tool{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--colorNeutralStroke2)}
+.tool .search{flex:1 1 240px;max-width:360px}
+.ver{font:12px/16px var(--fontFamilyMonospace)}
+.ver .to{color:var(--colorBrandForeground2);font-weight:600}
+.reason{font-size:12px;color:var(--colorStatusDangerForeground1);max-width:250px;white-space:normal}
+.acts{display:flex;gap:2px;justify-content:flex-end}
+.grid td.st{white-space:normal}
+.stcell{display:grid;gap:2px;justify-items:start;padding:4px 0}
+.bnd{display:grid;gap:0}
+.bnd .rp{font:11px/14px var(--fontFamilyMonospace);color:var(--colorNeutralForeground3)}
+.dnav{display:flex;gap:2px;padding:0 20px;border-bottom:1px solid var(--colorNeutralStroke2);position:sticky;top:0;background:#fff;z-index:2}
+.fieldrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+.dep{display:grid;grid-template-columns:auto 1fr auto;gap:2px 10px;align-items:center;padding:8px 10px;border:1px solid var(--colorNeutralStroke2);border-radius:var(--borderRadiusMedium)}
+.dep .cap{grid-column:2/4}
+.found{display:inline-flex;align-items:center;gap:4px;color:var(--colorStatusSuccessForeground1);font-size:12px}
+.found .i{width:14px;height:14px}
+.diff{font-size:12px;color:var(--colorNeutralForeground3)}
+.diff b{color:var(--colorBrandForeground2)}
+/* wide screens: the panel docks beside the table (Fluent InlineDrawer) so the list stays usable */
+@media (min-width:1281px){body.panel .main{margin-right:min(560px,40vw)}body.panel .scrim{display:none}body.panel .drawer{box-shadow:none;border-left:1px solid var(--colorNeutralStroke2);animation:none;width:min(560px,40vw)}body.panel .c-mode,body.panel .c-last,body.panel .c-pt,body.panel .c-bnd,body.panel .c-ver{display:none}body.panel .top{flex-wrap:wrap}}
+@media (max-width:1100px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:1560px){.c-last{display:none}}@media (max-width:1280px){.c-mode{display:none}}
+@media (max-width:760px){.grid thead{display:none}.grid tbody tr{display:grid;grid-template-columns:minmax(0,1fr) auto;border-bottom:1px solid var(--colorNeutralStroke3);padding:6px 0}.grid td{height:auto!important;border:0}.grid td.st{grid-column:1/-1;order:3;padding-left:40px}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.kpi:last-child{grid-column:1/-1}.c-bnd,.c-pt,.c-ver{display:none}.app .pk{max-width:40vw;overflow:hidden}.reason{max-width:40vw}.acts .btn{min-width:40px;min-height:40px}}
+</style>
+</head>
+<body class="panel">
+<script src="../icons.js"></script>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+<aside class="side" aria-label="Primary">
+  <div class="brand"><div class="logo">R</div><span>Relume</span></div>
+  <nav class="nav">
+    <a href="marketplace.html"><svg class="i" aria-hidden="true"><use href="#i-store"/></svg><span class="lbl">Marketplace</span><span class="count">1,211</span></a>
+    <a href="apps.html" aria-current="page"><svg class="i" aria-hidden="true"><use href="#i-apps"/></svg><span class="lbl">Apps</span><span class="count">6</span></a>
+    <a href="restyle-sample.html"><svg class="i" aria-hidden="true"><use href="#i-history"/></svg><span class="lbl">Builds</span><span class="count">1</span></a>
+    <div class="nav-sep"></div>
+    <a href="#"><svg class="i" aria-hidden="true"><use href="#i-phone"/></svg><span class="lbl">Devices</span></a>
+    <a href="#"><svg class="i" aria-hidden="true"><use href="#i-branch"/></svg><span class="lbl">Follow projects</span></a>
+    <a href="schedules.html"><svg class="i" aria-hidden="true"><use href="#i-calendar"/></svg><span class="lbl">Schedules</span></a>
+    <a href="#"><svg class="i" aria-hidden="true"><use href="#i-settings"/></svg><span class="lbl">Settings</span></a>
+  </nav>
+  <div class="server"><b>Server online</b><span>Last run 10:00 · 6 checked · 1 rebuilt</span><span>Next run 14:00 (every 4 h)</span></div>
+</aside>
+<div class="main">
+  <header class="top">
+    <button class="btn ibtn hamb" aria-label="Open navigation" aria-expanded="false"><svg class="i" aria-hidden="true"><use href="#i-menu"/></svg></button>
+    <div><h1>Apps</h1><div class="sub">Enabled apps. Each one is rebuilt by the global schedule when its bundle or the app changes.</div></div>
+    <div class="spacer"></div>
+    <button class="btn" data-tip="Check every enabled app now" aria-label="Check all for updates"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg><span class="hide-m">Check all</span></button>
+    <a class="btn primary" href="marketplace.html"><svg class="i" aria-hidden="true"><use href="#i-add"/></svg><span class="hide-m">Enable an app</span></a>
+  </header>
+  <main id="main" class="content">
+    <div class="kpis" role="group" aria-label="Filter by status">
+      <button class="kpi" aria-pressed="true" data-f=""><span class="v">6</span><span class="l">All enabled</span></button>
+      <button class="kpi" aria-pressed="false" data-f="update"><span class="v">2</span><span class="l"><span class="d" style="background:var(--colorBrandBackground)"></span>Update available</span></button>
+      <button class="kpi" aria-pressed="false" data-f="building"><span class="v">1</span><span class="l"><span class="d" style="background:var(--colorBrandStroke2)"></span>Building</span></button>
+      <button class="kpi" aria-pressed="false" data-f="failed"><span class="v">1</span><span class="l"><span class="d" style="background:var(--colorStatusDangerForeground1)"></span>Failed</span></button>
+      <button class="kpi" aria-pressed="false" data-f="needsurl"><span class="v">1</span><span class="l"><span class="d" style="background:#da3b01"></span>Needs URL</span></button>
+    </div>
+    <section class="card" aria-label="Enabled apps">
+      <div class="tool">
+        <label class="search"><span class="sr">Search enabled apps</span><svg class="i s16" aria-hidden="true"><use href="#i-search"/></svg><input id="q" class="input" placeholder="Search app, package, bundle"><span class="kbd" aria-hidden="true">/</span></label>
+        <span class="cap muted hide-m" style="margin-left:auto">Auto-refresh 5 s · paused while the panel is open</span>
+      </div>
+      <div style="overflow:auto">
+      <table class="grid">
+        <thead><tr><th>App</th><th class="c-ver">App version</th><th class="c-bnd">Bundle</th><th class="r c-pt">Patches · mode</th><th>Status</th><th class="c-last">Last build</th><th class="r"><span class="sr">Actions</span></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table></div>
+    </section>
+  </main>
+</div>
+</div>
+
+<!-- App settings panel (Fluent OverlayDrawer), open for YouTube -->
+<div class="scrim" data-close></div>
+<aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dh">
+  <div class="drawer-h">
+    <span class="tile lg c1" aria-hidden="true">YT</span>
+    <div style="min-width:0;flex:1"><h2 id="dh">YouTube</h2><div class="mono muted">com.google.android.youtube · built 20.40.45</div></div>
+    <button class="btn ibtn" aria-label="Close app settings" data-tip="Close" data-close><svg class="i" aria-hidden="true"><use href="#i-close"/></svg></button>
+  </div>
+  <div class="tabs dnav" role="tablist" aria-label="Settings sections">
+    <a class="tab" role="tab" aria-selected="true" href="#s-bundle">Bundle</a>
+    <a class="tab" role="tab" aria-selected="false" href="#s-patch">Patches <span class="n">88/96</span></a>
+    <a class="tab" role="tab" aria-selected="false" href="#s-ver">Version</a>
+    <a class="tab" role="tab" aria-selected="false" href="#s-dep">Dependencies <span class="n">1</span></a>
+    <a class="tab" role="tab" aria-selected="false" href="#s-dl">Download</a>
+  </div>
+  <div class="drawer-b">
+    <section class="sec" id="s-bundle">
+      <h3><svg class="i s16" aria-hidden="true"><use href="#i-package"/></svg>Patch bundle</h3>
+      <label class="f">Bundle used for this app
+        <select class="select">
+          <option selected>Morphe · MorpheApp/morphe-patches · Built-in · v1.6.0 · 96 patches</option>
+          <option>YouTube fork · jhangyu/morphe_patches · Custom · v1.25.2 · 98 patches</option>
+        </select></label>
+      <div class="diff">Switching keeps your overrides for patches with the same name. Preview for the custom fork: <b>11 kept</b>, 1 dropped (“Spoof client”), 2 new patches at their defaults.</div>
+    </section>
+
+    <section class="sec" id="s-patch">
+      <h3><svg class="i s16" aria-hidden="true"><use href="#i-wrench"/></svg>Patches <span class="muted">88 of 96 on · 3 changed from defaults</span></h3>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <label class="search" style="flex:1 1 160px"><span class="sr">Filter patches</span><svg class="i s16" aria-hidden="true"><use href="#i-filter"/></svg><input class="input sm" style="height:28px;width:100%" placeholder="Filter 96 patches"></label>
+        <div class="pills" role="group" aria-label="Show"><button class="pill" aria-pressed="false">Changed <span class="n">3</span></button><button class="pill" aria-pressed="false">With options <span class="n">9</span></button></div>
+        <button class="btn sm subtle">Reset to defaults</button>
+      </div>
+      <div class="plist" role="list" aria-label="YouTube patches">
+        <div class="prow" role="listitem"><input type="checkbox" class="sw sm" role="switch" checked aria-label="Hide ads"><span class="pn">Hide ads</span><span class="tags"><span class="badge b-mute" style="height:18px;font-weight:400">default on</span></span><span class="pd">Adds options to remove general ads.</span></div>
+        <div class="prow" role="listitem"><input type="checkbox" class="sw sm" role="switch" checked aria-label="SponsorBlock"><span class="pn">SponsorBlock</span><span class="tags"><span class="badge b-mute" style="height:18px;font-weight:400">default on</span></span><span class="pd">Adds options to enable and configure SponsorBlock, which can skip undesired video segments.</span></div>
+        <div class="prow" role="listitem"><input type="checkbox" class="sw sm" role="switch" checked aria-label="Return YouTube Dislike"><span class="pn">Return YouTube Dislike</span><span class="tags"><span class="badge b-mute" style="height:18px;font-weight:400">default on</span></span><span class="pd">Adds an option to show the dislike count of videos with Return YouTube Dislike.</span></div>
+        <div class="prow changed" role="listitem"><input type="checkbox" class="sw sm" role="switch" checked aria-label="Custom branding"><span class="pn">Custom branding</span><span class="tags"><span class="chg">changed</span><span class="badge b-mute" style="height:18px;font-weight:400">default off</span></span><span class="pd">Changes the app name and icon.</span>
+          <div class="opt"><label for="o1">App name</label><input id="o1" class="input sm" value="YouTube Morphe"><label for="o2">Icon</label><select id="o2" class="select sm"><option>Morphe (default)</option><option selected>Original</option><option>Custom folder…</option></select></div></div>
+        <div class="prow" role="listitem"><input type="checkbox" class="sw sm" role="switch" checked aria-label="Theme"><span class="pn">Theme</span><span class="tags"><span class="badge b-mute" style="height:18px;font-weight:400">default on</span></span><span class="pd">Adds options for theming and applies a custom background colour.</span>
+          <div class="opt"><label for="o3">Light background</label><span style="display:flex;gap:6px;align-items:center"><input id="o3" type="color" value="#ffffff" style="width:28px;height:24px;border:1px solid var(--colorNeutralStroke1);border-radius:4px;padding:0"><span class="mono">@android:color/white</span></span></div></div>
+        <div class="prow changed" role="listitem"><input type="checkbox" class="sw sm" role="switch" aria-label="Change start page"><span class="pn">Change start page</span><span class="tags"><span class="chg">changed</span><span class="badge b-mute" style="height:18px;font-weight:400">default on</span></span><span class="pd">Adds an option to set which page the app opens in instead of the homepage.</span></div>
+        <div class="prow" role="listitem"><input type="checkbox" class="sw sm" role="switch" checked aria-label="GmsCore support"><span class="pn">GmsCore support</span><span class="tags"><span class="badge b-mute" style="height:18px;font-weight:400">default on</span></span><span class="pd">Allows the app to work without root by using a different package name, with MicroG-RE.</span></div>
+        <div class="prow changed" role="listitem"><input type="checkbox" class="sw sm" role="switch" checked aria-label="Disable auto captions"><span class="pn">Disable auto captions</span><span class="tags"><span class="chg">changed</span><span class="badge b-mute" style="height:18px;font-weight:400">default off</span></span><span class="pd">Adds an option to disable captions from being automatically enabled.</span></div>
+        <div class="prow" role="listitem"><input type="checkbox" class="sw sm" role="switch" checked aria-label="Spoof video streams"><span class="pn">Spoof video streams</span><span class="tags"><span class="badge b-mute" style="height:18px;font-weight:400">default on</span></span><span class="pd">Adds options to spoof the client video streams to fix playback.</span></div>
+      </div>
+      <div class="cap muted">Showing 9 of 96. Options come from the downloaded bundle (v1.6.0) and persist across versions.</div>
+    </section>
+
+    <section class="sec" id="s-ver">
+      <h3><svg class="i s16" aria-hidden="true"><use href="#i-pin"/></svg>Version</h3>
+      <div class="seg" role="radiogroup" aria-label="Version mode">
+        <label><input type="radio" name="vm" checked><span>Auto</span></label>
+        <label><input type="radio" name="vm"><span>Pinned</span></label>
+        <label><input type="radio" name="vm"><span>Latest</span></label>
+      </div>
+      <div class="cap muted">Auto = newest version the bundle supports. Pinned = one version you pick. Latest = newest on APKMirror, even if the bundle does not list it.</div>
+      <div class="fieldrow">
+        <label class="f">Pinned version <span class="hint">used only in Pinned mode</span><select class="select" disabled><option>20.40.45 (supported)</option><option>20.37.48 (supported)</option><option>20.44.38 (APKMirror, not supported)</option></select></label>
+        <div class="f" style="display:grid;gap:4px"><span style="font-size:12px;font-weight:600;color:var(--colorNeutralForeground2)">Resolves to</span><span class="mono" style="font-size:14px">20.40.45 <span class="muted">· APKMirror newest 20.44.38</span></span></div>
+      </div>
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" class="sw" role="switch" checked><span><b style="font-weight:600">Allow nearest version</b><br><span class="cap muted">If the exact version has no APK on APKMirror, use the closest older one that the bundle supports.</span></span></label>
+    </section>
+
+    <section class="sec" id="s-dep">
+      <h3><svg class="i s16" aria-hidden="true"><use href="#i-branch"/></svg>Follow-project dependencies <span class="muted">installed together, pushed together by OTA</span></h3>
+      <label class="dep"><input type="checkbox" class="cb" checked><b style="font-weight:600">MicroG-RE</b><span class="mono muted">MorpheApp/MicroG-RE · v0.3.9.0</span><span class="cap muted">Needed by the “GmsCore support” patch. On 2 devices.</span></label>
+      <label class="dep"><input type="checkbox" class="cb"><b style="font-weight:600">Morphe Manager</b><span class="mono muted">MorpheApp/morphe-manager · v1.4.2</span><span class="cap muted">Not installed anywhere.</span></label>
+    </section>
+
+    <section class="sec" id="s-dl">
+      <h3><svg class="i s16" aria-hidden="true"><use href="#i-download"/></svg>Download source</h3>
+      <label class="f">APKMirror listing <span class="hint"><span class="found"><svg class="i" aria-hidden="true"><use href="#i-ok"/></svg>Found automatically on 2026-10-20 (exact package match)</span></span>
+        <span style="display:flex;gap:6px"><input class="input" style="flex:1" value="apkmirror.com/apk/google-inc/youtube/"><button class="btn" aria-label="Locate again" data-tip="Search APKMirror again"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg></button></span></label>
+      <label class="f">APKPure URL <span class="hint">optional fallback</span><input class="input" placeholder="Optional"></label>
+    </section>
+  </div>
+  <div class="drawer-f">
+    <span class="cap muted" style="margin-right:auto"><b style="color:var(--colorBrandForeground2)">3 unsaved changes</b></span>
+    <button class="btn subtle">Discard</button>
+    <button class="btn">Save</button>
+    <button class="btn primary">Save and rebuild</button>
+  </div>
+</aside>
+
+<script src="mock.js"></script>
+<script>
+// [name, package, built version, newest/target version, bundle, repo, origin, patches on/total, mode, status, detail, last build]
+const APPS = [
+ ["YouTube","com.google.android.youtube","20.40.45","","Morphe v1.6.0","MorpheApp/morphe-patches","builtin","88/96","Auto","idle","","2026-10-24 04:00 · 3 m 12 s"],
+ ["Reddit","com.reddit.frontpage","2026.42.0","2026.43.0","Morphe v1.6.0","MorpheApp/morphe-patches","builtin","24/26","Auto","building","Patching 62 % · step 4/6","started 2 min ago"],
+ ["Instagram","com.instagram.android","447.0.0.55.81","452.1.0.53.64","Piko v3.2.0 → v3.3.0","crimera/piko","official","66/68","Auto","update","New bundle release and app version","2026-10-19 08:00 · 4 m 40 s"],
+ ["Twitter","com.twitter.android","12.36.0-prod.03","12.37.2-prod.01","Piko v3.2.0","crimera/piko","official","70/75","Latest","update","New app version on APKMirror","2026-10-20 08:00 · 5 m 02 s"],
+ ["Google Photos","com.google.android.apps.photos","7.97.0.1000815114","7.98.0.1001971222","De-Vanced v2.14.0","RookieEnough/De-Vanced","official","8/8","Pinned","failed","Patch “Spoof features” failed: method signature not found","2026-10-26 10:03 · job #412"],
+ ["Threads","com.instagram.barcelona","—","449.0.0.54.82","Chiggi v1.25.2","jhangyu/morphe_patches","custom","4/5","Auto","needsurl","APKMirror listing not found","never built"],
+];
+const STATUS = {
+  idle: () => `<span class="badge b-ok">${ico('check')}Up to date</span>`,
+  building: d => `<div class="stcell"><span class="badge b-brand"><span class="spin" aria-hidden="true"></span>Building</span><div class="prog" role="progressbar" aria-valuenow="62" aria-valuemin="0" aria-valuemax="100" aria-label="Build progress"><i style="width:62%"></i></div><span class="cap muted">${d}</span></div>`,
+  update: d => `<div class="stcell"><span class="badge b-brand">${ico('arrowUp')}Update available</span><span class="cap muted">${d}</span></div>`,
+  failed: d => `<div class="stcell"><span class="badge b-err">${ico('error')}Failed</span><span class="reason" title="${d}">${d} · <a href="restyle-sample.html">log</a></span></div>`,
+  needsurl: d => `<div class="stcell"><span class="badge b-warn">${ico('warning')}Needs URL</span><a class="cap" href="#" data-open>Paste the APKMirror listing URL</a></div>`,
+};
+const act = (icon, label, tip, dis = '') => `<button class="btn ibtn sm" aria-label="${label}" data-tip="${tip}" ${dis}>${ico(icon)}</button>`;
+let filter = '';
+function render(){
+  const q = $('#q').value.toLowerCase();
+  $('#rows').innerHTML = APPS.filter(a => (!filter || a[9] === filter) && (!q || (a[0]+a[1]+a[4]+a[5]).toLowerCase().includes(q))).map(a => {
+    const [n,p,v,t,b,r,o,pt,m,s,d,l] = a, busy = s === 'building', blocked = s === 'needsurl';
+    return `<tr ${n==='YouTube'?'class="sel"':''}>
+      <td><span class="app"><span class="tile ${tileClass(n)}" aria-hidden="true">${initials(n)}</span><span style="display:grid;min-width:0"><span class="nm">${n}</span><span class="pk">${p}</span></span></span></td>
+      <td class="c-ver ver">${t?`<span class="to">${t}</span><br><span class="muted">${v==='—'?'never built':'built '+v}</span>`:`${v}<br><span class="muted">newest supported</span>`}</td>
+      <td class="c-bnd"><span class="bnd"><span>${b} ${org(o)}</span><span class="rp">${r}</span></span></td>
+      <td class="r num c-pt">${pt}<br><span class="cap muted">${m==='Pinned'?ico('pin','s16')+' ':''}${m}</span></td>
+      <td class="st">${STATUS[s](d)}</td>
+      <td class="c-last cap muted num">${l}</td>
+      <td><div class="acts">
+        ${act('sync', `Check ${n} for updates`, 'Check for update', busy?'disabled':'')}
+        ${act('wrench', `Rebuild ${n}`, s==='failed'?'Retry build':'Rebuild', busy||blocked?'disabled':'')}
+        ${act('download', `Download ${n} APK`, v==='—'?'No build yet':'Download APK', v==='—'?'disabled':'')}
+        ${act('settings', `Open ${n} settings`, 'App settings')}
+      </div></td></tr>`;
+  }).join('');
+}
+document.addEventListener('click', e => {
+  const k = e.target.closest('.kpi'); if (k) { filter = k.dataset.f; $$('.kpi').forEach(x => x.setAttribute('aria-pressed', x === k)); render(); }
+  if (e.target.closest('[data-close]')) { $('.drawer').hidden = true; $('.scrim').hidden = true; document.body.classList.remove('panel'); }
+  if (e.target.closest('[aria-label^="Open "][aria-label$=" settings"],[data-open]')) { e.preventDefault(); $('.drawer').hidden = false; $('.scrim').hidden = false; document.body.classList.add('panel'); }
+});
+$('#q').addEventListener('input', render);
+if (location.hash === '#closed') $('[data-close]').click(); // mock: open the page without the panel
+render();
+</script>
+</body>
+</html>

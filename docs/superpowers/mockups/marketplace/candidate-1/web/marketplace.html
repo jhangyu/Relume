@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#fafafa">
+<title>Marketplace · Relume</title>
+<link rel="stylesheet" href="fluent.css">
+<style>
+.content{grid-template-columns:minmax(0,1fr)}
+.mk{display:grid;grid-template-columns:200px minmax(0,1fr);gap:var(--spacingL);align-items:start}
+.facets{position:sticky;top:76px;display:grid;gap:2px}
+.facet{all:unset;cursor:pointer;display:flex;align-items:center;gap:8px;min-height:28px;padding:4px 8px;line-height:18px;border-radius:var(--borderRadiusMedium);font-size:13px;color:var(--colorNeutralForeground2)}
+.facet:hover{background:var(--colorSubtleBackgroundHover)}
+.facet[aria-pressed=true]{background:var(--colorNeutralBackground1Selected);color:var(--colorNeutralForeground1);font-weight:var(--fontWeightSemibold)}
+.facet .n{margin-left:auto;font-size:12px;color:var(--colorNeutralForeground3);font-variant-numeric:tabular-nums}
+.facet .fbar{position:absolute}
+.fh{font-size:12px;font-weight:var(--fontWeightSemibold);color:var(--colorNeutralForeground3);padding:10px 8px 4px}
+.tool{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--colorNeutralStroke2)}
+.tool .search{flex:1 1 280px;max-width:420px}
+.stat{display:flex;gap:16px;padding:8px 12px;font-size:12px;color:var(--colorNeutralForeground3);border-bottom:1px solid var(--colorNeutralStroke2);background:var(--colorNeutralBackground2)}
+.stat b{color:var(--colorNeutralForeground1);font-weight:var(--fontWeightSemibold)}
+.gwrap{max-height:none;overflow:auto}
+.xbtn{all:unset;cursor:pointer;display:flex;align-items:center;gap:8px;min-width:0}
+.xpanel>td{padding:0!important;height:auto!important;white-space:normal!important;background:var(--colorNeutralBackground2)!important;border-bottom:1px solid var(--colorNeutralStroke1)!important}
+.xin{display:grid;grid-template-columns:minmax(0,1fr);gap:0;border-left:3px solid var(--colorCompoundBrandStroke)}
+.xcol .plist{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr))}
+.xcol .prow{border-right:1px solid var(--colorNeutralStroke3)}
+.bt{max-width:820px}
+.xcol{padding:12px 16px;min-width:0;display:grid;gap:10px;align-content:start;overflow:hidden}
+.xcol .grid{table-layout:auto}
+#tbl>thead th:first-child{min-width:260px}
+.app .nm,.app .pk{overflow:visible}
+.org.m{display:none}
+.orgtxt{font-size:12px;color:var(--colorNeutralForeground3)}
+.xcol+.xcol{border-top:1px solid var(--colorNeutralStroke2)}
+.xh{display:flex;align-items:center;gap:8px;font-weight:var(--fontWeightSemibold);font-size:13px}
+.xh .muted{font-weight:400;font-size:12px}
+.bt td{height:40px}
+.bt tr{cursor:pointer}
+.bt tr[aria-disabled=true]{cursor:not-allowed;color:var(--colorNeutralForegroundDisabled)}
+.bt tr[aria-disabled=true] .org{opacity:.6}
+.bt .bn{font-weight:var(--fontWeightSemibold)}
+.bt .rp{font:11px/14px var(--fontFamilyMonospace);color:var(--colorNeutralForeground3)}
+.pt{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.pt .search{flex:1 1 160px}
+.xf{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:10px 16px;border-top:1px solid var(--colorNeutralStroke2);background:var(--colorNeutralBackground1)}
+.kv{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--colorNeutralForeground3)}
+.kv b{color:var(--colorNeutralForeground1);font-weight:var(--fontWeightSemibold)}
+.urlrow>td{height:auto!important;white-space:normal!important;padding:0 8px 10px 40px!important;background:var(--colorStatusWarningBackground1)!important}
+.urlform{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,220px) auto;gap:8px;align-items:end;margin-top:8px}
+.foot{display:flex;justify-content:space-between;padding:8px 12px;font-size:12px;color:var(--colorNeutralForeground3)}
+.only-m{display:none}
+@media (max-width:1500px){.c-cat{display:none}}
+@media (max-width:1280px){.c-upd{display:none}}
+@media (max-width:900px){.mk{grid-template-columns:minmax(0,1fr)}.facets{display:none}.only-m{display:block}.urlform{grid-template-columns:1fr}}
+@media (max-width:760px){.c-cat,.c-upd,.c-ver,.c-org,.c-pt,.bt .c-st,.bt .c-sup{display:none}#tbl>thead th:first-child{min-width:0;width:auto!important}.xin{max-width:calc(100vw - 26px)}.app .pk,.app .nm{max-width:44vw;overflow:hidden!important;text-overflow:ellipsis}.bt td{white-space:normal}.bt .bar{display:none}.urlrow>td>*{max-width:calc(100vw - 50px)}.bt .c-src{display:none}.org.m{display:inline-flex!important;margin-left:6px}.urlform .hint{word-break:break-all}.bt .rp{white-space:normal;word-break:break-all}.xcol .plist{grid-template-columns:1fr}.urlrow>td{padding-left:12px!important}.xcol{padding:12px}}
+</style>
+</head>
+<body>
+<script src="../icons.js"></script>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+<aside class="side" aria-label="Primary">
+  <div class="brand"><div class="logo">R</div><span>Relume</span></div>
+  <nav class="nav">
+    <a href="marketplace.html" aria-current="page"><svg class="i" aria-hidden="true"><use href="#i-store"/></svg><span class="lbl">Marketplace</span><span class="count">1,211</span></a>
+    <a href="apps.html"><svg class="i" aria-hidden="true"><use href="#i-apps"/></svg><span class="lbl">Apps</span><span class="count">6</span></a>
+    <a href="restyle-sample.html"><svg class="i" aria-hidden="true"><use href="#i-history"/></svg><span class="lbl">Builds</span><span class="count">1</span></a>
+    <div class="nav-sep"></div>
+    <a href="#"><svg class="i" aria-hidden="true"><use href="#i-phone"/></svg><span class="lbl">Devices</span></a>
+    <a href="#"><svg class="i" aria-hidden="true"><use href="#i-branch"/></svg><span class="lbl">Follow projects</span></a>
+    <a href="schedules.html"><svg class="i" aria-hidden="true"><use href="#i-calendar"/></svg><span class="lbl">Schedules</span></a>
+    <a href="#"><svg class="i" aria-hidden="true"><use href="#i-settings"/></svg><span class="lbl">Settings</span></a>
+  </nav>
+  <div class="server"><b>Catalog · 2026-10-26 11:25</b><span>ETag 6f1c…a2 · 297 bundles</span><span>Next run in 2 h 14 min</span></div>
+</aside>
+<div class="main">
+  <header class="top">
+    <button class="btn ibtn hamb" aria-label="Open navigation" aria-expanded="false"><svg class="i" aria-hidden="true"><use href="#i-menu"/></svg></button>
+    <div><h1>Marketplace</h1><div class="sub">Every app the catalogs can patch. Expand an app, pick one bundle, enable.</div></div>
+    <div class="spacer"></div>
+    <button class="btn hide-m"><svg class="i" aria-hidden="true"><use href="#i-add"/></svg>Add custom source</button>
+    <button class="btn" data-tip="Fetch bundles.json now (last 11:25, 200 OK)" aria-label="Refresh catalog"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg><span class="hide-m">Refresh catalog</span></button>
+  </header>
+  <main id="main" class="content">
+    <div class="mk">
+      <nav class="facets" aria-label="Category filter" id="facets"></nav>
+      <section class="card" aria-label="Catalog apps">
+        <div class="tool">
+          <label class="search"><span class="sr">Search apps, packages, bundles</span><svg class="i s16" aria-hidden="true"><use href="#i-search"/></svg><input id="q" class="input" placeholder="Search name, package, bundle, patch" autocomplete="off"><span class="kbd" aria-hidden="true">/</span></label>
+          <select class="select only-m" aria-label="Category" id="catm"></select>
+          <div class="pills" role="group" aria-label="Source">
+            <button class="pill" aria-pressed="true" data-o="official">Official catalog <span class="n">1,207</span></button>
+            <button class="pill" aria-pressed="true" data-o="builtin">Built-in <span class="n">3</span></button>
+            <button class="pill" aria-pressed="true" data-o="custom">Custom <span class="n">1</span></button>
+          </div>
+          <button class="pill" aria-pressed="false" id="onlyEn">Enabled only</button>
+          <label class="hide-m" style="display:flex;gap:6px;align-items:center;font-size:12px;margin-left:auto"><span class="muted">Sort</span>
+            <select class="select sm" id="sort" aria-label="Sort by">
+              <option value="bundles">Most bundles</option><option value="stars">Top bundle stars</option><option value="patches">Most patches</option><option value="upd">Recently updated</option><option value="name">Name A–Z</option>
+            </select></label>
+        </div>
+        <div class="stat" aria-live="polite"><span><b id="shown">0</b> shown</span><span><b>1,211</b> apps</span><span><b>300</b> bundles</span><span><b>6</b> enabled</span><span class="hide-m">Keyboard: <span class="kbd">/</span> search · <span class="kbd">↑↓</span> move · <span class="kbd">Enter</span> expand</span></div>
+        <div class="gwrap">
+          <table class="grid" id="tbl">
+            <thead><tr>
+              <th style="width:34%"><button data-k="name">App</button></th>
+              <th class="c-cat"><button data-k="cat">Category</button></th>
+              <th class="r c-b" aria-sort="descending"><button data-k="bundles">Bundles<svg class="i s16" aria-hidden="true"><use href="#i-chevronDown"/></svg></button></th>
+              <th class="c-org">Sources</th>
+              <th class="r hide-m"><button data-k="stars">Top ★</button></th>
+              <th class="r c-pt"><button data-k="patches">Patches</button></th>
+              <th class="c-ver">Newest supported</th>
+              <th class="c-upd"><button data-k="upd">Updated</button></th>
+              <th class="c-state">State</th>
+            </tr></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+        <div class="foot"><span>Mock data: 40 of 1,211 apps from the 2026-10-26 catalog copy. Real list renders all rows in one virtualised table.</span><span class="hide-m">Catalog: morphe-patches.software</span></div>
+      </section>
+    </div>
+  </main>
+</div>
+</div>
+
+<script src="mock.js"></script>
+<script>
+// [name, package, category, bundles, max patches for this app, top stars, updated, newest supported, origins, state]
+const APPS = [
+ ["YouTube","com.google.android.youtube","Video",1,96,0,"2026-10-21","20.40.45",["builtin"],"enabled"],
+ ["YouTube Music","com.google.android.apps.youtube.music","Music & Audio",1,28,0,"2026-10-21","8.40.54",["builtin"],""],
+ ["Reddit","com.reddit.frontpage","Social & Communication",5,26,291,"2026-10-25","2026.43.0",["builtin","official"],"enabled"],
+ ["Instagram","com.instagram.android","Social & Communication",11,68,5783,"2026-10-25","452.1.0.53.64",["official"],"enabled"],
+ ["Gboard","com.google.android.inputmethod.latin","Productivity",11,22,1202,"2026-10-25","18.4.1.985164140",["official"],""],
+ ["Twitch","tv.twitch.android.app","Video",8,52,1321,"2026-10-25","31.7.0",["official"],""],
+ ["Pinterest","com.pinterest","News, Media & Books",7,34,152,"2026-10-23","14.41.0",["official"],""],
+ ["Telegram","org.telegram.messenger.web","Social & Communication",7,14,940,"2026-10-25","13.0.2",["official"],""],
+ ["Waze","com.waze","Maps & Navigation",6,30,220,"2026-10-25","5.26.0.0",["official"],""],
+ ["Truecaller","com.truecaller","Social & Communication",5,24,152,"2026-10-25","26.41.5",["official"],""],
+ ["Reddit Sync","com.laurencedawson.reddit_sync","Social & Communication",5,25,814,"2026-10-24","v23.06.30-13:39",["official"],""],
+ ["Telegram","org.telegram.messenger","Social & Communication",5,15,940,"2026-10-25","13.1.0",["official"],""],
+ ["Twitter","com.twitter.android","News, Media & Books",5,75,5783,"2026-10-25","12.37.2-prod.01",["official"],"update"],
+ ["TikTok","com.zhiliaoapp.musically","Social & Communication",5,51,444,"2026-10-25","47.5.3",["official"],""],
+ ["Nova Launcher","com.teslacoilsw.launcher","Personalization",5,4,1266,"2026-10-25","8.8.8",["official"],""],
+ ["Boost for Reddit","com.rubenmayayo.reddit","Social & Communication",4,48,814,"2026-10-24","1.12.12",["official"],"open"],
+ ["Threads","com.instagram.barcelona","Social & Communication",4,5,57,"2026-10-23","449.0.0.54.82",["official","custom"],"needsurl"],
+ ["Disney+","com.disney.disneyplus","Video",4,1,1321,"2026-10-24","26.18.0+rc5",["official"],""],
+ ["Facebook","com.facebook.katana","Social & Communication",4,19,1321,"2026-10-24","580.0.0.51.74",["official"],""],
+ ["Sofascore","com.sofascore.results","Lifestyle, Fitness & Sports",4,9,1266,"2026-10-25","26.10.12",["official"],""],
+ ["Smart AudioBook Player","ak.alizandro.smartaudiobookplayer","Music & Audio",4,3,255,"2026-08-16","11.8.2",["official"],""],
+ ["Brave Browser","com.brave.browser","Productivity",4,14,146,"2026-10-25","1.98.60",["official"],""],
+ ["Letterboxd","com.letterboxd.letterboxd","Social & Communication",4,9,1321,"2026-10-24","any",["official"],""],
+ ["SoundCloud","com.soundcloud.android","Music & Audio",4,5,1266,"2026-10-24","2026.08.26",["official"],""],
+ ["Proton VPN","ch.protonvpn.android","Tools & Utilities",4,13,1266,"2026-10-25","5.20.98.0",["official"],""],
+ ["Splitwise","com.Splitwise.SplitwiseMobile","Productivity",3,1,940,"2026-10-25","26.7.3",["official"],""],
+ ["Prime Video (Android TV)","com.amazon.amazonvideo.livingroom","Video",3,9,261,"2026-10-23","6.24.5",["official"],""],
+ ["F1 TV","com.formulaone.production","Video",3,6,261,"2026-10-23","3.0.49.5",["official"],""],
+ ["Google Photos","com.google.android.apps.photos","Photography & Design",3,8,1321,"2026-10-25","7.98.0.1001971222",["official"],"enabled"],
+ ["LINE","jp.naver.line.android","Social & Communication",3,46,136,"2026-10-23","26.16.0",["official"],""],
+ ["Google Phone","com.google.android.dialer","Productivity",3,2,255,"2026-10-14","241.0.991235506",["official"],""],
+ ["Flightradar24","com.flightradar24free","Maps & Navigation",3,3,940,"2026-10-25","11.12.0",["official"],""],
+ ["Moovit","com.tranzmate","Maps & Navigation",3,5,940,"2026-10-25","5.201.1.1809",["official"],""],
+ ["Battery Guru","com.paget96.batteryguru","Tools & Utilities",3,2,940,"2026-10-25","2.5.0.8",["official"],""],
+ ["AT4K Launcher","com.overdevs.at4k","Personalization",3,1,255,"2026-10-25","1.1",["official"],""],
+ ["Symfonium","app.symfonik.music.player","Music & Audio",3,1,255,"2026-10-25","15.1.0",["official"],""],
+ ["Adobe Acrobat","com.adobe.reader","Productivity",3,1,940,"2026-10-25","26.9.2.50367",["official"],""],
+ ["Hevy","com.hevy","Lifestyle, Fitness & Sports",3,4,255,"2026-10-25","3.2.2",["official"],""],
+ ["Projectivy Launcher","com.spocky.projengmenu","Personalization",3,1,255,"2026-10-25","4.72",["official"],""],
+ ["Sudoku.com","com.easybrain.sudoku.android","Games",2,3,255,"2026-10-11","5.4.2",["official"],""]
+];
+const CATS = [["All apps",1211],["Tools & Utilities",203],["Productivity",182],["Lifestyle, Fitness & Sports",133],["Games",122],["Video",116],["Social & Communication",71],["Music & Audio",63],["Photography & Design",62],["Maps & Navigation",60],["Education",58],["News, Media & Books",46],["Personalization",46],["Shopping",28],["Weather",19]];
+// Bundles for the expanded app (real 2026-10-26 data for com.rubenmayayo.reddit)
+const BUNDLES = [
+ ["Patcheddit","wchill/patcheddit","official",814,37,"2026-10-23","1.12.12"],
+ ["Brealorg","brealorg/breal-morphe-patches","official",103,48,"2026-10-24","1.12.12"],
+ ["RhubarbShoelaces","rhubarbshoelaces/morphe-patches","official",13,1,"2026-08-21","1.12.12"],
+ ["Titandrive","titandrive/morphe-catppuccin","official",3,0,"2026-10-24","—"]
+];
+const PATCHES = [["Add Boost Search bottom navigation",1,"Shows Boost's native Home, Search, Subscriptions, Inbox and Profile menu in Search and Go to"],["Anchor Boost Snackbars above bottom navigation",1,"Shows Boost Snackbars above the visible bottom navigation instead of covering it."],["Animate media in Boost gallery previews",1,"Plays GIFs and videos in Reddit gallery previews, following Boost's data saving settings."],["Auto-load next page after filtered results",1,"Loads the next page automatically when content filters hide every post on a page."],["Boost Morphe settings",0,"Adds a Morphe section and a reorganized settings screen with search."],["Boost search default discovery",1,"Opens Search right away on a list of active subreddits."],["Custom Synccit URL",1,"Allows Boost to use a custom self-hosted Synccit API endpoint."],["Disable Boost Crashlytics startup network calls",1,"Stops Boost's crash reporting (Crashlytics) from connecting at startup."],["Fix Boost FAB nested scroll",1,"Hides and shows the floating action button in step with scrolling."],["Fix Boost YouTube playback fallback",1,"Opens the original YouTube link externally when the legacy embedded player fails."],["Fix Boost code block rendering",1,"Shows Reddit code blocks correctly and fixes links whose URL contains parentheses."],["Fix Boost comments Lemmy-style toolbar UI",1,"Removes the duplicate title above comments."],["Fix Boost image widget click target",1,"Makes the image widget open the post it shows instead of an older one."],["Fix Boost native image upload",0,"Uploads image posts and galleries to Reddit, and images in comments or text posts to Imgur."],["Fix Boost navigation bar overlap",1,"Keeps Boost's bottom controls and drawer clear of the system navigation bar on Android 15."],["Fix Boost target SDK 35 compatibility",0,"Makes Boost target Android 15 (SDK 35) and fixes billing setup on newer Android versions."],["Fix Boost video rewind back buffer",1,"Keeps the last 30 seconds of a video, so rewinding plays right away."],["Fix Hide crash",1,"Fixes crashes and jumps in the feed when hiding read posts."],["Fix Random subreddit",1,"Fixes the Random button by picking an active, non-NSFW subreddit."],["Fix download completed notification visibility",1,"Shows a visible notification when a download finishes."],["Fix slow Giphy loading",1,"Loads Giphy posts faster by playing the MP4 directly."],["Open Reddit image links in Boost",1,"Opens i.redd.it image links in Boost's image viewer instead of a web page."],["Prefer high refresh rate",0,"Requests a high display refresh rate for Boost on adaptive-refresh devices."],["Readable Boost flair labels",1,"Uses black or white flair text when Reddit's flair colour is unreadable."],["Remove obsolete profile tabs",1,"Removes the legacy Gilded and Friends tabs from Boost profiles."],["Restore Boost sidebar Trending today",1,"Restores the sidebar's Trending today section."],["Restore GIF URL insertion",0,"Adds an option to the image menu to insert a GIF from its URL."],["Show end of feed",1,"Shows an \"End of feed\" row with a Refresh button below the last post."],["Show inline Giphy previews in comments",1,"Adds inline media previews below comment text for Giphy links."],["Stabilize Boost subreddit bottom navigation surface",1,"Gives the bottom navigation in subreddits proper contrast."],["Standardize Boost Home bottom navigation",1,"Shows the same five-tab bottom navigation on Home."],["Standardize Boost Inbox and Profile bottom navigation",1,"Shows the same five-tab bottom navigation in Inbox and Profile."],["Standardize Boost bottom navigation",1,"Makes the bottom navigation look and behave the same on every screen."],["Standardize Boost bottom-navigation FAB clearance",1,"Keeps the floating action buttons clear of the bottom navigation."],["Support keyboard GIF insertion",0,"Lets you insert GIFs and images from your keyboard while writing."],["Theme Boost settings icons",1,"Colours the settings icons to match the active theme."],["Tune Boost image dismissal",1,"Lets you close the image viewer with a quick flick."]];
+const user = new Map([["Prefer high refresh rate",1],["Fix Boost target SDK 35 compatibility",1],["Disable Boost Crashlytics startup network calls",1]]);
+const on = p => user.has(p[0]) ? !!user.get(p[0]) : !!p[1];
+const toggled = new Set(["Prefer high refresh rate","Fix Boost target SDK 35 compatibility"]);
+let sel = 0, cat = "Social & Communication", key = "bundles", pfilter = "";
+const STATE = {
+  enabled:'<span class="badge b-ok">'+ico('check')+'Enabled</span>',
+  update:'<span class="badge b-brand">'+ico('arrowUp')+'Enabled · update</span>',
+  needsurl:'<span class="badge b-warn">'+ico('warning')+'Needs URL</span>',
+  open:'<span class="badge b-mute">Configuring</span>', '':'<span class="muted cap">—</span>'
+};
+function patchList(){
+  const n = PATCHES.filter(on).length;
+  return `<div class="pt">
+      <label class="search"><span class="sr">Filter patches</span>${ico('filter','s16')}<input class="input sm" style="height:28px" placeholder="Filter ${PATCHES.length} patches" id="pf" value="${pfilter}"></label>
+      <div class="pills" role="group" aria-label="Show"><button class="pill" aria-pressed="true" data-radio="1">All</button><button class="pill" aria-pressed="false" data-radio="1">On</button><button class="pill" aria-pressed="false" data-radio="1">Changed <span class="n">2</span></button></div>
+      <button class="btn sm subtle">All on</button><button class="btn sm subtle">Defaults</button>
+    </div>
+    <div class="plist" style="max-height:340px" role="list" aria-label="Patches in Patcheddit for Boost for Reddit">
+    ${PATCHES.filter(p=>p[0].toLowerCase().includes(pfilter.toLowerCase())).map(p=>`<div class="prow ${toggled.has(p[0])?'changed':''}" role="listitem">
+      <input type="checkbox" class="sw sm" role="switch" ${on(p)?'checked':''} aria-label="${p[0]}">
+      <span class="pn" title="${p[0]}">${p[0]}</span>
+      <span class="tags">${toggled.has(p[0])?'<span class="chg">changed</span>':''}<span class="badge ${p[1]?'b-mute':'b-mute'}" style="height:18px;font-weight:400">default ${p[1]?'on':'off'}</span></span>
+      <span class="pd" title="${p[2]}">${p[2]}</span></div>`).join('')}
+    </div>
+    <div class="cap muted"><b class="num" style="color:var(--colorNeutralForeground1)">${n} of ${PATCHES.length}</b> on · 2 changed from bundle defaults · patch options are set in Apps after the first download</div>`;
+}
+function expanded(){
+  return `<tr class="xpanel" id="x-boost"><td colspan="9"><div class="xin">
+   <div class="xcol">
+     <div class="xh">${ico('package','s16')}Choose one bundle <span class="muted">4 bundles target com.rubenmayayo.reddit · one APK per app</span></div>
+     <table class="grid bt" role="radiogroup" aria-label="Patch bundle for Boost for Reddit">
+      <thead><tr><th style="width:28px"></th><th>Bundle</th><th class="c-src">Source</th><th class="r c-st">★</th><th class="r">Patches here</th><th class="c-sup">Supports</th></tr></thead>
+      <tbody>${BUNDLES.map((b,i)=>`<tr class="${i===sel?'sel':''}" data-b="${i}" ${b[4]?'':'aria-disabled="true" title="No patch in this bundle lists com.rubenmayayo.reddit"'}>
+        <td><input type="radio" class="rd" name="bundle" ${i===sel?'checked':''} ${b[4]?'':'disabled'} aria-label="${b[0]}"></td>
+        <td><div class="bn">${b[0]}${org(b[2]).replace('class="org ','class="org m ')}</div><div class="rp">${b[1]}</div></td>
+        <td class="c-src">${org(b[2])}</td><td class="r num c-st">${b[3].toLocaleString()}</td>
+        <td class="r num">${b[4]}<span class="bar" aria-hidden="true"><i style="width:${b[4]/48*100}%"></i></span></td>
+        <td class="mono c-sup">${b[6]}<div class="cap muted num" style="font-family:var(--fontFamilyBase)">upd. ${b[5]}</div></td></tr>`).join('')}</tbody>
+     </table>
+     <div class="mbar info">${ico('info','s16')}<span class="cap">Titandrive ships themes only; none of its 13 patches lists this package. Disabled rows stay visible so the bundle count above stays honest.</span></div>
+   </div>
+   <div class="xcol">
+     <div class="xh">${ico('wrench','s16')}Patches in ${BUNDLES[sel][0]} <span class="muted">for Boost for Reddit · defaults from the bundle</span></div>
+     ${patchList()}
+   </div>
+   <div class="xf">
+     <span class="kv">Version <b>Auto</b> → <span class="mono">1.12.12</span> (newest the bundle supports)</span>
+     <span class="kv">APK source <b>APKMirror</b> · looked up by package on enable</span>
+     <span class="kv">Output <b>1 APK</b> · arm64-v8a</span>
+     <span style="margin-left:auto;display:flex;gap:8px"><button class="btn subtle" data-collapse>Cancel</button>
+     <button class="btn primary">${ico('check','s16')}Enable and build</button></span>
+   </div></div></td></tr>`;
+}
+const urlRow = () => `<tr class="urlrow"><td colspan="9">
+   <div class="mbar warn" style="border:0;padding:8px 0 0;background:none">${ico('warning','s16')}<div><b>APKMirror listing not found for com.instagram.barcelona.</b> <span class="cap">Search returned 6 results, none with this exact package. The app cannot build until it has a listing URL. Bundle: <b>Chiggi</b> ${org('custom')} jhangyu/morphe_patches.</span></div></div>
+   <div class="urlform">
+     <label class="f">APKMirror listing URL <span class="hint">the app page, e.g. apkmirror.com/apk/instagram/threads-an-instagram-app/</span><input class="input" placeholder="Paste the listing URL" aria-required="true"></label>
+     <label class="f">APKPure URL <span class="hint">optional fallback</span><input class="input" placeholder="Optional"></label>
+     <div style="display:flex;gap:8px"><button class="btn" aria-label="Paste from clipboard" data-tip="Paste from clipboard">${ico('paste')}</button><button class="btn primary">Save URL and build</button></div>
+   </div></td></tr>`;
+function row(a){
+  const [n,p,c,b,pt,st,u,v,o,s] = a, isOpen = s==='open';
+  return `<tr data-p="${p}" tabindex="-1"><td><button class="xbtn" aria-expanded="${isOpen}" aria-controls="${isOpen?'x-boost':''}">
+      ${ico('chevronRight','s16 chev')}<span class="tile ${tileClass(n)}" aria-hidden="true">${initials(n)}</span>
+      <span class="app" style="display:grid;gap:0"><span class="nm">${n}</span><span class="pk">${p}</span></span></button></td>
+    <td class="c-cat cap">${c}</td><td class="r num">${b}</td>
+    <td class="c-org"><span style="display:inline-flex;gap:4px">${o.map(x=>x==='official'?'<span class="orgtxt">Catalog</span>':org(x)).join('')}</span></td>
+    <td class="r num hide-m">${st?st.toLocaleString():'—'}</td>
+    <td class="r num c-pt">${pt}</td><td class="c-ver mono">${v}</td><td class="c-upd cap muted num">${u}</td><td>${STATE[s]}</td></tr>`
+    + (isOpen ? expanded() : '') + (s==='needsurl' ? urlRow() : '');
+}
+const sorters = {bundles:(a,b)=>b[3]-a[3]||b[5]-a[5], stars:(a,b)=>b[5]-a[5], patches:(a,b)=>b[4]-a[4], upd:(a,b)=>b[6].localeCompare(a[6]), name:(a,b)=>a[0].localeCompare(b[0]), cat:(a,b)=>a[2].localeCompare(b[2])};
+function render(){
+  const q = $('#q').value.toLowerCase(), onlyEn = $('#onlyEn').getAttribute('aria-pressed')==='true';
+  const origins = $$('.pill[data-o][aria-pressed=true]').map(x=>x.dataset.o);
+  const list = APPS.filter(a => (cat==='All apps'||a[2]===cat) && (!q||(a[0]+a[1]).toLowerCase().includes(q)) && a[8].some(o=>origins.includes(o)) && (!onlyEn||/enabled|update|needsurl/.test(a[9]))).sort(sorters[key]);
+  $('#rows').innerHTML = list.map(row).join('') || '<tr><td colspan="9" class="muted" style="text-align:center;height:80px">No app matches. Clear the search or pick "All apps".</td></tr>';
+  $('#shown').textContent = list.length;
+  $$('#tbl th').forEach(th=>th.removeAttribute('aria-sort')); const th=$(`#tbl th button[data-k="${key}"]`); th&&th.parentElement.setAttribute('aria-sort', key==='name'?'ascending':'descending');
+}
+$('#facets').innerHTML = '<div class="fh">Category</div>' + CATS.map(([c,n])=>`<button class="facet" aria-pressed="${c===cat}" data-c="${c}">${c}<span class="n">${n.toLocaleString()}</span></button>`).join('');
+$('#catm').innerHTML = CATS.map(([c,n])=>`<option>${c}</option>`).join('');
+document.addEventListener('click', e=>{
+  const f=e.target.closest('.facet'); if(f){cat=f.dataset.c;$$('.facet').forEach(x=>x.setAttribute('aria-pressed',x===f));render();}
+  if(e.target.closest('.pill[data-o],#onlyEn')) render(); // mock.js listener already flipped aria-pressed
+  const k=e.target.closest('th button[data-k]'); if(k){key=k.dataset.k;$('#sort').value=key;render();}
+  const b=e.target.closest('tr[data-b]:not([aria-disabled])'); if(b){sel=+b.dataset.b;render();}
+  const x=e.target.closest('.xbtn'); if(x){const p=x.closest('tr').dataset.p;APPS.forEach(a=>{if(a[9]==='open')a[9]='';}); if(x.getAttribute('aria-expanded')!=='true'){const a=APPS.find(a=>a[1]===p); if(!a[9]) a[9]='open';} render();}
+  if(e.target.closest('[data-collapse]')){APPS.forEach(a=>{if(a[9]==='open')a[9]='';});render();}
+  const r=e.target.closest('.pill[data-radio]'); if(r){$$('.pill',r.parentElement).forEach(x=>x.setAttribute('aria-pressed',x===r));}
+});
+document.addEventListener('change', e=>{ if(e.target.matches('.prow .sw')){const n=e.target.getAttribute('aria-label'); user.set(n,e.target.checked?1:0); const p=PATCHES.find(p=>p[0]===n); if(!!p[1]!==e.target.checked)toggled.add(n); else toggled.delete(n); render();} });
+$('#q').addEventListener('input', render);
+document.addEventListener('input', e=>{ if(e.target.id==='pf'){pfilter=e.target.value;render();const i=$('#pf');i.focus();i.setSelectionRange(99,99);} });
+$('#sort').addEventListener('change', e=>{key=e.target.value;render();});
+$('#catm').addEventListener('change', e=>{cat=e.target.value;render();});
+render();
+</script>
+</body>
+</html>

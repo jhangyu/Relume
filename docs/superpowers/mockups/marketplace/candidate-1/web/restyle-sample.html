@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#fafafa">
+<title>Builds · Relume</title>
+<link rel="stylesheet" href="fluent.css">
+<style>
+.content{grid-template-columns:minmax(0,1fr)}
+.live{display:grid;grid-template-columns:300px minmax(0,1fr)}
+.steps{list-style:none;margin:0;padding:12px 16px;display:grid;gap:2px;border-right:1px solid var(--colorNeutralStroke2)}
+.steps li{display:flex;align-items:center;gap:8px;height:30px;font-size:13px}
+.steps .n{margin-left:auto;font-size:12px;color:var(--colorNeutralForeground3);font-variant-numeric:tabular-nums}
+.steps .done .i{color:var(--colorStatusSuccessForeground1)}
+.steps .now{font-weight:600}
+.steps .todo{color:var(--colorNeutralForeground3)}
+.steps .todo .i{color:var(--colorNeutralStroke1)}
+/* light log pane: no dark surfaces in this candidate */
+.log{margin:0;padding:10px 14px;font:12px/18px var(--fontFamilyMonospace);background:var(--colorNeutralBackground3);color:var(--colorNeutralForeground2);height:228px;overflow:auto;white-space:pre-wrap;border-radius:0 0 var(--borderRadiusXLarge) 0}
+.log .t{color:var(--colorNeutralForeground4)}
+.log .ok{color:var(--colorStatusSuccessForeground1)}
+.log .st{color:var(--colorBrandForeground2);font-weight:600}
+.log .w{color:var(--colorStatusWarningForeground3)}
+.tool{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--colorNeutralStroke2)}
+.reason{font-size:12px;color:var(--colorStatusDangerForeground1);display:block;white-space:normal;max-width:260px}
+td.res{white-space:normal!important;padding:4px 8px!important}
+@media (max-width:1560px){.c-tr{display:none}}
+.acts{display:flex;gap:2px;justify-content:flex-end}
+.legend{padding:12px 16px;display:grid;gap:6px;font-size:12px;color:var(--colorNeutralForeground3)}
+@media (max-width:900px){.live{grid-template-columns:1fr}.steps{border-right:0;border-bottom:1px solid var(--colorNeutralStroke2)}}
+@media (max-width:760px){.c-x{display:none}}
+</style>
+</head>
+<body>
+<script src="../icons.js"></script>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+<aside class="side" aria-label="Primary">
+  <div class="brand"><div class="logo">R</div><span>Relume</span></div>
+  <nav class="nav">
+    <a href="marketplace.html"><svg class="i" aria-hidden="true"><use href="#i-store"/></svg><span class="lbl">Marketplace</span><span class="count">1,211</span></a>
+    <a href="apps.html"><svg class="i" aria-hidden="true"><use href="#i-apps"/></svg><span class="lbl">Apps</span><span class="count">6</span></a>
+    <a href="restyle-sample.html" aria-current="page"><svg class="i" aria-hidden="true"><use href="#i-history"/></svg><span class="lbl">Builds</span><span class="count">1</span></a>
+    <div class="nav-sep"></div>
+    <a href="#"><svg class="i" aria-hidden="true"><use href="#i-phone"/></svg><span class="lbl">Devices</span></a>
+    <a href="#"><svg class="i" aria-hidden="true"><use href="#i-branch"/></svg><span class="lbl">Follow projects</span></a>
+    <a href="schedules.html"><svg class="i" aria-hidden="true"><use href="#i-calendar"/></svg><span class="lbl">Schedules</span></a>
+    <a href="#"><svg class="i" aria-hidden="true"><use href="#i-settings"/></svg><span class="lbl">Settings</span></a>
+  </nav>
+  <div class="server"><b>Server online</b><span>1 running · 0 queued</span></div>
+</aside>
+<div class="main">
+  <header class="top">
+    <button class="btn ibtn hamb" aria-label="Open navigation" aria-expanded="false"><svg class="i" aria-hidden="true"><use href="#i-menu"/></svg></button>
+    <div><h1>Builds</h1><div class="sub">Restyle sample for kept pages (builds, devices, Follow projects, settings, login): same shell, DataGrid, badges, light surfaces.</div></div>
+  </header>
+  <main id="main" class="content">
+    <section class="card" aria-labelledby="r-h">
+      <div class="card-h"><span class="spin" aria-hidden="true"></span><h2 id="r-h">Running · Reddit 2026.43.0</h2><span class="muted cap">job #418 · Morphe v1.6.0 · trigger: update run 10:00</span><span style="flex:1"></span>
+        <label class="cap hide-m" style="display:flex;gap:6px;align-items:center"><input type="checkbox" class="sw sm" role="switch" checked>Follow log</label>
+        <button class="btn">Cancel</button></div>
+      <div class="live">
+        <ol class="steps" aria-label="Build steps">
+          <li class="done"><svg class="i s16" aria-hidden="true"><use href="#i-ok"/></svg>Fetch bundle<span class="n">4 s</span></li>
+          <li class="done"><svg class="i s16" aria-hidden="true"><use href="#i-ok"/></svg>Download APK<span class="n">38 s</span></li>
+          <li class="done"><svg class="i s16" aria-hidden="true"><use href="#i-ok"/></svg>Resolve patches 24/26<span class="n">2 s</span></li>
+          <li class="now"><span class="spin" aria-hidden="true"></span>Patch<span class="n">62 %</span></li>
+          <li class="todo"><svg class="i s16" aria-hidden="true"><use href="#i-dot"/></svg>Sign and align</li>
+          <li class="todo"><svg class="i s16" aria-hidden="true"><use href="#i-dot"/></svg>Publish + notify</li>
+        </ol>
+        <pre class="log" role="log" aria-live="polite" aria-label="Build log"><span class="t">10:01:02</span> <span class="st">▸ step 1/6 fetch bundle</span>  MorpheApp/morphe-patches v1.6.0 (cached)
+<span class="t">10:01:06</span> <span class="st">▸ step 2/6 download</span>  apkmirror.com/apk/redditinc/reddit/ → 2026.43.0 (arm64-v8a, 98.4 MB)
+<span class="t">10:01:44</span> <span class="ok">✓ sha256 9c1f…e07a matches APKMirror listing</span>
+<span class="t">10:01:44</span> <span class="st">▸ step 3/6 resolve</span>  24 of 26 patches on · 2 off by user (“Hide recently visited shelf”, “Disable screenshot popup”)
+<span class="t">10:01:46</span> <span class="st">▸ step 4/6 patch</span>
+<span class="t">10:01:58</span> Applied “Hide ads”
+<span class="t">10:02:03</span> Applied “Disable Reddit premium ads”
+<span class="t">10:02:09</span> <span class="w">! “Sanitize sharing links”: fingerprint matched at fallback offset</span>
+<span class="t">10:02:15</span> Applied “Open links externally”
+<span class="t">10:02:21</span> Applied “Remove subreddit dialog” …</pre>
+      </div>
+    </section>
+
+    <section class="card" aria-label="Build history">
+      <div class="tool">
+        <div class="pills" role="group" aria-label="Result"><button class="pill" aria-pressed="true">All <span class="n">64</span></button><button class="pill" aria-pressed="false">Succeeded <span class="n">57</span></button><button class="pill" aria-pressed="false">Failed <span class="n">6</span></button><button class="pill" aria-pressed="false">Cancelled <span class="n">1</span></button></div>
+        <select class="select sm" aria-label="App"><option>All apps</option><option>YouTube</option><option>Reddit</option><option>Instagram</option></select>
+        <select class="select sm" aria-label="Trigger"><option>Any trigger</option><option>Update run</option><option>Manual</option><option>First build on enable</option></select>
+      </div>
+      <div style="overflow:auto">
+      <table class="grid">
+        <thead><tr><th class="r">Job</th><th>App</th><th class="c-x">Bundle</th><th class="c-x">Version</th><th class="c-x c-tr">Trigger</th><th class="c-x">Started</th><th class="r c-x">Took</th><th>Result</th><th class="r"><span class="sr">Actions</span></th></tr></thead>
+        <tbody>
+          <tr><td class="r mono">#417</td><td><span class="app"><span class="tile c6" aria-hidden="true">GP</span><span class="nm">Google Photos</span></span></td><td class="c-x">De-Vanced v2.14.0 <span class="org official">Official catalog</span></td><td class="c-x mono">7.98.0.1001971222</td><td class="c-x c-tr">Update run</td><td class="c-x num">10-26 10:03</td><td class="r num c-x">1:12</td>
+            <td class="res"><span class="badge b-err"><svg class="i" aria-hidden="true"><use href="#i-error"/></svg>Failed</span> <span class="reason">“Spoof features”: method signature not found</span></td>
+            <td><div class="acts"><button class="btn ibtn sm" aria-label="Retry job 417" data-tip="Retry"><svg class="i" aria-hidden="true"><use href="#i-wrench"/></svg></button><button class="btn ibtn sm" aria-label="Open log of job 417" data-tip="Log"><svg class="i" aria-hidden="true"><use href="#i-external"/></svg></button></div></td></tr>
+          <tr><td class="r mono">#416</td><td><span class="app"><span class="tile c9" aria-hidden="true">Y</span><span class="nm">YouTube</span></span></td><td class="c-x">Morphe v1.6.0 <span class="org builtin">Built-in</span></td><td class="c-x mono">20.40.45</td><td class="c-x c-tr">Manual</td><td class="c-x num">10-24 04:00</td><td class="r num c-x">3:12</td>
+            <td class="res"><span class="badge b-ok"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Built</span> <span class="cap muted">128.6 MB · installed on 2</span></td>
+            <td><div class="acts"><button class="btn ibtn sm" aria-label="Download YouTube APK from job 416" data-tip="Download APK"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg></button><button class="btn ibtn sm" aria-label="Open log of job 416" data-tip="Log"><svg class="i" aria-hidden="true"><use href="#i-external"/></svg></button></div></td></tr>
+          <tr><td class="r mono">#415</td><td><span class="app"><span class="tile c1" aria-hidden="true">T</span><span class="nm">Threads</span></span></td><td class="c-x">Chiggi v1.25.2 <span class="org custom">Custom</span></td><td class="c-x mono">—</td><td class="c-x c-tr">First build on enable</td><td class="c-x num">10-23 21:40</td><td class="r num c-x">0:03</td>
+            <td class="res"><span class="badge b-warn"><svg class="i" aria-hidden="true"><use href="#i-warning"/></svg>Blocked</span> <span class="cap muted">needs APKMirror URL</span></td>
+            <td><div class="acts"><button class="btn ibtn sm" aria-label="Open log of job 415" data-tip="Log"><svg class="i" aria-hidden="true"><use href="#i-external"/></svg></button></div></td></tr>
+          <tr><td class="r mono">#414</td><td><span class="app"><span class="tile c5" aria-hidden="true">I</span><span class="nm">Instagram</span></span></td><td class="c-x">Piko v3.2.0 <span class="org official">Official catalog</span></td><td class="c-x mono">447.0.0.55.81</td><td class="c-x c-tr">Update run</td><td class="c-x num">10-19 08:00</td><td class="r num c-x">4:40</td>
+            <td class="res"><span class="badge b-ok"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Built</span> <span class="cap muted">96.1 MB</span></td>
+            <td><div class="acts"><button class="btn ibtn sm" aria-label="Download Instagram APK from job 414" data-tip="Download APK"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg></button><button class="btn ibtn sm" aria-label="Open log of job 414" data-tip="Log"><svg class="i" aria-hidden="true"><use href="#i-external"/></svg></button></div></td></tr>
+        </tbody>
+      </table></div>
+      <div class="legend">
+        <span><b style="color:var(--colorNeutralForeground1)">Restyle rules for the kept pages:</b> shell + NavDrawer and header as here; every list becomes a small DataGrid (32 px header, 36 px rows, tabular numbers); every status is a tint Badge; row actions are 28 px subtle icon buttons with tooltip + aria-label; cards are white on the #fafafa canvas with shadow4 and 8 px radius.</span>
+        <span>Devices = DataGrid of paired phones + discovered list; Follow projects = DataGrid with the Apps-style settings panel; Settings = stacked cards with Field + Switch; Login = one centred card (360 px) on the same canvas.</span>
+      </div>
+    </section>
+  </main>
+</div>
+</div>
+<script src="mock.js"></script>
+</body>
+</html>

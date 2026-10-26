@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Android · Relume (candidate 3)</title>
+<!--CSS--><style>/* Candidate 3 — Android, Material Design 3, light only.
+   Two schemes: fallback (static, API 29-30 and devices without dynamic colour, seed #00897B teal)
+   and a dynamic-colour sample (wallpaper seed orange) to show the same UI re-tinted. Names = MD3 sys tokens. */
+:root,[data-scheme=fallback]{
+  --md-sys-color-primary:#006A63; --md-sys-color-on-primary:#FFFFFF;
+  --md-sys-color-primary-container:#9DF2E7; --md-sys-color-on-primary-container:#00201D;
+  --md-sys-color-secondary:#4A635F; --md-sys-color-on-secondary:#FFFFFF;
+  --md-sys-color-secondary-container:#CCE8E2; --md-sys-color-on-secondary-container:#05201C;
+  --md-sys-color-tertiary:#8B4A62; --md-sys-color-on-tertiary:#FFFFFF;
+  --md-sys-color-tertiary-container:#FFD9E3; --md-sys-color-on-tertiary-container:#3A0720;
+  --md-sys-color-error:#BA1A1A; --md-sys-color-on-error:#FFFFFF;
+  --md-sys-color-error-container:#FFDAD6; --md-sys-color-on-error-container:#410002;
+  --md-sys-color-surface:#F4FBF8; --md-sys-color-on-surface:#161D1B; --md-sys-color-on-surface-variant:#3F4946;
+  --md-sys-color-surface-container-lowest:#FFFFFF; --md-sys-color-surface-container-low:#EEF5F2;
+  --md-sys-color-surface-container:#E8EFEC; --md-sys-color-surface-container-high:#E3EAE7; --md-sys-color-surface-container-highest:#DDE4E1;
+  --md-sys-color-outline:#6F7976; --md-sys-color-outline-variant:#BEC9C5;
+  --md-sys-color-inverse-surface:#2B3230; --md-sys-color-inverse-on-surface:#ECF2EF;
+  /* custom colours (harmonised to primary, MD3 "custom color" roles) */
+  --x-warn:#7A5900; --x-warn-container:#FFDF9E; --x-on-warn-container:#261A00;
+  --x-ok:#2A6A26; --x-ok-container:#ACF49F; --x-on-ok-container:#002203;
+  --x-blue-container:#D6E3FF; --x-on-blue-container:#001B3E;
+}
+[data-scheme=dynamic]{
+  --md-sys-color-primary:#8F4C00; --md-sys-color-on-primary:#FFFFFF;
+  --md-sys-color-primary-container:#FFDCC2; --md-sys-color-on-primary-container:#2E1500;
+  --md-sys-color-secondary:#735A47; --md-sys-color-on-secondary:#FFFFFF;
+  --md-sys-color-secondary-container:#FFDCC4; --md-sys-color-on-secondary-container:#291709;
+  --md-sys-color-tertiary:#5B6237; --md-sys-color-on-tertiary:#FFFFFF;
+  --md-sys-color-tertiary-container:#E0E7B1; --md-sys-color-on-tertiary-container:#191E00;
+  --md-sys-color-surface:#FFF8F5; --md-sys-color-on-surface:#211A15; --md-sys-color-on-surface-variant:#52443B;
+  --md-sys-color-surface-container-lowest:#FFFFFF; --md-sys-color-surface-container-low:#FCF2EC;
+  --md-sys-color-surface-container:#F6ECE6; --md-sys-color-surface-container-high:#F0E6E0; --md-sys-color-surface-container-highest:#EAE0DA;
+  --md-sys-color-outline:#85746A; --md-sys-color-outline-variant:#D7C3B7;
+  --x-warn:#7A5900; --x-warn-container:#FFDF9E; --x-on-warn-container:#261A00;
+  --x-ok:#3F6A1F; --x-ok-container:#BEF297; --x-on-ok-container:#0B2000;
+  --x-blue-container:#FFDBCB; --x-on-blue-container:#341100;
+}
+:root{
+  --md-sys-shape-corner-extra-small:4px; --md-sys-shape-corner-small:8px; --md-sys-shape-corner-medium:12px;
+  --md-sys-shape-corner-large:16px; --md-sys-shape-corner-extra-large:28px; --md-sys-shape-corner-full:9999px;
+  --md-sys-motion-easing-emphasized:cubic-bezier(.2,0,0,1); --md-sys-motion-duration-medium2:300ms; --md-sys-motion-duration-short4:200ms;
+  --md-ref-typeface:Roboto,"Google Sans Text","Noto Sans",system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif;
+  --md-elev-1:0 1px 2px rgba(0,0,0,.3),0 1px 3px 1px rgba(0,0,0,.15);
+  --md-elev-3:0 1px 3px rgba(0,0,0,.3),0 4px 8px 3px rgba(0,0,0,.15);
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--md-ref-typeface);background:#E9ECEB;color:#1b1b1b}
+button,input,select{font:inherit;color:inherit}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+:focus-visible{outline:3px solid var(--md-sys-color-secondary);outline-offset:2px}
+/* page chrome (not part of the app) */
+.board-h{padding:24px 32px 8px;display:flex;gap:24px;align-items:flex-end;flex-wrap:wrap}
+.board-h h1{margin:0;font-size:24px;font-weight:500}
+.board-h p{margin:4px 0 0;color:#444;font-size:14px;max-width:760px}
+.schemes{display:flex;gap:8px;align-items:center;font-size:14px}
+.schemes label{display:flex;gap:6px;align-items:center;background:#fff;border-radius:20px;padding:6px 12px;cursor:pointer;border:1px solid #c8c8c8}
+.board{display:flex;flex-wrap:wrap;gap:32px;padding:16px 32px 48px;align-items:flex-start}
+figure{margin:0;display:grid;gap:8px}
+figcaption{font-size:13px;color:#333;font-weight:500}
+/* phone frame */
+.phone{width:360px;height:760px;border-radius:40px;border:10px solid #1f2321;background:var(--md-sys-color-surface);color:var(--md-sys-color-on-surface);position:relative;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 40px rgba(0,0,0,.18)}
+.sbar{height:28px;flex:none;display:flex;justify-content:space-between;align-items:center;padding:0 20px;font-size:13px;font-weight:500}
+.sbar i{width:46px;height:12px;border-radius:6px;background:currentColor;opacity:.75}
+.scroll{flex:1;overflow:auto;padding-bottom:12px}
+/* icons (24dp, 2 stroke) */
+svg.i{width:24px;height:24px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+svg.i.s18{width:18px;height:18px}
+svg.i.s20{width:20px;height:20px}
+/* type scale */
+.title-l{font-size:22px;line-height:28px;font-weight:400}
+.headline-s{font-size:24px;line-height:32px;font-weight:400}
+.title-m{font-size:16px;line-height:24px;font-weight:500;letter-spacing:.15px}
+.title-s{font-size:14px;line-height:20px;font-weight:500;letter-spacing:.1px}
+.body-l{font-size:16px;line-height:24px;letter-spacing:.5px}
+.body-m{font-size:14px;line-height:20px;letter-spacing:.25px}
+.body-s{font-size:12px;line-height:16px;letter-spacing:.4px}
+.label-l{font-size:14px;line-height:20px;font-weight:500;letter-spacing:.1px}
+.label-m{font-size:12px;line-height:16px;font-weight:500;letter-spacing:.5px}
+.var{color:var(--md-sys-color-on-surface-variant)}
+.mono{font-family:"Roboto Mono",ui-monospace,Menlo,monospace;font-size:12px}
+/* top app bar */
+.tab{display:flex;align-items:center;gap:4px;height:64px;padding:0 4px 0 4px;flex:none}
+.tab .title-l{flex:1;padding-left:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tab.scrolled{background:var(--md-sys-color-surface-container)}
+.ib{width:48px;height:48px;border:0;background:none;border-radius:50%;display:grid;place-items:center;cursor:pointer;color:var(--md-sys-color-on-surface-variant);position:relative;flex:none}
+.ib::before{content:"";position:absolute;inset:4px;border-radius:50%;background:currentColor;opacity:0;transition:opacity var(--md-sys-motion-duration-short4)}
+.ib:hover::before{opacity:.08}.ib:active::before{opacity:.12}
+.ib:disabled{color:var(--md-sys-color-on-surface);opacity:.38}
+.ib.tonal::after{content:"";position:absolute;inset:4px;border-radius:50%;background:var(--md-sys-color-secondary-container);z-index:-1}
+.ib.tonal{color:var(--md-sys-color-on-secondary-container);z-index:0}
+.avatar{width:32px;height:32px;border-radius:50%;background:var(--md-sys-color-tertiary-container);color:var(--md-sys-color-on-tertiary-container);display:grid;place-items:center;font-size:14px;font-weight:500}
+/* search bar */
+.searchbar{margin:4px 16px 8px;height:56px;border-radius:28px;background:var(--md-sys-color-surface-container-high);display:flex;align-items:center;gap:4px;padding:0 4px 0 16px;color:var(--md-sys-color-on-surface-variant)}
+.searchbar input{flex:1;border:0;background:none;outline:none;font-size:16px;color:var(--md-sys-color-on-surface)}
+.searchbar input::placeholder{color:var(--md-sys-color-on-surface-variant)}
+/* chips */
+.chips{display:flex;gap:8px;overflow-x:auto;padding:4px 16px 8px;scrollbar-width:none}
+.chip{height:32px;flex:none;display:inline-flex;align-items:center;gap:8px;padding:0 16px;border-radius:var(--md-sys-shape-corner-small);border:1px solid var(--md-sys-color-outline-variant);background:none;font-size:14px;font-weight:500;color:var(--md-sys-color-on-surface-variant);cursor:pointer;white-space:nowrap}
+.chip[aria-pressed=true],.chip[aria-checked=true]{background:var(--md-sys-color-secondary-container);border-color:transparent;color:var(--md-sys-color-on-secondary-container);padding-left:8px}
+.chip svg{width:18px;height:18px}
+/* lists */
+.sub-h{padding:16px 16px 8px;font-size:14px;line-height:20px;font-weight:500;color:var(--md-sys-color-primary);display:flex;gap:8px;align-items:center}
+.li{display:flex;align-items:center;gap:16px;padding:8px 16px 8px 16px;min-height:72px;cursor:pointer;position:relative;border:0;background:none;width:100%;text-align:left}
+.li:hover{background:color-mix(in srgb,var(--md-sys-color-on-surface) 8%,transparent)}
+.li .t{flex:1;min-width:0}
+.li .t b{display:block;font-size:16px;line-height:24px;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li .t span{display:block;font-size:14px;line-height:20px;color:var(--md-sys-color-on-surface-variant);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li .t .st{display:inline-flex}
+.li .trail{font-size:11px;line-height:16px;font-weight:500;color:var(--md-sys-color-on-surface-variant);text-align:right}
+.mono-tile{width:40px;height:40px;border-radius:var(--md-sys-shape-corner-medium);display:grid;place-items:center;font-weight:500;font-size:15px;flex:none}
+.mono-tile.lg{width:64px;height:64px;font-size:24px;border-radius:var(--md-sys-shape-corner-large)}
+.t-p{background:var(--md-sys-color-primary-container);color:var(--md-sys-color-on-primary-container)}
+.t-s{background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container)}
+.t-t{background:var(--md-sys-color-tertiary-container);color:var(--md-sys-color-on-tertiary-container)}
+.t-e{background:var(--md-sys-color-error-container);color:var(--md-sys-color-on-error-container)}
+.t-w{background:var(--x-warn-container);color:var(--x-on-warn-container)}
+.t-b{background:var(--x-blue-container);color:var(--x-on-blue-container)}
+.divider{height:1px;background:var(--md-sys-color-outline-variant);margin:0 16px}
+/* status pill (assist-chip-like, non-interactive) */
+.st{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:var(--md-sys-shape-corner-small);font-size:12px;font-weight:500;white-space:nowrap}
+.st svg{width:16px;height:16px}
+.st.err{background:var(--md-sys-color-error-container);color:var(--md-sys-color-on-error-container)}
+.st.warn{background:var(--x-warn-container);color:var(--x-on-warn-container)}
+.st.ok{background:var(--x-ok-container);color:var(--x-on-ok-container)}
+.st.prog{background:var(--md-sys-color-primary-container);color:var(--md-sys-color-on-primary-container)}
+.st.upd{background:var(--md-sys-color-tertiary-container);color:var(--md-sys-color-on-tertiary-container)}
+.st.o-off{background:var(--x-blue-container);color:var(--x-on-blue-container)}
+.st.o-bi{background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container)}
+.st.o-cu{background:var(--md-sys-color-tertiary-container);color:var(--md-sys-color-on-tertiary-container)}
+/* cards */
+.card{margin:8px 16px;border-radius:var(--md-sys-shape-corner-medium);padding:16px;background:var(--md-sys-color-surface-container-low)}
+.card.filled{background:var(--md-sys-color-surface-container-highest)}
+.card.out{background:var(--md-sys-color-surface);border:1px solid var(--md-sys-color-outline-variant)}
+.card.err{background:var(--md-sys-color-error-container);color:var(--md-sys-color-on-error-container)}
+.card.warn{background:var(--x-warn-container);color:var(--x-on-warn-container)}
+.card.sel{background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container)}
+/* buttons */
+.btn{height:40px;padding:0 24px;border-radius:20px;border:0;font-size:14px;font-weight:500;letter-spacing:.1px;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;white-space:nowrap}
+.btn svg{width:18px;height:18px}
+.btn.filled{background:var(--md-sys-color-primary);color:var(--md-sys-color-on-primary)}
+.btn.tonal{background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container)}
+.btn.outlined{background:none;border:1px solid var(--md-sys-color-outline);color:var(--md-sys-color-primary)}
+.btn.text{background:none;color:var(--md-sys-color-primary);padding:0 12px}
+.btn:disabled{background:color-mix(in srgb,var(--md-sys-color-on-surface) 12%,transparent);color:color-mix(in srgb,var(--md-sys-color-on-surface) 38%,transparent);cursor:not-allowed}
+.btn.sm{height:32px;padding:0 16px}
+.fab{position:absolute;right:16px;bottom:96px;height:56px;padding:0 20px 0 16px;border-radius:var(--md-sys-shape-corner-large);border:0;background:var(--md-sys-color-primary-container);color:var(--md-sys-color-on-primary-container);display:flex;align-items:center;gap:12px;font-size:16px;font-weight:500;box-shadow:var(--md-elev-3);cursor:pointer}
+/* switch (MD3) */
+.sw{appearance:none;width:52px;height:32px;border-radius:16px;border:2px solid var(--md-sys-color-outline);background:var(--md-sys-color-surface-container-highest);position:relative;flex:none;margin:0;cursor:pointer}
+.sw::after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:var(--md-sys-color-outline);top:6px;left:6px;transition:all var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized)}
+.sw:checked{background:var(--md-sys-color-primary);border-color:var(--md-sys-color-primary)}
+.sw:checked::after{width:24px;height:24px;top:2px;left:22px;background:var(--md-sys-color-on-primary)}
+/* radio */
+.rd{appearance:none;width:20px;height:20px;border-radius:50%;border:2px solid var(--md-sys-color-on-surface-variant);margin:0;flex:none;display:grid;place-items:center;cursor:pointer}
+.rd:checked{border-color:var(--md-sys-color-primary)}
+.rd:checked::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--md-sys-color-primary)}
+.cb{width:18px;height:18px;margin:0;accent-color:var(--md-sys-color-primary);flex:none}
+/* segmented button */
+.seg{display:flex;border:1px solid var(--md-sys-color-outline);border-radius:20px;overflow:hidden;height:40px}
+.seg button{flex:1;border:0;background:none;font-size:14px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--md-sys-color-outline)}
+.seg button[aria-checked=true]{background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container)}
+.seg svg{width:18px;height:18px}
+/* text field (outlined) */
+.tf{position:relative;margin-top:8px}
+.tf input,.tf select{width:100%;height:56px;border-radius:var(--md-sys-shape-corner-extra-small);border:1px solid var(--md-sys-color-outline);background:none;padding:0 16px;font-size:16px;appearance:none}
+.tf input:focus{outline:none;border:2px solid var(--md-sys-color-primary);padding:0 15px}
+.tf label{position:absolute;left:12px;top:-8px;padding:0 4px;background:var(--fieldbg,var(--md-sys-color-surface));font-size:12px;line-height:16px;color:var(--md-sys-color-on-surface-variant)}
+.tf .sup{font-size:12px;line-height:16px;padding:4px 16px 0;color:var(--md-sys-color-on-surface-variant)}
+.tf .trail{position:absolute;right:12px;top:16px;color:var(--md-sys-color-on-surface-variant);pointer-events:none}
+/* navigation bar */
+.navbar{height:80px;flex:none;background:var(--md-sys-color-surface-container);display:flex;padding:12px 0 16px}
+.navbar a{flex:1;display:grid;justify-items:center;gap:4px;font-size:12px;line-height:16px;font-weight:500;color:var(--md-sys-color-on-surface-variant);text-decoration:none;position:relative}
+.navbar .pillw{width:64px;height:32px;border-radius:16px;display:grid;place-items:center;position:relative}
+.navbar a[aria-current=page]{color:var(--md-sys-color-on-surface)}
+.navbar a[aria-current=page] .pillw{background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container)}
+.navbar .bdg{position:absolute;top:0;left:36px;min-width:16px;height:16px;border-radius:8px;background:var(--md-sys-color-error);color:var(--md-sys-color-on-error);font-size:11px;line-height:16px;font-weight:500;text-align:center;padding:0 4px}
+/* bottom sheet + scrim */
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);z-index:5}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:6;background:var(--md-sys-color-surface-container-low);border-radius:28px 28px 0 0;padding:8px 24px 24px;--fieldbg:var(--md-sys-color-surface-container-low)}
+.sheet .handle{width:32px;height:4px;border-radius:2px;background:var(--md-sys-color-on-surface-variant);opacity:.4;margin:14px auto 16px}
+.prog-l{height:4px;border-radius:2px;background:var(--md-sys-color-surface-container-highest);overflow:hidden;margin-top:6px}
+.prog-l i{display:block;height:100%;background:var(--md-sys-color-primary);border-radius:2px}
+.row{display:flex;gap:12px;align-items:center}
+.sp{flex:1}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style><!--/CSS-->
+</head>
+<body data-scheme="fallback">
+<!--ICONS--><svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+<symbol id="i-store" viewBox="0 0 24 24"><path d="M4 9h16l-1 11H5L4 9z"/><path d="M8.5 9V7a3.5 3.5 0 0 1 7 0v2"/></symbol>
+<symbol id="i-apps" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></symbol>
+<symbol id="i-builds" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4.5" cy="6" r=".8"/><circle cx="4.5" cy="12" r=".8"/><circle cx="4.5" cy="18" r=".8"/></symbol>
+<symbol id="i-phone" viewBox="0 0 24 24"><rect x="6.5" y="3" width="11" height="18" rx="2.5"/><path d="M10.5 18h3"/></symbol>
+<symbol id="i-follow" viewBox="0 0 24 24"><circle cx="6.5" cy="6" r="2.2"/><circle cx="6.5" cy="18" r="2.2"/><circle cx="17.5" cy="8" r="2.2"/><path d="M6.5 8.2v7.6M17.5 10.2c0 4-11 2.5-11 5.6"/></symbol>
+<symbol id="i-calendar" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8.5 3v4M15.5 3v4"/></symbol>
+<symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3.5l1.6 2.3 2.7-.6.6 2.7 2.3 1.6-1.3 2.5 1.3 2.5-2.3 1.6-.6 2.7-2.7-.6L12 20.5l-1.6-2.3-2.7.6-.6-2.7-2.3-1.6L6.1 12 4.8 9.5l2.3-1.6.6-2.7 2.7.6z"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></symbol>
+<symbol id="i-sort" viewBox="0 0 24 24"><path d="M7 4v16M4 17l3 3 3-3M17 20V4M14 7l3-3 3 3"/></symbol>
+<symbol id="i-chev-r" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+<symbol id="i-chev-d" viewBox="0 0 24 24"><path d="M5 9l7 7 7-7"/></symbol>
+<symbol id="i-back" viewBox="0 0 24 24"><path d="M20 12H4M10 6l-6 6 6 6"/></symbol>
+<symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+<symbol id="i-check-update" viewBox="0 0 24 24"><path d="M19.5 9A8 8 0 0 0 5 7.5M4.5 15A8 8 0 0 0 19 16.5"/><path d="M5 3.5v4h4M19 20.5v-4h-4"/></symbol>
+<symbol id="i-rebuild" viewBox="0 0 24 24"><path d="M14.5 6.5l3 3M4 20l8.5-8.5"/><path d="M13 4.5l2-1.5 6 6-1.5 2-2-.5-3 3-4-4 3-3z"/></symbol>
+<symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10.5l5 5 5-5M5 20h14"/></symbol>
+<symbol id="i-more" viewBox="0 0 24 24"><circle cx="6" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="18" cy="12" r="1"/></symbol>
+<symbol id="i-star" viewBox="0 0 24 24"><path d="M12 4l2.4 5 5.4.6-4 3.7 1.1 5.4L12 16l-4.9 2.7 1.1-5.4-4-3.7 5.4-.6z"/></symbol>
+<symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+<symbol id="i-warning" viewBox="0 0 24 24"><path d="M12 4L2.8 19.5h18.4z"/><path d="M12 10v4.5M12 17v.3"/></symbol>
+<symbol id="i-error" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9 9l6 6M15 9l-6 6"/></symbol>
+<symbol id="i-ok" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8 12.3l2.7 2.7L16 9.5"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+<symbol id="i-up" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 16.5v-9M8.5 11L12 7.5l3.5 3.5"/></symbol>
+<symbol id="i-spinner" viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 1 1-8.5 8.5"/></symbol>
+<symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8v.3"/></symbol>
+<symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.5 5.5 3.5 8.5s-1 5.9-3.5 8.5c-2.5-2.6-3.5-5.5-3.5-8.5s1-5.9 3.5-8.5z"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5z"/></symbol>
+<symbol id="i-push" viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M12 15V8M9 10.5L12 7.5l3 3"/></symbol>
+<symbol id="i-retry" viewBox="0 0 24 24"><path d="M4.5 12A7.5 7.5 0 1 0 7 6.4"/><path d="M4.5 4v4h4"/></symbol>
+<symbol id="i-stop" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/></symbol>
+<symbol id="i-edit" viewBox="0 0 24 24"><path d="M4.5 19.5l1-4L15.5 5.5l3 3-10 10z"/><path d="M13.5 7.5l3 3"/></symbol>
+<symbol id="i-pin" viewBox="0 0 24 24"><path d="M9 4h6l-1 5 3 3H7l3-3zM12 12v8"/></symbol>
+<symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3.5L6 13.5h5l-1 7 7-10h-5z"/></symbol>
+</svg>
+<!--/ICONS-->
+<header class="board-h">
+  <div><h1>Relume for Android — Material 3, light</h1>
+  <p>Three destinations in the navigation bar: Marketplace, Apps, Schedules. Same behaviour as web. Phone = list, then detail (the web split view, one pane at a time). Apps opens on "Needs you" first.</p></div>
+  <div class="schemes" role="radiogroup" aria-label="Colour scheme">
+    <label><input type="radio" name="sch" value="fallback" checked> Fallback palette (no dynamic colour, API 29–30)</label>
+    <label><input type="radio" name="sch" value="dynamic"> Dynamic colour sample (orange wallpaper)</label>
+  </div>
+</header>
+<main class="board">
+
+<!-- 1 MARKETPLACE LIST -->
+<figure><figcaption>1 · Marketplace — search, category chips, sort</figcaption>
+<div class="phone">
+  <div class="sbar"><span>9:41</span><i></i></div>
+  <div class="tab"><span class="title-l">Marketplace</span><button class="ib" aria-label="Sort: most bundles"><svg class="i"><use href="#i-sort"/></svg></button><button class="ib" aria-label="Add custom source"><svg class="i"><use href="#i-plus"/></svg></button></div>
+  <div class="searchbar"><svg class="i"><use href="#i-search"/></svg><input aria-label="Search apps" placeholder="Search 1,207 apps"><button class="ib" aria-label="Account and server"><span class="avatar">J</span></button></div>
+  <div class="chips" role="group" aria-label="Category">
+    <button class="chip" aria-pressed="false">All</button>
+    <button class="chip" aria-pressed="true"><svg class="i"><use href="#i-check"/></svg>Social</button>
+    <button class="chip" aria-pressed="false">Video</button><button class="chip" aria-pressed="false">Music &amp; Audio</button><button class="chip" aria-pressed="false">Tools</button><button class="chip" aria-pressed="false">Productivity</button>
+  </div>
+  <div class="scroll">
+    <div class="sub-h">Enabled by you · 3</div>
+    <button class="li"><span class="mono-tile t-t">IG</span><span class="t"><b>Instagram</b><span>Piko · 11 bundles</span></span><span class="st warn"><svg class="i"><use href="#i-link"/></svg>URL</span></button>
+    <button class="li"><span class="mono-tile t-p">R</span><span class="t"><b>Reddit</b><span>Adobo · 4 bundles</span></span><span class="st ok"><svg class="i"><use href="#i-check"/></svg>On</span></button>
+    <button class="li"><span class="mono-tile t-s">@</span><span class="t"><b>Threads</b><span>jhangyu/morphe_patches</span></span><span class="st o-cu">Custom</span></button>
+    <div class="sub-h">Available · 68</div>
+    <button class="li"><span class="mono-tile t-b">B</span><span class="t"><b>Boost for Reddit</b><span>com.rubenmayayo.reddit</span></span><span class="trail">4 bundles</span></button>
+    <button class="li"><span class="mono-tile t-p">T</span><span class="t"><b>Telegram</b><span>org.telegram.messenger.web</span></span><span class="trail">7 bundles</span></button>
+    <button class="li"><span class="mono-tile t-t">T</span><span class="t"><b>Truecaller</b><span>com.truecaller</span></span><span class="trail">5 bundles</span></button>
+    <button class="li"><span class="mono-tile t-s">S</span><span class="t"><b>Reddit Sync</b><span>com.laurencedawson.reddit_sync</span></span><span class="trail">5 bundles</span></button>
+  </div>
+  <nav class="navbar" aria-label="Main">
+    <a href="#" aria-current="page"><span class="pillw"><svg class="i"><use href="#i-store"/></svg></span>Marketplace</a>
+    <a href="#"><span class="pillw"><svg class="i"><use href="#i-apps"/></svg><span class="bdg" aria-label="2 need you">2</span></span>Apps</a>
+    <a href="#"><span class="pillw"><svg class="i"><use href="#i-calendar"/></svg></span>Schedules</a>
+  </nav>
+</div></figure>
+
+<!-- 2 APP DETAIL / ENABLE -->
+<figure><figcaption>2 · App detail — pick one bundle, toggle patches, enable</figcaption>
+<div class="phone">
+  <div class="sbar"><span>9:41</span><i></i></div>
+  <div class="tab"><button class="ib" aria-label="Back"><svg class="i"><use href="#i-back"/></svg></button><span class="title-l"></span><button class="ib" aria-label="More"><svg class="i"><use href="#i-more"/></svg></button></div>
+  <div class="scroll">
+    <div class="row" style="padding:0 16px 8px"><span class="mono-tile lg t-b">B</span><div><div class="headline-s">Boost for Reddit</div><div class="mono var">com.rubenmayayo.reddit</div><div class="body-s var">Social &amp; Communication · v1.12.12</div></div></div>
+    <div class="sub-h">1 · Patch bundle</div>
+    <div role="radiogroup" aria-label="Patch bundle">
+      <label class="card sel row" style="margin-top:0"><input class="rd" type="radio" name="ab" checked><div class="sp"><div class="title-m">Brealorg</div><div class="body-s">breal-morphe-patches · ★103 · 48 patches</div></div><span class="st o-off">Official</span></label>
+      <label class="card row"><input class="rd" type="radio" name="ab"><div class="sp"><div class="title-m">Patcheddit</div><div class="body-s var">wchill/patcheddit · ★814 · 37 patches</div></div><span class="st o-off">Official</span></label>
+      <button class="btn text" style="margin-left:8px">Show 2 more bundles</button>
+    </div>
+    <div class="sub-h">2 · Patches · 38 of 48 on <span class="sp"></span><button class="btn text sm" style="height:28px">Defaults</button></div>
+    <div class="li" style="min-height:64px"><div class="t"><b class="body-l">Add archive links to context menu</b><span class="body-s">Default on</span></div><input class="sw" type="checkbox" role="switch" checked aria-label="Add archive links to context menu"></div>
+    <div class="li" style="min-height:64px;background:color-mix(in srgb,var(--md-sys-color-primary) 8%,transparent)"><div class="t"><b class="body-l">Automatically undelete Reddit content</b><span class="body-s" style="color:var(--md-sys-color-primary)">On by you · default off</span></div><input class="sw" type="checkbox" role="switch" checked aria-label="Automatically undelete Reddit content"></div>
+    <div class="li" style="min-height:64px"><div class="t"><b class="body-l">Boost Morphe settings</b><span class="body-s">Default off</span></div><input class="sw" type="checkbox" role="switch" aria-label="Boost Morphe settings"></div>
+    <div class="li" style="min-height:64px"><div class="t"><b class="body-l">Animate media in gallery previews</b><span class="body-s">Default on</span></div><input class="sw" type="checkbox" role="switch" checked aria-label="Animate media in gallery previews"></div>
+    <div style="height:72px"></div>
+  </div>
+  <div style="position:absolute;left:0;right:0;bottom:0;padding:12px 16px 20px;background:var(--md-sys-color-surface-container);display:flex;gap:12px;align-items:center">
+    <div class="sp body-s var">Version auto · first build starts now</div>
+    <button class="btn filled"><svg class="i"><use href="#i-play"/></svg>Enable</button>
+  </div>
+</div></figure>
+
+<!-- 3 URL NEEDED (bottom sheet) -->
+<figure><figcaption>3 · Enable → APKMirror page not found → paste URL</figcaption>
+<div class="phone">
+  <div class="sbar"><span>9:41</span><i></i></div>
+  <div class="tab"><button class="ib" aria-label="Back"><svg class="i"><use href="#i-back"/></svg></button><span class="title-l">Boost for Reddit</span></div>
+  <div class="scroll"><div class="sub-h">1 · Patch bundle</div><div class="card sel"><div class="title-m">Brealorg</div></div></div>
+  <div class="scrim"></div>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sh-t">
+    <div class="handle"></div>
+    <div class="row" style="align-items:flex-start"><span class="mono-tile t-w" style="width:40px;height:40px"><svg class="i"><use href="#i-link"/></svg></span><div><div class="title-l" id="sh-t" style="font-size:20px">APKMirror page not found</div><p class="body-m var" style="margin:4px 0 0">No APKMirror result had the exact package <span class="mono">com.rubenmayayo.reddit</span>. Paste the listing URL. The app cannot build until it has one.</p></div></div>
+    <div class="tf" style="margin-top:20px"><label for="am">APKMirror listing URL</label><input id="am" type="url" inputmode="url" value="https://www.apkmirror.com/apk/rubenmayayo/boost-for-reddit/"><div class="sup">Relume checks the package name before the first build.</div></div>
+    <div class="tf" style="margin-top:16px"><label for="ap">APKPure URL (optional)</label><input id="ap" type="url" placeholder="https://apkpure.com/…"></div>
+    <div class="row" style="margin-top:24px;justify-content:flex-end"><button class="btn text">Later</button><button class="btn filled">Save and build</button></div>
+  </div>
+</div></figure>
+
+<!-- 4 APPS LIST -->
+<figure><figcaption>4 · Apps — "Needs you" first, icon actions on every row</figcaption>
+<div class="phone">
+  <div class="sbar"><span>9:41</span><i></i></div>
+  <div class="tab"><span class="title-l">Apps</span><button class="ib" aria-label="Check all apps for updates"><svg class="i"><use href="#i-check-update"/></svg></button><button class="ib" aria-label="Account and server"><span class="avatar">J</span></button></div>
+  <div class="chips" role="group" aria-label="Status filter"><button class="chip" aria-pressed="true"><svg class="i"><use href="#i-check"/></svg>All 6</button><button class="chip" aria-pressed="false">Needs you 2</button><button class="chip" aria-pressed="false">Building 1</button><button class="chip" aria-pressed="false">Updates 1</button></div>
+  <div class="scroll">
+    <div class="sub-h" style="color:var(--md-sys-color-error)"><svg class="i s18"><use href="#i-error"/></svg>Needs you</div>
+    <div class="card warn" style="padding:12px 12px 8px 16px"><div class="row"><span class="mono-tile t-t">IG</span><div class="sp"><div class="title-m">Instagram</div><div class="body-s">Piko · no download URL</div></div></div><div class="row" style="justify-content:flex-end;margin-top:8px"><button class="btn tonal sm" style="background:var(--md-sys-color-surface-container-lowest);color:var(--x-on-warn-container)"><svg class="i"><use href="#i-link"/></svg>Paste URL</button></div></div>
+    <div class="card err" style="padding:12px 12px 8px 16px"><div class="row"><span class="mono-tile t-p">R</span><div class="sp"><div class="title-m">Reddit</div><div class="body-s">Adobo · 2026.43.0 failed: "Disable screenshot banner"</div></div></div><div class="row" style="justify-content:flex-end;margin-top:8px"><button class="btn text sm" style="color:var(--md-sys-color-on-error-container)">View log</button><button class="btn tonal sm" style="background:var(--md-sys-color-surface-container-lowest);color:var(--md-sys-color-on-error-container)"><svg class="i"><use href="#i-rebuild"/></svg>Rebuild</button></div></div>
+    <div class="sub-h">All enabled apps</div>
+    <div class="li" style="align-items:flex-start;padding-right:4px"><span class="mono-tile t-b" style="margin-top:4px">B</span><div class="t"><b>Boost for Reddit</b><span>1.12.12 · Brealorg</span><span class="st prog" style="margin-top:4px">Building 62%</span><div class="prog-l" role="progressbar" aria-label="Build progress" aria-valuenow="62"><i style="width:62%"></i></div></div><div class="row" style="gap:0"><button class="ib" aria-label="Stop build"><svg class="i"><use href="#i-stop"/></svg></button></div></div>
+    <div class="li" style="align-items:flex-start;padding-right:4px"><span class="mono-tile t-e" style="margin-top:4px"><svg class="i s20" style="fill:currentColor;stroke:none"><use href="#i-play"/></svg></span><div class="t"><b>YouTube</b><span>20.40.45 → 20.44.38 · Morphe</span><span class="st upd" style="margin-top:4px"><svg class="i"><use href="#i-up"/></svg>Update available</span></div><div class="row" style="gap:0"><button class="ib" aria-label="Check YouTube for updates"><svg class="i"><use href="#i-check-update"/></svg></button><button class="ib" aria-label="Rebuild YouTube"><svg class="i"><use href="#i-rebuild"/></svg></button><button class="ib" aria-label="Download YouTube 20.40.45"><svg class="i"><use href="#i-download"/></svg></button></div></div>
+    <div class="li" style="align-items:flex-start;padding-right:4px"><span class="mono-tile t-e" style="margin-top:4px">M</span><div class="t"><b>YouTube Music</b><span>8.40.54 · Morphe</span><span class="st ok" style="margin-top:4px">Idle</span></div><div class="row" style="gap:0"><button class="ib" aria-label="Check YouTube Music for updates"><svg class="i"><use href="#i-check-update"/></svg></button><button class="ib" aria-label="Rebuild YouTube Music"><svg class="i"><use href="#i-rebuild"/></svg></button><button class="ib" aria-label="Download YouTube Music 8.40.54"><svg class="i"><use href="#i-download"/></svg></button></div></div>
+  </div>
+  <nav class="navbar" aria-label="Main">
+    <a href="#"><span class="pillw"><svg class="i"><use href="#i-store"/></svg></span>Marketplace</a>
+    <a href="#" aria-current="page"><span class="pillw"><svg class="i"><use href="#i-apps"/></svg><span class="bdg" aria-label="2 need you">2</span></span>Apps</a>
+    <a href="#"><span class="pillw"><svg class="i"><use href="#i-calendar"/></svg></span>Schedules</a>
+  </nav>
+</div></figure>
+
+<!-- 5 APP SETTINGS -->
+<figure><figcaption>5 · App settings — bundle, version mode, patches + options, dependencies, URLs</figcaption>
+<div class="phone">
+  <div class="sbar"><span>9:41</span><i></i></div>
+  <div class="tab scrolled"><button class="ib" aria-label="Back"><svg class="i"><use href="#i-back"/></svg></button><span class="title-l">YouTube</span><input class="sw" type="checkbox" role="switch" checked aria-label="YouTube enabled" style="margin-right:12px"></div>
+  <div class="scroll" style="--fieldbg:var(--md-sys-color-surface)">
+    <div style="padding:8px 16px 0">
+      <div class="tf"><label for="b5">Patch bundle</label><select id="b5"><option>Morphe · built-in · v1.29.0</option><option>jhangyu/morphe_patches · custom</option></select><span class="trail"><svg class="i"><use href="#i-chev-d"/></svg></span></div>
+    </div>
+    <div class="sub-h">Version</div>
+    <div style="padding:0 16px">
+      <div class="seg" role="radiogroup" aria-label="Version mode"><button role="radio" aria-checked="true"><svg class="i"><use href="#i-check"/></svg>Auto</button><button role="radio" aria-checked="false">Pinned</button><button role="radio" aria-checked="false">Latest</button></div>
+      <p class="body-s var" style="margin:6px 4px 0">Auto builds the newest version Morphe supports: 20.44.38.</p>
+    </div>
+    <div class="li" style="min-height:56px"><div class="t"><b>Allow nearest version</b><span class="body-s">If the exact one is not on APKMirror</span></div><input class="sw" type="checkbox" role="switch" checked aria-label="Allow nearest version"></div>
+    <div class="divider"></div>
+    <div class="sub-h">Patches · 31 of 40 on</div>
+    <div class="li" style="min-height:56px"><div class="t"><b>Hide ads</b></div><input class="sw" type="checkbox" role="switch" checked aria-label="Hide ads"></div>
+    <div class="li" style="min-height:56px;align-items:flex-start;flex-wrap:wrap"><div class="t"><b>Custom branding</b><span class="body-s" style="color:var(--md-sys-color-primary)">On by you · 2 options</span></div><input class="sw" type="checkbox" role="switch" checked aria-label="Custom branding">
+      <div class="tf" style="width:100%;margin-top:12px"><label for="o5">App name</label><input id="o5" value="YouTube Morphe"></div></div>
+    <button class="btn text" style="margin-left:4px">All 40 patches<svg class="i"><use href="#i-chev-r"/></svg></button>
+    <div class="divider"></div>
+    <div class="sub-h">Follow-project dependencies</div>
+    <label class="li" style="min-height:56px"><input class="cb" type="checkbox" checked><span class="t"><b>MicroG-RE</b><span class="body-s">Installed with this app by OTA</span></span></label>
+    <div class="divider"></div>
+    <div class="sub-h">Download URLs</div>
+    <div style="padding:0 16px"><div class="tf"><label for="u5">APKMirror listing</label><input id="u5" type="url" value="https://www.apkmirror.com/apk/google-inc/youtube/"><div class="sup">Found automatically, exact package match</div></div></div>
+    <div style="height:80px"></div>
+  </div>
+  <div style="position:absolute;left:0;right:0;bottom:0;padding:12px 16px 20px;background:var(--md-sys-color-surface-container);display:flex;gap:8px;justify-content:flex-end">
+    <button class="btn outlined">Save</button><button class="btn filled"><svg class="i"><use href="#i-rebuild"/></svg>Save and rebuild</button>
+  </div>
+</div></figure>
+
+<!-- 6 SCHEDULES -->
+<figure><figcaption>6 · Schedules — one global interval + OTA schedules</figcaption>
+<div class="phone">
+  <div class="sbar"><span>9:41</span><i></i></div>
+  <div class="tab"><span class="title-l">Schedules</span><button class="ib" aria-label="Run update now"><svg class="i"><use href="#i-play"/></svg></button></div>
+  <div class="scroll">
+    <div class="card" style="background:var(--md-sys-color-primary-container);color:var(--md-sys-color-on-primary-container)">
+      <div class="label-m">NEXT UPDATE RUN</div>
+      <div class="headline-s" style="font-size:28px;line-height:36px">Today 14:00</div>
+      <div class="body-m">in 1 h 52 min · catalog → bundles → APKMirror → rebuild → notify</div>
+    </div>
+    <div class="sub-h">Run every</div>
+    <div class="chips" role="radiogroup" aria-label="Interval" style="flex-wrap:wrap;overflow:visible"><button class="chip" role="radio" aria-checked="false">1 h</button><button class="chip" role="radio" aria-checked="false">3 h</button><button class="chip" role="radio" aria-checked="true"><svg class="i"><use href="#i-check"/></svg>6 h</button><button class="chip" role="radio" aria-checked="false">12 h</button><button class="chip" role="radio" aria-checked="false">24 h</button></div>
+    <div class="li" style="min-height:56px"><svg class="i var"><use href="#i-clock"/></svg><div class="t"><b>Start at</b><span>First run of the day</span></div><span class="title-s" style="color:var(--md-sys-color-primary)">02:00</span></div>
+    <div class="li" style="min-height:56px"><svg class="i" style="color:var(--md-sys-color-error)"><use href="#i-error"/></svg><div class="t"><b>Last run 08:00</b><span>2 rebuilt, 1 failed, 1 skipped</span></div></div>
+    <div class="divider"></div>
+    <div class="sub-h">OTA schedules</div>
+    <div class="li"><span class="mono-tile t-t"><svg class="i"><use href="#i-push"/></svg></span><div class="t"><b>Nightly push</b><span>Daily 03:30 · 2 phones · 2 retries</span></div><input class="sw" type="checkbox" role="switch" checked aria-label="Nightly push on"></div>
+    <div class="li"><span class="mono-tile t-s"><svg class="i"><use href="#i-push"/></svg></span><div class="t"><b>Weekend tablet</b><span>Sat 10:00 · Galaxy Tab S9</span></div><input class="sw" type="checkbox" role="switch" aria-label="Weekend tablet on"></div>
+  </div>
+  <button class="fab" aria-label="New OTA schedule"><svg class="i"><use href="#i-plus"/></svg>OTA schedule</button>
+  <nav class="navbar" aria-label="Main">
+    <a href="#"><span class="pillw"><svg class="i"><use href="#i-store"/></svg></span>Marketplace</a>
+    <a href="#"><span class="pillw"><svg class="i"><use href="#i-apps"/></svg><span class="bdg" aria-label="2 need you">2</span></span>Apps</a>
+    <a href="#" aria-current="page"><span class="pillw"><svg class="i"><use href="#i-calendar"/></svg></span>Schedules</a>
+  </nav>
+</div></figure>
+
+</main>
+<script>
+document.querySelectorAll('input[name=sch]').forEach(r => r.addEventListener('change', () => document.body.dataset.scheme = r.value));
+document.querySelectorAll('.seg button,.chips[role=radiogroup] .chip').forEach(b => b.addEventListener('click', () => b.parentElement.querySelectorAll('button').forEach(x => x.setAttribute('aria-checked', x === b))));
+document.querySelectorAll('.chips[role=group] .chip').forEach(b => b.addEventListener('click', () => b.parentElement.querySelectorAll('.chip').forEach(x => x.setAttribute('aria-pressed', x === b))));
+</script>
+</body>
+</html>

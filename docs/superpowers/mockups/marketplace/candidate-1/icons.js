@@ -1,0 +1,47 @@
+// Relume candidate-1 icon set: one 24-unit stroke geometry for both platforms.
+// Web draws it at stroke 1.5 (Fluent "Regular" weight), Android at stroke 2 (Material Symbols Rounded, weight 400).
+// Usage: <svg class="i" aria-hidden="true"><use href="#i-name"/></svg>
+const RELUME_ICONS = {
+  store: '<path d="M4 9h16l-1 10a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1z"/><path d="M8 9V7a4 4 0 0 1 8 0v2"/>',
+  apps: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>',
+  history: '<path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3.5 4.5V9H8"/><path d="M12 8v4.5l3 2"/>',
+  phone: '<rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18.5h2"/>',
+  branch: '<circle cx="6.5" cy="5.5" r="2"/><circle cx="6.5" cy="18.5" r="2"/><circle cx="17.5" cy="7.5" r="2"/><path d="M6.5 7.5v9"/><path d="M17.5 9.5c0 4-11 2.5-11 7"/>',
+  calendar: '<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17"/><path d="M8 3v4M16 3v4"/><path d="M12 13v3l2 1"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2.8l1.6 2.3 2.7-.6.8 2.7 2.6 1-.6 2.7 1.9 2-1.9 2 .6 2.7-2.6 1-.8 2.7-2.7-.6L12 21.2l-1.6-2.3-2.7.6-.8-2.7-2.6-1 .6-2.7L3 12l1.9-2-.6-2.7 2.6-1 .8-2.7 2.7.6z"/>',
+  search: '<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/>',
+  filter: '<path d="M4 6h16M7 12h10M10 18h4"/>',
+  sort: '<path d="M7 4v16M3.5 16.5L7 20l3.5-3.5"/><path d="M13 6h8M13 11h6M13 16h4"/>',
+  chevronRight: '<path d="M9 5l7 7-7 7"/>',
+  chevronDown: '<path d="M5 9l7 7 7-7"/>',
+  back: '<path d="M20 12H5"/><path d="M11 5l-7 7 7 7"/>',
+  close: '<path d="M6 6l12 12M18 6L6 18"/>',
+  check: '<path d="M4.5 12.5l5 5 10-11"/>',
+  add: '<path d="M12 4v16M4 12h16"/>',
+  sync: '<path d="M20 11a8 8 0 0 0-14.3-4.3L4 8.5"/><path d="M4 4v4.5h4.5"/><path d="M4 13a8 8 0 0 0 14.3 4.3L20 15.5"/><path d="M20 20v-4.5h-4.5"/>',
+  wrench: '<path d="M14.5 3.5a5 5 0 0 0-5 6.6L3.8 15.8a1.9 1.9 0 0 0 2.7 2.7l5.7-5.7a5 5 0 0 0 6.6-5L15.5 11 13 8.5l3.3-3.3a5 5 0 0 0-1.8-1.7z"/>',
+  download: '<path d="M12 3.5v12"/><path d="M6.5 10.5L12 16l5.5-5.5"/><path d="M4.5 20h15"/>',
+  more: '<circle cx="5.5" cy="12" r=".9"/><circle cx="12" cy="12" r=".9"/><circle cx="18.5" cy="12" r=".9"/>',
+  moreVert: '<circle cx="12" cy="5.5" r=".9"/><circle cx="12" cy="12" r=".9"/><circle cx="12" cy="18.5" r=".9"/>',
+  menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+  star: '<path d="M12 3.8l2.5 5.2 5.7.8-4.1 4 1 5.6L12 16.7l-5.1 2.7 1-5.6-4.1-4 5.7-.8z"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  paste: '<rect x="5" y="4.5" width="14" height="16.5" rx="2"/><path d="M9 4.5V3.5h6v1"/><path d="M9 11h6M9 15h4"/>',
+  warning: '<path d="M12 4L2.8 19.5h18.4z"/><path d="M12 10v4.5"/><circle cx="12" cy="17.2" r=".6"/>',
+  error: '<circle cx="12" cy="12" r="8.5"/><path d="M9 9l6 6M15 9l-6 6"/>',
+  info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5"/><circle cx="12" cy="7.8" r=".6"/>',
+  ok: '<circle cx="12" cy="12" r="8.5"/><path d="M8.2 12.3l2.6 2.6 5-5.4"/>',
+  arrowUp: '<circle cx="12" cy="12" r="8.5"/><path d="M12 16.5v-9M8.5 11L12 7.5l3.5 3.5"/>',
+  play: '<path d="M7 4.5v15l12-7.5z"/>',
+  edit: '<path d="M4 20l1-4.5L15.5 5a2.1 2.1 0 0 1 3 3L8 18.5z"/><path d="M13.5 7l3 3"/>',
+  delete: '<path d="M4.5 6.5h15"/><path d="M9.5 6.5V4h5v2.5"/><path d="M6.5 6.5l1 13.5h9l1-13.5"/>',
+  package: '<path d="M12 2.8l8 4.5v9.4l-8 4.5-8-4.5V7.3z"/><path d="M4 7.3l8 4.5 8-4.5M12 11.8v9.4"/>',
+  external: '<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
+  account: '<circle cx="12" cy="8.5" r="4"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>',
+  pin: '<path d="M9 3.5h6l-1 6 3.5 3.5h-11L10 9.5z"/><path d="M12 13v7.5"/>',
+  keyboard: '<rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h1M9.5 10h1M13 10h1M16.5 10h1M7.5 14h9"/>',
+  bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z"/><path d="M10 20.5h4"/>',
+  dot: '<circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/>'
+};
+document.write('<svg style="position:absolute;width:0;height:0" aria-hidden="true">' +
+  Object.entries(RELUME_ICONS).map(([k, v]) => '<symbol id="i-' + k + '" viewBox="0 0 24 24">' + v + '</symbol>').join('') + '</svg>');

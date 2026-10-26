@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Android · Apps · Relume candidate 1</title>
+<link rel="stylesheet" href="md3.css">
+<style>
+.app{padding:10px 4px 2px 16px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 16px}
+.app .h{font:400 16px/24px var(--font);display:flex;gap:8px;align-items:baseline}
+.app .h .v{font:400 12px/16px var(--mono);color:var(--onSurfaceVariant);margin-left:auto;padding-right:12px}
+.app .s{font:400 14px/20px var(--font);color:var(--onSurfaceVariant);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:12px}
+.app .bar{grid-column:2;display:flex;align-items:center;gap:0;margin-top:2px}
+.app .bar .lab{margin-right:auto}
+.app .why{grid-column:2;font:400 12px/16px var(--font);color:var(--onSurfaceVariant);padding-right:12px}
+.app .why.err{color:var(--error)}
+.set .sub{padding-top:20px}
+.vrow{display:flex;align-items:center;gap:16px;padding:8px 16px;min-height:56px}
+.vrow .t{flex:1;min-width:0}
+.vrow .h{font:400 16px/24px var(--font)}
+.vrow .s{font:400 14px/20px var(--font);color:var(--onSurfaceVariant)}
+.dd{display:flex;align-items:center;justify-content:space-between}
+</style>
+</head>
+<body data-palette="sunset">
+<script src="../icons.js"></script>
+<div class="page">
+  <h1>Android · Apps and app settings</h1>
+  <p class="note">Each enabled app is one row: version and bundle on top, status and the three icon actions (check for update, rebuild, download) on the bottom line. Tapping the row opens the app settings with the same sections as the web panel.</p>
+  <div class="switcher" id="pal"></div>
+  <div class="roles" aria-label="Colour roles of the selected palette"></div>
+  <div class="pages">
+
+  <!-- 1. Apps list -->
+  <figure class="figure">
+  <div class="phone">
+    <div class="status"><span>10:30</span><span class="cam"></span><span>5G ▮▮</span></div>
+    <div class="appbar"><h2>Apps</h2><button class="ib" aria-label="Check all apps for updates"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg></button><button class="ib" aria-label="Account and device settings"><span class="avatar">J</span></button></div>
+    <div class="chips">
+      <button class="chip" aria-pressed="true"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>All <span class="n">6</span></button>
+      <button class="chip" aria-pressed="false">Updates <span class="n">2</span></button>
+      <button class="chip" aria-pressed="false">Building <span class="n">1</span></button>
+      <button class="chip" aria-pressed="false">Failed <span class="n">1</span></button>
+      <button class="chip" aria-pressed="false">Needs URL <span class="n">1</span></button>
+    </div>
+    <div class="scroll">
+      <div class="app"><span class="tile t4">Y</span><span><div class="h">YouTube<span class="v">20.40.45</span></div><div class="s">Morphe v1.6.0 · 88/96 · Auto</div></span>
+        <div class="bar"><span class="lab ok"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Up to date</span>
+          <button class="ib" aria-label="Check YouTube for updates"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg></button><button class="ib" aria-label="Rebuild YouTube"><svg class="i" aria-hidden="true"><use href="#i-wrench"/></svg></button><button class="ib" aria-label="Download YouTube APK"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg></button></div></div>
+      <div class="div"></div>
+      <div class="app"><span class="tile t1">R</span><span><div class="h">Reddit<span class="v">→ 2026.43.0</span></div><div class="s">Morphe v1.6.0 · 24/26 · Auto</div></span>
+        <div class="why"><div class="prog" role="progressbar" aria-label="Reddit build progress" aria-valuenow="62"><i style="width:62%"></i><b></b></div>Patching 62 % · step 4 of 6</div>
+        <div class="bar"><span class="lab build"><svg class="i" aria-hidden="true"><use href="#i-wrench"/></svg>Building</span>
+          <button class="ib" disabled aria-label="Check Reddit for updates (busy)"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg></button><button class="ib" disabled aria-label="Rebuild Reddit (busy)"><svg class="i" aria-hidden="true"><use href="#i-wrench"/></svg></button><button class="ib" aria-label="Download Reddit APK"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg></button></div></div>
+      <div class="div"></div>
+      <div class="app"><span class="tile t3">I</span><span><div class="h">Instagram<span class="v">→ 452.1.0.53.64</span></div><div class="s">Piko v3.2.0 → v3.3.0 · 66/68</div></span>
+        <div class="bar"><span class="lab upd"><svg class="i" aria-hidden="true"><use href="#i-arrowUp"/></svg>Update</span>
+          <button class="ib" aria-label="Check Instagram for updates"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg></button><button class="ib tonal" aria-label="Rebuild Instagram now"><svg class="i" aria-hidden="true"><use href="#i-wrench"/></svg></button><button class="ib" aria-label="Download Instagram APK"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg></button></div></div>
+      <div class="div"></div>
+      <div class="app"><span class="tile t2">GP</span><span><div class="h">Google Photos<span class="v">7.98.0</span></div><div class="s">De-Vanced v2.14.0 · 8/8 · Pinned</div></span>
+        <div class="why err">“Spoof features”: method signature not found</div>
+        <div class="bar"><span class="lab err"><svg class="i" aria-hidden="true"><use href="#i-error"/></svg>Failed</span>
+          <button class="ib" aria-label="Check Google Photos for updates"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg></button><button class="ib tonal" aria-label="Retry Google Photos build"><svg class="i" aria-hidden="true"><use href="#i-wrench"/></svg></button><button class="ib" aria-label="Download last good Google Photos APK"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg></button></div></div>
+      <div class="div"></div>
+      <div class="app"><span class="tile t5">T</span><span><div class="h">Threads<span class="v">449.0.0.54.82</span></div><div class="s">Chiggi v1.25.2 · custom · 4/5</div></span>
+        <div class="bar"><span class="lab warn"><svg class="i" aria-hidden="true"><use href="#i-warning"/></svg>Needs URL</span>
+          <button class="btn text">Add URL</button><button class="ib" disabled aria-label="Download Threads APK (never built)"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg></button></div></div>
+    </div>
+    <nav class="navbar" aria-label="Main">
+      <a href="marketplace.html"><span class="pill"><svg class="i" aria-hidden="true"><use href="#i-store"/></svg></span>Marketplace</a>
+      <a href="apps.html" aria-current="page"><span class="pill"><svg class="i" aria-hidden="true"><use href="#i-apps"/></svg></span><span class="badge">2</span>Apps</a>
+      <a href="schedules.html"><span class="pill"><svg class="i" aria-hidden="true"><use href="#i-calendar"/></svg></span>Schedules</a>
+    </nav>
+    <div class="gesture"></div>
+  </div>
+  <figcaption>Apps list · status filter chips with counts; icon buttons carry content descriptions (shown as aria-label)</figcaption>
+  </figure>
+
+  <!-- 2. App settings: bundle + version -->
+  <figure class="figure">
+  <div class="phone set">
+    <div class="status"><span>10:31</span><span class="cam"></span><span>5G ▮▮</span></div>
+    <div class="appbar withnav"><button class="ib" aria-label="Back"><svg class="i" aria-hidden="true"><use href="#i-back"/></svg></button><h2>YouTube settings</h2><button class="btn text">Save</button></div>
+    <div class="chips">
+      <button class="chip" aria-pressed="true">Bundle</button><button class="chip" aria-pressed="false">Version</button><button class="chip" aria-pressed="false">Patches 88/96</button><button class="chip" aria-pressed="false">Dependencies</button><button class="chip" aria-pressed="false">Download</button>
+    </div>
+    <div class="scroll">
+      <div class="sub" style="padding-top:8px">Patch bundle</div>
+      <div class="tf"><label>Bundle</label><div class="val dd"><span>Morphe v1.6.0 · 96 patches</span></div><span class="trail"><button class="ib" aria-label="Choose bundle"><svg class="i" aria-hidden="true"><use href="#i-chevronDown"/></svg></button></span><div class="help"><span class="org builtin">Built-in</span> MorpheApp/morphe-patches · 2 bundles available</div></div>
+      <div class="sub">Version mode</div>
+      <div class="seg" role="radiogroup" aria-label="Version mode">
+        <label><input type="radio" name="vm" checked><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Auto</label>
+        <label><input type="radio" name="vm"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Pinned</label>
+        <label><input type="radio" name="vm"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Latest</label>
+      </div>
+      <div class="kv"><div><b>20.40.45</b><span>RESOLVES TO</span></div><div><b>20.44.38</b><span>APKMIRROR</span></div><div><b>14</b><span>SUPPORTED</span></div></div>
+      <div class="vrow"><div class="t"><div class="h">Allow nearest version</div><div class="s">Use the closest older supported APK if the exact one is missing</div></div><input type="checkbox" class="sw" checked aria-label="Allow nearest version"></div>
+      <div class="banner info"><svg class="i" aria-hidden="true"><use href="#i-info"/></svg><span>Auto picks the newest version the bundle supports. Latest may build a version the bundle does not list.</span></div>
+      <div class="sub">Patches · 88 of 96 on<span class="r" style="color:var(--primary);font-weight:500">Reset</span></div>
+      <div class="prow"><span><div class="h">Hide ads</div><div class="s">Default on</div></span><input type="checkbox" class="sw" checked aria-label="Hide ads"></div>
+      <div class="prow"><span><div class="h">SponsorBlock</div><div class="s">Default on</div></span><input type="checkbox" class="sw" checked aria-label="SponsorBlock"></div>
+    </div>
+    <div style="background:var(--surfaceContainer);padding:12px 16px;display:flex;align-items:center;gap:8px;flex:none">
+      <span style="flex:1;font:500 14px/20px var(--font);color:var(--primary)">3 unsaved changes</span><button class="btn text">Discard</button><button class="btn filled">Save &amp; rebuild</button>
+    </div>
+    <div class="gesture" style="background:var(--surfaceContainer)"></div>
+  </div>
+  <figcaption>App settings (top) · change bundle, version mode Auto / Pinned / Latest, allow nearest</figcaption>
+  </figure>
+
+  <!-- 3. App settings: patches with options, deps, download -->
+  <figure class="figure">
+  <div class="phone set">
+    <div class="status"><span>10:31</span><span class="cam"></span><span>5G ▮▮</span></div>
+    <div class="appbar withnav scrolled"><button class="ib" aria-label="Back"><svg class="i" aria-hidden="true"><use href="#i-back"/></svg></button><h2>YouTube settings</h2><button class="btn text">Save</button></div>
+    <div class="scroll">
+      <div class="prow" style="background:color-mix(in srgb,var(--primaryContainer) 45%,transparent)"><span><div class="h">Custom branding</div><div class="s">Default off · <em>changed</em> · 2 options</div></span><input type="checkbox" class="sw" checked aria-label="Custom branding">
+        <div class="opt"><div class="tf" style="margin:12px 0 4px"><label style="background:#fff0">App name</label><input value="YouTube Morphe" aria-label="Custom branding: app name"></div></div></div>
+      <div class="prow"><span><div class="h">Change start page</div><div class="s">Default on · <em>changed</em></div></span><input type="checkbox" class="sw" aria-label="Change start page"></div>
+      <div class="prow"><span><div class="h">GmsCore support</div><div class="s">Default on · needs MicroG-RE</div></span><input type="checkbox" class="sw" checked aria-label="GmsCore support"></div>
+      <div class="sub">Follow-project dependencies</div>
+      <label class="vrow"><input type="checkbox" class="cb" checked aria-label="MicroG-RE"><div class="t"><div class="h">MicroG-RE</div><div class="s">Installed and pushed with YouTube</div></div><span class="lab ok">v0.3.9.0</span></label>
+      <label class="vrow"><input type="checkbox" class="cb" aria-label="Morphe Manager"><div class="t"><div class="h">Morphe Manager</div><div class="s">Not installed</div></div></label>
+      <div class="sub">Download source</div>
+      <div class="tf"><label>APKMirror listing</label><input value="apkmirror.com/apk/google-inc/youtube/" aria-label="APKMirror listing URL"><span class="trail"><button class="ib" aria-label="Locate on APKMirror again"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg></button></span><div class="help">Found automatically · exact package match</div></div>
+      <div class="tf"><label>APKPure URL (optional)</label><input aria-label="APKPure URL, optional"></div>
+    </div>
+    <div style="background:var(--surfaceContainer);padding:12px 16px;display:flex;align-items:center;gap:8px;flex:none">
+      <span style="flex:1;font:500 14px/20px var(--font);color:var(--primary)">3 unsaved changes</span><button class="btn text">Discard</button><button class="btn filled">Save &amp; rebuild</button>
+    </div>
+    <div class="gesture" style="background:var(--surfaceContainer)"></div>
+  </div>
+  <figcaption>App settings (scrolled) · patch toggles with options, Follow-project dependencies, download URLs</figcaption>
+  </figure>
+
+  </div>
+</div>
+<script src="mock.js"></script>
+</body>
+</html>

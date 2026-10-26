@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Android · Schedules · Relume (candidate 2)</title>
+<link rel="stylesheet" href="m3.css">
+<style>
+  .gcard { margin: 4px 16px 8px; padding: 20px; border-radius: var(--md-sys-shape-corner-extra-large); background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); position: relative; overflow: hidden; }
+  .gcard::before { content: ""; position: absolute; width: 200px; height: 200px; right: -70px; top: -80px; border-radius: 50%; background: var(--md-sys-color-tertiary-container); opacity: .9; }
+  .gcard > * { position: relative; }
+  .ivs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .ivs label { position: relative; }
+  .ivs input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+  .ivs span { display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 18px; background: var(--md-sys-color-surface-container-lowest); color: var(--md-sys-color-on-surface); font: 500 14px/20px var(--font); }
+  .ivs input:checked + span { background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); }
+  .ivs input:focus-visible + span { outline: 3px solid var(--md-sys-color-secondary); outline-offset: 2px; }
+  .steps { margin: 0 16px; padding: 0; list-style: none; }
+  .steps li { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; position: relative; }
+  .steps li:not(:last-child)::after { content: ""; position: absolute; left: 17px; top: 46px; bottom: -6px; width: 2px; border-radius: 1px; background: var(--md-sys-color-outline-variant); }
+  .steps .d { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; color: #fff; background: linear-gradient(140deg, var(--c1), var(--c2)); flex: none; }
+  .steps .d .i { width: 20px; height: 20px; }
+  .ota { margin: 0 16px 8px; padding: 12px 8px 12px 16px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div>
+      <h1>Android · Schedules</h1>
+      <p class="lede">One global interval for every enabled app, plus the OTA push schedules. Same behaviour as web.</p>
+    </div>
+    <nav class="files" aria-label="Android mockups"><a href="marketplace.html">Marketplace</a><a href="apps.html">Apps</a><a href="schedules.html" aria-current="page">Schedules</a></nav>
+    <div class="palette" role="group" aria-label="Colour scheme"><button type="button" aria-pressed="true" data-p="dyn">Dynamic colour</button><button type="button" aria-pressed="false" data-p="fallback">Fallback palette</button></div>
+  </header>
+
+  <div class="phones">
+    <figure>
+      <div class="phone dyn"><div class="screen">
+        <div class="status"><span>9:41</span><span class="cam"></span><span class="sys"><i></i><i></i></span></div>
+        <div class="appbar"><span class="title">Schedules</span><button class="icon-btn" type="button" aria-label="Phone settings and account"><span class="avatar" aria-hidden="true">AD</span></button></div>
+        <div class="body" style="padding-bottom:88px">
+          <section class="gcard" aria-labelledby="gt">
+            <div class="t-label-m" style="text-transform:uppercase;letter-spacing:.8px">Keep apps updated</div>
+            <div class="t-headline-s" id="gt" style="margin-top:4px">Every 6 hours</div>
+            <div class="t-body-s" style="margin-top:2px">Next run today 14:00 · in 2 h 14 min</div>
+            <div class="ivs" role="radiogroup" aria-label="Run every">
+              <label><input type="radio" name="iv"><span>1 h</span></label>
+              <label><input type="radio" name="iv"><span>3 h</span></label>
+              <label><input type="radio" name="iv" checked><span>6 h</span></label>
+              <label><input type="radio" name="iv"><span>12 h</span></label>
+              <label><input type="radio" name="iv"><span>24 h</span></label>
+              <label><input type="radio" name="iv"><span>Custom</span></label>
+            </div>
+            <div class="row" style="margin-top:16px"><button class="btn filled" type="button"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Run now</button></div>
+          </section>
+          <div class="sec-t">Last run 11:00</div>
+          <ol class="steps" aria-label="Each run, in order">
+            <li data-cat="productivity"><span class="d"><svg class="i" aria-hidden="true"><use href="#i-store"/></svg></span><span><span class="t-title-s">Refresh catalog</span><br><span class="t-body-s var">297 bundles, unchanged</span></span></li>
+            <li data-cat="personalization"><span class="d"><svg class="i" aria-hidden="true"><use href="#i-package"/></svg></span><span><span class="t-title-s">Check chosen bundles</span><br><span class="t-body-s var">Piko 3.3.0 is new</span></span></li>
+            <li data-cat="social"><span class="d"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg></span><span><span class="t-title-s">Check APKMirror</span><br><span class="t-body-s var">Instagram 403.0.0.38</span></span></li>
+            <li data-cat="music"><span class="d"><svg class="i" aria-hidden="true"><use href="#i-rebuild"/></svg></span><span><span class="t-title-s">Rebuild what changed</span><br><span class="t-body-s var">1 built · 1 failed</span></span></li>
+            <li data-cat="maps"><span class="d"><svg class="i" aria-hidden="true"><use href="#i-bell"/></svg></span><span><span class="t-title-s">Notify</span><br><span class="t-body-s var">Sent 11:09</span></span></li>
+          </ol>
+          <div class="sec-t">OTA push</div>
+          <div class="card-o ota"><div class="row"><div class="grow"><div class="t-title-m">Nightly push</div><div class="t-body-s var">Daily 03:00 · Pixel 8 Pro, Galaxy Tab S9</div></div><span class="sw"><input type="checkbox" checked aria-label="Nightly push on"><span></span></span><button class="icon-btn" type="button" aria-label="More for Nightly push"><svg class="i" aria-hidden="true"><use href="#i-more"/></svg></button></div></div>
+          <div class="card-o ota"><div class="row"><div class="grow"><div class="t-title-m">Family phones, weekly</div><div class="t-body-s var">Sun 10:00 · Mom's Pixel 7a</div><span class="st warn" style="margin-top:6px">Phone offline last run</span></div><span class="sw"><input type="checkbox" checked aria-label="Family phones, weekly on"><span></span></span><button class="icon-btn" type="button" aria-label="More for Family phones, weekly"><svg class="i" aria-hidden="true"><use href="#i-more"/></svg></button></div></div>
+        </div>
+        <button class="fab" type="button" style="bottom:116px"><svg class="i" aria-hidden="true"><use href="#i-add"/></svg>OTA schedule</button>
+        <nav class="navbar" aria-label="Main">
+          <a href="marketplace.html"><span class="ind"><svg class="i" aria-hidden="true"><use href="#i-store"/></svg></span>Marketplace</a>
+          <a href="apps.html"><span class="ind"><svg class="i" aria-hidden="true"><use href="#i-apps"/></svg><span class="badge" aria-label="6 enabled">6</span></span>Apps</a>
+          <a href="schedules.html" aria-current="page"><span class="ind"><svg class="i" aria-hidden="true"><use href="#i-schedule"/></svg></span>Schedules</a>
+        </nav>
+        <div class="gesture" style="background:var(--md-sys-color-surface-container)"></div>
+      </div></div>
+      <figcaption>Global interval as a colourful hero card, run pipeline, OTA schedules with on/off switches and an extended FAB.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="phone dyn"><div class="screen">
+        <div class="status"><span>9:41</span><span class="cam"></span><span class="sys"><i></i><i></i></span></div>
+        <div class="appbar"><span class="title">Schedules</span></div>
+        <div class="body"><div class="gcard"><div class="t-headline-s">Every 6 hours</div></div></div>
+        <div class="scrim"></div>
+        <div class="sheet" role="dialog" aria-labelledby="st">
+          <div class="handle"></div>
+          <div class="pad t-headline-s" id="st">New OTA schedule</div>
+          <div style="padding:20px 16px 0"><div class="tf"><label for="sn">Name</label><input id="sn" value="Nightly push"></div></div>
+          <div class="sec-t">Repeat</div>
+          <div class="pad"><div class="seg" role="radiogroup" aria-label="Repeat"><label><input type="radio" name="rp">Hourly</label><label><input type="radio" name="rp" checked>Daily</label><label><input type="radio" name="rp">Weekly</label></div></div>
+          <div class="row" style="padding:20px 16px 0;gap:12px"><div class="tf grow"><label for="sat">At</label><input id="sat" value="03:00"></div><div class="tf" style="width:110px"><label for="sr">Retries</label><input id="sr" value="3" inputmode="numeric"></div></div>
+          <div class="sec-t">Phones</div>
+          <label class="li" style="min-height:56px"><input type="checkbox" checked><span class="grow h">Pixel 8 Pro</span></label>
+          <label class="li" style="min-height:56px"><input type="checkbox" checked><span class="grow h">Galaxy Tab S9</span></label>
+          <label class="li" style="min-height:56px"><input type="checkbox"><span class="grow h">Mom's Pixel 7a</span></label>
+          <div class="row" style="justify-content:flex-end;padding:8px 16px 0"><button class="btn text" type="button">Cancel</button><button class="btn filled" type="button">Create</button></div>
+        </div>
+        <div class="gesture" style="position:relative;z-index:7;background:var(--md-sys-color-surface-container-low)"></div>
+      </div></div>
+      <figcaption>New OTA schedule as a modal bottom sheet.</figcaption>
+    </figure>
+  </div>
+</div>
+<script src="../icons.js"></script>
+<script>
+document.querySelectorAll('.palette button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.palette button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  document.querySelectorAll('.phone').forEach(p => p.classList.toggle('dyn', b.dataset.p === 'dyn'));
+});
+</script>
+</body>
+</html>

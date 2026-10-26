@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#f0f0f0">
+<title>Marketplace · Relume (candidate 3)</title>
+<!--CSS--><style>/* Candidate 3 — "Triage + split view" — Fluent 2 web, light only.
+   Tokens are named after Fluent 2 (webLightTheme); see ../tokens.md. */
+:root{
+  /* neutral */
+  --colorNeutralBackground1:#ffffff;
+  --colorNeutralBackground2:#fafafa;
+  --colorNeutralBackground3:#f5f5f5;
+  --colorNeutralBackground4:#f0f0f0;
+  --colorNeutralBackground1Hover:#f5f5f5;
+  --colorNeutralBackground1Selected:#ebebeb;
+  --colorSubtleBackgroundHover:#f5f5f5;
+  --colorSubtleBackgroundPressed:#e0e0e0;
+  --colorNeutralForeground1:#242424;
+  --colorNeutralForeground2:#424242;
+  --colorNeutralForeground3:#616161;
+  --colorNeutralForegroundDisabled:#8a8a8a; /* used only on disabled controls (WCAG exempt) */
+  --colorNeutralStroke1:#d1d1d1;
+  --colorNeutralStroke2:#e0e0e0;
+  --colorNeutralStroke3:#f0f0f0;
+  --colorNeutralStrokeAccessible:#616161;
+  --colorNeutralForegroundInverted:#ffffff;
+  --colorNeutralBackgroundInverted:#292929;
+  /* brand (Fluent brand ramp, #0f6cbd = brand 80) */
+  --colorBrandBackground:#0f6cbd;
+  --colorBrandBackgroundHover:#115ea3;
+  --colorBrandBackgroundPressed:#0c3b5e;
+  --colorBrandBackground2:#ebf3fc;
+  --colorBrandBackground2Hover:#cfe4fa;
+  --colorBrandForeground1:#0f6cbd;
+  --colorBrandForeground2:#115ea3;
+  --colorBrandStroke1:#0f6cbd;
+  --colorBrandStroke2:#b4d6fa;
+  --colorCompoundBrandStroke:#0f6cbd;
+  /* status (Fluent palette tokens) */
+  --colorStatusSuccessBackground1:#f1faf1; --colorStatusSuccessForeground1:#0e700e; --colorStatusSuccessBorder1:#9fd89f;
+  --colorStatusWarningBackground1:#fff9f5; --colorStatusWarningForeground3:#8a3707; --colorStatusWarningBorder1:#fdcfb4; --colorStatusWarningForeground1:#bc4b09;
+  --colorStatusDangerBackground1:#fdf3f4;  --colorStatusDangerForeground1:#b10e1c;  --colorStatusDangerBorder1:#eeacb2;
+  --colorPaletteBlueBackground2:#ebf3fc;  --colorPaletteBlueForeground2:#0f548c;
+  --colorPalettePurpleBackground2:#f7f0fb; --colorPalettePurpleForeground2:#5c2e91;
+  --colorPaletteTealBackground2:#e9f7f8; --colorPaletteTealForeground2:#00666d;
+  /* shape, spacing, type, elevation, motion */
+  --borderRadiusSmall:2px; --borderRadiusMedium:4px; --borderRadiusLarge:6px; --borderRadiusXLarge:8px; --borderRadiusCircular:9999px;
+  --spacingHorizontalXS:4px; --spacingHorizontalS:8px; --spacingHorizontalM:12px; --spacingHorizontalL:16px; --spacingHorizontalXL:20px; --spacingHorizontalXXL:24px; --spacingHorizontalXXXL:32px;
+  --fontFamilyBase:"Segoe UI Variable Text","Segoe UI",-apple-system,BlinkMacSystemFont,system-ui,Roboto,"Helvetica Neue","Noto Sans TC",sans-serif;
+  --fontFamilyMonospace:"Cascadia Mono",Consolas,ui-monospace,Menlo,monospace;
+  --shadow2:0 0 2px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.14);
+  --shadow4:0 0 2px rgba(0,0,0,.12),0 2px 4px rgba(0,0,0,.14);
+  --shadow8:0 0 2px rgba(0,0,0,.12),0 4px 8px rgba(0,0,0,.14);
+  --shadow16:0 0 2px rgba(0,0,0,.12),0 8px 16px rgba(0,0,0,.14);
+  --shadow28:0 0 8px rgba(0,0,0,.12),0 14px 28px rgba(0,0,0,.14);
+  --durationFast:150ms; --durationNormal:200ms; --durationGentle:250ms;
+  --curveDecelerateMid:cubic-bezier(0,0,0,1); --curveEasyEase:cubic-bezier(.33,0,.67,1);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font:400 14px/20px var(--fontFamilyBase);color:var(--colorNeutralForeground1);background:var(--colorNeutralBackground3);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--colorBrandForeground1)}
+.mono{font-family:var(--fontFamilyMonospace);font-size:12px;line-height:16px}
+.c3{color:var(--colorNeutralForeground3)}
+.caption{font-size:12px;line-height:16px}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+svg.i{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+svg.i.s16{width:16px;height:16px}
+:focus-visible{outline:2px solid var(--colorNeutralForeground1);outline-offset:1px;border-radius:var(--borderRadiusMedium)}
+
+/* ---------- shell: Fluent NavDrawer (inline) + content ---------- */
+.shell{display:grid;grid-template-columns:240px minmax(0,1fr);height:100vh}
+.side{background:var(--colorNeutralBackground4);display:flex;flex-direction:column;padding:8px;gap:2px;overflow:auto}
+.brand{display:flex;align-items:center;gap:10px;padding:10px 10px 16px;font-weight:600;font-size:16px}
+.brand .logo{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#0f6cbd,#00a3a3);display:grid;place-items:center;color:#fff}
+.nav-h{font-size:12px;font-weight:600;color:var(--colorNeutralForeground3);padding:12px 10px 4px}
+.nav a{position:relative;display:flex;align-items:center;gap:10px;height:40px;padding:0 10px;border-radius:var(--borderRadiusMedium);color:var(--colorNeutralForeground2);text-decoration:none}
+.nav a:hover{background:var(--colorSubtleBackgroundHover);color:var(--colorNeutralForeground1)}
+.nav a[aria-current=page]{background:var(--colorNeutralBackground1);color:var(--colorNeutralForeground1);font-weight:600;box-shadow:var(--shadow2)}
+.nav a[aria-current=page]::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:2px;background:var(--colorCompoundBrandStroke)}
+.nav a[aria-current=page] svg{color:var(--colorBrandForeground1)}
+.nav .count{margin-left:auto;font-size:12px;min-width:20px;height:20px;padding:0 6px;border-radius:10px;display:grid;place-items:center;background:var(--colorStatusDangerForeground1);color:#fff;font-weight:600}
+.side .foot{margin-top:auto;padding:10px;font-size:12px;color:var(--colorNeutralForeground3);display:flex;gap:8px;align-items:center}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--colorStatusSuccessForeground1);flex:none}
+.main{display:flex;flex-direction:column;min-width:0;height:100vh}
+.top{display:flex;align-items:center;gap:12px;padding:12px 24px;min-height:60px}
+.top h1{font-size:20px;line-height:28px;font-weight:600;margin:0}
+.top .sub{color:var(--colorNeutralForeground3)}
+.top .sp{flex:1}
+.ibtn.menu-btn{display:none}
+
+/* ---------- split view (master | detail) ---------- */
+.split{flex:1;min-height:0;display:grid;grid-template-columns:minmax(320px,400px) minmax(0,1fr);gap:0;margin:0 16px 16px;background:var(--colorNeutralBackground1);border-radius:var(--borderRadiusXLarge);box-shadow:var(--shadow4);overflow:hidden}
+.master{border-right:1px solid var(--colorNeutralStroke2);display:flex;flex-direction:column;min-height:0}
+.master-h{padding:12px;display:grid;gap:8px;border-bottom:1px solid var(--colorNeutralStroke2)}
+.master-list{overflow:auto;flex:1}
+.detail{overflow:auto;min-width:0;display:flex;flex-direction:column}
+.detail-body{padding:20px 24px;display:grid;grid-template-columns:minmax(0,1fr);gap:20px;align-content:start}
+.ibtn.back{display:none}
+
+/* list rows */
+.grp-h{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:8px;padding:10px 12px 6px;background:var(--colorNeutralBackground1);font-size:12px;font-weight:600;color:var(--colorNeutralForeground2);text-transform:none}
+.grp-h .n{color:var(--colorNeutralForeground3);font-weight:400}
+.row{display:flex;align-items:center;gap:12px;padding:8px 12px;margin:0 4px;border-radius:var(--borderRadiusMedium);cursor:pointer;position:relative;border:0;background:none;width:calc(100% - 8px);text-align:left}
+.row:hover{background:var(--colorNeutralBackground1Hover)}
+.row[aria-selected=true]{background:var(--colorBrandBackground2)}
+.row[aria-selected=true]::before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:2px;background:var(--colorCompoundBrandStroke)}
+.row .t{flex:1;min-width:0}
+.row .t b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .t span{display:block;font-size:12px;line-height:16px;color:var(--colorNeutralForeground3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .end{display:flex;flex-direction:column;align-items:flex-end;gap:4px;font-size:12px;color:var(--colorNeutralForeground3)}
+
+/* app monogram tile (placeholder for remote icon_url) */
+.ico{width:36px;height:36px;border-radius:var(--borderRadiusLarge);display:grid;place-items:center;font-weight:600;font-size:14px;flex:none;color:#fff}
+.ico.lg{width:56px;height:56px;border-radius:12px;font-size:22px}
+.ico.sm{width:28px;height:28px;font-size:12px;border-radius:var(--borderRadiusMedium)}
+.h-orange{background:#c43501}.h-red{background:#b10e1c}.h-pink{background:#ad1a72}.h-purple{background:#5c2e91}
+.h-blue{background:#0f6cbd}.h-teal{background:#00666d}.h-green{background:#0e700e}.h-steel{background:#005b70}.h-black{background:#242424}
+
+/* ---------- controls ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 12px;border-radius:var(--borderRadiusMedium);border:1px solid var(--colorNeutralStroke1);background:var(--colorNeutralBackground1);font-weight:600;cursor:pointer;white-space:nowrap;transition:background var(--durationFast) var(--curveEasyEase)}
+.btn:hover{background:var(--colorNeutralBackground1Hover);border-color:#c7c7c7}
+.btn.primary{background:var(--colorBrandBackground);border-color:transparent;color:#fff}
+.btn.primary:hover{background:var(--colorBrandBackgroundHover)}
+.btn.primary:active{background:var(--colorBrandBackgroundPressed)}
+.btn.subtle{border-color:transparent;background:transparent}
+.btn.subtle:hover{background:var(--colorSubtleBackgroundHover)}
+.btn:disabled{background:var(--colorNeutralBackground3);border-color:var(--colorNeutralStroke2);color:var(--colorNeutralForegroundDisabled);cursor:not-allowed}
+.btn.small{height:24px;padding:0 8px;font-size:12px;font-weight:400}
+.ibtn{width:32px;height:32px;padding:0;border:1px solid transparent;background:transparent;border-radius:var(--borderRadiusMedium);display:inline-grid;place-items:center;cursor:pointer;color:var(--colorNeutralForeground2);position:relative}
+.ibtn:hover{background:var(--colorSubtleBackgroundHover);color:var(--colorBrandForeground2)}
+.ibtn:active{background:var(--colorSubtleBackgroundPressed)}
+.ibtn:disabled{color:var(--colorNeutralForegroundDisabled);background:none;cursor:not-allowed}
+.ibtn.outline{border-color:var(--colorNeutralStroke1)}
+/* Tooltip (Fluent Tooltip, inverted appearance). Shown on hover and keyboard focus. */
+[data-tip]:hover::after,[data-tip]:focus-visible::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:var(--colorNeutralBackgroundInverted);color:var(--colorNeutralForegroundInverted);font:400 12px/16px var(--fontFamilyBase);padding:5px 8px;border-radius:var(--borderRadiusMedium);white-space:nowrap;box-shadow:var(--shadow8);z-index:20;pointer-events:none}
+.input,select.input{height:32px;padding:0 10px;border:1px solid var(--colorNeutralStroke1);border-bottom-color:var(--colorNeutralStrokeAccessible);border-radius:var(--borderRadiusMedium);background:var(--colorNeutralBackground1);min-width:0;width:100%}
+.input:focus{outline:none;border-bottom:2px solid var(--colorCompoundBrandStroke);padding-bottom:0}
+.search{position:relative}
+.search svg{position:absolute;left:8px;top:6px;color:var(--colorNeutralForeground3)}
+.search .input{padding-left:34px}
+.field{display:grid;gap:4px}
+.field>label,.lbl{font-weight:600;font-size:14px}
+.hint{font-size:12px;line-height:16px;color:var(--colorNeutralForeground3)}
+.hstack{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.hstack.nw{flex-wrap:nowrap}
+/* Fluent Switch */
+.sw{appearance:none;width:40px;height:20px;border-radius:10px;border:1px solid var(--colorNeutralStrokeAccessible);background:var(--colorNeutralBackground1);position:relative;cursor:pointer;flex:none;margin:0;transition:background var(--durationFast)}
+.sw::after{content:"";position:absolute;width:14px;height:14px;border-radius:50%;top:2px;left:2px;background:var(--colorNeutralForeground3);transition:transform var(--durationNormal) var(--curveEasyEase)}
+.sw:checked{background:var(--colorBrandBackground);border-color:transparent}
+.sw:checked::after{transform:translateX(20px);background:#fff}
+/* Radio */
+.rd{appearance:none;width:16px;height:16px;border-radius:50%;border:1px solid var(--colorNeutralStrokeAccessible);margin:2px 0 0;flex:none;display:grid;place-items:center;cursor:pointer;background:#fff}
+.rd:checked{border-color:var(--colorBrandStroke1)}
+.rd:checked::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--colorBrandBackground)}
+/* Tablist */
+.tabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;border-bottom:1px solid var(--colorNeutralStroke2)}
+.tabs button{flex:none;height:40px;padding:0 10px;background:none;border:0;cursor:pointer;color:var(--colorNeutralForeground2);position:relative}
+.tabs button[aria-selected=true]{color:var(--colorNeutralForeground1);font-weight:600}
+.tabs button[aria-selected=true]::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:3px;border-radius:2px;background:var(--colorCompoundBrandStroke)}
+/* Badge (Fluent Badge, tint appearance) */
+.badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 6px;border-radius:var(--borderRadiusCircular);font-size:12px;line-height:16px;font-weight:600;border:1px solid transparent;white-space:nowrap}
+.badge svg{width:12px;height:12px}
+.b-ok{background:var(--colorStatusSuccessBackground1);color:var(--colorStatusSuccessForeground1);border-color:var(--colorStatusSuccessBorder1)}
+.b-warn{background:var(--colorStatusWarningBackground1);color:var(--colorStatusWarningForeground3);border-color:var(--colorStatusWarningBorder1)}
+.b-err{background:var(--colorStatusDangerBackground1);color:var(--colorStatusDangerForeground1);border-color:var(--colorStatusDangerBorder1)}
+.b-info{background:var(--colorBrandBackground2);color:var(--colorBrandForeground2);border-color:var(--colorBrandStroke2)}
+.b-mute{background:var(--colorNeutralBackground3);color:var(--colorNeutralForeground2);border-color:var(--colorNeutralStroke2)}
+/* origin labels: official catalog / built-in / custom */
+.o-official{background:var(--colorPaletteBlueBackground2);color:var(--colorPaletteBlueForeground2)}
+.o-builtin{background:var(--colorPaletteTealBackground2);color:var(--colorPaletteTealForeground2)}
+.o-custom{background:var(--colorPalettePurpleBackground2);color:var(--colorPalettePurpleForeground2)}
+/* MessageBar */
+.mbar{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:var(--borderRadiusMedium);border:1px solid}
+.mbar>svg{margin-top:0}
+.mbar.warn{background:var(--colorStatusWarningBackground1);border-color:var(--colorStatusWarningBorder1)}
+.mbar.warn>svg{color:var(--colorStatusWarningForeground1)}
+.mbar.err{background:var(--colorStatusDangerBackground1);border-color:var(--colorStatusDangerBorder1)}
+.mbar.err>svg{color:var(--colorStatusDangerForeground1)}
+.mbar.info{background:var(--colorNeutralBackground3);border-color:var(--colorNeutralStroke2)}
+.mbar b{font-weight:600}
+/* Card + section */
+.card{background:var(--colorNeutralBackground1);border-radius:var(--borderRadiusXLarge);box-shadow:var(--shadow4);padding:16px}
+.sec-h{display:flex;align-items:center;gap:8px;margin:0 0 8px}
+.sec-h h2,.sec-h h3{font-size:16px;line-height:22px;font-weight:600;margin:0}
+.sec-h .sp{flex:1}
+/* progress */
+.prog{height:2px;background:var(--colorNeutralStroke2);border-radius:1px;overflow:hidden;width:100%}
+.prog i{display:block;height:100%;background:var(--colorBrandBackground)}
+/* table-like key/value */
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:13px;margin:0}
+.kv dt{color:var(--colorNeutralForeground3)}.kv dd{margin:0}
+/* patches */
+.plist{border:1px solid var(--colorNeutralStroke2);border-radius:var(--borderRadiusLarge);overflow:hidden}
+.prow{display:flex;gap:12px;align-items:flex-start;padding:10px 12px;border-top:1px solid var(--colorNeutralStroke3)}
+.prow:first-child{border-top:0}
+.prow .t{flex:1;min-width:0}
+.prow .t b{font-weight:600}
+.prow .t p{margin:2px 0 0;font-size:12px;line-height:16px;color:var(--colorNeutralForeground3)}
+.prow.changed{background:var(--colorBrandBackground2)}
+.tag{font-size:11px;line-height:14px;padding:1px 5px;border-radius:var(--borderRadiusSmall);background:var(--colorNeutralBackground3);color:var(--colorNeutralForeground2);margin-left:6px;vertical-align:1px;white-space:nowrap}
+.tag.you{background:var(--colorBrandBackground2);color:var(--colorBrandForeground2)}
+/* sticky action footer */
+.dock{position:sticky;bottom:0;margin-top:auto;background:var(--colorNeutralBackground1);border-top:1px solid var(--colorNeutralStroke2);padding:12px 24px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.dock .sp{flex:1}
+
+/* ---------- responsive ---------- */
+@media (max-width:1100px){.shell{grid-template-columns:56px minmax(0,1fr)}.side .lbl-t,.nav-h,.side .foot span,.brand span,.nav .count{display:none}.nav a{justify-content:center;padding:0}}
+@media (max-width:900px){
+  .split{grid-template-columns:minmax(0,1fr);margin:0 8px 8px}
+  .master{min-width:0}
+  .split .detail{display:none}.split.show-detail .master{display:none}.split.show-detail .detail{display:flex}
+  .ibtn.back{display:inline-grid}
+}
+@media (max-width:640px){
+  .shell{grid-template-columns:minmax(0,1fr)}
+  .side{position:fixed;inset:0 auto 0 0;width:260px;z-index:30;transform:translateX(-100%);transition:transform var(--durationNormal) var(--curveDecelerateMid);box-shadow:var(--shadow28)}
+  .side .lbl-t,.nav-h,.side .foot span,.brand span,.nav .count{display:revert}.nav a{justify-content:flex-start;padding:0 10px}
+  body.nav-open .side{transform:none}
+  .ibtn.menu-btn{display:inline-grid}
+  .top{padding:8px 12px}.top .sub{display:none}.top>.btn{font-size:0;gap:0;width:40px;padding:0}
+  .detail-body{padding:16px}
+  .dock{padding:10px 16px}
+  .ibtn,.btn{min-height:40px}.ibtn{width:40px}
+  .sw{width:44px;height:24px}.sw::after{width:16px;height:16px;top:3px;left:3px}.sw:checked::after{transform:translateX(20px)}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+@media (max-width:900px){.hide-s{display:none}}
+</style><!--/CSS-->
+<style>
+.facets{display:flex;gap:8px}
+.facets select{flex:1}
+.seg{display:inline-flex;border:1px solid var(--colorNeutralStroke1);border-radius:var(--borderRadiusMedium);overflow:hidden}
+.seg button{border:0;background:var(--colorNeutralBackground1);height:28px;padding:0 10px;cursor:pointer;color:var(--colorNeutralForeground2)}
+.seg button+button{border-left:1px solid var(--colorNeutralStroke1)}
+.seg button[aria-pressed=true]{background:var(--colorBrandBackground2);color:var(--colorBrandForeground2);font-weight:600}
+.count-line{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--colorNeutralForeground3)}
+.hero{display:flex;gap:16px;align-items:flex-start}
+.hero h2{margin:0;font-size:24px;line-height:32px;font-weight:600}
+.hero .meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:4px;color:var(--colorNeutralForeground3)}
+.step{display:grid;grid-template-columns:28px 1fr;gap:12px}
+.step .num{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-weight:600;font-size:13px;border:1px solid var(--colorNeutralStroke1);color:var(--colorNeutralForeground2);background:var(--colorNeutralBackground1)}
+.step.done .num{background:var(--colorBrandBackground);border-color:transparent;color:#fff}
+.step.need .num{background:var(--colorStatusWarningBackground1);border-color:var(--colorStatusWarningBorder1);color:var(--colorStatusWarningForeground3)}
+.step h3{margin:3px 0 10px;font-size:16px;line-height:22px;font-weight:600}
+.step .rail{grid-row:span 2}
+.bundles{display:grid;gap:8px}
+.bundle{display:grid;grid-template-columns:auto 1fr auto;gap:4px 12px;padding:12px;border:1px solid var(--colorNeutralStroke2);border-radius:var(--borderRadiusLarge);cursor:pointer;background:var(--colorNeutralBackground1);transition:border-color var(--durationFast),box-shadow var(--durationFast)}
+.bundle:hover{border-color:var(--colorNeutralStroke1);box-shadow:var(--shadow2)}
+.bundle:has(input:checked){border-color:var(--colorBrandStroke1);box-shadow:0 0 0 1px var(--colorBrandStroke1) inset;background:var(--colorBrandBackground2)}
+.bundle .nm{font-weight:600;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.bundle .sub{grid-column:2;font-size:12px;line-height:16px;color:var(--colorNeutralForeground3);display:flex;gap:12px;flex-wrap:wrap}
+.bundle .sub span{display:inline-flex;gap:4px;align-items:center}
+.bundle .right{grid-row:span 2;text-align:right;font-size:12px;color:var(--colorNeutralForeground3);align-self:center}
+.bundle .right b{display:block;font-size:20px;line-height:24px;color:var(--colorNeutralForeground1)}
+.ptools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.ptools .search{flex:1;min-width:180px}
+.urlrow{display:flex;gap:8px;margin-top:8px}
+.urlrow .input{flex:1}
+@media (max-width:640px){.bundle{grid-template-columns:auto 1fr}.bundle .right{grid-row:auto;grid-column:2;text-align:left}.bundle .right b{display:inline;font-size:14px}.urlrow{flex-direction:column}}
+</style>
+</head>
+<body>
+<!--ICONS--><svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+<symbol id="i-store" viewBox="0 0 24 24"><path d="M4 9h16l-1 11H5L4 9z"/><path d="M8.5 9V7a3.5 3.5 0 0 1 7 0v2"/></symbol>
+<symbol id="i-apps" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></symbol>
+<symbol id="i-builds" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4.5" cy="6" r=".8"/><circle cx="4.5" cy="12" r=".8"/><circle cx="4.5" cy="18" r=".8"/></symbol>
+<symbol id="i-phone" viewBox="0 0 24 24"><rect x="6.5" y="3" width="11" height="18" rx="2.5"/><path d="M10.5 18h3"/></symbol>
+<symbol id="i-follow" viewBox="0 0 24 24"><circle cx="6.5" cy="6" r="2.2"/><circle cx="6.5" cy="18" r="2.2"/><circle cx="17.5" cy="8" r="2.2"/><path d="M6.5 8.2v7.6M17.5 10.2c0 4-11 2.5-11 5.6"/></symbol>
+<symbol id="i-calendar" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8.5 3v4M15.5 3v4"/></symbol>
+<symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3.5l1.6 2.3 2.7-.6.6 2.7 2.3 1.6-1.3 2.5 1.3 2.5-2.3 1.6-.6 2.7-2.7-.6L12 20.5l-1.6-2.3-2.7.6-.6-2.7-2.3-1.6L6.1 12 4.8 9.5l2.3-1.6.6-2.7 2.7.6z"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></symbol>
+<symbol id="i-sort" viewBox="0 0 24 24"><path d="M7 4v16M4 17l3 3 3-3M17 20V4M14 7l3-3 3 3"/></symbol>
+<symbol id="i-chev-r" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+<symbol id="i-chev-d" viewBox="0 0 24 24"><path d="M5 9l7 7 7-7"/></symbol>
+<symbol id="i-back" viewBox="0 0 24 24"><path d="M20 12H4M10 6l-6 6 6 6"/></symbol>
+<symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+<symbol id="i-check-update" viewBox="0 0 24 24"><path d="M19.5 9A8 8 0 0 0 5 7.5M4.5 15A8 8 0 0 0 19 16.5"/><path d="M5 3.5v4h4M19 20.5v-4h-4"/></symbol>
+<symbol id="i-rebuild" viewBox="0 0 24 24"><path d="M14.5 6.5l3 3M4 20l8.5-8.5"/><path d="M13 4.5l2-1.5 6 6-1.5 2-2-.5-3 3-4-4 3-3z"/></symbol>
+<symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10.5l5 5 5-5M5 20h14"/></symbol>
+<symbol id="i-more" viewBox="0 0 24 24"><circle cx="6" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="18" cy="12" r="1"/></symbol>
+<symbol id="i-star" viewBox="0 0 24 24"><path d="M12 4l2.4 5 5.4.6-4 3.7 1.1 5.4L12 16l-4.9 2.7 1.1-5.4-4-3.7 5.4-.6z"/></symbol>
+<symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+<symbol id="i-warning" viewBox="0 0 24 24"><path d="M12 4L2.8 19.5h18.4z"/><path d="M12 10v4.5M12 17v.3"/></symbol>
+<symbol id="i-error" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9 9l6 6M15 9l-6 6"/></symbol>
+<symbol id="i-ok" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8 12.3l2.7 2.7L16 9.5"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+<symbol id="i-up" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 16.5v-9M8.5 11L12 7.5l3.5 3.5"/></symbol>
+<symbol id="i-spinner" viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 1 1-8.5 8.5"/></symbol>
+<symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8v.3"/></symbol>
+<symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.5 5.5 3.5 8.5s-1 5.9-3.5 8.5c-2.5-2.6-3.5-5.5-3.5-8.5s1-5.9 3.5-8.5z"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5z"/></symbol>
+<symbol id="i-push" viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2.5"/><path d="M12 15V8M9 10.5L12 7.5l3 3"/></symbol>
+<symbol id="i-retry" viewBox="0 0 24 24"><path d="M4.5 12A7.5 7.5 0 1 0 7 6.4"/><path d="M4.5 4v4h4"/></symbol>
+<symbol id="i-stop" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/></symbol>
+<symbol id="i-edit" viewBox="0 0 24 24"><path d="M4.5 19.5l1-4L15.5 5.5l3 3-10 10z"/><path d="M13.5 7.5l3 3"/></symbol>
+<symbol id="i-pin" viewBox="0 0 24 24"><path d="M9 4h6l-1 5 3 3H7l3-3zM12 12v8"/></symbol>
+<symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3.5L6 13.5h5l-1 7 7-10h-5z"/></symbol>
+</svg>
+<!--/ICONS-->
+<div class="shell">
+<aside class="side" aria-label="Primary"><!--NAV:marketplace--><div class="brand"><div class="logo" aria-hidden="true"><svg class="i s16"><use href="#i-bolt"/></svg></div><span>Relume</span></div><div class="nav-h">Library</div><nav class="nav" aria-label="Pages"><a href="marketplace.html" aria-current="page"><svg class="i" aria-hidden="true"><use href="#i-store"/></svg><span class="lbl-t">Marketplace</span></a><a href="apps.html"><svg class="i" aria-hidden="true"><use href="#i-apps"/></svg><span class="lbl-t">Apps</span><span class="count" aria-label="2 need attention">2</span></a><div class="nav-h">Server</div><a href="restyle-sample.html"><svg class="i" aria-hidden="true"><use href="#i-builds"/></svg><span class="lbl-t">Builds</span></a><a href="#"><svg class="i" aria-hidden="true"><use href="#i-phone"/></svg><span class="lbl-t">Devices</span></a><a href="#"><svg class="i" aria-hidden="true"><use href="#i-follow"/></svg><span class="lbl-t">Follow projects</span></a><a href="schedules.html"><svg class="i" aria-hidden="true"><use href="#i-calendar"/></svg><span class="lbl-t">Schedules</span></a><a href="#"><svg class="i" aria-hidden="true"><use href="#i-settings"/></svg><span class="lbl-t">Settings</span></a></nav><div class="foot"><i class="dot" aria-hidden="true"></i><span>Server online · next check 14:00</span></div><!--/NAV:marketplace--></aside>
+<main class="main">
+  <header class="top">
+    <button class="ibtn menu-btn" aria-label="Open navigation" data-menu><svg class="i"><use href="#i-menu"/></svg></button>
+    <div><h1>Marketplace</h1><div class="sub caption">Official catalog, built-in and custom bundles in one list. Pick an app, pick one bundle, enable.</div></div>
+    <span class="sp"></span>
+    <span class="caption c3 hide-s">Catalog refreshed 12:00 · 1,207 apps · 297 bundles</span>
+    <button class="btn" aria-label="Add custom source"><svg class="i s16"><use href="#i-plus"/></svg>Custom source</button>
+  </header>
+
+  <div class="split" id="split">
+    <!-- MASTER: every catalog app -->
+    <section class="master" aria-label="Catalog apps">
+      <div class="master-h">
+        <label class="search"><span class="vh">Search apps</span><svg class="i"><use href="#i-search"/></svg><input class="input" type="search" placeholder="Search name or package" value=""></label>
+        <div class="facets">
+          <label class="vh" for="cat">Category</label>
+          <select id="cat" class="input" aria-label="Category">
+            <option>All categories (1,207)</option><option selected>Social &amp; Communication (71)</option><option>Tools &amp; Utilities (203)</option><option>Productivity (182)</option><option>Lifestyle, Fitness &amp; Sports (133)</option><option>Games (122)</option><option>Video (115)</option><option>Music &amp; Audio (62)</option><option>Photography &amp; Design (62)</option><option>Maps &amp; Navigation (60)</option><option>Education (58)</option><option>News, Media &amp; Books (46)</option><option>Personalization (46)</option><option>Shopping (28)</option><option>Weather (19)</option>
+          </select>
+          <label class="vh" for="sort">Sort</label>
+          <select id="sort" class="input" aria-label="Sort" style="max-width:150px">
+            <option selected>Most bundles</option><option>Name A–Z</option><option>Recently updated</option><option>Most stars</option>
+          </select>
+        </div>
+        <div class="count-line">
+          <div class="seg" role="group" aria-label="Show">
+            <button aria-pressed="true">All</button><button aria-pressed="false">Enabled</button><button aria-pressed="false">Not enabled</button>
+          </div>
+          <span>71 apps</span>
+        </div>
+      </div>
+      <div class="master-list" role="listbox" aria-label="Apps">
+        <div class="grp-h">Enabled by you <span class="n">3</span></div>
+        <button class="row" role="option" aria-selected="false"><span class="ico h-pink">IG</span><span class="t"><b>Instagram</b><span>com.instagram.android · Piko</span></span><span class="end"><span class="badge b-warn">Needs URL</span>11 bundles</span></button>
+        <button class="row" role="option" aria-selected="false"><span class="ico h-orange">R</span><span class="t"><b>Reddit</b><span>com.reddit.frontpage · Adobo</span></span><span class="end"><span class="badge b-ok">Enabled</span>4 bundles</span></button>
+        <button class="row" role="option" aria-selected="false"><span class="ico h-black">@</span><span class="t"><b>Threads</b><span>com.instagram.barcelona · jhangyu/morphe_patches</span></span><span class="end"><span class="badge o-custom">Custom</span>1 bundle</span></button>
+        <div class="grp-h">Available <span class="n">68</span></div>
+        <button class="row" role="option" aria-selected="true"><span class="ico h-orange">B</span><span class="t"><b>Boost for Reddit</b><span>com.rubenmayayo.reddit</span></span><span class="end">4 bundles<span>v1.12.12</span></span></button>
+        <button class="row" role="option" aria-selected="false"><span class="ico h-steel">T</span><span class="t"><b>Telegram</b><span>org.telegram.messenger.web</span></span><span class="end">7 bundles</span></button>
+        <button class="row" role="option" aria-selected="false"><span class="ico h-blue">T</span><span class="t"><b>Truecaller</b><span>com.truecaller</span></span><span class="end">5 bundles</span></button>
+        <button class="row" role="option" aria-selected="false"><span class="ico h-red">S</span><span class="t"><b>Reddit Sync</b><span>com.laurencedawson.reddit_sync</span></span><span class="end">5 bundles</span></button>
+        <button class="row" role="option" aria-selected="false"><span class="ico h-black">TT</span><span class="t"><b>TikTok</b><span>com.zhiliaoapp.musically</span></span><span class="end">5 bundles</span></button>
+        <button class="row" role="option" aria-selected="false"><span class="ico h-blue">f</span><span class="t"><b>Facebook</b><span>com.facebook.katana</span></span><span class="end">4 bundles</span></button>
+        <button class="row" role="option" aria-selected="false"><span class="ico h-green">L</span><span class="t"><b>Letterboxd</b><span>com.letterboxd.letterboxd</span></span><span class="end">4 bundles</span></button>
+        <button class="row" role="option" aria-selected="false"><span class="ico h-purple">K</span><span class="t"><b>KakaoTalk</b><span>com.kakao.talk</span></span><span class="end">2 bundles</span></button>
+      </div>
+    </section>
+
+    <!-- DETAIL: one app, enable flow as three steps -->
+    <section class="detail" aria-label="Boost for Reddit">
+      <div class="detail-body">
+        <div class="hero">
+          <button class="ibtn back" aria-label="Back to app list" data-back><svg class="i"><use href="#i-back"/></svg></button>
+          <span class="ico lg h-orange" aria-hidden="true">B</span>
+          <div style="flex:1;min-width:0">
+            <h2>Boost for Reddit</h2>
+            <div class="meta"><span class="mono">com.rubenmayayo.reddit</span>·<span>Social &amp; Communication</span>·<span class="badge b-mute">Not enabled</span></div>
+          </div>
+        </div>
+
+        <div class="step done">
+          <span class="num" aria-hidden="true"><svg class="i s16"><use href="#i-check"/></svg></span>
+          <div>
+            <h3>Choose one patch bundle <span class="c3" style="font-weight:400">· 4 available</span></h3>
+            <div class="bundles" role="radiogroup" aria-label="Patch bundle">
+              <label class="bundle"><input class="rd" type="radio" name="b" value="brealorg" checked>
+                <span class="nm">Brealorg <span class="badge o-official"><svg class="i"><use href="#i-globe"/></svg>Official catalog</span></span>
+                <span class="right"><b>48</b> patches</span>
+                <span class="sub"><span class="mono">brealorg/breal-morphe-patches</span><span><svg class="i s16"><use href="#i-star"/></svg>103</span><span>Updated 2 days ago</span><span>Supports 1.12.12</span></span>
+              </label>
+              <label class="bundle"><input class="rd" type="radio" name="b" value="patcheddit">
+                <span class="nm">Patcheddit <span class="badge o-official"><svg class="i"><use href="#i-globe"/></svg>Official catalog</span></span>
+                <span class="right"><b>37</b> patches</span>
+                <span class="sub"><span class="mono">wchill/patcheddit</span><span><svg class="i s16"><use href="#i-star"/></svg>814</span><span>Updated 3 days ago</span><span>Supports 1.12.12</span></span>
+              </label>
+              <label class="bundle"><input class="rd" type="radio" name="b" value="titandrive">
+                <span class="nm">Titandrive <span class="badge o-official"><svg class="i"><use href="#i-globe"/></svg>Official catalog</span></span>
+                <span class="right"><b>2</b> patches</span>
+                <span class="sub"><span class="mono">titandrive/morphe-catppuccin</span><span><svg class="i s16"><use href="#i-star"/></svg>3</span><span>Updated 2 days ago</span><span>Theme only</span></span>
+              </label>
+              <label class="bundle"><input class="rd" type="radio" name="b" value="rhubarb">
+                <span class="nm">RhubarbShoelaces <span class="badge o-official"><svg class="i"><use href="#i-globe"/></svg>Official catalog</span></span>
+                <span class="right"><b>1</b> patch</span>
+                <span class="sub"><span class="mono">rhubarbshoelaces/morphe-patches</span><span><svg class="i s16"><use href="#i-star"/></svg>13</span><span>Updated 2 months ago</span><span>Any version</span></span>
+              </label>
+            </div>
+            <p class="hint" style="margin:8px 0 0">Labels: <span class="badge o-official">Official catalog</span> morphe-patches.software · <span class="badge o-builtin">Built-in</span> MorpheApp/morphe-patches · <span class="badge o-custom">Custom</span> a GitHub repo you added.</p>
+          </div>
+        </div>
+
+        <div class="step done">
+          <span class="num" aria-hidden="true"><svg class="i s16"><use href="#i-check"/></svg></span>
+          <div>
+            <h3 id="ph">Patches from Brealorg <span class="c3" style="font-weight:400" id="pc">· 38 of 48 on</span></h3>
+            <div class="ptools">
+              <label class="search"><span class="vh">Filter patches</span><svg class="i"><use href="#i-search"/></svg><input class="input" type="search" placeholder="Filter 48 patches"></label>
+              <button class="btn small">Defaults</button><button class="btn small">All on</button><button class="btn small">All off</button>
+            </div>
+            <div class="plist" id="plist"></div>
+            <p class="hint" style="margin:6px 0 0">Defaults come from the bundle. Your changes are kept across new versions. Patch options are set after enabling, in Apps › app settings.</p>
+          </div>
+        </div>
+
+        <div class="step need">
+          <span class="num" aria-hidden="true">3</span>
+          <div>
+            <h3>Download source</h3>
+            <div class="mbar warn" role="status">
+              <svg class="i"><use href="#i-warning"/></svg>
+              <div style="flex:1">
+                <b>APKMirror page not found.</b> Relume searched APKMirror for <span class="mono">com.rubenmayayo.reddit</span> and no result had this exact package name. Paste the app's APKMirror listing URL. The app cannot build until it has one.
+                <div class="field" style="margin-top:10px">
+                  <label for="u1">APKMirror listing URL</label>
+                  <div class="urlrow"><input id="u1" class="input" type="url" inputmode="url" placeholder="https://www.apkmirror.com/apk/rubenmayayo/boost-for-reddit/"><button class="btn" id="chk"><svg class="i s16"><use href="#i-link"/></svg>Check link</button></div>
+                  <span class="hint" id="u1h">Example: https://www.apkmirror.com/apk/&lt;developer&gt;/&lt;app&gt;/</span>
+                </div>
+                <div class="field" style="margin-top:10px">
+                  <label for="u2">APKPure URL <span class="c3" style="font-weight:400">(optional fallback)</span></label>
+                  <input id="u2" class="input" type="url" placeholder="https://apkpure.com/…/com.rubenmayayo.reddit">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="dock">
+        <div class="caption"><b style="font-size:14px">Brealorg</b> · <span id="dc">38 of 48 patches</span> · version Auto (newest supported: 1.12.12)<br><span class="c3">Enabling starts the first fetch and build now. Later rebuilds follow the global schedule.</span></div>
+        <span class="sp"></span>
+        <button class="btn primary" id="en" disabled><svg class="i s16"><use href="#i-play"/></svg>Enable and build</button>
+      </div>
+    </section>
+  </div>
+</main>
+</div>
+<script>
+// Mock data: real patch names from the 2026-10-26 bundles.json copy (subset per bundle).
+const P = {
+  brealorg: ['Brealorg', 48, 33, [
+    ['Add Boost Search bottom navigation', 1, "Shows Boost's native Home, Search, Subscriptions, Inbox and Profile menu."],
+    ['Add archive links to context menu', 1, "Adds 'Open with Wayback Machine' and 'Open with Archive.is' to the link menu."],
+    ['Anchor Boost Snackbars above bottom navigation', 1, 'Shows Boost Snackbars above the visible bottom navigation.'],
+    ['Animate media in Boost gallery previews', 1, "Plays GIFs and videos in Reddit gallery previews, following Boost's data saver."],
+    ['Auto-load next page after filtered results', 1, 'Loads the next page automatically when content filters hide every post.'],
+    ['Automatically undelete Imgur images', 0, 'Loads deleted Imgur images from the Wayback Machine.'],
+    ['Automatically undelete Reddit content', 0, 'Restores deleted and removed posts and comments from Arctic Shift.'],
+    ['Boost Morphe settings', 0, 'Adds a Morphe section and a reorganized settings screen with search.']]],
+  patcheddit: ['Patcheddit', 37, 25, [
+    ['Add Boost Search bottom navigation', 1, "Shows Boost's native Home, Search, Subscriptions, Inbox and Profile menu."],
+    ['Boost search default discovery', 1, 'Opens Search right away on a list of active subreddits.'],
+    ['Custom Synccit URL', 1, 'Allows Boost to use a custom self-hosted Synccit API endpoint.'],
+    ['Disable Boost Crashlytics startup network calls', 1, "Stops Boost's crash reporting (Crashlytics) from connecting at startup."],
+    ['Boost Morphe settings', 0, 'Adds a Morphe section and a reorganized settings screen with search.']]],
+  titandrive: ['Titandrive', 2, 0, [
+    ['Catppuccin theme', 0, 'Adds separate Latte and Macchiato themes.'],
+    ['Boost custom font', 0, 'Uses your TTF font throughout Boost, preserving bold and italic.']]],
+  rhubarb: ['RhubarbShoelaces', 1, 0, [
+    ['Fix Random Subreddit Button', 1, 'Reroutes all Random buttons to pick from a custom pre-loaded list.']]],
+};
+const you = new Set(['Automatically undelete Reddit content', 'Anchor Boost Snackbars above bottom navigation']); // demo overrides
+const list = document.getElementById('plist');
+function render(key) {
+  const [name, total, restOn, ps] = P[key]; // restOn = patches on among those not shown in the mock
+  list.replaceChildren(...ps.map(([n, def, d], i) => {
+    const on = you.has(n) ? !def : !!def;
+    const row = document.createElement('div');
+    row.className = 'prow' + (you.has(n) ? ' changed' : '');
+    row.innerHTML = '<div class="t"><b></b><span class="tag"></span><p></p></div><input class="sw" type="checkbox" role="switch">';
+    row.querySelector('b').textContent = n;
+    const tag = row.querySelector('.tag');
+    tag.textContent = you.has(n) ? (on ? 'on by you' : 'off by you') : (def ? 'default on' : 'default off');
+    if (you.has(n)) tag.classList.add('you');
+    row.querySelector('p').textContent = d;
+    const sw = row.querySelector('input'); sw.checked = on; sw.setAttribute('aria-label', n); sw.id = 'p' + i;
+    return row;
+  }));
+  if (total > ps.length) { const more = document.createElement('div'); more.className = 'prow c3 caption'; more.textContent = (total - ps.length) + ' more patches — filter or scroll'; list.append(more); }
+  const on = list.querySelectorAll('.sw:checked').length + restOn;
+  document.getElementById('ph').firstChild.textContent = 'Patches from ' + name + ' ';
+  document.getElementById('pc').textContent = '· ' + on + ' of ' + total + ' on';
+  document.getElementById('dc').textContent = on + ' of ' + total + ' patches';
+  document.querySelector('.dock b').textContent = name;
+}
+document.querySelectorAll('input[name=b]').forEach(r => r.addEventListener('change', () => render(r.value)));
+render('brealorg');
+// URL gate: Enable stays disabled until an APKMirror listing URL is pasted.
+const u = document.getElementById('u1'), en = document.getElementById('en');
+u.addEventListener('input', () => {
+  const ok = /^https:\/\/www\.apkmirror\.com\/apk\/[^/]+\/[^/]+\/?$/.test(u.value.trim());
+  en.disabled = !ok;
+  document.getElementById('u1h').textContent = ok ? 'Looks like an APKMirror listing. Relume checks the package name before the first build.' : 'Example: https://www.apkmirror.com/apk/<developer>/<app>/';
+});
+// master–detail on narrow widths
+const split = document.getElementById('split');
+if (location.hash === '#detail') split.classList.add('show-detail'); // open the detail pane directly on narrow screens
+document.querySelectorAll('.row').forEach(r => r.addEventListener('click', () => {
+  document.querySelectorAll('.row').forEach(x => x.setAttribute('aria-selected', x === r));
+  split.classList.add('show-detail');
+}));
+document.querySelector('[data-back]').addEventListener('click', () => split.classList.remove('show-detail'));
+document.querySelector('[data-menu]').addEventListener('click', () => document.body.classList.toggle('nav-open'));
+</script>
+</body>
+</html>

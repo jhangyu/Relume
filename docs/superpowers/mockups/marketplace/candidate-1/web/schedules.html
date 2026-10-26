@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#fafafa">
+<title>Schedules · Relume</title>
+<link rel="stylesheet" href="fluent.css">
+<style>
+.content{grid-template-columns:minmax(0,1fr)}
+.two{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:var(--spacingL);align-items:start}
+.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;align-items:end}
+.pipe{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--colorNeutralStroke2);border-radius:var(--borderRadiusMedium);overflow:hidden;margin-top:4px}
+.step{padding:10px 12px;display:grid;gap:2px;position:relative;background:var(--colorNeutralBackground1)}
+.step+.step{border-left:1px solid var(--colorNeutralStroke2)}
+.step .k{font-size:11px;font-weight:600;color:var(--colorNeutralForeground3);letter-spacing:.02em;display:flex;gap:6px;align-items:center}
+.step .k .no{width:16px;height:16px;border-radius:50%;background:var(--colorNeutralBackground5);display:grid;place-items:center;font-size:10px;color:var(--colorNeutralForeground2)}
+.step .v{font-size:var(--fontSizeBase500);line-height:28px;font-weight:600;font-variant-numeric:tabular-nums}
+.step .d{font-size:12px;color:var(--colorNeutralForeground3)}
+.step.hot .v{color:var(--colorBrandForeground1)}
+.step.bad .v{color:var(--colorStatusDangerForeground1)}
+.next{list-style:none;margin:0;padding:0;display:grid}
+.next li{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--colorNeutralStroke3);font-variant-numeric:tabular-nums}
+.next li:last-child{border-bottom:0}
+.edit>td{height:auto!important;white-space:normal!important;background:var(--colorNeutralBackground2)!important;padding:12px 16px!important;border-bottom:1px solid var(--colorNeutralStroke1)!important}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.acts{display:flex;gap:2px;justify-content:flex-end}
+.sum{font-size:12px;color:var(--colorNeutralForeground3)}
+.sum b{color:var(--colorNeutralForeground1)}
+@media (max-width:1100px){.two{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:760px){.pipe{grid-template-columns:1fr 1fr}.step+.step{border-left:0;border-top:1px solid var(--colorNeutralStroke2)}.c-x{display:none}}
+</style>
+</head>
+<body>
+<script src="../icons.js"></script>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+<aside class="side" aria-label="Primary">
+  <div class="brand"><div class="logo">R</div><span>Relume</span></div>
+  <nav class="nav">
+    <a href="marketplace.html"><svg class="i" aria-hidden="true"><use href="#i-store"/></svg><span class="lbl">Marketplace</span><span class="count">1,211</span></a>
+    <a href="apps.html"><svg class="i" aria-hidden="true"><use href="#i-apps"/></svg><span class="lbl">Apps</span><span class="count">6</span></a>
+    <a href="restyle-sample.html"><svg class="i" aria-hidden="true"><use href="#i-history"/></svg><span class="lbl">Builds</span><span class="count">1</span></a>
+    <div class="nav-sep"></div>
+    <a href="#"><svg class="i" aria-hidden="true"><use href="#i-phone"/></svg><span class="lbl">Devices</span></a>
+    <a href="#"><svg class="i" aria-hidden="true"><use href="#i-branch"/></svg><span class="lbl">Follow projects</span></a>
+    <a href="schedules.html" aria-current="page"><svg class="i" aria-hidden="true"><use href="#i-calendar"/></svg><span class="lbl">Schedules</span></a>
+    <a href="#"><svg class="i" aria-hidden="true"><use href="#i-settings"/></svg><span class="lbl">Settings</span></a>
+  </nav>
+  <div class="server"><b>Server online</b><span>Next run 14:00 (every 4 h)</span></div>
+</aside>
+<div class="main">
+  <header class="top">
+    <button class="btn ibtn hamb" aria-label="Open navigation" aria-expanded="false"><svg class="i" aria-hidden="true"><use href="#i-menu"/></svg></button>
+    <div><h1>Schedules</h1><div class="sub">One update run for all enabled apps, plus OTA pushes to phones.</div></div>
+  </header>
+  <main id="main" class="content">
+    <div class="two">
+      <section class="card" aria-labelledby="g-h">
+        <div class="card-h"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg><h2 id="g-h">Update run</h2>
+          <span class="badge b-ok" style="margin-left:8px">On</span><span style="flex:1"></span>
+          <button class="btn"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Run now</button></div>
+        <div class="card-c" style="display:grid;gap:14px">
+          <div class="form">
+            <label class="f" style="grid-column:span 2">Interval
+              <div class="seg" role="radiogroup" aria-label="Interval">
+                <label><input type="radio" name="iv"><span>1 h</span></label><label><input type="radio" name="iv"><span>2 h</span></label><label><input type="radio" name="iv" checked><span>4 h</span></label><label><input type="radio" name="iv"><span>6 h</span></label><label><input type="radio" name="iv"><span>12 h</span></label><label><input type="radio" name="iv"><span>24 h</span></label>
+              </div></label>
+            <label class="f">Aligned to <span class="hint">runs at this time + n × interval</span><input class="input" type="time" value="02:00"></label>
+            <label class="f" style="display:flex;gap:10px;align-items:center;font-weight:400"><input type="checkbox" class="sw" role="switch" checked aria-label="Schedule enabled"><span style="color:var(--colorNeutralForeground1)">Enabled</span></label>
+          </div>
+          <div class="sum">Every 4 hours from 02:00 → <b>02:00, 06:00, 10:00, 14:00, 18:00, 22:00</b> · server time Asia/Taipei (UTC+8)</div>
+          <div>
+            <div class="sec" style="padding:0;border:0"><h3>Each run <span class="muted">· last run today 10:00, 3 m 41 s, finished OK</span></h3></div>
+            <div class="pipe" role="list" aria-label="Steps of the last run">
+              <div class="step" role="listitem"><span class="k"><span class="no">1</span>REFRESH CATALOG</span><span class="v">304</span><span class="d">not modified · 297 bundles</span></div>
+              <div class="step hot" role="listitem"><span class="k"><span class="no">2</span>CHECK BUNDLES</span><span class="v">1 new</span><span class="d">Piko v3.3.0 · 6 checked</span></div>
+              <div class="step hot" role="listitem"><span class="k"><span class="no">3</span>CHECK APKMIRROR</span><span class="v">2 new</span><span class="d">Reddit, Twitter · 1 skipped (no URL)</span></div>
+              <div class="step" role="listitem"><span class="k"><span class="no">4</span>REBUILD</span><span class="v">1</span><span class="d">Reddit · 2 queued for next run</span></div>
+              <div class="step" role="listitem"><span class="k"><span class="no">5</span>NOTIFY</span><span class="v">1</span><span class="d">ntfy · “Reddit 2026.43.0 built”</span></div>
+            </div>
+          </div>
+          <div class="mbar info"><svg class="i s16" aria-hidden="true"><use href="#i-info"/></svg><span class="cap">The run replaces the per-app Build/Update switches and the old multi-target app schedules. APKMirror lookups are rate-limited; a blocked lookup marks only that app.</span></div>
+        </div>
+      </section>
+      <section class="card" aria-labelledby="n-h">
+        <div class="card-h"><svg class="i" aria-hidden="true"><use href="#i-history"/></svg><h2 id="n-h">Recent runs</h2></div>
+        <div style="overflow:auto">
+        <table class="grid">
+          <thead><tr><th>Started</th><th class="r">Took</th><th class="r c-x">New</th><th class="r">Built</th><th class="r">Failed</th><th>Result</th></tr></thead>
+          <tbody>
+            <tr><td class="num">10-26 10:00</td><td class="r num">3:41</td><td class="r num c-x">3</td><td class="r num">1</td><td class="r num">0</td><td><span class="badge b-ok">OK</span></td></tr>
+            <tr><td class="num">10-26 06:00</td><td class="r num">0:12</td><td class="r num c-x">0</td><td class="r num">0</td><td class="r num">0</td><td><span class="badge b-mute">No changes</span></td></tr>
+            <tr><td class="num">10-26 02:00</td><td class="r num">5:02</td><td class="r num c-x">2</td><td class="r num">1</td><td class="r num">1</td><td><span class="badge b-err">1 failed</span></td></tr>
+            <tr><td class="num">10-25 22:00</td><td class="r num">0:09</td><td class="r num c-x">0</td><td class="r num">0</td><td class="r num">0</td><td><span class="badge b-mute">No changes</span></td></tr>
+            <tr><td class="num">10-25 18:00</td><td class="r num">0:31</td><td class="r num c-x">—</td><td class="r num">0</td><td class="r num">0</td><td><span class="badge b-warn">Catalog stale</span></td></tr>
+          </tbody>
+        </table></div>
+        <div class="card-c" style="padding-top:8px"><div class="cap muted">“Catalog stale”: bundles.json returned 502; the last good copy (10-25 14:00) was used.</div>
+          <div class="sec" style="padding:10px 0 0;border:0"><h3>Next runs</h3></div>
+          <ul class="next cap"><li><span>Today 14:00</span><span class="muted">in 2 h 14 min</span></li><li><span>Today 18:00</span><span class="muted">in 6 h 14 min</span></li><li><span>Today 22:00</span><span class="muted">in 10 h 14 min</span></li></ul></div>
+      </section>
+    </div>
+
+    <section class="card" aria-labelledby="o-h">
+      <div class="card-h"><svg class="i" aria-hidden="true"><use href="#i-phone"/></svg><h2 id="o-h">OTA schedules</h2><span class="muted cap">push the newest builds to phones</span><span style="flex:1"></span>
+        <button class="btn primary"><svg class="i" aria-hidden="true"><use href="#i-add"/></svg><span class="hide-m">New OTA schedule</span></button></div>
+      <div style="overflow:auto">
+      <table class="grid">
+        <thead><tr><th style="width:44px"><span class="sr">Enabled</span></th><th>Name</th><th>Devices</th><th class="c-x">Repeat</th><th class="c-x">Next run</th><th class="r c-x">Retries</th><th class="c-x">Last result</th><th class="r"><span class="sr">Actions</span></th></tr></thead>
+        <tbody>
+          <tr><td><input type="checkbox" class="sw sm" role="switch" checked aria-label="Nightly phones enabled"></td><td><b style="font-weight:600">Nightly phones</b></td><td>Pixel 8 · Galaxy S23</td><td class="c-x">Daily 03:30</td><td class="c-x num">Tomorrow 03:30</td><td class="r num c-x">3</td><td class="c-x"><span class="badge b-ok">2 of 2 installed</span></td>
+            <td><div class="acts"><button class="btn ibtn sm" aria-label="Run Nightly phones now" data-tip="Run now"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg></button><button class="btn ibtn sm" aria-label="Edit Nightly phones" data-tip="Edit" aria-expanded="true"><svg class="i" aria-hidden="true"><use href="#i-edit"/></svg></button><button class="btn ibtn sm" aria-label="Delete Nightly phones" data-tip="Delete"><svg class="i" aria-hidden="true"><use href="#i-delete"/></svg></button></div></td></tr>
+          <tr class="edit"><td colspan="8">
+            <div class="form">
+              <label class="f">Name<input class="input" value="Nightly phones"></label>
+              <label class="f">Repeat<select class="select"><option>Daily</option><option>Weekly</option><option>Cron</option></select></label>
+              <label class="f">At<input class="input" type="time" value="03:30"></label>
+              <label class="f">Retries if offline<input class="input" type="number" value="3" min="0" max="10"></label>
+            </div>
+            <div style="display:grid;gap:6px;margin-top:12px"><span class="cap" style="font-weight:600">Devices <span class="muted" style="font-weight:400">· each gets its assigned apps plus their Follow-project dependencies</span></span>
+              <div class="chips"><button class="pill" aria-pressed="true">Pixel 8 <span class="n">4 apps</span></button><button class="pill" aria-pressed="true">Galaxy S23 <span class="n">2 apps</span></button><button class="pill" aria-pressed="false">Pixel Tablet <span class="n">offline</span></button></div></div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><span class="sum" style="margin-right:auto;align-self:center">Every day at <b>03:30</b> to <b>2 devices</b>, up to <b>3 retries</b> 10 min apart.</span><button class="btn subtle">Cancel</button><button class="btn primary">Save</button></div>
+          </td></tr>
+          <tr><td><input type="checkbox" class="sw sm" role="switch" aria-label="Weekend tablet enabled"></td><td><b style="font-weight:600">Weekend tablet</b></td><td>Pixel Tablet</td><td class="c-x">Weekly Sat 10:00</td><td class="c-x muted">Paused</td><td class="r num c-x">1</td><td class="c-x"><span class="badge b-warn">Device offline</span></td>
+            <td><div class="acts"><button class="btn ibtn sm" aria-label="Run Weekend tablet now" data-tip="Run now"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg></button><button class="btn ibtn sm" aria-label="Edit Weekend tablet" data-tip="Edit"><svg class="i" aria-hidden="true"><use href="#i-edit"/></svg></button><button class="btn ibtn sm" aria-label="Delete Weekend tablet" data-tip="Delete"><svg class="i" aria-hidden="true"><use href="#i-delete"/></svg></button></div></td></tr>
+        </tbody>
+      </table></div>
+    </section>
+  </main>
+</div>
+</div>
+<script src="mock.js"></script>
+</body>
+</html>

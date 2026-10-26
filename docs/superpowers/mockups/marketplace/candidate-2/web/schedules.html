@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#fafafa">
+<title>Schedules · Relume (candidate 2)</title>
+<link rel="stylesheet" href="fluent.css">
+<style>
+  .global { position: relative; overflow: hidden; border-radius: var(--borderRadius3XLarge); padding: 28px 32px; background: linear-gradient(120deg, #ebf3fc 0%, #f5f0fb 55%, #fcf0fa 100%); box-shadow: var(--shadow4); display: grid; grid-template-columns: 1fr auto; gap: 24px 32px; }
+  .global::before { content: ""; position: absolute; right: -80px; top: -100px; width: 320px; height: 320px; border-radius: 50%; background: radial-gradient(circle, rgba(135,100,184,.18), transparent 65%); }
+  .seg { justify-self: start; display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: var(--borderRadiusCircular); background: rgba(255,255,255,.75); box-shadow: inset 0 0 0 1px var(--colorNeutralStroke2); }
+  .seg label { position: relative; }
+  .seg input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
+  .seg span { display: inline-flex; align-items: center; height: 36px; padding: 0 16px; border-radius: var(--borderRadiusCircular); font-weight: 600; color: var(--colorNeutralForeground2); }
+  .seg input:checked + span { background: var(--colorBrandBackground); color: #fff; box-shadow: var(--shadow4); }
+  .seg input:focus-visible + span { outline: 2px solid var(--colorNeutralForeground1); outline-offset: 2px; }
+  .when { display: grid; gap: 4px; align-content: start; text-align: right; position: relative; }
+  .when .big { font: 600 28px/36px var(--fontFamilyDisplay); }
+  .pipe { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; position: relative; }
+  .stp { position: relative; display: grid; gap: 6px; padding: 14px 16px 14px 0; }
+  .stp .dot { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; color: #fff; background: linear-gradient(140deg, var(--c1), var(--c2)); box-shadow: 0 4px 10px rgba(0,0,0,.12); }
+  .stp:not(:last-child)::after { content: ""; position: absolute; top: 31px; left: 44px; right: 8px; height: 2px; border-radius: 1px; background: linear-gradient(90deg, var(--c1), rgba(0,0,0,.08)); }
+  .ota { display: grid; grid-template-columns: auto 1fr auto auto; gap: 16px; align-items: center; padding: 18px 20px; border-bottom: 1px solid var(--colorNeutralStroke3); }
+  .ota:last-child { border-bottom: 0; }
+  .ota .ic { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: var(--colorBrandBackground2); color: var(--colorBrandForeground1); }
+  .devs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  @media (max-width: 900px) {
+    .global { grid-template-columns: 1fr; padding: 20px; } .when { text-align: left; }
+    .pipe { grid-template-columns: 1fr; } .stp { grid-template-columns: 36px 1fr; column-gap: 12px; padding: 8px 0; }
+    .stp:not(:last-child)::after { top: 46px; left: 17px; width: 2px; height: 18px; right: auto; }
+    .stp > :not(.dot) { grid-column: 2; }
+    .stp .dot { grid-row: span 2; }
+    .ota { grid-template-columns: auto 1fr; } .ota > :nth-child(3), .ota > :nth-child(4) { grid-column: 2; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="nav" aria-label="Primary">
+    <div class="brand"><span class="logo" aria-hidden="true">R</span>Relume</div>
+    <a href="marketplace.html"><svg class="i" aria-hidden="true"><use href="#i-store"/></svg>Marketplace</a>
+    <a href="apps.html"><svg class="i" aria-hidden="true"><use href="#i-apps"/></svg>Apps<span class="count" aria-label="6 enabled apps">6</span></a>
+    <a href="schedules.html" aria-current="page"><svg class="i" aria-hidden="true"><use href="#i-schedule"/></svg>Schedules</a>
+    <div class="nav-section">Manage</div>
+    <a href="restyle-sample.html"><svg class="i" aria-hidden="true"><use href="#i-builds"/></svg>Builds</a>
+    <a href="#"><svg class="i" aria-hidden="true"><use href="#i-devices"/></svg>Devices</a>
+    <a href="#"><svg class="i" aria-hidden="true"><use href="#i-follow"/></svg>Followed projects</a>
+    <a href="#"><svg class="i" aria-hidden="true"><use href="#i-settings"/></svg>Settings</a>
+    <div class="foot"><span class="avatar" aria-hidden="true">AD</span><div class="grow"><div class="strong">Admin</div><div class="caption">relume.lan</div></div></div>
+  </nav>
+
+  <div class="main">
+    <header class="header">
+      <button class="icon-btn menu-btn" type="button" aria-label="Open navigation" onclick="document.body.classList.toggle('nav-open')"><svg class="i" aria-hidden="true"><use href="#i-menu"/></svg></button>
+      <h1 class="subtitle1">Schedules</h1>
+    </header>
+
+    <main class="content">
+      <section class="global" aria-labelledby="g-t">
+        <div style="display:grid;gap:14px;position:relative">
+          <div>
+            <h2 class="title3" id="g-t">Keep every enabled app updated</h2>
+            <p class="subtle-text" style="margin-top:4px">One schedule for all 6 enabled apps. Enabling a new app builds it at once, without waiting.</p>
+          </div>
+          <div class="seg" role="radiogroup" aria-label="Run every">
+            <label><input type="radio" name="iv"><span>1 h</span></label>
+            <label><input type="radio" name="iv"><span>3 h</span></label>
+            <label><input type="radio" name="iv" checked><span>6 h</span></label>
+            <label><input type="radio" name="iv"><span>12 h</span></label>
+            <label><input type="radio" name="iv"><span>24 h</span></label>
+            <label><input type="radio" name="iv" id="iv-c"><span>Custom</span></label>
+          </div>
+          <div class="row wrap" id="custom" hidden><span class="input" style="width:200px"><span class="sr-only">Cron expression</span><input class="mono" value="0 */6 * * *" aria-label="Cron expression"></span><span class="caption">Cron, server time (Asia/Taipei)</span></div>
+        </div>
+        <div class="when">
+          <span class="caption">Next run</span>
+          <span class="big">Today 14:00</span>
+          <span class="subtle-text">in 2 h 14 min</span>
+          <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn" type="button"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Run now</button></div>
+        </div>
+        <ol class="pipe" aria-label="Each run, in order" style="list-style:none;margin:0;padding:0">
+          <li class="stp" data-cat="productivity"><span class="dot"><svg class="i" aria-hidden="true"><use href="#i-store"/></svg></span><span class="strong">Refresh catalog</span><span class="caption">11:00 · 297 bundles, ETag unchanged</span></li>
+          <li class="stp" data-cat="personalization"><span class="dot"><svg class="i" aria-hidden="true"><use href="#i-package"/></svg></span><span class="strong">Check chosen bundles</span><span class="caption">1 new release · Piko 3.3.0</span></li>
+          <li class="stp" data-cat="social"><span class="dot"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg></span><span class="strong">Check APKMirror</span><span class="caption">1 new app version · Instagram</span></li>
+          <li class="stp" data-cat="music"><span class="dot"><svg class="i" aria-hidden="true"><use href="#i-rebuild"/></svg></span><span class="strong">Rebuild what changed</span><span class="caption">1 built, 1 failed (Twitch)</span></li>
+          <li class="stp" data-cat="maps"><span class="dot"><svg class="i" aria-hidden="true"><use href="#i-bell"/></svg></span><span class="strong">Notify</span><span class="caption">Sent to ntfy · 11:09</span></li>
+        </ol>
+      </section>
+
+      <section class="section" aria-labelledby="o-t">
+        <div class="section-head"><h2 class="subtitle1" id="o-t">OTA push schedules</h2><span class="caption grow">Push built apps to paired phones</span><button class="btn primary" type="button" onclick="document.getElementById('dlg-ota').showModal()"><svg class="i" aria-hidden="true"><use href="#i-add"/></svg>New OTA schedule</button></div>
+        <div class="card">
+          <div class="ota">
+            <span class="ic"><svg class="i i-24" aria-hidden="true"><use href="#i-devices"/></svg></span>
+            <div><div class="strong">Nightly push</div><div class="caption">Every day at 03:00 · 3 retries · next Tue 03:00</div><div class="devs"><span class="badge">Pixel 8 Pro</span><span class="badge">Galaxy Tab S9</span></div></div>
+            <span class="badge ok"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Last run OK · 2 apps</span>
+            <div class="row" style="gap:2px">
+              <label class="switch" style="margin-right:8px"><input type="checkbox" checked aria-label="Nightly push on"><span class="track"></span></label>
+              <button class="icon-btn" type="button" aria-label="Run Nightly push now" data-tip="Run now"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg></button>
+              <button class="icon-btn" type="button" aria-label="Edit Nightly push" data-tip="Edit"><svg class="i" aria-hidden="true"><use href="#i-edit"/></svg></button>
+              <button class="icon-btn" type="button" aria-label="Delete Nightly push" data-tip="Delete"><svg class="i" aria-hidden="true"><use href="#i-delete"/></svg></button>
+            </div>
+          </div>
+          <div class="ota">
+            <span class="ic" style="background:var(--colorPaletteLavenderBackground2);color:var(--colorPaletteLavenderForeground2)"><svg class="i i-24" aria-hidden="true"><use href="#i-devices"/></svg></span>
+            <div><div class="strong">Family phones, weekly</div><div class="caption">Sundays at 10:00 · 1 retry · next Sun 10:00</div><div class="devs"><span class="badge">Mom's Pixel 7a</span></div></div>
+            <span class="badge warn"><svg class="i" aria-hidden="true"><use href="#i-warning"/></svg>Phone offline last run</span>
+            <div class="row" style="gap:2px">
+              <label class="switch" style="margin-right:8px"><input type="checkbox" checked aria-label="Family phones, weekly on"><span class="track"></span></label>
+              <button class="icon-btn" type="button" aria-label="Run Family phones, weekly now" data-tip="Run now"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg></button>
+              <button class="icon-btn" type="button" aria-label="Edit Family phones, weekly" data-tip="Edit"><svg class="i" aria-hidden="true"><use href="#i-edit"/></svg></button>
+              <button class="icon-btn" type="button" aria-label="Delete Family phones, weekly" data-tip="Delete"><svg class="i" aria-hidden="true"><use href="#i-delete"/></svg></button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<dialog id="dlg-ota" aria-labelledby="do-t">
+  <h2 class="subtitle1" id="do-t">New OTA schedule</h2>
+  <div style="display:grid;gap:16px;margin-top:20px">
+    <div class="field"><label for="do-n">Name</label><span class="input"><input id="do-n" placeholder="Nightly push"></span></div>
+    <div class="row wrap" style="gap:16px">
+      <div class="field"><label for="do-r">Repeat</label><span class="select"><select class="dropdown" id="do-r" style="width:160px"><option>Hourly</option><option selected>Daily</option><option>Weekly</option><option>Cron</option></select></span></div>
+      <div class="field"><label for="do-time">At</label><span class="input" style="width:120px"><input id="do-time" type="time" value="03:00"></span></div>
+      <div class="field"><label for="do-ret">Retries</label><span class="input" style="width:90px"><input id="do-ret" type="number" min="0" max="10" value="3"></span></div>
+    </div>
+    <fieldset style="border:0;padding:0;margin:0;display:grid;gap:8px"><legend class="label" style="margin-bottom:8px">Phones</legend>
+      <label class="row"><input type="checkbox" checked>Pixel 8 Pro</label>
+      <label class="row"><input type="checkbox">Galaxy Tab S9</label>
+      <label class="row"><input type="checkbox">Mom's Pixel 7a</label>
+    </fieldset>
+  </div>
+  <div class="dlg-actions"><button class="btn" type="button" onclick="this.closest('dialog').close()">Cancel</button><button class="btn primary" type="button" onclick="this.closest('dialog').close()">Create</button></div>
+</dialog>
+
+<script src="../icons.js"></script>
+<script>
+document.querySelectorAll('[name=iv]').forEach(r => r.onchange = () => { document.getElementById('custom').hidden = !document.getElementById('iv-c').checked; });
+</script>
+</body>
+</html>
