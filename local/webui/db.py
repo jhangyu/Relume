@@ -67,7 +67,8 @@ def tx():
     try:
         yield c
     except BaseException:
-        c.execute('ROLLBACK')
+        if c.in_transaction:  # SQLite already rolled back on some errors (e.g. disk I/O); keep the original error
+            c.execute('ROLLBACK')
         raise
     c.execute('COMMIT')
 
