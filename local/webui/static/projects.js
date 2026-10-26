@@ -228,7 +228,7 @@ $('#sigAck').addEventListener('change', e => { $('#sigOk').disabled = !e.target.
 
 // ---- assign phones dialog
 const phoneList = (sel, checked) => {
-  $(sel).innerHTML = html`${S.devices.length ? S.devices.map(d => html`<label><input type="checkbox" class="cb" value="${d.id}" ${checked.includes(d.id) ? html`checked` : ''}><span>${d.name} <span class="xs muted">· ${isApp(d) ? 'App device' : d.online ? 'online' : 'offline'}</span></span><span></span></label>`)
+  $(sel).innerHTML = html`${S.devices.length ? S.devices.map(d => html`<label><input type="checkbox" value="${d.id}" ${checked.includes(d.id) ? html`checked` : ''}><span>${d.name} <span class="xs muted">· ${isApp(d) ? 'App device' : d.online ? 'online' : 'offline'}</span></span><span></span></label>`)
     : html`<p class="xs muted">No paired phones. Pair one on the Devices page.</p>`}`;
 };
 async function assignDialog(p) {
@@ -291,7 +291,7 @@ function showRelease(r, ticks) {
   $('#relTag').textContent = r.tag;
   $('#relChan').textContent = chan() === 'prerelease' ? 'pre-release' : 'stable';
   $('#relMeta').textContent = `Published ${fmt.abs(r.published_at)} · ${r.assets.length} APK assets (non-APK files hidden)`;
-  $('#assets').innerHTML = html`${r.assets.map((a, i) => html`<tr data-i="${i}"><td><input type="checkbox" class="cb" id="as${i}" ${ticks(a) ? html`checked` : ''}></td><td><label for="as${i}" class="mono xs">${a.name}</label></td><td class="xs muted c-size" style="text-align:right">${fmt.bytes(a.size)}</td></tr>`)}`;
+  $('#assets').innerHTML = html`${r.assets.map((a, i) => html`<tr data-i="${i}"><td><input type="checkbox" id="as${i}" ${ticks(a) ? html`checked` : ''}></td><td><label for="as${i}" class="mono xs">${a.name}</label></td><td class="xs muted c-size" style="text-align:right">${fmt.bytes(a.size)}</td></tr>`)}`;
   if (r.asset_regex != null) $('#rx').value = r.asset_regex;
   $('#s2').hidden = $('#s3').hidden = false;
   markAssets();

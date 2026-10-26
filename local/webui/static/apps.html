@@ -39,7 +39,10 @@
   .bopt { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--colorNeutralStroke2); border-radius: var(--borderRadiusXLarge); cursor: pointer; }
   .bopt:has(input:checked) { border: 2px solid var(--colorBrandBackground); padding: 9px 11px; background: var(--colorBrandBackground2); }
   .bopt:has(input:disabled) { opacity: .6; cursor: not-allowed; }
-  .pt { border: 1px solid var(--colorNeutralStroke2); border-radius: var(--borderRadiusXLarge); }
+  .pt { border: 1px solid var(--colorNeutralStroke2); border-radius: var(--borderRadiusXLarge); max-height: 360px; overflow: auto; }
+  #pnote:empty { display: none; }
+  .drawer-foot { flex-wrap: wrap; }
+  .dep .tile { --s: 32px; }
   .pt-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-top: 1px solid var(--colorNeutralStroke3); }
   .pt-row:first-child { border-top: 0; }
   .pt-opts { margin: 0 12px 12px; padding: 12px; border-radius: var(--borderRadiusMedium); background: var(--colorNeutralBackground3); display: grid; gap: 10px; }
@@ -64,7 +67,7 @@
 <script type="module" src="/static/apps.js"></script>
 </head>
 <body>
-<a class="sr-only" href="#main">Skip to content</a>
+<a class="skip" href="#main">Skip to content</a>
 <div class="shell">
   <aside class="side" aria-label="Primary"></aside>
 
@@ -120,6 +123,6 @@
   </div>
 </aside>
 
-<div id="toast" class="toast" role="status" aria-live="polite"><span></span></div>
+<div id="toast" class="toast" role="status" aria-live="polite"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg><span></span></div>
 </body>
 </html>

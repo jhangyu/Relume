@@ -1,10 +1,28 @@
-import { $, $$, act, api, every, fmt, html, iconTile, JOB_BADGE, logStream, shell, toast } from '/static/app.js';
+import { $, $$, act, api, every, html, icon, iconTile, JOB_BADGE, logStream, shell, toast } from '/static/app.js';
 
 const qs = new URLSearchParams(location.search);
 const ITEM = qs.get('item') ? Number(qs.get('item')) : null;
 const STEPS = ['version', 'download', 'patch', 'verify', 'store'];
 const STEP_RE = /^(\d\d:\d\d:\d\d) ::step::(\w+)(?:::(.*))?$/;
-const B = { items: new Map(), schedules: new Map(), sel: null, es: null, text: '', marks: [], last: null };
+const B = { items: new Map(), schedules: new Map(), sel: null, es: null, text: '', marks: [], last: null, pct: 0, filt: ITEM ? 'item' : '' };
+const RESULT = { success: 'Succeeded', failed: 'Failed', cancelled: 'Cancelled' };
+const DAY_MS = 86400000;
+const dayStart = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+const HM = { hour: '2-digit', minute: '2-digit', hour12: false };
+// "Today 11:05", "Yesterday 20:00", "Mon 14:00" within a week, else "Oct 3 14:00" (UI language is English)
+function when(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso), days = Math.round((dayStart(new Date()) - dayStart(d)) / DAY_MS), hm = d.toLocaleTimeString('en', HM);
+  if (days === 0) return `Today ${hm}`;
+  if (days === 1) return `Yesterday ${hm}`;
+  if (days > 1 && days < 7) return `${d.toLocaleDateString('en', { weekday: 'short' })} ${hm}`;
+  return `${d.toLocaleDateString('en', { month: 'short', day: 'numeric' })} ${hm}`;
+}
+function dur(a, b) {
+  if (!a || !b) return '—';
+  const s = Math.max(0, Math.round((Date.parse(b) - Date.parse(a)) / 1000));
+  return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s`;
+}
 
 const triggerText = j => (j.trigger === 'schedule' ? `schedule "${B.schedules.get(j.schedule_id) || j.schedule_id}"`
   : j.trigger === 'upstream' ? 'patch update' : j.trigger === 'after_build' ? 'after build' : 'manual');
@@ -19,11 +37,11 @@ async function loadRefs() {
 async function renderQueue() {
   const [r, q] = await Promise.all([api('GET', '/api/jobs?kind=build&status=running'), api('GET', '/api/jobs?kind=build&status=queued&limit=100')]);
   const rows = [...r.jobs, ...q.jobs.reverse()];
-  $('#qsum').textContent = `${r.jobs.length} running · ${q.jobs.length} waiting · 1 worker`;
-  $('#queue tbody').innerHTML = html`${rows.map(j => {
-    const it = itemOf(j), [cls, label] = JOB_BADGE[j.status];
-    return html`<tr><td class="mono" style="width:4rem"><a href="?job=${j.id}" data-sel="${j.id}">#${j.id}</a></td><td><div class="row" style="flex-wrap:nowrap">${iconTile(it, 'ico-sm')}<b style="font-weight:500">${it.label}</b><span class="caption">${it.bundle_name}</span></div></td><td class="hide-m sm muted">${triggerText(j)}</td><td><span class="badge ${cls}">${label}</span></td><td style="text-align:right"><button class="btn subtle small" type="button" data-cancel="${j.id}">${j.status === 'running' ? 'Cancel' : 'Remove'}</button></td></tr>`;
-  })}`;
+  $('#qsum').textContent = `${r.jobs.length} running · ${q.jobs.length} queued`;
+  $('#queue').innerHTML = html`<div class="label" style="padding:0 4px 4px">Queue</div>${rows.length ? rows.map(j => {
+    const it = itemOf(j), running = j.status === 'running', ver = (j.detail && j.detail.app_version) || it.app_version;
+    return html`<a class="job ${j.id === B.sel ? 'on' : ''}" href="?job=${j.id}" data-sel="${j.id}">${iconTile(it, 's40')}<div class="row"><span class="strong grow">${it.label}</span>${running ? html`<span class="caption">#${j.id}</span>` : html`<span class="badge">Queued</span>`}</div><div class="caption">${[it.bundle_name, ver].filter(Boolean).join(' · ')}</div>${running ? html`<div class="progress" role="progressbar" aria-label="${it.label} build progress" aria-valuenow="${j.id === B.sel ? B.pct : 0}" aria-valuemin="0" aria-valuemax="100"><span style="width:${j.id === B.sel ? B.pct : 0}%"></span></div>` : html`<div class="caption">Started by ${triggerText(j)}</div>`}</a>`;
+  }) : html`<div class="caption" style="padding:4px">Nothing running or waiting.</div>`}`;
   return r.jobs[0];
 }
 
@@ -45,100 +63,84 @@ function appendLines(chunk) {
     const s = document.createElement('span');
     s.className = 't';
     s.textContent = t.slice(0, 8);
-    d.append(s, document.createTextNode(t.slice(9)));
+    d.append(s, document.createTextNode(` ${t.slice(9)}`));
     log.appendChild(d);
     const m = STEP_RE.exec(t);
     if (m) B.marks.push({ at: m[1], step: m[2], detail: m[3] || '' });
   }
-  renderSteps();
-  $('#lines').textContent = `${log.children.length} lines`;
-  if ($('#follow').checked) log.scrollTop = log.scrollHeight;
-  find();
+  renderProgress();
+  if (B.follow) log.scrollTop = log.scrollHeight;
 }
 
-const secs = t => { const [h, m, s] = t.split(':').map(Number); return h * 3600 + m * 60 + s; };
-function renderSteps(final) {
+function renderProgress(final) {
   const status = final || (B.last && B.last.status);
   const cur = B.marks.length ? STEPS.indexOf(B.marks[B.marks.length - 1].step) : -1;
-  $$('#steps li').forEach((li, i) => {
-    const mark = B.marks.find(m => m.step === STEPS[i]);
-    const next = B.marks.find(m => STEPS.indexOf(m.step) === i + 1);
-    li.className = status === 'success' || i < cur ? 'done' : i === cur ? (status === 'failed' ? 'fail' : 'now') : '';
-    let small = '—';
-    if (mark && next) { const d = Math.max(0, secs(next.at) - secs(mark.at)); small = `${Math.floor(d / 60)}:${String(d % 60).padStart(2, '0')}`; }
-    if (STEPS[i] === 'patch' && mark && mark.detail && i === cur) small = mark.detail;
-    li.querySelector('small').textContent = small;
-  });
-  const pct = status === 'success' ? 100 : Math.max(0, Math.round(((cur + 0.5) / STEPS.length) * 100));
-  $('#pbar').style.width = `${pct}%`;
-  $('#pbar').parentNode.setAttribute('aria-valuenow', pct);
-}
-
-function find() {
-  const q = $('#find').value.trim().toLowerCase();
-  let n = 0;
-  $$('#log > div').forEach(d => { const h = !!q && d.textContent.toLowerCase().includes(q); d.classList.toggle('hit', h); if (h) n++; });
-  $('#hits').textContent = q ? `${n} match${n === 1 ? '' : 'es'}` : '';
+  B.pct = status === 'success' ? 100 : Math.max(0, Math.round(((cur + 0.5) / STEPS.length) * 100));
+  const bar = $('#queue .job.on .progress');
+  if (bar) { bar.setAttribute('aria-valuenow', B.pct); bar.firstElementChild.style.width = `${B.pct}%`; }
 }
 
 async function select(id) {
   if (B.es) B.es.close();
   B.text = '';
   B.marks = [];
+  B.follow = true;
   $('#log').textContent = '';
   const j = await api('GET', `/api/jobs/${id}`);
   B.sel = id;
   B.last = j;
-  const it = itemOf(j), d = j.detail || {}, [cls, label] = JOB_BADGE[j.status];
-  const tpl = document.createElement('template');
-  tpl.innerHTML = html`${iconTile(it)}`;
-  tpl.content.firstChild.id = 'bico';
-  $('#bico').replaceWith(tpl.content.firstChild);
-  $('#bt').textContent = `Build #${j.id} · ${it.label}`;
-  $('#bsrc').textContent = it.bundle_name;
-  $('#bst').className = `badge ${cls}`;
-  $('#bst').textContent = label;
+  const it = itemOf(j);
+  $('#bt').textContent = `${it.label} #${j.id} · ${j.status === 'running' ? 'live log' : 'log'}`;
   const live = j.status === 'running' || j.status === 'queued';
-  $('#bsub').textContent = `Trigger: ${triggerText(j)} · started ${fmt.abs(j.started_at)} · ${fmt.duration(j.started_at, j.finished_at)} ${live ? 'elapsed' : 'took'}`;
+  $('#bsub').textContent = `Started ${when(j.started_at)} · ${live ? 'running ' : ''}${dur(j.started_at, j.finished_at || new Date().toISOString())}`;
   $('#cancel').disabled = !live;
-  let full = null;
-  try { full = await api('GET', `/api/apps/${j.target.item_id}`); } catch (_) { /* app disabled or deleted */ }
-  $('#facts').innerHTML = html`<div><dt class="muted">Patches</dt><dd class="mono">${d.patches_version || '—'}</dd></div><div><dt class="muted">App</dt><dd class="mono">${d.app_version || '—'}</dd></div><div><dt class="muted">Arch</dt><dd class="mono">${(it.abis || []).join(', ') || '—'}</dd></div><div><dt class="muted">CLI</dt><dd class="mono">${d.cli_version || '—'}</dd></div><div><dt class="muted">APK source</dt><dd class="mono">${full && full.download ? full.download.state : '—'}</dd></div>${warnPatches(j)}`;
-  renderSteps();
+  renderProgress();
+  $$('#queue .job').forEach(a => a.classList.toggle('on', Number(a.dataset.sel) === id));
   B.es = logStream(id, appendLines, status => {
     B.last = { ...B.last, status };
-    const [c2, l2] = JOB_BADGE[status] || ['', status];
-    $('#bst').className = `badge ${c2}`;
-    $('#bst').textContent = l2;
     $('#cancel').disabled = true;
-    renderSteps(status);
+    $('#bt').textContent = `${it.label} #${j.id} · log`;
+    renderProgress(status);
     refresh();
   });
 }
 
 let oldest = null;
-const warnPatches = j => (j.detail && j.detail.failed_patches || []).length ? html`<div class="xs danger">Warning: patch failed: ${j.detail.failed_patches.join(', ')}</div>` : '';
-function fixFor(j) {
-  const it = itemOf(j);
-  return html`<button class="btn subtle small" type="button" data-retry="${j.target.item_id}" ${it.enabled === false ? html`disabled title="App is not enabled"` : ''}>Retry</button>`;
+const warnPatches = j => (j.detail && j.detail.failed_patches || []).length ? html`<span class="caption">Patch failed: ${j.detail.failed_patches.join(', ')}</span>` : '';
+
+function actions(j) {
+  const it = itemOf(j), arts = (j.detail && j.detail.artifacts) || [];
+  const log = html`<button class="icon-btn" type="button" data-sel="${j.id}" aria-label="View log of ${it.label} build ${j.id}" data-tip="View log">${icon('builds')}</button>`;
+  if (j.status === 'success' && arts.length === 1) return html`${log}<a class="icon-btn" href="${arts[0].download_url}" download aria-label="Download ${it.label} ${arts[0].version_name || ''} APK" data-tip="Download APK">${icon('download')}</a>`;
+  if (j.status === 'success' && arts.length) return html`${log}<details class="dd"><summary class="icon-btn" aria-label="Download ${it.label} APK" data-tip="Download APK">${icon('download')}</summary><div class="menu">${arts.map(a => html`<a href="${a.download_url}" download>${a.variant} · ${a.abi}</a>`)}</div></details>`;
+  if (j.status === 'success') return log;
+  return html`${log}<button class="icon-btn" type="button" data-retry="${j.target.item_id}" aria-label="Retry ${it.label} build" data-tip="Retry" ${it.enabled === false ? html`disabled` : ''}>${icon('rebuild')}</button>`;
+}
+
+function historyRow(j) {
+  const it = itemOf(j), [cls] = JOB_BADGE[j.status], d = j.detail || {}, bundle = [it.bundle_name, d.patches_version].filter(Boolean).join(' ');
+  return html`<tr data-id="${j.id}" data-q="${`${it.label} ${bundle}`.toLowerCase()}" ${j.id === B.sel ? html`aria-current="true"` : ''}><td><div class="row">${iconTile(it, 's32')}<span class="strong">${it.label}</span></div></td><td>${bundle || '—'}</td><td class="mono">${d.app_version || '—'}</td><td>${when(j.started_at)}</td><td>${dur(j.started_at, j.finished_at)}</td><td><span class="badge ${cls}">${RESULT[j.status] || j.status}</span>${j.status === 'failed' && j.reason ? html` <span class="caption danger">${j.reason}</span>` : ''} ${warnPatches(j)}</td><td style="text-align:right">${actions(j)}</td></tr>`;
+}
+
+function applySearch() {
+  const q = $('#hq').value.trim().toLowerCase();
+  $$('#hist tbody tr').forEach(tr => { tr.hidden = !!q && !tr.dataset.q.includes(q); });
 }
 
 async function renderHistory(append) {
-  const f = $('#filt').value;
   const p = new URLSearchParams({ kind: 'build', limit: '25' });
-  if (f === 'failed' || f === 'success') p.set('status', f);
-  if (f === 'item' && ITEM) p.set('item_id', ITEM);
+  if (B.filt === 'item') p.set('item_id', ITEM);
+  else if (B.filt) p.set('status', B.filt);
   if (append && oldest) p.set('before_id', oldest);
   const { jobs } = await api('GET', `/api/jobs?${p}`);
   const done = jobs.filter(j => j.status !== 'queued' && j.status !== 'running');
   if (jobs.length) oldest = jobs[jobs.length - 1].id;
-  const rows = html`${done.map(j => {
-    const it = itemOf(j), [cls, label] = JOB_BADGE[j.status], size = ((j.detail && j.detail.artifacts) || []).reduce((n, a) => n + a.size, 0);
-    return html`<tr data-id="${j.id}" ${j.id === B.sel ? html`aria-current="true"` : ''}><td class="mono">#${j.id}</td><td><div class="row" style="flex-wrap:nowrap">${iconTile(it, 'ico-sm')}<span>${it.label}</span></div></td><td class="hide-m sm muted">${triggerText(j)}</td><td><span class="badge ${cls}">${label}</span>${warnPatches(j)}${j.status === 'failed' ? html`<div class="xs danger">${j.reason || ''}</div>${fixFor(j)}` : ''}</td><td class="hide-m">${fmt.abs(j.started_at)}</td><td class="hide-m">${fmt.duration(j.started_at, j.finished_at)}</td><td class="hide-m">${size ? fmt.bytes(size) : '—'}</td><td><button class="btn subtle small" type="button" data-sel="${j.id}">View log</button></td></tr>`;
-  })}`;
+  const rows = html`${done.map(historyRow)}`;
   if (append) $('#hist tbody').insertAdjacentHTML('beforeend', html`${rows}`);
   else $('#hist tbody').innerHTML = html`${rows}`;
   $('#older').hidden = jobs.length < 25;
+  $('#hsum').textContent = `${$$('#hist tbody tr').length} builds shown`;
+  applySearch();
   return done[0];
 }
 
@@ -147,25 +149,21 @@ async function refresh() {
 }
 
 document.addEventListener('click', async e => {
-  const sel = e.target.closest('[data-sel]'), can = e.target.closest('[data-cancel]');
+  const sel = e.target.closest('[data-sel]');
   const retry = e.target.closest('[data-retry]');
   try {
     if (sel) {
       e.preventDefault();
       history.replaceState(null, '', `?job=${sel.dataset.sel}${ITEM ? `&item=${ITEM}` : ''}`);
       await select(Number(sel.dataset.sel));
-      $('[aria-labelledby=bt]').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      $('.live').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-    if (can) await act('POST', `/api/jobs/${can.dataset.cancel}/cancel`, {}, 'Cancel requested');
     if (retry) await act('POST', `/api/apps/${retry.dataset.retry}/build`, {}, 'Build queued');
-    if (can || retry) await refresh();
+    if (retry) await refresh();
   } catch (_) { /* act() showed it */ }
 });
 $('#cancel').addEventListener('click', () => act('POST', `/api/jobs/${B.sel}/cancel`, {}, 'Cancel requested').then(refresh).catch(() => {}));
-$('#log').addEventListener('scroll', () => { const l = $('#log'); if (l.scrollTop + l.clientHeight < l.scrollHeight - 24) $('#follow').checked = false; });
-$('#wrap').addEventListener('change', e => $('#log').classList.toggle('nowrap', !e.target.checked));
-$('#find').addEventListener('input', find);
-$('#copy').addEventListener('click', () => navigator.clipboard.writeText(B.text).then(() => toast('Log copied')));
+$('#log').addEventListener('scroll', () => { const l = $('#log'); B.follow = l.scrollTop + l.clientHeight >= l.scrollHeight - 24; });
 $('#dlog').addEventListener('click', () => {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([B.text], { type: 'text/plain' }));
@@ -173,13 +171,20 @@ $('#dlog').addEventListener('click', () => {
   a.click();
   URL.revokeObjectURL(a.href);
 });
-$('#filt').addEventListener('change', () => renderHistory(false).catch(() => {}));
+$('#pills').addEventListener('click', e => {
+  const b = e.target.closest('[data-filt]');
+  if (!b) return;
+  B.filt = b.dataset.filt;
+  $$('#pills .pill').forEach(x => x.setAttribute('aria-pressed', x === b));
+  renderHistory(false).catch(err => toast(err.message, 'error'));
+});
+$('#hq').addEventListener('input', applySearch);
 $('#older').addEventListener('click', () => renderHistory(true).catch(() => {}));
 
 (async () => {
   shell();
-  if (!ITEM) $('#filt option[value=item]').remove();
-  else $('#filt').value = 'item';
+  if (ITEM) $$('#pills .pill').forEach(x => x.setAttribute('aria-pressed', x.dataset.filt === 'item'));
+  else $('#pill-item').remove();
   await loadRefs();
   const running = await renderQueue();
   const newest = await renderHistory(false);

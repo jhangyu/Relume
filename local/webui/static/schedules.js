@@ -165,7 +165,7 @@ async function load() {
   const [{ schedules }, settings, g] = await Promise.all([api('GET', '/api/schedules'), api('GET', '/api/settings'), api('GET', '/api/schedule')]);
   R.ota = schedules.filter(s => s.kind === 'ota');
   R.global = g;
-  $('#srvtime').textContent = `Server time ${new Date(settings.server.now).toLocaleString([], { timeZone: settings.server.tz, weekday: 'short', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · ${settings.server.tz}`;
+  $('#srvtime').textContent = `Server time ${new Date(settings.server.now).toLocaleString('en', { timeZone: settings.server.tz, weekday: 'short', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · ${settings.server.tz}`;
   renderGlobal();
   renderList();
 }

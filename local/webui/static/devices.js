@@ -105,8 +105,8 @@ async function reconnect(d) {
 async function editAssignments(d) {
   const mine = new Set(d.assignments.map(a => a.item_id));
   const mineP = new Set(d.projects.filter(x => x.assigned).map(x => x.project_id));
-  $('#as-items').innerHTML = html`${[...D.items.values()].map(it => html`<label class="row sm"><input type="checkbox" class="cb" value="${it.id}" ${mine.has(it.id) ? html`checked` : ''}> ${it.label} <span class="xs muted mono">${it.package}</span></label>`)}`;
-  $('#as-projects').innerHTML = html`<span class="label" style="margin-top:.5rem">Followed projects</span>${D.projects.length ? D.projects.map(p => html`<label class="row sm"><input type="checkbox" class="cb" value="${p.id}" ${mineP.has(p.id) ? html`checked` : ''}> ${p.label} <span class="xs muted mono">${p.package || p.repo}</span></label>`) : html`<p class="xs muted">No followed projects.</p>`}`;
+  $('#as-items').innerHTML = html`${[...D.items.values()].map(it => html`<label class="row sm"><input type="checkbox" value="${it.id}" ${mine.has(it.id) ? html`checked` : ''}> ${it.label} <span class="xs muted mono">${it.package}</span></label>`)}`;
+  $('#as-projects').innerHTML = html`<span class="label" style="margin-top:.5rem">Followed projects</span>${D.projects.length ? D.projects.map(p => html`<label class="row sm"><input type="checkbox" value="${p.id}" ${mineP.has(p.id) ? html`checked` : ''}> ${p.label} <span class="xs muted mono">${p.package || p.repo}</span></label>`) : html`<p class="xs muted">No followed projects.</p>`}`;
   const dlg = $('#dlg-assign');
   if (await ask(dlg) !== 'ok') return;
   act('PUT', `/api/devices/${d.id}/assignments`, { item_ids: $$('#as-items input:checked').map(i => Number(i.value)), project_ids: $$('#as-projects input:checked').map(i => Number(i.value)) }, 'Apps saved').then(loadDevices).catch(() => {});

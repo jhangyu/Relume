@@ -139,7 +139,7 @@ dialog form{display:grid;max-height:92vh;grid-template-rows:auto minmax(0,1fr) a
 <div class="dlg-b"><p class="sm">The signing certificate changed between versions. Real key rotations are rare; a changed signer can also mean a tampered release. Android also refuses to update over an app with a different signer, so phones must uninstall the old app first (its data is lost).</p>
 <div><div class="lbl-s">Trusted until now</div><div class="sha" id="sigOld"></div></div>
 <div><div class="lbl-s">New in <span id="sigVer"></span></div><div class="sha new" id="sigNew"></div></div>
-<label class="row sm" style="flex-wrap:nowrap;align-items:flex-start"><input type="checkbox" class="cb" id="sigAck" style="margin-top:3px">I checked the upstream announcement and trust the new certificate.</label></div>
+<label class="row sm" style="flex-wrap:nowrap;align-items:flex-start"><input type="checkbox" id="sigAck" style="margin-top:3px">I checked the upstream announcement and trust the new certificate.</label></div>
 <div class="dlg-f"><button class="btn" value="cancel">Keep blocked</button><button class="btn primary" type="button" id="sigOk" disabled>Trust new signer</button></div>
 </form></dialog>
 <div id="toast" class="toast" role="status" aria-live="polite"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg><span></span></div>

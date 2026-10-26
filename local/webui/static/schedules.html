@@ -12,7 +12,7 @@
 .when { display: grid; gap: 4px; align-content: start; text-align: right; position: relative; }
 .when .big { font: 600 28px/36px var(--fontFamilyDisplay); }
 .pipe { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; position: relative; list-style: none; margin: 0; padding: 0; }
-.stp { position: relative; display: grid; gap: 6px; padding: 14px 16px 14px 0; }
+.stp { position: relative; display: grid; gap: 6px; align-content: start; padding: 14px 16px 14px 0; }
 .stp .dot { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; color: #fff; background: linear-gradient(140deg, var(--c1), var(--c2)); box-shadow: 0 4px 10px rgba(0,0,0,.12); }
 .stp:not(:last-child)::after { content: ""; position: absolute; top: 31px; left: 44px; right: 8px; height: 2px; border-radius: 1px; background: linear-gradient(90deg, var(--c1), rgba(0,0,0,.08)); }
 .ota { display: grid; grid-template-columns: auto 1fr auto auto; gap: 16px; align-items: center; padding: 18px 20px; border-bottom: 1px solid var(--colorNeutralStroke3); }
@@ -26,19 +26,20 @@
   .stp:not(:last-child)::after { top: 46px; left: 17px; width: 2px; height: 18px; right: auto; }
   .stp > :not(.dot) { grid-column: 2; }
   .stp .dot { grid-row: span 2; }
+  .section-head { flex-wrap: wrap; } .section-head .caption { flex-basis: 100%; order: 3; }
   .ota { grid-template-columns: auto 1fr; } .ota > :nth-child(3), .ota > :nth-child(4) { grid-column: 2; }
 }
 </style>
 <script type="module" src="/static/schedules.js"></script></head><body><a class="skip" href="#main">Skip to content</a>
 <div class="shell"><aside class="side" aria-label="Primary"></aside>
-<div class="main"><header class="header"><button class="icon-btn menu-btn" type="button" data-nav-toggle aria-label="Open navigation" title="Open navigation"><svg class="i" aria-hidden="true"><use href="#i-menu"/></svg></button><h1 class="subtitle1">Schedules</h1><span class="caption grow" style="text-align:right" id="srvtime"></span></header>
+<div class="main"><header class="header"><button class="icon-btn menu-btn" type="button" data-nav-toggle aria-label="Open navigation" title="Open navigation"><svg class="i" aria-hidden="true"><use href="#i-menu"/></svg></button><h1 class="subtitle1">Schedules</h1><span class="caption grow hide-m" style="text-align:right" id="srvtime"></span></header>
 <main id="main" class="content">
 <section class="global" aria-labelledby="g-t">
 <div style="display:grid;gap:14px;position:relative">
 <div><h2 class="title3" id="g-t">Keep every enabled app updated</h2><p class="subtle-text" style="margin-top:4px" id="g-sub"></p></div>
 <div class="seg" role="radiogroup" aria-label="Run every" id="g-seg"></div>
 <div class="row wrap" id="g-custom" hidden></div>
-<div class="row wrap" style="gap:24px"><label class="row"><span class="switch"><input type="checkbox" id="g-en"><span class="track"></span></span>Schedule on</label><label class="row"><span class="switch"><input type="checkbox" id="g-notify"><span class="track"></span></span>Notify on result (channel set in <a href="/settings.html">Settings</a>)</label><button class="btn primary" type="button" id="g-save" hidden>Save schedule</button></div>
+<div class="row wrap" style="gap:24px"><label class="row"><span class="switch"><input type="checkbox" id="g-en"><span class="track"></span></span>Schedule on</label><label class="row"><span class="switch"><input type="checkbox" id="g-notify"><span class="track"></span></span><span>Notify on result (channel set in <a href="/settings.html">Settings</a>)</span></label><button class="btn primary" type="button" id="g-save" hidden>Save schedule</button></div>
 </div>
 <div class="when"><span class="caption">Next run</span><span class="big" id="g-next">—</span><span class="subtle-text" id="g-rel"></span><span class="caption" id="g-last"></span>
 <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn" type="button" id="g-run"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Run now</button></div></div>

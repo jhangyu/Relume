@@ -3,6 +3,7 @@ import { $, $$, act, api, every, fillDownloads, fmt, html, icon, iconTile, shell
 const REFRESH_MS = 5000;
 const COLOR = /^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/;
 const ABIS = ['universal', 'arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'];
+const ENGINE_LABEL = { lspatch: 'Xposed, LSPatch', npatch: 'Xposed, NPatch' };
 const ORIGIN = { official: 'Official catalog', builtin: 'Built-in', custom: 'Custom' };
 const MODE_TEXT = { auto: 'Auto', pinned: 'Pinned', latest: 'Latest' };
 const FILTERS = [
@@ -217,7 +218,7 @@ function renderBundle() {
   sec.innerHTML = html`<h3 class="subtitle2" id="s-b">${icon('package')}Patch bundle</h3>
 <div class="bpick" role="radiogroup" aria-labelledby="s-b">${bs.map(b => {
     const id = b.bundle_id, ok = b.selectable !== false || id === D.cur.bundleId;
-    return html`<label class="bopt"><input type="radio" name="bd" data-f="bundle" value="${id}" ${id === D.cur.bundleId ? html`checked` : ''} ${ok ? '' : html`disabled`}><div class="grow"><div class="strong">${b.name}</div><div class="mono subtle-text">${b.repo || ''} ${b.tag || b.list_tag || ''} · ${b.engine}</div>${ok ? '' : html`<div class="caption">${b.not_selectable_reason}</div>`}</div><span class="origin ${b.origin}">${ORIGIN[b.origin] || b.origin}</span></label>`;
+    return html`<label class="bopt"><input type="radio" name="bd" data-f="bundle" value="${id}" ${id === D.cur.bundleId ? html`checked` : ''} ${ok ? '' : html`disabled`}><div class="grow"><div class="strong">${b.name}</div><div class="mono subtle-text">${[b.repo, b.tag || b.list_tag, ENGINE_LABEL[b.engine]].filter(Boolean).join(' · ')}</div>${ok ? '' : html`<div class="caption">${b.not_selectable_reason}</div>`}</div><span class="origin ${b.origin}">${ORIGIN[b.origin] || b.origin}</span></label>`;
   })}</div>
 <p class="hint">Switching bundle keeps the patch choices whose names match in the new bundle.</p>`;
 }
@@ -339,7 +340,7 @@ function renderDeps() {
   const ps = D.projects;
   $('#sec-deps').innerHTML = html`<h3 class="subtitle2" id="s-d">${icon('follow')}Depends on Followed projects</h3>
 <p class="hint" style="margin-top:-6px">OTA push and install bring these along.</p>
-${ps.length ? ps.map(p => html`<label class="dep"><input type="checkbox" data-f="dep" value="${p.id}" ${D.cur.deps.includes(p.id) ? html`checked` : ''}><span class="grow"><span class="strong">${p.label}</span><br><span class="mono subtle-text">${p.repo}${p.downloaded_tag ? ` · ${p.downloaded_tag}` : ''}</span></span></label>`) : html`<p class="caption">No followed project yet.</p>`}`;
+${ps.length ? ps.map(p => html`<label class="dep"><input type="checkbox" data-f="dep" value="${p.id}" ${D.cur.deps.includes(p.id) ? html`checked` : ''}><span class="tile s32" data-cat="tools" aria-hidden="true">${p.label.slice(0, 2)}</span><span class="grow"><span class="strong">${p.label}</span><br><span class="mono subtle-text">${p.repo}${p.downloaded_tag ? ` · ${p.downloaded_tag}` : ''}</span></span></label>`) : html`<p class="caption">No followed project yet.</p>`}`;
 }
 
 function renderUrls() {
