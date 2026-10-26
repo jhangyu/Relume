@@ -263,7 +263,7 @@ Web UI 是操作 Relume 的地方。用瀏覽器開啟伺服器的位址與連�
 
 手機上也能使用同樣的頁面。寬度低於 900 px 時，側邊欄變成選單（左上角的 ☰ 按鈕），表格改為卡片，按鈕文字縮成圖示。
 
-![手機上的 Apps 頁面](docs/images/webui-mobile-apps.webp) ![手機上的導覽選單](docs/images/webui-mobile-nav.webp)
+<img src="docs/images/webui-mobile-apps.webp" alt="手機上的 Apps 頁面" height="900"> <img src="docs/images/webui-mobile-nav.webp" alt="手機上的導覽選單" height="900">
 
 Web UI 附有 manifest（`display: standalone`、Relume 圖示），瀏覽器可以把它安裝成應用程式：桌面 Chrome 用「安裝應用程式」，Android Chrome 或 iOS Safari 用「加入主畫面」。開啟時不顯示瀏覽器外框。沒有離線模式，伺服器必須連得上。
 

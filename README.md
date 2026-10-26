@@ -263,7 +263,7 @@ The bottom of the sidebar shows the worker state (idle or running, queue length)
 
 The same pages work on a phone. Below 900 px width the sidebar becomes a menu (the ☰ button in the top-left corner), tables turn into cards, and button labels shrink to icons.
 
-![Apps page on a phone](docs/images/webui-mobile-apps.webp) ![Navigation menu on a phone](docs/images/webui-mobile-nav.webp)
+<img src="docs/images/webui-mobile-apps.webp" alt="Apps page on a phone" height="900"> <img src="docs/images/webui-mobile-nav.webp" alt="Navigation menu on a phone" height="900">
 
 The Web UI ships a manifest (`display: standalone`, Relume icons), so the browser can install it as an app: use "Install app" (Chrome desktop) or "Add to Home Screen" (Android Chrome, iOS Safari). It opens without browser chrome. There is no offline mode: the server must be reachable.
 
