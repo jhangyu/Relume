@@ -118,6 +118,9 @@ private val TWO_LINE_ROW = 72.dp
 private val SEARCH_BAR_HEIGHT = 56.dp
 private val AVATAR_GLYPH_SIZE = 20.dp
 private val CHIP_DOT = 10.dp
+private val CHIP_ROW_GAP = 8.dp
+/** FilterChip is 32 dp inside a 48 dp touch box: 8 dp above and below. */
+private val CHIP_TOUCH_PADDING = 8.dp
 private val CHIP_DOT_BOX = 18.dp
 private const val CATEGORY_CHIP_BORDER_MIX = 0.7f
 private const val TILE_CORNER_RATIO = 0.3f
@@ -310,6 +313,13 @@ fun Modifier.fullBleed(inset: Dp = ScreenPadding): Modifier = layout { measurabl
     layout(placeable.width - extra, placeable.height) { placeable.place(-extra / 2, 0) }
 }
 
+/** Reports [trim] less height at the top and the bottom; the content keeps its size and stays centred. */
+private fun Modifier.trimHeight(trim: Dp): Modifier = layout { measurable, constraints ->
+    val cut = trim.roundToPx()
+    val placeable = measurable.measure(constraints)
+    layout(placeable.width, placeable.height - 2 * cut) { placeable.place(0, -cut) }
+}
+
 /** Section header (m3.css `.sec-label`): 48 dp, text on the content edge. */
 @Composable
 fun SectionHeader(text: String) {
@@ -490,25 +500,29 @@ fun ChipRow(
     require(categories.isEmpty() || categories.size == labels.size) {
         "ChipRow: expected ${labels.size} categories (one per label) or none, got ${categories.size}"
     }
+    // Wrapped rows: each chip keeps its 48 dp touch box but takes only 40 dp of row height, so the visible 32 dp
+    // chips sit 8 dp apart (schedules.html `.ivs` gap); neighbouring touch boxes overlap by 8 dp.
+    val chipModifier = if (wrap) Modifier.trimHeight(CHIP_TOUCH_PADDING - CHIP_ROW_GAP / 2) else Modifier
     val chips: @Composable () -> Unit = {
-        labels.forEachIndexed { i, label -> RelumeChip(label, i == selected, categories.getOrNull(i)) { onSelect(i) } }
+        labels.forEachIndexed { i, label -> RelumeChip(label, i == selected, categories.getOrNull(i), chipModifier) { onSelect(i) } }
     }
-    val gap = Arrangement.spacedBy(8.dp)
+    val gap = Arrangement.spacedBy(CHIP_ROW_GAP)
     val padding = Modifier.fillMaxWidth().padding(horizontal = ScreenPadding, vertical = 8.dp)
     if (wrap) {
-        FlowRow(padding, horizontalArrangement = gap, verticalArrangement = gap) { chips() }
+        FlowRow(padding, horizontalArrangement = gap) { chips() }
     } else {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = ScreenPadding, vertical = 8.dp), horizontalArrangement = gap) { chips() }
     }
 }
 
 @Composable
-private fun RelumeChip(label: String, selected: Boolean, category: String?, onClick: () -> Unit) {
+private fun RelumeChip(label: String, selected: Boolean, category: String?, modifier: Modifier, onClick: () -> Unit) {
     val s = MaterialTheme.colorScheme
     if (category == null) {
         FilterChip(
             selected = selected,
             onClick = onClick,
+            modifier = modifier,
             label = { Text(label, maxLines = 1) },
             leadingIcon = if (selected) ({ Glyph(R.drawable.ms_check, s.onSecondaryContainer, BUTTON_ICON_SIZE) }) else null,
             colors = FilterChipDefaults.filterChipColors(
@@ -528,6 +542,7 @@ private fun RelumeChip(label: String, selected: Boolean, category: String?, onCl
     FilterChip(
         selected = selected,
         onClick = onClick,
+        modifier = modifier,
         label = { Text(label, maxLines = 1) },
         leadingIcon = {
             Box(Modifier.size(CHIP_DOT_BOX), contentAlignment = Alignment.Center) {
