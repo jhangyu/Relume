@@ -14,7 +14,7 @@ from . import db
 
 VERSION = os.environ.get('RELUME_VERSION', 'dev')
 STARTED_AT = db.utcnow()
-MODULES = ('catalog', 'upstream', 'projects', 'build', 'devices', 'ota', 'notify')
+MODULES = ('catalog', 'upstream', 'projects', 'build', 'devices', 'ota', 'notify', 'market')
 CORE = ('auth', 'jobs', 'scheduler', 'settings')
 STATIC = pathlib.Path(__file__).with_name('static')
 MUTATING = {'POST', 'PUT', 'PATCH', 'DELETE'}
@@ -249,6 +249,10 @@ class Handler(BaseHTTPRequestHandler):
         return body
 
     def _json(self, status, obj, headers=None):
+        if status == 204:  # No Content: a body would be read as the start of the next response
+            self.send_response(204)
+            self.end_headers()
+            return
         body = json.dumps(obj).encode()
         self.send_response(status)
         self.send_header('Content-Type', 'application/json')
