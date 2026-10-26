@@ -82,7 +82,8 @@ def list_marketplace(req):
     out = []
     for a in rows[(page - 1) * per_page:page * per_page]:
         app_id, on = items.get(a["package"], (None, False))
-        out.append({"package": a["package"], "name": a["name"], "category": a["category"], "icon_url": _icon(a["package"]),
+        out.append({"package": a["package"], "name": a["name"], "category": a["category"], "description": a["description"],
+                    "icon_url": _icon(a["package"]),
                     "bundle_count": a["bundle_count"], "stars": a["stars"], "origins": a["origins"],
                     "updated_at": a["updated_at"], "app_id": app_id, "enabled": on})
     return 200, {"total": len(rows), "page": page, "per_page": per_page,

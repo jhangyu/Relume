@@ -57,8 +57,8 @@ class MarketplaceTest(MarketCase):
         self.assertEqual((body['total'], body['page'], body['per_page'], body['feed']), (5, 1, 50, FEED))
         self.assertEqual(body['categories'], [{'name': 'Social', 'count': 2}, {'name': 'Video', 'count': 2}])
         yt = body['apps'][4]
-        self.assertEqual((yt['app_id'], yt['enabled'], yt['icon_url'], yt['stars']),
-                         (self.yt, True, '/api/apps/com.a.youtube/icon', 900))
+        self.assertEqual((yt['app_id'], yt['enabled'], yt['icon_url'], yt['stars'], yt['description']),
+                         (self.yt, True, '/api/apps/com.a.youtube/icon', 900, 'YouTube app'))
         self.assertEqual([(a['app_id'], a['enabled']) for a in body['apps'][1:3]], [(None, False), (self.rd, False)])
         self.assertEqual(self.pkgs('sort=bundles')[0][:2], ['com.c.tiktok', 'com.b.reddit'])
         self.assertEqual(self.pkgs('sort=stars')[0], ['com.a.youtube', 'com.e.music', 'com.b.reddit', 'com.d.custom',
