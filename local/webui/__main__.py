@@ -1,9 +1,9 @@
 import os
 import sys
 
-from . import auth, catalog, db, jobs, scheduler, server, settings
+from . import auth, db, jobs, scheduler, server, settings
 
-USAGE = 'usage: python3 -m webui [serve|export-seed]'
+USAGE = 'usage: python3 -m webui [serve]'
 
 
 # Modes of the data subdirectories, set at every boot so an empty volume needs no host preparation. The server
@@ -30,12 +30,10 @@ def boot(start=False, names=None):
     prepare_data()
     db.migrate()
     mods = server.load_modules(server.MODULES if names is None else names)
-    by_name = {m.__name__.rsplit('.', 1)[1]: m for m in mods}
-    if 'catalog' in by_name:
-        by_name['catalog'].seed_import()
     for m in mods:
         if hasattr(m, 'register'):
             m.register()
+    scheduler.ensure_update()
     if start:
         auth.apply_env_password()
         settings.check_token_file()
@@ -51,10 +49,6 @@ def boot(start=False, names=None):
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     cmd = argv[0] if argv else 'serve'
-    if cmd == 'export-seed':
-        boot()
-        sys.stdout.write(catalog.seed_text())
-        return 0
     if cmd != 'serve':
         print(USAGE, file=sys.stderr)
         return 2

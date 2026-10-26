@@ -11,8 +11,6 @@ class StartupTest(DataTestCase):
         m.ROUTES = []
         m.register = lambda: calls.append(name + '.register')
         m.start = lambda: calls.append(name + '.start')
-        if name == 'catalog':
-            m.seed_import = lambda: calls.append('catalog.seed_import')
         self.enterContext(mock.patch.dict(sys.modules, {'webui.' + name: m}))
         return name
 
@@ -22,7 +20,7 @@ class StartupTest(DataTestCase):
         before = threading.active_count()
         with mock.patch.dict('os.environ', {'RELUME_DATA': str(self.data)}):
             cli.boot(names=names)
-        self.assertEqual(calls, ['catalog.seed_import', 'catalog.register', 'build.register'])
+        self.assertEqual(calls, ['catalog.register', 'build.register'])
         self.assertEqual(threading.active_count(), before)
 
     def test_boot_start(self):

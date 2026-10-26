@@ -6,16 +6,16 @@ import threading
 import traceback
 from zoneinfo import ZoneInfo
 
-from . import build, db, devices, jobs, upstream
+from . import db, devices, jobs
 from .server import HttpError, is_int
 
 UTC = dt.timezone.utc
 AT = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
 OPTION_KEYS = {
-    'app': {'update': bool, 'build': bool, 'force': bool, 'notify': bool},
+    'update': {'notify': bool},
     'ota': {'retries': int, 'notify': bool},
 }
-TARGET_KEYS = {'app': ('item_ids', 'project_ids'), 'ota': ('device_ids',)}
+UPDATE_DEFAULT = ('Update', 'update', {}, {'every': 'day', 'at': '09:00'}, {'notify': True})
 EXPAND = {'ota': lambda t: [{'device_id': i} for i in devices.resolve_devices(t)]}
 _wake = threading.Event()
 
@@ -73,9 +73,13 @@ def _check_spec(spec):
 
 
 def _check_target(kind, t):
+    if kind == 'update':
+        if t != {}:
+            raise HttpError(400, f'invalid target: expected {{}} for the update schedule, got {t!r}')
+        return t
     if t == {'all': True}:
         return t
-    if not isinstance(t, dict) or not t or not set(t) <= set(TARGET_KEYS[kind]):
+    if not isinstance(t, dict) or not t or not set(t) <= {'device_ids'}:
         raise HttpError(400, 'invalid target')
     for ids in t.values():
         if not isinstance(ids, list) or not ids or not all(is_int(v) and v >= 1 for v in ids):
@@ -96,12 +100,8 @@ def _check_options(kind, o):
             raise HttpError(400, f'invalid option {k}')
         if k == 'retries' and not 0 <= v <= 5:
             raise HttpError(400, 'invalid option retries')
-    if kind == 'app':
-        o = {'update': False, 'build': False, 'force': False, 'notify': True, **o}
-        if not (o['update'] or o['build']):
-            raise HttpError(400, 'invalid options: update or build is required')
-        if o['force'] and (o['update'] or not o['build']):
-            raise HttpError(400, 'invalid option force: only with build and without update')
+    if kind == 'update':
+        o = {'notify': True, **o}
     return o
 
 
@@ -139,31 +139,18 @@ def create(name, kind, target, spec, options=None, enabled=True):
     return sid
 
 
-def _app_jobs(sid, t, o):
-    """Spec 4.1 fire table. Update work: items with Update on and targeted projects. Build work: items with Build on."""
-    c = db.conn()
-    items = c.execute('SELECT id, enabled, auto_update FROM item ORDER BY id').fetchall()
-    if t.get('all'):
-        iids, pids = {r['id'] for r in items}, {r[0] for r in c.execute('SELECT id FROM project')}
-    else:
-        iids, pids = set(t.get('item_ids', ())), set(t.get('project_ids', ()))
-    targeted = [r for r in items if r['id'] in iids]
-    ids = []
-    if o['update']:
-        ids = upstream.item_update_jobs([r['id'] for r in targeted if r['auto_update']], sorted(pids), 'schedule', sid,
-                                        {'rebuild': o['build'], 'notify': o['notify']})
-    elif o['build']:
-        for r in targeted:
-            if r['enabled'] and (o['force'] or build.needs_build(r['id'])):
-                ids.append(jobs.enqueue('build', {'item_id': r['id']}, 'schedule', sid, {'notify': o['notify']}))
-    return ids
+def ensure_update():
+    """The one global update schedule (spec §3, apps part §2.4): migration 010 carries an old row over; a fresh
+    database gets the daily default here, so its next_run_at is computed."""
+    if db.conn().execute("SELECT 1 FROM schedules WHERE kind='update'").fetchone() is None:
+        create(*UPDATE_DEFAULT)
 
 
 def fire(row, now):
     kind, opts = row['kind'], json.loads(row['options'])
     target = json.loads(row['target'])
-    if kind == 'app':
-        ids = _app_jobs(row['id'], target, opts)
+    if kind == 'update':
+        ids = [jobs.enqueue('upstream', {'all': True}, 'schedule', row['id'], {'notify': opts['notify']})]
     else:
         ids = [jobs.enqueue(kind, t, 'schedule', row['id'], opts) for t in EXPAND[kind](target)]
     if not ids:
@@ -203,10 +190,19 @@ def start():
 
 
 def _row(sid):
+    """OTA schedule row for /api/schedules*; the update row is served by /api/schedule (spec §6.3)."""
     r = db.conn().execute('SELECT * FROM schedules WHERE id=?', (sid,)).fetchone()
     if r is None:
         raise HttpError(404, 'schedule not found')
+    if r['kind'] != 'ota':
+        raise HttpError(409, f"schedule {sid} has kind {r['kind']}: /api/schedules serves kind ota only, "
+                             f"use /api/schedule")
     return r
+
+
+def _require_ota(kind):
+    if kind != 'ota':
+        raise HttpError(400, f'invalid kind: expected ota, got {kind!r}')
 
 
 def _to_json(r, now):
@@ -223,11 +219,13 @@ def _to_json(r, now):
 
 def list_route(req):
     now = _now()
-    return 200, {'schedules': [_to_json(r, now) for r in db.conn().execute('SELECT * FROM schedules ORDER BY id')]}
+    rows = db.conn().execute("SELECT * FROM schedules WHERE kind='ota' ORDER BY id")
+    return 200, {'schedules': [_to_json(r, now) for r in rows]}
 
 
 def create_route(req):
     b = req.json
+    _require_ota(b.get('kind'))
     return 201, {'id': create(b.get('name'), b.get('kind'), b.get('target'), b.get('spec'),
                                b.get('options'), b.get('enabled', True))}
 
@@ -236,6 +234,7 @@ def update_route(req):
     r = _row(req.params['id'])
     cur = {k: json.loads(r[k]) for k in ('target', 'spec', 'options')}
     cur.update(name=r['name'], kind=r['kind'], enabled=bool(r['enabled']))
+    _require_ota(req.json.get('kind', 'ota'))
     v = _validate(req.json, cur)
     nxt = db.iso(next_run(v['spec'], _now(), db.parse_iso(r['last_run_at']))) if v['enabled'] else None
     with db.tx() as c:

@@ -14,8 +14,7 @@ from . import db, settings
 from .server import HttpError, SSEResponse
 
 OPTION_DEFAULTS = {
-    'upstream': {'rebuild': False, 'notify': True},
-    'appcheck': {'rebuild': False, 'notify': True},
+    'upstream': {'notify': True},
     'build': {'notify': True},
     'ota': {'retries': 0, 'mode': 'normal', 'package': None, 'notify': True},
 }
