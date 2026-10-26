@@ -108,7 +108,7 @@ private fun ColumnScope.RootContent() {
         return
     }
     val current = stack.last()
-    val account = Account(model.device?.name?.let(::initials)?.uppercase().orEmpty().ifEmpty { "R" }) {
+    val account = Account {
         if (stack.last() != Screen.Settings) stack = stack + Screen.Settings
     }
     val back = { stack = stack.dropLast(1) }

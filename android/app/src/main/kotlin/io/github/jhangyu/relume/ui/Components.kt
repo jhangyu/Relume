@@ -47,6 +47,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Surface
@@ -115,6 +116,7 @@ private val GROUP_TRAILING = 16.dp
 private val ONE_LINE_ROW = 56.dp
 private val TWO_LINE_ROW = 72.dp
 private val SEARCH_BAR_HEIGHT = 56.dp
+private val AVATAR_GLYPH_SIZE = 20.dp
 private val CHIP_DOT = 10.dp
 private val CHIP_DOT_BOX = 18.dp
 private const val CATEGORY_CHIP_BORDER_MIX = 0.7f
@@ -445,23 +447,23 @@ fun AppBar(title: String, subtitle: String? = null, onBack: (() -> Unit)? = null
     }
 }
 
-/** The signed-in account as the top app bars show it: avatar initials and what a tap does (open Settings). */
-class Account(val initials: String, val openSettings: () -> Unit)
+/** The signed-in account as the top app bars show it: what a tap on the avatar does (open Settings). */
+class Account(val openSettings: () -> Unit)
 
 val LocalAccount = staticCompositionLocalOf<Account> { error("RelumeRoot provides LocalAccount above every screen") }
 
-/** Account avatar of the top app bar; opens Settings. */
+/** Account avatar of the top app bar: a fixed person glyph (the server does not tell the username); opens Settings. */
 @Composable
 fun Avatar() {
     val account = LocalAccount.current
     Box(Modifier.size(TouchTarget), contentAlignment = Alignment.Center) {
         Box(
             Modifier.size(32.dp).clip(CircleShape).background(MaterialTheme.relume.lavender.container)
-                .semantics { contentDescription = "Phone settings and account" }
+                .semantics { contentDescription = "Account and settings" }
                 .clickable(role = Role.Button, onClick = account.openSettings),
             contentAlignment = Alignment.Center,
         ) {
-            Txt(account.initials, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.relume.lavender.onContainer)
+            Glyph(R.drawable.ms_person, MaterialTheme.relume.lavender.onContainer, AVATAR_GLYPH_SIZE)
         }
     }
 }
@@ -580,17 +582,22 @@ fun SearchBar(
     )
 }
 
-/** Two-line list row: leading slot, headline, supporting text, trailing slot; min 56/72 dp, insets 16 / 24 dp. */
+/**
+ * Two-line list row: leading slot, headline, supporting text or [supportingContent] (e.g. a tag and a count), trailing
+ * slot; min 56/72 dp, insets 16 / 24 dp.
+ */
 @Composable
 fun ListRow(
     headline: String,
     modifier: Modifier = Modifier,
     supporting: String? = null,
+    supportingContent: @Composable (RowScope.() -> Unit)? = null,
     leading: @Composable (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null,
 ) {
+    require(supporting == null || supportingContent == null) { "ListRow '$headline': expected supporting or supportingContent, got both" }
     Row(
-        modifier.fillMaxWidth().heightIn(min = if (supporting == null) ONE_LINE_ROW else TWO_LINE_ROW)
+        modifier.fillMaxWidth().heightIn(min = if (supporting == null && supportingContent == null) ONE_LINE_ROW else TWO_LINE_ROW)
             .padding(start = LIST_LEADING, end = LocalListTrailing.current, top = 8.dp, bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -599,6 +606,11 @@ fun ListRow(
         Column(Modifier.weight(1f)) {
             Txt(headline, maxLines = 1)
             if (supporting != null) Txt(supporting, style = MaterialTheme.typography.bodyMedium, color = muted(), maxLines = 2)
+            if (supportingContent != null) {
+                ProvideTextStyle(MaterialTheme.typography.bodyMedium.copy(color = muted())) {
+                    Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, content = supportingContent)
+                }
+            }
         }
         trailing?.invoke()
     }
@@ -653,7 +665,10 @@ fun CheckRow(text: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     }
 }
 
-/** Outlined text field (56 dp); focus colour = secondary. A secret field gets a Show/Hide text button. */
+/**
+ * Outlined text field (56 dp); focus colour = secondary. A secret field gets a Show/Hide text button, any other field
+ * may take a [trailing] icon button inside it. [hint] is the supporting text under the field ([error] replaces it).
+ */
 @Composable
 fun Field(
     label: String,
@@ -667,8 +682,12 @@ fun Field(
     hint: String? = null,
     enabled: Boolean = true,
     keyboard: KeyboardOptions = KeyboardOptions.Default,
+    trailing: @Composable (() -> Unit)? = null,
 ) {
+    require(!(secret && trailing != null)) { "Field '$label': a secret field owns its trailing Show/Hide button, got a trailing slot too" }
     val s = MaterialTheme.colorScheme
+    // tokens.md section 3: the link field icon is amber; other leading icons stay onSurfaceVariant.
+    val leadingTint = if (leadingIcon == R.drawable.ms_link) MaterialTheme.relume.linkGlyph else s.onSurfaceVariant
     var reveal by remember { mutableStateOf(false) }
     OutlinedTextField(
         value = value,
@@ -677,8 +696,8 @@ fun Field(
         enabled = enabled,
         singleLine = true,
         label = { Text(label) },
-        leadingIcon = leadingIcon?.let { icon -> { Glyph(icon) } },
-        trailingIcon = if (secret) ({ TextButton({ reveal = !reveal }) { Text(if (reveal) "Hide" else "Show", color = s.secondary) } }) else null,
+        leadingIcon = leadingIcon?.let { icon -> { Glyph(icon, leadingTint) } },
+        trailingIcon = if (secret) ({ TextButton({ reveal = !reveal }) { Text(if (reveal) "Hide" else "Show", color = s.secondary) } }) else trailing,
         textStyle = if (mono) MONO else MaterialTheme.typography.bodyLarge,
         isError = error != null,
         supportingText = (error ?: hint)?.let { text -> { Text(text) } },
