@@ -1,7 +1,7 @@
 // Followed projects page (spec 2026-10-23-follow-project-design §8).
 import { $, $$, act, api, ask, every, fmt, html, iconTile, shell, toast } from '/static/app.js';
 
-const S = { projects: [], devices: [], items: new Map(), schedules: [], running: [], queued: [], ota: [], cur: null, filter: 'all', q: '' };
+const S = { projects: [], devices: [], items: new Map(), schedule: null, running: [], queued: [], ota: [], cur: null, filter: 'all', q: '' };
 const byId = id => S.projects.find(p => p.id === id);
 const dpOf = (d, pid) => (d.projects || []).find(x => x.project_id === pid);
 const phonesOf = p => S.devices.filter(d => dpOf(d, p.id));
@@ -11,21 +11,21 @@ const attn = p => !!(p.signer_alert || p.check_error || behind(p));
 const jobFor = (list, p) => list.some(j => j.target && j.target.upstream_id === p.upstream_id);
 const initials = s => (s || '?').split(/[\s_\-·/]+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 const hue = s => [...(s || '')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
-const tile = (p, cls = '') => html`<span class="ico ${cls}" style="background:hsl(${hue(p.repo)} 55% 42%)" aria-hidden="true">${initials(p.label)}</span>`;
+const tile = (p, cls = '') => html`<span class="tile ${cls}" style="--c1:hsl(${hue(p.repo)} 60% 55%);--c2:hsl(${hue(p.repo) + 40} 60% 42%)" aria-hidden="true">${initials(p.label)}</span>`;
 const sha = s => (s || '').toUpperCase().match(/../g)?.join(':') || '';
-const pull = p => api('POST', `/api/upstreams/${p.upstream_id}/pull`, { rebuild: false });
-const WARN = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>`;
+const pull = p => api('POST', `/api/projects/${p.id}/pull`, {});
+const WARN = html`<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>`;
 
 function chips(p) {
   const c = [];
-  if (p.signer_alert) c.push(['b-err', 'Signer changed']);
-  if (p.auto_push && p.signer_alert) c.push(['b-mute plain', 'Auto-push paused']);
-  if (p.check_error) c.push(['b-err', 'Check error']);
-  if (jobFor(S.running, p)) c.push(['b-info', 'Downloading']);
-  if (jobFor(S.queued, p)) c.push(['b-mute', 'Queued']);
-  if (behind(p)) c.push(['b-warn', 'Update available']);
-  if (!p.device_ids.length && !p.item_ids.length) c.push(['b-mute plain', 'No phones']);
-  if (!c.length && p.downloaded_tag && p.downloaded_tag === p.latest_tag) c.push(['b-ok', 'Up to date']);
+  if (p.signer_alert) c.push(['err', 'Signer changed']);
+  if (p.auto_push && p.signer_alert) c.push(['', 'Auto-push paused']);
+  if (p.check_error) c.push(['err', 'Check error']);
+  if (jobFor(S.running, p)) c.push(['brand', 'Downloading']);
+  if (jobFor(S.queued, p)) c.push(['', 'Queued']);
+  if (behind(p)) c.push(['warn', 'Update available']);
+  if (!p.device_ids.length && !p.item_ids.length) c.push(['', 'No phones']);
+  if (!c.length && p.downloaded_tag && p.downloaded_tag === p.latest_tag) c.push(['ok', 'Up to date']);
   return c.map(([cls, t]) => html`<span class="badge ${cls}">${t}</span>`);
 }
 
@@ -62,8 +62,8 @@ function rows() {
 
 function summary() {
   const last = S.projects.map(p => p.checked_at).filter(Boolean).sort().pop();
-  const sch = S.schedules.find(s => s.enabled && s.kind === 'upstream' && s.target && s.target.all);
-  $('#lastCheck').innerHTML = html`Last check <b>${last ? fmt.abs(last) : 'never'}</b> · ${sch ? `next ${fmt.abs(sch.next_run_at)} via schedule "${sch.name}"` : 'no schedule checks projects'}`;
+  const sch = S.schedule.enabled ? S.schedule : null;
+  $('#lastCheck').innerHTML = html`Last check <b>${last ? fmt.abs(last) : 'never'}</b> · ${sch ? `next ${fmt.abs(sch.next_run_at)} via the global schedule` : 'the global schedule is off'}`;
   $('#disk').textContent = fmt.bytes(S.projects.reduce((n, p) => n + (p.disk_bytes || 0), 0));
 }
 
@@ -92,25 +92,25 @@ function pane() {
   const asg = assignedOf(p), blocked = !!p.signer_alert;
   const behindAsg = asg.filter(d => dpOf(d, p.id).update_available);
   const ota = otaRows(p);
-  const usedBy = p.item_ids.map(id => S.items.get(id) || { id, label: `item ${id}` });
+  const usedBy = p.item_ids.map(id => S.items.get(id) || { id, label: `app ${id}` });
   el.innerHTML = html`<div class="pane-h"><div class="row between" style="flex-wrap:nowrap;align-items:flex-start"><div class="row" style="flex-wrap:nowrap;gap:.75rem;min-width:0">${tile(p)}<div style="min-width:0"><h2>${p.label}</h2><span class="xs muted mono">github.com/${p.repo}</span></div></div>
-<button class="btn btn-ghost btn-icon btn-sm pane-close" type="button" data-pane-close aria-label="Close details"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
-<div class="chiprow">${chips(p)}<span class="badge b-mute plain">${p.channel === 'prerelease' ? 'Pre-release' : 'Stable'} channel</span></div>
-<div class="row"><details class="dd"><summary class="btn btn-accent btn-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>Install to phone</summary><div class="menu" style="left:0;right:auto;min-width:270px">${blocked ? html`<p class="xs danger" style="padding:.5rem">Blocked: confirm the new signer first.</p>`
+<button class="icon-btn small pane-close" type="button" data-pane-close aria-label="Close details"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+<div class="chiprow">${chips(p)}<span class="badge">${p.channel === 'prerelease' ? 'Pre-release' : 'Stable'} channel</span></div>
+<div class="row"><details class="dd"><summary class="btn primary small"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg>Install to phone</summary><div class="menu" style="left:0;right:auto;min-width:270px">${blocked ? html`<p class="xs danger" style="padding:.5rem">Blocked: confirm the new signer first.</p>`
     : asg.length ? asg.map(d => { const x = dpOf(d, p.id); return html`<button type="button" data-install="${d.id}" ${d.online ? '' : html`disabled style="opacity:.5"`}><span class="dot ${d.online ? 'on' : 'off'}"></span><span class="grow">${d.name}<br><span class="xs muted mono">${x.available_abi || '—'} → ${x.available_file || 'no match'}</span></span>${d.online ? '' : html`<span class="xs muted">${isApp(d) ? 'App device' : 'offline'}</span>`}</button>`; })
       : html`<p class="xs muted" style="padding:.5rem">No phones assigned yet. Use ⋯ → Assign phones.</p>`}</div></details>
-<button class="btn btn-outline btn-sm" type="button" data-check>Check now</button>
-<details class="dd" style="margin-left:auto"><summary class="btn btn-ghost btn-sm btn-icon" aria-label="More actions"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></summary><div class="menu"><button type="button" data-edit>Edit assets, regex &amp; channel</button><button type="button" data-assign>Assign phones</button><hr>${p.item_ids.length ? html`<button type="button" disabled style="opacity:.55" class="danger">Unfollow · used by ${p.item_ids.length} items</button>` : html`<button type="button" class="danger" data-unfollow>Unfollow</button>`}</div></details></div></div>
-${p.check_error ? html`<div class="pane-s"><div class="alert err" role="alert"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg><span><b>Last check failed.</b> ${p.check_error}</span></div><div class="field"><label class="lbl" style="font-size:.75rem" for="rxEdit">Asset regex</label><div class="row" style="flex-wrap:nowrap"><input id="rxEdit" class="input rx" data-rx-edit value="${p.asset_regex}" spellcheck="false"><button class="btn btn-outline btn-sm" type="button" data-rx-save>Save &amp; check</button></div></div></div>` : ''}
+<button class="btn small" type="button" data-check>Check now</button>
+<details class="dd" style="margin-left:auto"><summary class="small icon-btn" aria-label="More actions"><svg class="i" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></summary><div class="menu"><button type="button" data-edit>Edit assets, regex &amp; channel</button><button type="button" data-assign>Assign phones</button><hr>${p.item_ids.length ? html`<button type="button" disabled style="opacity:.55" class="danger">Unfollow · used by ${p.item_ids.length} items</button>` : html`<button type="button" class="danger" data-unfollow>Unfollow</button>`}</div></details></div></div>
+${p.check_error ? html`<div class="pane-s"><div class="alert err" role="alert"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg><span><b>Last check failed.</b> ${p.check_error}</span></div><div class="field"><label class="label" style="font-size:.75rem" for="rxEdit">Asset regex</label><div class="row" style="flex-wrap:nowrap"><input id="rxEdit" class="input rx" data-rx-edit value="${p.asset_regex}" spellcheck="false"><button class="btn small" type="button" data-rx-save>Save &amp; check</button></div></div></div>` : ''}
 ${behindAsg.length && !p.auto_push ? html`<div class="pane-s"><div class="alert warn">${WARN}<span>${behindAsg.map(d => `${d.name} is still on ${dpOf(d, p.id).installed_tag}`).join('; ')}. Auto-push is off; it updates on the next scheduled OTA, or use Install to phone.</span></div></div>` : ''}
-<div class="pane-s"><div class="row between"><span class="lbl-s">APK signer · SHA-256</span>${blocked ? html`<span class="badge b-err">Changed</span>` : p.signer_sha256 ? html`<span class="badge b-ok">Trusted since ${p.signer_since}</span>` : ''}</div>
-${blocked ? html`<div class="alert err" role="alert">${WARN}<span><b>${p.downloaded_tag} is signed with a different certificate.</b> It is downloaded but quarantined: auto-push, scheduled OTA and Install are blocked until you confirm.</span></div><div class="xs muted">Trusted (first seen ${p.signer_since})</div><div class="sha">${sha(p.signer_sha256)}</div><div class="xs muted">New in ${p.downloaded_tag}</div><div class="sha new">${sha(p.signer_alert)}</div><div class="row"><button class="btn btn-sm btn-outline danger" type="button" data-sig>Review &amp; confirm signer…</button></div>`
+<div class="pane-s"><div class="row between"><span class="lbl-s">APK signer · SHA-256</span>${blocked ? html`<span class="badge err">Changed</span>` : p.signer_sha256 ? html`<span class="badge ok">Trusted since ${p.signer_since}</span>` : ''}</div>
+${blocked ? html`<div class="alert err" role="alert">${WARN}<span><b>${p.downloaded_tag} is signed with a different certificate.</b> It is downloaded but quarantined: auto-push, scheduled OTA and Install are blocked until you confirm.</span></div><div class="xs muted">Trusted (first seen ${p.signer_since})</div><div class="sha">${sha(p.signer_sha256)}</div><div class="xs muted">New in ${p.downloaded_tag}</div><div class="sha new">${sha(p.signer_alert)}</div><div class="row"><button class="btn small danger" type="button" data-sig>Review &amp; confirm signer…</button></div>`
     : p.signer_sha256 ? html`<div class="sha">${sha(p.signer_sha256)}</div><p class="xs muted">Recorded on first download (trust on first use). If a later version has a different signer, auto-push stops until you confirm.</p>`
       : html`<p class="xs muted">Recorded after the first download (trust on first use). If a later version has a different signer, auto-push stops until you confirm.</p>`}</div>
 <div class="pane-s"><span class="lbl-s">Kept versions (${p.versions.length} of 2)</span><p class="xs muted mono" style="word-break:break-all" title="Asset regex">regex /${p.asset_regex}/</p>
-${p.versions.length ? p.versions.map(v => html`<div class="rel"><div class="rel-h"><span><span class="tag">${v.tag}</span>${v.tag === p.latest_tag && p.latest_published_at ? html` <span class="xs muted">· ${fmt.abs(p.latest_published_at)}</span>` : ''}</span>${v.current && blocked ? html`<span class="badge b-err">Quarantined</span>` : v.current ? html`<span class="badge b-ok">Current</span>` : html`<span class="badge b-mute plain">Previous</span>`}</div><ul class="alist2">${v.files.map(f => html`<li><span class="mono" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${f.name}">${f.name}</span><span class="abi ${f.abi === 'universal' ? 'u' : ''}">${f.abi || '?'}</span><span class="muted">${fmt.bytes(f.size)}</span></li>`)}</ul></div>`) : html`<p class="empty">Nothing downloaded yet.</p>`}</div>
-<div class="pane-s"><span class="lbl-s">Assigned phones</span>${asg.length ? html`<ul class="deps">${asg.map(d => { const x = dpOf(d, p.id); return html`<li><span class="dot ${d.online ? 'on' : 'off'}" aria-hidden="true"></span><span class="grow">${d.name} <span class="xs muted mono">${x.available_abi || '—'} → ${x.available_file || 'no match'}</span></span>${x.update_available ? html`<span class="badge b-warn">behind</span>` : !x.installed_tag ? html`<span class="xs muted">not installed</span>` : x.installed_tag === x.available_tag ? html`<span class="xs muted">current</span>` : html`<span class="xs muted mono">${x.installed_tag}</span>`}</li>`; })}</ul>` : html`<p class="empty">Not assigned to any phone. New versions still download; nothing installs.</p>`}</div>
-<div class="pane-s"><span class="lbl-s">Used as dependency by</span>${usedBy.length ? html`<ul class="deps">${usedBy.map(it => html`<li>${iconTile(it, 'ico-sm')}<a href="/item.html?id=${it.id}">${it.label}</a>${it.source_id ? html` <span class="src">${it.source_id}</span>` : ''}</li>`)}</ul><p class="xs muted">Installed or upgraded before these items on every OTA run. Unfollow is disabled while items use it.</p>` : html`<p class="empty">No item uses it. Link it from an item's Dependencies setting.</p>`}</div>
+${p.versions.length ? p.versions.map(v => html`<div class="rel"><div class="rel-h"><span><span class="tag">${v.tag}</span>${v.tag === p.latest_tag && p.latest_published_at ? html` <span class="xs muted">· ${fmt.abs(p.latest_published_at)}</span>` : ''}</span>${v.current && blocked ? html`<span class="badge err">Quarantined</span>` : v.current ? html`<span class="badge ok">Current</span>` : html`<span class="badge">Previous</span>`}</div><ul class="alist2">${v.files.map(f => html`<li><span class="mono" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${f.name}">${f.name}</span><span class="abi ${f.abi === 'universal' ? 'u' : ''}">${f.abi || '?'}</span><span class="muted">${fmt.bytes(f.size)}</span></li>`)}</ul></div>`) : html`<p class="empty">Nothing downloaded yet.</p>`}</div>
+<div class="pane-s"><span class="lbl-s">Assigned phones</span>${asg.length ? html`<ul class="deps">${asg.map(d => { const x = dpOf(d, p.id); return html`<li><span class="dot ${d.online ? 'on' : 'off'}" aria-hidden="true"></span><span class="grow">${d.name} <span class="xs muted mono">${x.available_abi || '—'} → ${x.available_file || 'no match'}</span></span>${x.update_available ? html`<span class="badge warn">behind</span>` : !x.installed_tag ? html`<span class="xs muted">not installed</span>` : x.installed_tag === x.available_tag ? html`<span class="xs muted">current</span>` : html`<span class="xs muted mono">${x.installed_tag}</span>`}</li>`; })}</ul>` : html`<p class="empty">Not assigned to any phone. New versions still download; nothing installs.</p>`}</div>
+<div class="pane-s"><span class="lbl-s">Used as dependency by</span>${usedBy.length ? html`<ul class="deps">${usedBy.map(it => html`<li>${iconTile(it, 'ico-sm')}<a href="/apps.html">${it.label}</a></li>`)}</ul><p class="xs muted">Installed or upgraded before these apps on every OTA run. Unfollow is disabled while apps use it.</p>` : html`<p class="empty">No app uses it. Link it from an app's settings under Follow-project dependencies.</p>`}</div>
 <div class="pane-s"><span class="lbl-s">OTA history</span>${ota.length ? html`<table class="otbl"><tbody>${ota.map(o => html`<tr><td class="muted" style="white-space:nowrap">${fmt.abs(o.when)}</td><td>${o.dev}<div class="xs muted">${o.trig}${o.err ? ` · ${o.err}` : ''}</div></td><td class="mono">${o.ver}</td><td class="${o.res[0]}" style="white-space:nowrap">${o.res[1]}</td></tr>`)}</tbody></table><p class="xs muted">Covers the last 100 OTA jobs.</p>` : html`<p class="empty">No installs yet.</p>`}</div>`;
 }
 
@@ -118,14 +118,14 @@ function render() { rows(); summary(); pane(); }
 
 async function load() {
   const [pr, dv, it, sc, run, qu, ota] = await Promise.all([
-    api('GET', '/api/projects'), api('GET', '/api/devices'), api('GET', '/api/items'), api('GET', '/api/schedules'),
+    api('GET', '/api/projects'), api('GET', '/api/devices'), api('GET', '/api/apps'), api('GET', '/api/schedule'),
     api('GET', '/api/jobs?kind=upstream&status=running'), api('GET', '/api/jobs?kind=upstream&status=queued'),
     api('GET', '/api/jobs?kind=ota&limit=100'),
   ]);
   S.projects = pr.projects;
   S.devices = dv.devices;
-  S.items = new Map(it.items.map(x => [x.id, x]));
-  S.schedules = sc.schedules;
+  S.items = new Map(it.apps.map(x => [x.id, { ...x, label: x.name }]));
+  S.schedule = sc;
   S.running = run.jobs;
   S.queued = qu.jobs;
   S.ota = ota.jobs;
@@ -195,7 +195,7 @@ $('#pane').addEventListener('click', async e => {
       t('details.dd').open = false;
       await act('POST', `/api/projects/${p.id}/install`, { device_ids: [d.id] }, `Installing ${p.label} ${p.downloaded_tag || ''} on ${d.name}`);
     } else if (t('[data-check]')) {
-      await act('POST', `/api/upstreams/${p.upstream_id}/pull`, { rebuild: false }, `Checking ${p.repo} for a new release…`);
+      await act('POST', `/api/projects/${p.id}/pull`, {}, `Checking ${p.repo} for a new release…`);
     } else if (t('[data-rx-save]')) {
       await act('PUT', `/api/projects/${p.id}`, { asset_regex: $('[data-rx-edit]', $('#pane')).value }, `Regex saved; re-checking ${p.label}…`);
     } else if (t('[data-unfollow]')) {

@@ -1,218 +1,177 @@
-import { $, $$, act, api, ask, catalogItems, fmt, html, shell, toast } from '/static/app.js';
+import { $, $$, act, api, fmt, html, icon, shell, toast } from '/static/app.js';
 
-const KIND = { app: 'App', ota: 'OTA' };
 const DAYS = ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'];
-const R = { list: [], items: [], projects: [], devices: [], cur: null, pick: { item_ids: [], project_ids: [] } };
+const UI_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const PRESET_HOURS = [1, 3, 6, 12, 24];
+const DEFAULT_SPEC = { every: 'day', at: '04:00' };
+const R = { ota: [], devices: [], cur: null, global: null };
 
 const uiToSpec = u => (u + 6) % 7;
 const specToUi = d => (d + 1) % 7;
+const byId = id => document.getElementById(id);
 
 function sentence(spec) {
   if (spec.every === 'hours') return spec.hours === 1 ? 'Every hour' : `Every ${spec.hours} hours`;
   if (spec.every === 'day') return `Every day at ${spec.at}`;
   const names = [...spec.days].sort().map(d => DAYS[d]);
-  if (!names.length) return `Weekly at ${spec.at}`;
   return `${names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0]} at ${spec.at}`;
 }
 
-function targetText(kind, t) {
-  if (t.all) return kind === 'app' ? 'All apps' : 'All devices';
-  if (kind === 'app') return [...(t.item_ids || []).map(id => (R.items.find(i => i.id === id) || {}).label || `item ${id}`), ...(t.project_ids || []).map(id => (R.projects.find(p => p.id === id) || {}).label || `project ${id}`)].join(', ');
-  return (t.device_ids || []).map(id => (R.devices.find(d => d.id === id) || {}).name || `device ${id}`).join(', ');
+// The day / week / hours form shared by the global Custom choice and the OTA dialog; `p` prefixes the element ids.
+function specForm(p, spec) {
+  return html`<div class="field"><label for="${p}-f">Repeat</label><span class="select"><select class="dropdown" id="${p}-f" style="width:140px"><option value="hours" ${spec.every === 'hours' ? 'selected' : ''}>Hourly</option><option value="day" ${spec.every === 'day' ? 'selected' : ''}>Daily</option><option value="week" ${spec.every === 'week' ? 'selected' : ''}>Weekly</option></select></span></div>
+<div class="field" id="${p}-hw"><label for="${p}-h">Every (hours)</label><span class="input" style="width:100px"><input id="${p}-h" type="number" min="1" max="168" value="${spec.hours || 6}"></span></div>
+<div class="field" id="${p}-aw"><label for="${p}-at">At</label><span class="input" style="width:120px"><input id="${p}-at" type="time" value="${spec.at || DEFAULT_SPEC.at}"></span></div>
+<div class="field" id="${p}-dw"><span class="label" id="${p}-dl">On days</span><div class="days" role="group" aria-labelledby="${p}-dl">${UI_DAYS.map((n, i) => html`<label class="row"><input type="checkbox" name="${p}-d" value="${i}" ${spec.every === 'week' && spec.days.map(specToUi).includes(i) ? 'checked' : ''}>${n}</label>`)}</div></div>`;
 }
 
-function optionText(s) {
-  const o = s.options;
-  if (s.kind === 'app') return [o.update && 'Update patches', o.build && (o.force ? 'Rebuild even if unchanged' : 'Build when changed')].filter(Boolean).join(' · ');
-  return o.retries ? `Retry offline devices ${o.retries}×` : 'Skip offline devices';
+function syncSpecForm(p) {
+  const f = byId(`${p}-f`).value;
+  byId(`${p}-hw`).hidden = f !== 'hours';
+  byId(`${p}-aw`).hidden = f === 'hours';
+  byId(`${p}-dw`).hidden = f !== 'week';
 }
 
-function countsText(c) {
+function readSpecForm(p) {
+  const f = byId(`${p}-f`).value;
+  if (f === 'hours') return { every: 'hours', hours: Number(byId(`${p}-h`).value) };
+  if (f === 'day') return { every: 'day', at: byId(`${p}-at`).value };
+  return { every: 'week', days: $$(`[name=${p}-d]:checked`).map(i => uiToSpec(Number(i.value))), at: byId(`${p}-at`).value };
+}
+
+// ---- global schedule (spec §7.5) ----
+
+function renderGlobal() {
+  const g = R.global, s = g.spec;
+  const preset = s.every === 'hours' && PRESET_HOURS.includes(s.hours) ? String(s.hours) : 'custom';
+  $('#g-seg').innerHTML = html`${[...PRESET_HOURS.map(h => [String(h), `${h} h`]), ['custom', 'Custom']].map(([v, l]) => html`<label><input type="radio" name="iv" value="${v}" ${v === preset ? 'checked' : ''}><span>${l}</span></label>`)}`;
+  $('#g-custom').innerHTML = html`${specForm('gs', preset === 'custom' ? s : DEFAULT_SPEC)}`;
+  syncSpecForm('gs');
+  $('#g-custom').hidden = $('#g-save').hidden = preset !== 'custom';
+  $('#g-en').checked = g.enabled;
+  $('#g-notify').checked = g.options.notify;
+  $('#g-next').textContent = g.enabled && g.next_run_at ? fmt.abs(g.next_run_at) : 'Paused';
+  $('#g-rel').textContent = g.enabled && g.next_run_at ? fmt.rel(g.next_run_at) : '';
+  $('#g-last').textContent = g.last_run_at ? `Last run ${fmt.abs(g.last_run_at)}` : 'Never run';
+  $('#g-sub').textContent = `${sentence(s)}. Enabling a new app builds it at once, without waiting.`;
+}
+
+async function putGlobal(body, msg) {
+  try {
+    R.global = await act('PUT', '/api/schedule', body, msg);
+    renderGlobal();
+  } catch (_) { renderGlobal(); }
+}
+
+$('#g-seg').addEventListener('change', e => {
+  if (e.target.value === 'custom') { $('#g-custom').hidden = $('#g-save').hidden = false; return; }
+  putGlobal({ spec: { every: 'hours', hours: Number(e.target.value) } }, 'Schedule saved');
+});
+$('#g-custom').addEventListener('change', e => { if (e.target.id === 'gs-f') syncSpecForm('gs'); });
+$('#g-save').addEventListener('click', () => putGlobal({ spec: readSpecForm('gs') }, 'Schedule saved'));
+$('#g-en').addEventListener('change', e => putGlobal({ enabled: e.target.checked }, e.target.checked ? 'Schedule on' : 'Schedule paused'));
+$('#g-notify').addEventListener('change', e => putGlobal({ options: { notify: e.target.checked } }));
+$('#g-run').addEventListener('click', () => act('POST', '/api/schedule/run', {}, 'Update run started — see Builds').catch(() => {}));
+
+// ---- OTA schedules ----
+
+const deviceNames = t => (t.all ? R.devices.map(d => d.name) : (t.device_ids || []).map(id => (R.devices.find(d => d.id === id) || {}).name || `device ${id}`));
+
+function countsBadge(c) {
   const parts = Object.entries(c).map(([k, n]) => `${n} ${k}`);
-  return parts.length ? parts.join(' · ') : 'never';
+  if (!parts.length) return html`<span class="badge">Never run</span>`;
+  return html`<span class="badge ${c.failed ? 'warn' : 'ok'}">${icon(c.failed ? 'warning' : 'check')}${parts.join(' · ')}</span>`;
 }
 
 function renderList() {
-  $('#list').innerHTML = html`${R.list.map(s => html`<div class="card sch" tabindex="0" data-id="${s.id}" ${R.cur && R.cur.id === s.id ? html`aria-current="true"` : ''} style="${s.enabled ? '' : 'opacity:.6'}"><div class="row between" style="flex-wrap:nowrap;align-items:flex-start"><div style="min-width:0"><div class="row"><h3>${s.name}</h3><span class="badge b-mute plain">${KIND[s.kind]}</span></div><p class="sm">${sentence(s.spec)} <span class="muted">· ${targetText(s.kind, s.target)}</span></p><p class="xs muted">${optionText(s)}</p><p class="xs muted" style="margin-top:.25rem">Next: <b>${s.enabled ? fmt.abs(s.next_run_at) : 'paused'}</b> ${s.enabled ? fmt.rel(s.next_run_at) : ''} · Last: ${s.last_run_at ? fmt.abs(s.last_run_at) : 'never'} <span class="badge ${s.last_counts.failed ? 'b-warn' : 'b-ok'}" style="height:1.125rem">${countsText(s.last_counts)}</span></p></div><div class="row" style="flex-wrap:nowrap"><button class="btn btn-ghost btn-sm" type="button" data-run="${s.id}">Run now</button><span class="switch"><input type="checkbox" data-en="${s.id}" ${s.enabled ? html`checked` : ''} aria-label="Enable ${s.name}"><span></span></span></div></div></div>`)}`;
+  $('#list').innerHTML = html`${R.ota.length ? R.ota.map(s => html`<div class="ota" data-id="${s.id}" style="${s.enabled ? '' : 'opacity:.65'}">
+<span class="ic">${icon('devices')}</span>
+<div><div class="strong">${s.name}</div><div class="caption">${sentence(s.spec)} · ${s.options.retries ? `${s.options.retries} retries` : 'no retries'} · ${s.enabled ? `next ${fmt.abs(s.next_run_at)}` : 'paused'}</div><div class="devs">${deviceNames(s.target).map(n => html`<span class="badge">${n}</span>`)}</div></div>
+${countsBadge(s.last_counts)}
+<div class="row" style="gap:2px"><label class="switch" style="margin-right:8px"><input type="checkbox" data-en="${s.id}" ${s.enabled ? 'checked' : ''} aria-label="${s.name} on"><span class="track"></span></label>
+<button class="icon-btn" type="button" data-run="${s.id}" aria-label="Run ${s.name} now" title="Run now">${icon('play')}</button>
+<button class="icon-btn" type="button" data-edit="${s.id}" aria-label="Edit ${s.name}" title="Edit">${icon('edit')}</button>
+<button class="icon-btn" type="button" data-del="${s.id}" aria-label="Delete ${s.name}" title="Delete">${icon('delete')}</button></div></div>`)
+    : html`<div class="card-pad subtle-text">No OTA schedule yet.</div>`}`;
 }
 
-function renderTimeline(now) {
-  const t0 = Date.parse(now), span = 86400000;
-  const ticks = R.list.filter(s => s.enabled).flatMap(s => s.next_runs.filter(r => Date.parse(r) - t0 < span).map(r => ({ s, r })));
-  $('#tl').innerHTML = html`<span class="now-m">now</span>${ticks.map(({ s, r }) => html`<i class="ev k-${s.kind}" style="left:${Number(((Date.parse(r) - t0) / span) * 100).toFixed(2)}%" title="${s.name} ${fmt.abs(r)}"></i>`)}`;
-  $('#tlist').innerHTML = html`${ticks.sort((a, b) => Date.parse(a.r) - Date.parse(b.r)).map(({ s, r }) => html`<li><i class="k-${s.kind}"></i><span class="grow">${s.name}</span><span class="mono xs muted">${fmt.abs(r)}</span></li>`)}`;
-  $('#tll').innerHTML = html`${R.list.filter(s => s.enabled).map(s => html`<li><i class="k-${s.kind}"></i>${s.name}</li>`)}`;
-}
-
-function chip(name, value, label, checked) {
-  return html`<label class="chip"><input type="checkbox" name="${name}" value="${value}" ${checked ? html`checked` : ''}><span>${label}</span></label>`;
-}
-
-const pickCount = () => R.pick.item_ids.length + R.pick.project_ids.length;
-const pickLabel = () => `Pick apps…${pickCount() ? ` (${pickCount()})` : ''}`;
-
-function renderTargets(kind, t) {
-  const app = kind === 'app' ? t : null, ota = kind === 'ota' ? t : null;
-  R.pick = { item_ids: [...((app && app.item_ids) || [])], project_ids: [...((app && app.project_ids) || [])] };
-  $('#tg-app').innerHTML = html`${chip('ta', 'all', `All apps (${R.items.length + R.projects.length})`, !app || app.all)}<button class="btn btn-ghost btn-sm" type="button" id="pick">${pickLabel()}</button>`;
-  $('#tg-ota').innerHTML = html`${chip('to', 'all', 'All devices', !ota || ota.all)}${R.devices.map(d => chip('to', d.id, d.name, !!(ota && ota.device_ids && ota.device_ids.includes(d.id))))}`;
-}
-
-const kindNow = () => $('[name=act]:checked').value;
-
-function readSpec() {
-  const f = $('[name=f]:checked').value;
-  if (f === 'hours') return { every: 'hours', hours: Number($('#hh-n').value || $('#hh').value) };
-  if (f === 'day') return { every: 'day', at: $('#tm').value };
-  return { every: 'week', days: $$('#days input:checked').map(i => uiToSpec(Number(i.value))), at: $('#tm').value };
-}
-
-function readTarget(kind) {
-  if (kind === 'app') {
-    if ($('[name=ta][value=all]').checked || !pickCount()) return { all: true };
-    const t = {};
-    if (R.pick.item_ids.length) t.item_ids = R.pick.item_ids;
-    if (R.pick.project_ids.length) t.project_ids = R.pick.project_ids;
-    return t;
-  }
-  const v = $$('[name=to]:checked').map(i => i.value);
-  return v.includes('all') || !v.length ? { all: true } : { device_ids: v.map(Number) };
-}
-
-function readOptions(kind) {
-  const notify = $('#notify').checked;
-  if (kind === 'app') { const update = $('#o-upd').checked, build = $('#o-bld').checked; return { update, build, force: build && !update && $('#o-force').checked, notify }; }
-  return { retries: Math.min(5, Math.max(0, Number($('#o-retries').value) || 0)), notify };
-}
-
-function syncForce() {
-  const f = $('#o-force');
-  f.disabled = !($('#o-bld').checked && !$('#o-upd').checked);
-  if (f.disabled) f.checked = false;
-}
-
-function showKind(kind) {
-  $$('[data-act]').forEach(el => { el.hidden = el.dataset.act !== kind; });
-  $$('[id^=tg-]').forEach(el => { el.hidden = el.id !== `tg-${kind}`; });
-}
-
-function showRepeat(f) {
-  $('#every-h').hidden = f !== 'hours';
-  $('#at').hidden = f === 'hours';
-  $('#days').hidden = f !== 'week';
+function openDialog(s) {
+  R.cur = s;
+  const spec = s ? s.spec : DEFAULT_SPEC, t = s ? s.target : { all: true };
+  $('#do-t').textContent = s ? 'Edit OTA schedule' : 'New OTA schedule';
+  $('#o-name').value = s ? s.name : '';
+  $('#o-form').innerHTML = html`${specForm('os', spec)}`;
+  syncSpecForm('os');
+  $('#o-retries').value = s ? s.options.retries : 0;
+  $('#o-notify').checked = s ? s.options.notify : true;
+  $('#o-devs').innerHTML = html`<label class="row"><input type="checkbox" name="od" value="all" ${t.all ? 'checked' : ''}>All phones</label>${R.devices.map(d => html`<label class="row"><input type="checkbox" name="od" value="${d.id}" ${!t.all && (t.device_ids || []).includes(d.id) ? 'checked' : ''}>${d.name}</label>`)}`;
+  byId('dlg-ota').showModal();
+  preview();
 }
 
 let pv = null;
 function preview() {
   clearTimeout(pv);
   pv = setTimeout(async () => {
-    const spec = readSpec();
-    $('#human').textContent = `${sentence(spec)} · ${targetText(kindNow(), readTarget(kindNow()))}`;
     try {
-      const { runs } = await api('POST', '/api/schedules/preview', { spec });
-      $('#nexts').innerHTML = html`${runs.map(r => html`<li><span>${fmt.abs(r)}</span> <span class="muted">${fmt.rel(r)}</span></li>`)}`;
-    } catch (e) {
-      $('#nexts').innerHTML = html`<li class="xs" style="color:hsl(var(--destructive))">${e.message}</li>`;
-    }
+      const { runs } = await api('POST', '/api/schedules/preview', { spec: readSpecForm('os') });
+      $('#o-next').textContent = `Next runs: ${runs.slice(0, 3).map(fmt.abs).join(' · ')}`;
+    } catch (e) { $('#o-next').textContent = e.message; }
   }, 300);
 }
 
-function edit(s) {
-  R.cur = s;
-  const kind = s ? s.kind : 'app', spec = s ? s.spec : { every: 'day', at: '04:00' }, o = s ? s.options : {};
-  $('#sn').value = s ? s.name : '';
-  $(`[name=act][value=${kind}]`).checked = true;
-  $('#o-upd').checked = kind === 'app' && s ? !!o.update : true;
-  $('#o-bld').checked = kind === 'app' && s ? !!o.build : true;
-  $('#o-force').checked = !!o.force;
-  syncForce();
-  $('#o-retries').value = o.retries || 0;
-  $('#notify').checked = o.notify !== false;
-  $(`[name=f][value=${spec.every}]`).checked = true;
-  if (spec.every === 'hours') { $('#hh').value = [1, 3, 6, 12, 24].includes(spec.hours) ? spec.hours : ''; $('#hh-n').value = spec.hours; }
-  if (spec.at) $('#tm').value = spec.at;
-  $$('#days input').forEach(i => { i.checked = spec.every === 'week' && spec.days.map(specToUi).includes(Number(i.value)); });
-  renderTargets(kind, s ? s.target : null);
-  showKind(kind);
-  showRepeat(spec.every);
-  $('#del').hidden = $('#runnow').hidden = !s;
-  $('#ed').textContent = s ? 'Edit schedule' : 'New schedule';
-  renderList();
-  preview();
+function readTarget() {
+  const v = $$('[name=od]:checked').map(i => i.value);
+  return v.includes('all') || !v.length ? { all: true } : { device_ids: v.map(Number) };
 }
 
-async function load() {
-  const [{ schedules }, settings] = await Promise.all([api('GET', '/api/schedules'), api('GET', '/api/settings')]);
-  R.list = schedules;
-  $('#srvtime').textContent = `Server time ${new Date(settings.server.now).toLocaleString([], { timeZone: settings.server.tz, weekday: 'short', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · ${settings.server.tz}`;
-  renderList();
-  renderTimeline(settings.server.now);
-}
-
-async function save() {
-  const kind = kindNow();
-  const body = { name: $('#sn').value.trim(), kind, spec: readSpec(), target: readTarget(kind), options: readOptions(kind) };
-  try {
-    if (R.cur) await act('PUT', `/api/schedules/${R.cur.id}`, body, 'Schedule saved');
-    else { const r = await act('POST', '/api/schedules', body, 'Schedule saved'); R.cur = { id: r.id }; }
-    await load();
-    edit(R.list.find(s => s.id === R.cur.id) || null);
-  } catch (_) { /* shown */ }
-}
-
-$('#edc').addEventListener('change', e => {
-  if (e.target.name === 'act') showKind(e.target.value);
-  if (e.target.name === 'f') showRepeat(e.target.value);
-  if (e.target.id === 'hh' && e.target.value) $('#hh-n').value = e.target.value;
-  if (e.target.id === 'o-upd' || e.target.id === 'o-bld') syncForce();
-  if (e.target.name === 'ta' && e.target.checked) { R.pick = { item_ids: [], project_ids: [] }; $('#tg-app button').textContent = pickLabel(); }
-  if (e.target.name === 'to') {
-    const all = $('[name=to][value=all]');
-    if (e.target === all && all.checked) $$('[name=to]').forEach(i => { if (i !== all) i.checked = false; });
+$('#dlg-ota').addEventListener('change', e => {
+  if (e.target.id === 'os-f') syncSpecForm('os');
+  if (e.target.name === 'od') {
+    const all = $('[name=od][value=all]');
+    if (e.target === all && all.checked) $$('[name=od]').forEach(i => { if (i !== all) i.checked = false; });
     else if (e.target !== all && e.target.checked) all.checked = false;
   }
   preview();
 });
-$('#edc').addEventListener('input', e => { if (e.target.id === 'tm' || e.target.id === 'hh-n') preview(); });
-$('#edc').addEventListener('click', async e => {
-  if (e.target.id !== 'pick') return;
-  const row = (cls, o, text) => html`<label class="row sm"><input type="checkbox" class="cb ${cls}" value="${o.id}" ${R.pick[cls === 'pi' ? 'item_ids' : 'project_ids'].includes(o.id) ? html`checked` : ''}> ${o.label} <span class="xs muted mono">${text}</span></label>`;
-  $('#pick-list').innerHTML = html`<h3 class="sm">Apps</h3>${R.items.map(it => row('pi', it, it.package))}<h3 class="sm">Followed projects</h3>${R.projects.length ? R.projects.map(p => row('pp', p, p.package || p.repo)) : html`<p class="xs muted">None followed</p>`}`;
-  const btn = e.target;
-  if (await ask($('#dlg-items')) !== 'ok') return;
-  R.pick = { item_ids: $$('#pick-list .pi:checked').map(i => Number(i.value)), project_ids: $$('#pick-list .pp:checked').map(i => Number(i.value)) };
-  if (pickCount()) $('[name=ta][value=all]').checked = false;
-  btn.textContent = pickLabel();
-  preview();
-});
-$('#list').addEventListener('click', async e => {
-  const run = e.target.closest('[data-run]'), en = e.target.closest('[data-en]'), card = e.target.closest('.sch');
+$('#dlg-ota').addEventListener('input', e => { if (e.target.id === 'os-at' || e.target.id === 'os-h') preview(); });
+$('#o-cancel').addEventListener('click', () => byId('dlg-ota').close());
+$('#o-save').addEventListener('click', async () => {
+  const body = { name: $('#o-name').value.trim(), kind: 'ota', spec: readSpecForm('os'), target: readTarget(),
+    options: { retries: Math.min(5, Math.max(0, Number($('#o-retries').value) || 0)), notify: $('#o-notify').checked } };
   try {
-    if (run) { const s = R.list.find(x => x.id === Number(run.dataset.run)); await act('POST', `/api/schedules/${s.id}/run`, {}, `Started: ${s.name} — see Builds`); return load(); }
-    if (en) { await act('PUT', `/api/schedules/${en.dataset.en}`, { enabled: en.checked }); return load(); }
-    if (card) edit(R.list.find(x => x.id === Number(card.dataset.id)));
+    if (R.cur) await act('PUT', `/api/schedules/${R.cur.id}`, body, 'Schedule saved');
+    else await act('POST', '/api/schedules', body, 'Schedule saved');
+    byId('dlg-ota').close();
+    await load();
+  } catch (_) { /* shown */ }
+});
+$('#new').addEventListener('click', () => openDialog(null));
+$('#list').addEventListener('click', async e => {
+  const run = e.target.closest('[data-run]'), edit = e.target.closest('[data-edit]'), del = e.target.closest('[data-del]'), en = e.target.closest('[data-en]');
+  const find = id => R.ota.find(x => x.id === Number(id));
+  try {
+    if (run) { await act('POST', `/api/schedules/${run.dataset.run}/run`, {}, `Started: ${find(run.dataset.run).name} — see Builds`); await load(); }
+    else if (edit) openDialog(find(edit.dataset.edit));
+    else if (del) {
+      if (!confirm(`Delete schedule "${find(del.dataset.del).name}"?`)) return;
+      await act('DELETE', `/api/schedules/${del.dataset.del}`, {}, 'Schedule deleted');
+      await load();
+    } else if (en) { await act('PUT', `/api/schedules/${en.dataset.en}`, { enabled: en.checked }); await load(); }
   } catch (_) { load(); }
 });
-$('#list').addEventListener('keydown', e => {
-  if ((e.key !== 'Enter' && e.key !== ' ') || !e.target.matches('.sch')) return;
-  e.preventDefault();
-  edit(R.list.find(x => x.id === Number(e.target.dataset.id)));
-});
-$('#save').addEventListener('click', save);
-$('#cancel').addEventListener('click', () => edit(R.cur && R.cur.name ? R.cur : null));
-$('#new').addEventListener('click', () => edit(null));
-$('#runnow').addEventListener('click', () => act('POST', `/api/schedules/${R.cur.id}/run`, {}, 'Running now — see Builds').then(load).catch(() => {}));
-$('#del').addEventListener('click', async () => {
-  if (!confirm(`Delete schedule "${R.cur.name}"?`)) return;
-  try { await act('DELETE', `/api/schedules/${R.cur.id}`, {}, 'Schedule deleted'); await load(); edit(null); } catch (_) { /* shown */ }
-});
+
+async function load() {
+  const [{ schedules }, settings, g] = await Promise.all([api('GET', '/api/schedules'), api('GET', '/api/settings'), api('GET', '/api/schedule')]);
+  R.ota = schedules.filter(s => s.kind === 'ota');
+  R.global = g;
+  $('#srvtime').textContent = `Server time ${new Date(settings.server.now).toLocaleString([], { timeZone: settings.server.tz, weekday: 'short', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · ${settings.server.tz}`;
+  renderGlobal();
+  renderList();
+}
 
 (async () => {
   shell();
-  const [cat, { projects }, { devices }] = await Promise.all([api('GET', '/api/catalog'), api('GET', '/api/projects'), api('GET', '/api/devices')]);
-  R.projects = projects;
-  R.items = catalogItems(cat);
-  R.devices = devices;
+  R.devices = (await api('GET', '/api/devices')).devices.filter(d => d.kind !== 'app');
   await load();
-  edit(R.list[0] || null);
 })().catch(e => toast(e.message, 'error'));

@@ -1,4 +1,4 @@
-import { $, $$, act, api, catalogItems, fmt, html, shell, toast } from '/static/app.js';
+import { $, $$, act, api, fmt, html, shell, toast } from '/static/app.js';
 
 const FIELDS = {
   telegram: { bot_token: '#tg-token', chat_id: '#tg-chat' },
@@ -48,8 +48,8 @@ function renderSettings() {
   $('#base').value = s.base_url;
   renderEstimate();
   const parts = [['APKs', d.artifacts], ['Download cache', d.apk_cache], ['Patches', d.upstream], ['Logs', d.logs], ['Free', d.free]];
-  $('#disk').innerHTML = html`${parts.map(([n, v]) => html`<div class="row between xs"><span>${n}</span><span class="mono">${fmt.bytes(v)}</span></div><div class="progress"><i style="width:${Number(d.total ? (100 * v) / d.total : 0).toFixed(1)}%"></i></div>`)}`;
-  const cls = { authenticated: 'b-ok', unauthenticated: 'b-warn', rejected: 'b-err', absent: 'b-mute' }[g.state] || 'b-mute';
+  $('#disk').innerHTML = html`${parts.map(([n, v]) => html`<div class="row between xs"><span>${n}</span><span class="mono">${fmt.bytes(v)}</span></div><div class="progress"><span style="width:${Number(d.total ? (100 * v) / d.total : 0).toFixed(1)}%"></span></div>`)}`;
+  const cls = { authenticated: 'ok', unauthenticated: 'warn', rejected: 'err', absent: '' }[g.state] || '';
   $('#gh-state').className = `badge ${cls}`;
   $('#gh-state').textContent = g.state + (g.error ? ` · ${g.error}` : '');
   $('#gh-hint').textContent = g.token_hint || (g.state === 'absent' ? 'No token set' : 'empty token');
@@ -115,7 +115,7 @@ $('#cleanup').addEventListener('click', async () => {
   try {
     const p = await api('GET', '/api/cleanup');
     if (!p.bytes) { toast('Nothing to clean up'); return; }
-    if (!confirm(`Delete ${fmt.bytes(p.bytes)}: builds of ${p.artifact_items} Build-off app(s) and ${p.cache_files} cached download file(s)? Build-off apps rebuild when turned on again.`)) return;
+    if (!confirm(`Delete ${fmt.bytes(p.bytes)}: builds of ${p.artifact_items} app(s) that are not enabled and ${p.cache_files} cached download file(s)? An app rebuilds when you enable it again.`)) return;
     const r = await api('POST', '/api/cleanup', {});
     toast(`Freed ${fmt.bytes(r.bytes)}`);
     await loadSettings(false);
@@ -130,14 +130,6 @@ async function saveToken(v) {
 $('#gh-save').addEventListener('click', () => { if ($('#gh-token').value.trim()) saveToken($('#gh-token').value.trim()).catch(() => {}); });
 $('#gh-clear').addEventListener('click', () => saveToken('').catch(() => {}));
 $('#gh-recheck').addEventListener('click', () => loadSettings(true).then(() => toast('Re-checked')).catch(() => {}));
-$('#gh-cli').addEventListener('click', async () => {
-  try {
-    const { upstreams } = await api('GET', '/api/upstreams');
-    const cli = upstreams.filter(u => u.kind === 'cli');
-    for (const u of cli) await act('POST', `/api/upstreams/${u.id}/pull`, {}).catch(() => {});
-    toast(`CLI update queued (${cli.length})`);
-  } catch (e) { toast(e.message, 'error'); }
-});
 ['#pw-old', '#pw-new', '#pw-new2'].forEach(s => $(s).addEventListener('input', checkPw));
 $('#pw-save').addEventListener('click', async () => {
   try {
@@ -153,7 +145,7 @@ $('#pw-save').addEventListener('click', async () => {
 async function loadAppDevices() {
   const { devices } = await api('GET', '/api/devices');
   const apps = devices.filter(d => d.kind === 'app');
-  $('#app-devs').innerHTML = html`${apps.length ? apps.map(d => html`<li data-app-dev="${d.id}"><div><div class="sm" style="font-weight:500">${d.name}</div><div class="xs muted">${d.model} · Android ${d.android_release} · created ${fmt.abs(d.created_at)} · last seen ${fmt.rel(d.last_seen_at)}</div></div>${d.has_token ? html`<button class="btn btn-outline btn-sm danger" type="button" data-revoke="${d.id}">Revoke</button>` : html`<span class="badge b-mute plain">revoked</span>`}</li>`) : html`<li><span class="sm muted">No phones have signed in with the app.</span></li>`}`;
+  $('#app-devs').innerHTML = html`${apps.length ? apps.map(d => html`<li data-app-dev="${d.id}"><div><div class="sm" style="font-weight:500">${d.name}</div><div class="xs muted">${d.model} · Android ${d.android_release} · created ${fmt.abs(d.created_at)} · last seen ${fmt.rel(d.last_seen_at)}</div></div>${d.has_token ? html`<button class="btn small danger" type="button" data-revoke="${d.id}">Revoke</button>` : html`<span class="badge">revoked</span>`}</li>`) : html`<li><span class="sm muted">No phones have signed in with the app.</span></li>`}`;
 }
 
 $('#app-devs').addEventListener('click', async e => {
@@ -165,8 +157,7 @@ $('#app-devs').addEventListener('click', async e => {
 
 (async () => {
   shell();
-  const cat = await api('GET', '/api/catalog');
-  Z.items = catalogItems(cat);
+  Z.items = (await api('GET', '/api/apps')).apps;
   await Promise.all([loadNotify(), loadSettings(false), loadAppDevices()]);
   checkPw();
 })().catch(e => toast(e.message, 'error'));

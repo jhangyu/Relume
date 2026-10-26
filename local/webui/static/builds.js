@@ -1,4 +1,4 @@
-import { $, $$, act, api, catalogItems, every, fmt, html, iconTile, JOB_BADGE, logStream, shell, toast } from '/static/app.js';
+import { $, $$, act, api, every, fmt, html, iconTile, JOB_BADGE, logStream, shell, toast } from '/static/app.js';
 
 const qs = new URLSearchParams(location.search);
 const ITEM = qs.get('item') ? Number(qs.get('item')) : null;
@@ -8,11 +8,11 @@ const B = { items: new Map(), schedules: new Map(), sel: null, es: null, text: '
 
 const triggerText = j => (j.trigger === 'schedule' ? `schedule "${B.schedules.get(j.schedule_id) || j.schedule_id}"`
   : j.trigger === 'upstream' ? 'patch update' : j.trigger === 'after_build' ? 'after build' : 'manual');
-const itemOf = j => B.items.get(j.target.item_id) || { label: `item ${j.target.item_id}`, source_name: '', abis: [] };
+const itemOf = j => B.items.get(j.target.item_id) || { label: `app ${j.target.item_id}`, bundle_name: '', enabled: false, abis: [] };
 
 async function loadRefs() {
-  const [cat, sch] = await Promise.all([api('GET', '/api/catalog'), api('GET', '/api/schedules')]);
-  catalogItems(cat).forEach(it => B.items.set(it.id, it));
+  const [apps, sch] = await Promise.all([api('GET', '/api/apps'), api('GET', '/api/schedules')]);
+  apps.apps.forEach(a => B.items.set(a.id, { ...a, label: a.name, bundle_name: a.bundle.name }));
   sch.schedules.forEach(s => B.schedules.set(s.id, s.name));
 }
 
@@ -22,7 +22,7 @@ async function renderQueue() {
   $('#qsum').textContent = `${r.jobs.length} running · ${q.jobs.length} waiting · 1 worker`;
   $('#queue tbody').innerHTML = html`${rows.map(j => {
     const it = itemOf(j), [cls, label] = JOB_BADGE[j.status];
-    return html`<tr><td class="mono" style="width:4rem"><a href="?job=${j.id}" data-sel="${j.id}">#${j.id}</a></td><td><div class="row" style="flex-wrap:nowrap">${iconTile(it, 'ico-sm')}<b style="font-weight:500">${it.label}</b><span class="src">${it.source_name}</span></div></td><td class="hide-m sm muted">${triggerText(j)}</td><td><span class="badge ${cls}">${label}</span></td><td style="text-align:right"><button class="btn btn-ghost btn-sm" type="button" data-cancel="${j.id}">${j.status === 'running' ? 'Cancel' : 'Remove'}</button></td></tr>`;
+    return html`<tr><td class="mono" style="width:4rem"><a href="?job=${j.id}" data-sel="${j.id}">#${j.id}</a></td><td><div class="row" style="flex-wrap:nowrap">${iconTile(it, 'ico-sm')}<b style="font-weight:500">${it.label}</b><span class="caption">${it.bundle_name}</span></div></td><td class="hide-m sm muted">${triggerText(j)}</td><td><span class="badge ${cls}">${label}</span></td><td style="text-align:right"><button class="btn subtle small" type="button" data-cancel="${j.id}">${j.status === 'running' ? 'Cancel' : 'Remove'}</button></td></tr>`;
   })}`;
   return r.jobs[0];
 }
@@ -95,19 +95,19 @@ async function select(id) {
   tpl.content.firstChild.id = 'bico';
   $('#bico').replaceWith(tpl.content.firstChild);
   $('#bt').textContent = `Build #${j.id} · ${it.label}`;
-  $('#bsrc').textContent = it.source_name;
+  $('#bsrc').textContent = it.bundle_name;
   $('#bst').className = `badge ${cls}`;
   $('#bst').textContent = label;
   const live = j.status === 'running' || j.status === 'queued';
   $('#bsub').textContent = `Trigger: ${triggerText(j)} · started ${fmt.abs(j.started_at)} · ${fmt.duration(j.started_at, j.finished_at)} ${live ? 'elapsed' : 'took'}`;
   $('#cancel').disabled = !live;
   let full = null;
-  try { full = await api('GET', `/api/items/${j.target.item_id}`); } catch (_) { /* item deleted */ }
-  $('#facts').innerHTML = html`<div><dt class="muted">Patches</dt><dd class="mono">${d.patches_version || '—'}</dd></div><div><dt class="muted">App</dt><dd class="mono">${d.app_version || '—'}</dd></div><div><dt class="muted">Arch</dt><dd class="mono">${(it.abis || []).join(', ') || '—'}</dd></div><div><dt class="muted">CLI</dt><dd class="mono">${d.cli_version || '—'}</dd></div><div><dt class="muted">APK source</dt><dd class="mono">${full && full.variants.length && full.variants[0].download ? full.variants[0].download.kind : '—'}</dd></div>${warnPatches(j)}`;
+  try { full = await api('GET', `/api/apps/${j.target.item_id}`); } catch (_) { /* app disabled or deleted */ }
+  $('#facts').innerHTML = html`<div><dt class="muted">Patches</dt><dd class="mono">${d.patches_version || '—'}</dd></div><div><dt class="muted">App</dt><dd class="mono">${d.app_version || '—'}</dd></div><div><dt class="muted">Arch</dt><dd class="mono">${(it.abis || []).join(', ') || '—'}</dd></div><div><dt class="muted">CLI</dt><dd class="mono">${d.cli_version || '—'}</dd></div><div><dt class="muted">APK source</dt><dd class="mono">${full && full.download ? full.download.state : '—'}</dd></div>${warnPatches(j)}`;
   renderSteps();
   B.es = logStream(id, appendLines, status => {
     B.last = { ...B.last, status };
-    const [c2, l2] = JOB_BADGE[status] || ['b-mute', status];
+    const [c2, l2] = JOB_BADGE[status] || ['', status];
     $('#bst').className = `badge ${c2}`;
     $('#bst').textContent = l2;
     $('#cancel').disabled = true;
@@ -119,10 +119,8 @@ async function select(id) {
 let oldest = null;
 const warnPatches = j => (j.detail && j.detail.failed_patches || []).length ? html`<div class="xs danger">Warning: patch failed: ${j.detail.failed_patches.join(', ')}</div>` : '';
 function fixFor(j) {
-  const code = j.detail && j.detail.fail_code, it = itemOf(j);
-  if (code === 'version_unresolved' || code === 'patch_failed') return html`<a class="xs" href="/item.html?id=${j.target.item_id}#version">Pin a version</a>`;
-  if (code === 'upstream_missing' && it.upstream) return html`<button class="btn btn-ghost btn-sm" type="button" data-pull="${it.upstream.id}">Update upstream</button>`;
-  return html`<button class="btn btn-ghost btn-sm" type="button" data-retry="${j.target.item_id}" ${it.enabled === false ? html`disabled title="Build switch is off"` : ''}>Retry</button>`;
+  const it = itemOf(j);
+  return html`<button class="btn subtle small" type="button" data-retry="${j.target.item_id}" ${it.enabled === false ? html`disabled title="App is not enabled"` : ''}>Retry</button>`;
 }
 
 async function renderHistory(append) {
@@ -136,7 +134,7 @@ async function renderHistory(append) {
   if (jobs.length) oldest = jobs[jobs.length - 1].id;
   const rows = html`${done.map(j => {
     const it = itemOf(j), [cls, label] = JOB_BADGE[j.status], size = ((j.detail && j.detail.artifacts) || []).reduce((n, a) => n + a.size, 0);
-    return html`<tr data-id="${j.id}" ${j.id === B.sel ? html`aria-current="true"` : ''}><td class="mono">#${j.id}</td><td><div class="row" style="flex-wrap:nowrap">${iconTile(it, 'ico-sm')}<span>${it.label}</span></div></td><td class="hide-m sm muted">${triggerText(j)}</td><td><span class="badge ${cls}">${label}</span>${warnPatches(j)}${j.status === 'failed' ? html`<div class="xs danger">${j.reason || ''}</div>${fixFor(j)}` : ''}</td><td class="hide-m">${fmt.abs(j.started_at)}</td><td class="hide-m">${fmt.duration(j.started_at, j.finished_at)}</td><td class="hide-m">${size ? fmt.bytes(size) : '—'}</td><td><button class="btn btn-ghost btn-sm" type="button" data-sel="${j.id}">View log</button></td></tr>`;
+    return html`<tr data-id="${j.id}" ${j.id === B.sel ? html`aria-current="true"` : ''}><td class="mono">#${j.id}</td><td><div class="row" style="flex-wrap:nowrap">${iconTile(it, 'ico-sm')}<span>${it.label}</span></div></td><td class="hide-m sm muted">${triggerText(j)}</td><td><span class="badge ${cls}">${label}</span>${warnPatches(j)}${j.status === 'failed' ? html`<div class="xs danger">${j.reason || ''}</div>${fixFor(j)}` : ''}</td><td class="hide-m">${fmt.abs(j.started_at)}</td><td class="hide-m">${fmt.duration(j.started_at, j.finished_at)}</td><td class="hide-m">${size ? fmt.bytes(size) : '—'}</td><td><button class="btn subtle small" type="button" data-sel="${j.id}">View log</button></td></tr>`;
   })}`;
   if (append) $('#hist tbody').insertAdjacentHTML('beforeend', html`${rows}`);
   else $('#hist tbody').innerHTML = html`${rows}`;
@@ -150,7 +148,7 @@ async function refresh() {
 
 document.addEventListener('click', async e => {
   const sel = e.target.closest('[data-sel]'), can = e.target.closest('[data-cancel]');
-  const pull = e.target.closest('[data-pull]'), retry = e.target.closest('[data-retry]');
+  const retry = e.target.closest('[data-retry]');
   try {
     if (sel) {
       e.preventDefault();
@@ -159,9 +157,8 @@ document.addEventListener('click', async e => {
       $('[aria-labelledby=bt]').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
     if (can) await act('POST', `/api/jobs/${can.dataset.cancel}/cancel`, {}, 'Cancel requested');
-    if (pull) await act('POST', `/api/upstreams/${pull.dataset.pull}/pull`, { rebuild: true }, 'Update queued');
-    if (retry) await act('POST', `/api/items/${retry.dataset.retry}/build`, {}, 'Build queued');
-    if (can || pull || retry) await refresh();
+    if (retry) await act('POST', `/api/apps/${retry.dataset.retry}/build`, {}, 'Build queued');
+    if (can || retry) await refresh();
   } catch (_) { /* act() showed it */ }
 });
 $('#cancel').addEventListener('click', () => act('POST', `/api/jobs/${B.sel}/cancel`, {}, 'Cancel requested').then(refresh).catch(() => {}));
