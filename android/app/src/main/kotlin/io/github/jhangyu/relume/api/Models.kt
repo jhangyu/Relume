@@ -338,6 +338,8 @@ data class AppObject(
     @SerialName("app_version") val appVersion: String?,
     val status: AppStatusDto,
     val download: DownloadState,
+    /** Store category of the package (colours the tile); null when the store has none. */
+    val category: String? = null,
 )
 
 @Serializable

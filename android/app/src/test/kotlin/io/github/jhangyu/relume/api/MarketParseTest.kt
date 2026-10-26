@@ -43,6 +43,7 @@ class MarketParseTest {
     fun appObjectParses() {
         val text = """
             {"id": 12, "package": "com.reddit.frontpage", "name": "Reddit", "icon_url": "/api/apps/com.reddit.frontpage/icon",
+             "category": "Social & Communication",
              "bundle": {"bundle_id": 1, "name": "Morphe Patches", "origin": "builtin", "engine": "morphe", "tag": "v1.48.0"},
              "app_version": "2026.40.0",
              "status": {"state": "building", "job_id": 345, "progress": {"step": "patch", "index": 4, "count": 6},
@@ -55,6 +56,7 @@ class MarketParseTest {
         """
         val app = ApiJson.decodeFromString(AppObject.serializer(), text)
         assertEquals(12, app.id)
+        assertEquals("Social & Communication", app.category)
         assertEquals("builtin", app.bundle.origin)
         assertEquals("v1.48.0", app.bundle.tag)
         assertEquals("building", app.status.state)
@@ -63,6 +65,19 @@ class MarketParseTest {
         val candidate = app.download.candidates.single()
         assertEquals("YouTube", candidate.title)
         assertEquals("https://www.apkmirror.com/uploads/?appcategory=youtube", candidate.listUrl)
+    }
+
+    @Test
+    fun appObjectWithoutCategoryParses() {
+        val text = """
+            {"id": 3, "package": "a.b", "name": "B", "icon_url": null, "category": null,
+             "bundle": {"bundle_id": 1, "name": "M", "origin": "official", "engine": "morphe", "tag": null},
+             "app_version": null,
+             "status": {"state": "not_built", "job_id": null, "progress": null, "fail_code": null, "fail_detail": null},
+             "download": {"state": "pending", "apkmirror_list_url": null, "apkmirror_example_url": null,
+                          "apkmirror_example_url2": null, "apkpure_url": null, "candidates": [], "error": null, "retry_at": null}}
+        """
+        assertNull(ApiJson.decodeFromString(AppObject.serializer(), text).category)
     }
 
     @Test
