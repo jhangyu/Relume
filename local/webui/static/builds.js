@@ -122,6 +122,7 @@ async function select(id) {
   B.es = logStream(id, appendLines, status => {
     B.last = { ...B.last, status };
     $('#cancel').disabled = true;
+    if (!$('#log').children.length) $('#log').textContent = 'No log output';
     $('#bt').textContent = `${it.label} #${j.id} · log`;
     renderProgress(status);
     refresh();
