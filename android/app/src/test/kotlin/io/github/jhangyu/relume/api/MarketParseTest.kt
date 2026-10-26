@@ -104,9 +104,10 @@ class MarketParseTest {
     fun scheduleParses() {
         val schedule = ApiJson.decodeFromString(
             Schedule.serializer(),
-            """{"spec": {"every": "hours", "hours": 6}, "enabled": true, "options": {"notify": true},
+            """{"id": 1, "spec": {"every": "hours", "hours": 6}, "enabled": true, "options": {"notify": true},
                 "last_run_at": "2026-10-26T06:00:00Z", "next_run_at": "2026-10-26T12:00:00Z"}""",
         )
+        assertEquals(1, schedule.id)
         assertEquals("hours", schedule.spec.every)
         assertEquals(6, schedule.spec.hours)
         assertNull(schedule.spec.at)
@@ -115,11 +116,19 @@ class MarketParseTest {
 
         val day = ApiJson.decodeFromString(
             Schedule.serializer(),
-            """{"spec": {"every": "day", "at": "09:00"}, "enabled": false, "options": {"notify": false},
+            """{"id": 1, "spec": {"every": "day", "at": "09:00"}, "enabled": false, "options": {"notify": false},
                 "last_run_at": null, "next_run_at": null}""",
         )
         assertEquals("09:00", day.spec.at)
         assertNull(day.nextRunAt)
+    }
+
+    @Test
+    fun jobCarriesItsSchedule() {
+        val row = """{"id": 9, "kind": "upstream", "status": "done", "trigger": "schedule", "schedule_id": %s, "target": {"all": true},
+            "options": {}, "reason": null, "created_at": "2026-10-26T06:00:00Z", "started_at": null, "finished_at": null, "detail": null}"""
+        assertEquals(1, ApiJson.decodeFromString(Job.serializer(), row.format("1")).scheduleId)
+        assertNull(ApiJson.decodeFromString(Job.serializer(), row.format("null")).scheduleId)
     }
 
     @Test

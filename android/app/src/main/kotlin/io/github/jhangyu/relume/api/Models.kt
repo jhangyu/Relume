@@ -456,6 +456,7 @@ data class ScheduleOptions(val notify: Boolean)
 /** The single global update schedule (`GET /api/schedule`). */
 @Serializable
 data class Schedule(
+    val id: Int,
     val spec: ScheduleSpec,
     val enabled: Boolean,
     val options: ScheduleOptions,
@@ -516,6 +517,8 @@ data class Job(
     val kind: String,
     val status: String,
     val trigger: String,
+    /** The schedule that started this job; null for manual and API triggers. */
+    @SerialName("schedule_id") val scheduleId: Int?,
     val target: JsonObject,
     val reason: String?,
     @SerialName("created_at") val createdAt: String,
