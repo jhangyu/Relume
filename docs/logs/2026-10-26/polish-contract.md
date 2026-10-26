@@ -33,3 +33,4 @@ Spec: `docs/superpowers/specs/2026-10-26-polish-batch-design.md`. Only the user 
 - Followed apps in Apps (web and Android) show only Install; the Download action is removed (code deleted, not hidden).
 - Followed apps show their real app icon. Root cause of the missing icon is found and fixed at the cause.
 - Acceptance: grep finds no Download action for followed apps in apps.js and the Android Apps code; Linux gate and Android leg green; backend reviewer merge-ready for any backend change; debug APK from final HEAD installed on 10AFCF269C007FB.
+- Followed apps show the same version comparison as built apps (version on each phone vs the latest downloaded version, with the same update state), on web and Android. Backend adds the needed per-phone fields to the `followed` entries, reusing the built-app field names and shapes.
