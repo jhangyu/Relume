@@ -745,15 +745,17 @@ fun Hairline(modifier: Modifier = Modifier) {
 
 /**
  * App tile (m3.css `.tile`): corner 0.3 x size, two-container gradient of the app's [category] (neutral grey when
- * unknown). Shows the server icon at [iconUrl] when there is one, the initials while it loads, when [iconUrl] is null
- * and when the fetch fails (logged with package path and status).
+ * unknown); [onWhite] = white tile on a category-gradient card (marketplace.html `.hero .tile`). Shows the server
+ * icon at [iconUrl] when there is one, the initials while it loads, when [iconUrl] is null and when the fetch fails
+ * (logged with package path and status).
  */
 @Composable
-fun AppTile(label: String, iconUrl: String?, api: RelumeApi?, size: Dp = 40.dp, category: String? = null) {
+fun AppTile(label: String, iconUrl: String?, api: RelumeApi?, size: Dp = 40.dp, category: String? = null, onWhite: Boolean = false) {
     val (first, second) = categoryPastels(category)
+    val fill = if (onWhite) SolidColor(MaterialTheme.colorScheme.surfaceContainerLowest) else Brush.linearGradient(listOf(first.container, second.container))
     val icon by produceState<ImageBitmap?>(null, iconUrl, api) { value = if (iconUrl != null && api != null) loadIcon(api, iconUrl) else null }
     Box(
-        Modifier.size(size).clip(RoundedCornerShape(size * TILE_CORNER_RATIO)).background(Brush.linearGradient(listOf(first.container, second.container))),
+        Modifier.size(size).clip(RoundedCornerShape(size * TILE_CORNER_RATIO)).background(fill),
         contentAlignment = Alignment.Center,
     ) {
         val bmp = icon
