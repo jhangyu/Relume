@@ -666,12 +666,15 @@ def handle(job, log):
     ok, failed = [], set()
     for step in steps:
         if job.cancel_event.is_set():
-            return
+            break
         log.line(f"{step['kind']} {step['package']}: {step['action']} ({step['reason']})")
         if step['kind'] == 'project':
             ok.append(_run_project(job, dev, step, abis, log, failed))
         else:
             ok.append(_run_item(job, dev, step, first_abi(dev), log, failed))
+    _present(dev)  # store what the phone really has now: the pre-run read is stale after any install
+    if job.cancel_event.is_set():
+        return
     outcome = 'done' if all(ok) else 'partial' if any(ok) else 'failed'
     if outcome == 'failed':
         _fail(job, dev['id'], 'failed')
