@@ -25,7 +25,6 @@
   .arow.selected { background: var(--colorBrandBackground2); }
   .arow .nm { font: 600 15px/20px var(--fontFamilyBase); }
   .arow .nm a { color: inherit; }
-  .acts .icon-btn.outline { color: var(--colorBrandForeground1); border-color: var(--colorBrandStroke2); }
   .acts { display: flex; justify-content: flex-end; gap: 2px; }
   .st { display: grid; gap: 6px; }
   .st .caption a, .st .caption button.link { font-weight: 600; }
@@ -52,9 +51,6 @@
   .mode:has(input:checked) { border: 2px solid var(--colorBrandBackground); padding: 9px 11px; background: var(--colorBrandBackground2); }
   .mode input { position: absolute; opacity: 0; }
   .dep { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--colorNeutralStroke2); border-radius: var(--borderRadiusXLarge); }
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
-  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--colorNeutralStroke2); border-radius: var(--borderRadiusCircular); }
-  .input:invalid { border-bottom-color: var(--colorStatusDangerForeground1); }
   @media (max-width: 1100px) { .summary { grid-template-columns: repeat(3, 1fr); } }
   @media (max-width: 900px) {
     .summary { grid-template-columns: repeat(2, 1fr); }
@@ -78,9 +74,9 @@
       <h1 class="subtitle1">Apps</h1>
       <span class="caption hide-m" id="nextrun"></span>
       <div class="grow"></div>
-      <label class="input search hide-m" style="width:260px"><svg class="i i-16" aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Search enabled apps</span><input type="search" id="q" placeholder="Search enabled apps"></label>
-      <button class="btn" type="button" id="checkall" style="min-width:0"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg><span class="hide-m">Check all for updates</span><span class="sr-only">Check all for updates</span></button>
-      <a class="btn primary" href="/" style="min-width:0;text-decoration:none"><svg class="i" aria-hidden="true"><use href="#i-add"/></svg><span class="hide-m">Add from Marketplace</span><span class="sr-only">Add from Marketplace</span></a>
+      <label class="input search hide-m"><svg class="i i-16" aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Search enabled apps</span><input type="search" id="q" placeholder="Search enabled apps"></label>
+      <button class="btn" type="button" id="checkall" aria-label="Check all for updates" title="Check all for updates"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg><span class="hide-m">Check all for updates</span></button>
+      <a class="btn primary" href="/" aria-label="Add from Marketplace" title="Add from Marketplace"><svg class="i" aria-hidden="true"><use href="#i-add"/></svg><span class="hide-m">Add from Marketplace</span></a>
     </header>
 
     <main class="content" id="main">

@@ -67,7 +67,7 @@ a { color: var(--colorBrandForeground1); text-decoration: none; }
 a:hover { text-decoration: underline; }
 button, input, select { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--colorNeutralForeground1); outline-offset: 1px; border-radius: var(--borderRadiusMedium); }
-.i { width: 20px; height: 20px; stroke-width: 1.5; flex: none; }
+.i { width: 20px; height: 20px; flex: none; }
 .i-16 { width: 16px; height: 16px; }
 .i-24 { width: 24px; height: 24px; }
 .mono { font-family: var(--fontFamilyMonospace); font-size: 12px; }
@@ -105,7 +105,7 @@ button, input, select { font: inherit; color: inherit; }
 
 /* ---------- Button ---------- */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 12px; min-width: 96px; border-radius: var(--borderRadiusMedium); border: 1px solid var(--colorNeutralStroke1); background: var(--colorNeutralBackground1); font-weight: 600; cursor: pointer; transition: background var(--durationFast) var(--curveEasyEase); white-space: nowrap; }
-.btn:hover { background: var(--colorSubtleBackgroundHover); border-color: #c7c7c7; }
+.btn:hover { background: var(--colorSubtleBackgroundHover); border-color: #c7c7c7; text-decoration: none; }
 .btn:active { background: var(--colorSubtleBackgroundPressed); }
 .btn.primary { background: var(--colorBrandBackground); border-color: transparent; color: #fff; }
 .btn.primary:hover { background: var(--colorBrandBackgroundHover); }
@@ -119,7 +119,7 @@ button, input, select { font: inherit; color: inherit; }
 .icon-btn { position: relative; display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: var(--borderRadiusMedium); border: 1px solid transparent; background: transparent; color: var(--colorNeutralForeground2); cursor: pointer; }
 .icon-btn:hover { background: var(--colorSubtleBackgroundHover); color: var(--colorBrandForeground2); }
 .icon-btn:active { background: var(--colorSubtleBackgroundPressed); }
-.icon-btn.outline { border-color: var(--colorNeutralStroke1); background: var(--colorNeutralBackground1); }
+.icon-btn.outline { border-color: var(--colorBrandStroke2); background: var(--colorNeutralBackground1); color: var(--colorBrandForeground1); }
 .icon-btn[disabled] { color: var(--colorNeutralForegroundDisabled); cursor: not-allowed; background: transparent; }
 /* Fluent Tooltip (light surface, shadow16) shown on hover and keyboard focus */
 [data-tip]::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translate(-50%, 4px); padding: 4px 11px 6px; border-radius: var(--borderRadiusMedium); background: var(--colorNeutralBackground1); color: var(--colorNeutralForeground1); box-shadow: var(--shadow16); font: 400 12px/16px var(--fontFamilyBase); white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity var(--durationFast), transform var(--durationFast) var(--curveDecelerateMid); z-index: 20; }
@@ -127,17 +127,29 @@ button, input, select { font: inherit; color: inherit; }
 
 /* ---------- Inputs ---------- */
 .input { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 1px solid var(--colorNeutralStroke1); border-bottom-color: var(--colorNeutralStrokeAccessible); border-radius: var(--borderRadiusMedium); background: var(--colorNeutralBackground1); position: relative; }
-.input:focus-within { border-bottom: 2px solid var(--colorBrandForeground1); padding-bottom: 0; }
+.input:focus-within, select.dropdown:focus { outline: 0; border-bottom-color: var(--colorBrandForeground1); box-shadow: inset 0 -1px 0 var(--colorBrandForeground1); }
 .input input, .input select { border: 0; outline: 0; background: transparent; flex: 1; min-width: 0; width: 100%; height: 100%; }
 .input { min-width: 0; }
 .input .i { color: var(--colorNeutralForeground3); }
-.input.large { height: 40px; border-radius: var(--borderRadiusLarge); font-size: 16px; }
-.input.search { border-radius: var(--borderRadiusCircular); padding: 0 16px; }
+.input.search { width: min(320px, 40vw); }
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field > label, .label { font-weight: 600; font-size: 14px; }
 .hint { font-size: 12px; line-height: 16px; color: var(--colorNeutralForeground3); }
 select.dropdown { height: 32px; padding: 0 32px 0 10px; border: 1px solid var(--colorNeutralStroke1); border-bottom-color: var(--colorNeutralStrokeAccessible); border-radius: var(--borderRadiusMedium); background: var(--colorNeutralBackground1); appearance: none; width: 100%; }
 .select { position: relative; display: inline-flex; }
+.input:invalid, .input[aria-invalid=true] { border-color: var(--colorStatusDangerForeground1); }
+textarea.input { height: auto; padding: 6px 10px; }
+input[type=color] { width: 44px; height: 32px; padding: 2px; border: 1px solid var(--colorNeutralStroke1); border-radius: var(--borderRadiusMedium); background: var(--colorNeutralBackground1); }
+.input.narrow, .select.narrow { width: 128px; }
+.otp { display: flex; gap: 8px; }
+.otp input { width: 40px; text-align: center; padding: 0; }
+/* Segmented choice (radio group drawn as joined toggle buttons), 32px outer height */
+.seg { justify-self: start; display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 2px; border-radius: var(--borderRadiusMedium); background: var(--colorNeutralBackground3); box-shadow: inset 0 0 0 1px var(--colorNeutralStroke2); }
+.seg label { position: relative; }
+.seg input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.seg span { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: var(--borderRadiusMedium); font-weight: 600; color: var(--colorNeutralForeground2); }
+.seg input:checked + span { background: var(--colorBrandBackground); color: #fff; }
+.seg input:focus-visible + span { outline: 2px solid var(--colorNeutralForeground1); outline-offset: 2px; }
 .select::after { content: ""; position: absolute; right: 13px; top: 50%; width: 6px; height: 6px; border-right: 1.5px solid var(--colorNeutralForeground2); border-bottom: 1.5px solid var(--colorNeutralForeground2); transform: translateY(-70%) rotate(45deg); pointer-events: none; }
 
 /* Fluent Switch */
@@ -153,7 +165,7 @@ input[type=checkbox], input[type=radio] { accent-color: var(--colorBrandBackgrou
 
 /* ---------- Badge (tint) ---------- */
 .badge { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: var(--borderRadiusCircular); border: 1px solid var(--colorNeutralStroke2); background: var(--colorNeutralBackground3); color: var(--colorNeutralForeground2); font-size: 12px; font-weight: 600; white-space: nowrap; }
-.badge .i { width: 14px; height: 14px; stroke-width: 2; }
+.badge .i { width: 14px; height: 14px; }
 .badge.ok { background: var(--colorStatusSuccessBackground1); color: var(--colorStatusSuccessForeground1); border-color: var(--colorStatusSuccessBorder1); }
 .badge.warn { background: var(--colorStatusWarningBackground1); color: var(--colorStatusWarningForeground1); border-color: var(--colorStatusWarningBorder1); }
 .badge.err { background: var(--colorStatusDangerBackground1); color: var(--colorStatusDangerForeground1); border-color: var(--colorStatusDangerBorder1); }
@@ -232,6 +244,8 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
   .content { padding: 16px 16px 48px; }
   .hide-m { display: none !important; }
   .icon-btn { width: 44px; height: 44px; }
+  .header .btn:has(> .hide-m) { min-width: 0; width: 32px; padding: 0; }
+  .input.search { width: auto; flex: 1; }
 }
 
 /* ---------- Relume additions (not in web/fluent.css) ---------- */
@@ -258,6 +272,8 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
 .menu { position: absolute; right: 0; top: calc(100% + 4px); min-width: 220px; background: var(--colorNeutralBackground1); border-radius: var(--borderRadiusLarge); padding: 4px; box-shadow: var(--shadow16); z-index: 20; display: flex; flex-direction: column; }
 .menu a, .menu button { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--borderRadiusMedium); background: none; border: 0; color: inherit; text-align: left; cursor: pointer; text-decoration: none; white-space: nowrap; }
 .menu a:hover, .menu button:hover { background: var(--colorSubtleBackgroundHover); text-decoration: none; }
+.menu button[disabled] { color: var(--colorNeutralForegroundDisabled); background: none; cursor: not-allowed; }
+.danger { color: var(--colorStatusDangerForeground1); }
 /* utilities kept for pages not yet restyled */
 .muted { color: var(--colorNeutralForeground3); }
 .sm { font-size: 13px; } .xs { font-size: 12px; }

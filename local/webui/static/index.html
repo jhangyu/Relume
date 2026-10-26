@@ -19,7 +19,6 @@
 .stats b { color: var(--colorNeutralForeground1); font-weight: 600; }
 .toolbar { position: sticky; top: 60px; z-index: 4; display: flex; flex-direction: column; gap: 12px; padding: 14px 0; background: rgba(250,250,250,.92); backdrop-filter: blur(20px); }
 .cats { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px; }
-.q-wrap { width: min(420px, 40vw); }
 .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 16px; }
 .app { position: relative; display: flex; flex-direction: column; gap: 14px; padding: 18px; border-radius: var(--borderRadius2XLarge); background: linear-gradient(180deg, var(--tint), var(--colorNeutralBackground1) 62%); box-shadow: var(--shadow4); border: 1px solid transparent; cursor: pointer; text-align: left; transition: box-shadow var(--durationNormal), transform var(--durationNormal) var(--curveDecelerateMid); }
 .app:hover { box-shadow: var(--shadow16); transform: translateY(-2px); }
@@ -65,7 +64,6 @@
 @media (max-width: 1100px) { .hero .feature { flex-basis: 46%; } .hero .feature:first-child { flex-basis: 70%; } }
 @media (max-width: 900px) {
   .hero .feature, .hero .feature:first-child { flex-basis: 86%; }
-  .q-wrap { width: auto; flex: 1; }
   .gallery { grid-template-columns: repeat(auto-fill, minmax(156px, 1fr)); gap: 12px; }
   .app { padding: 14px; } .app .tile { --s: 48px; }
   .detail { grid-template-columns: 1fr; } .detail aside { border-right: 0; border-bottom: 1px solid var(--colorNeutralStroke3); padding: 20px; }
@@ -78,9 +76,9 @@
 <div class="main"><header class="header">
 <button class="icon-btn menu-btn" type="button" data-nav-toggle aria-label="Open navigation" title="Open navigation"><svg class="i" aria-hidden="true"><use href="#i-menu"/></svg></button>
 <h1 class="subtitle1 hide-m">Marketplace</h1><div class="grow hide-m"></div>
-<label class="input search large q-wrap"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Search apps</span><input id="q" type="search" placeholder="Search apps or packages" autocomplete="off"></label>
-<button class="btn" id="refresh" style="min-width:0" type="button" aria-label="Refresh catalog" title="Refresh catalog"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg><span class="hide-m">Refresh catalog</span></button>
-<button class="btn" id="add-source" style="min-width:0" type="button" aria-label="Add custom source" title="Add custom source"><svg class="i" aria-hidden="true"><use href="#i-github"/></svg><span class="hide-m">Add custom source</span></button>
+<label class="input search"><svg class="i i-16" aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Search apps</span><input id="q" type="search" placeholder="Search apps or packages" autocomplete="off"></label>
+<button class="btn" id="refresh" type="button" aria-label="Refresh catalog" title="Refresh catalog"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg><span class="hide-m">Refresh catalog</span></button>
+<button class="btn" id="add-source" type="button" aria-label="Add custom source" title="Add custom source"><svg class="i" aria-hidden="true"><use href="#i-github"/></svg><span class="hide-m">Add custom source</span></button>
 </header>
 <main id="main" class="content">
 <div id="notice" class="stack-sm" role="status"></div>
@@ -88,13 +86,13 @@
 <div class="stats" id="stats" role="status"></div>
 <div class="toolbar"><div class="row" style="gap:12px">
 <div class="cats grow" id="cats" role="group" aria-label="Category"></div>
-<label class="select"><span class="sr-only">Origin</span><select class="dropdown" id="origin" style="width:168px"><option value="">All origins</option><option value="official">Official catalog</option><option value="builtin">Built-in</option><option value="custom">Custom</option></select></label>
-<label class="select"><span class="sr-only">Sort</span><select class="dropdown" id="sort" style="width:176px"><option value="bundles">Most bundles</option><option value="stars">Most stars</option><option value="updated">Recently updated</option><option value="name">Name A–Z</option></select></label>
+<label class="select"><span class="sr-only">Origin</span><select class="dropdown" id="origin"><option value="">All origins</option><option value="official">Official catalog</option><option value="builtin">Built-in</option><option value="custom">Custom</option></select></label>
+<label class="select"><span class="sr-only">Sort</span><select class="dropdown" id="sort"><option value="bundles">Most bundles</option><option value="stars">Most stars</option><option value="updated">Recently updated</option><option value="name">Name A–Z</option></select></label>
 </div></div>
 <section class="gallery" id="gallery" aria-label="Apps"><section class="detail" id="detail" hidden></section></section>
 <div id="empty" class="card empty" hidden></div>
 <p class="caption" id="count" style="margin-top:24px;text-align:center"></p>
-<div style="text-align:center;margin-top:8px"><button class="btn" id="more" type="button" hidden>Load more</button></div>
+<div id="more" aria-hidden="true"></div>
 <section class="section" id="sources" aria-labelledby="src-h" hidden><div class="section-head"><h2 class="subtitle1" id="src-h">Custom sources</h2></div><div class="card card-pad" id="source-list"></div></section>
 </main></div></div>
 <dialog id="dlg-custom" aria-labelledby="dc-t"><form method="dialog">
@@ -114,5 +112,5 @@
 <dialog id="dlg-del" aria-labelledby="dd-t"><form method="dialog">
 <h2 class="subtitle1" id="dd-t">Delete custom source</h2><p class="subtle-text" style="margin-top:6px" id="dd-msg"></p>
 <div class="dlg-actions"><button class="btn" value="cancel">Cancel</button><button class="btn primary" value="ok">Delete</button></div></form></dialog>
-<div id="toast" class="toast" role="status" aria-live="polite"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg><span></span></div>
+<div id="toast" class="toast" role="status" aria-live="polite"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg><span></span></div>
 </body></html>

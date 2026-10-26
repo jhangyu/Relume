@@ -162,7 +162,7 @@ function patchesSection() {
   if (!b) return html`<div class="msgbar info">${icon('info')}<div class="grow">Choose a bundle to see its patches.</div></div>`;
   if (!b.patches.length) return html`<div class="msgbar info">${icon('info')}<div class="grow">${b.name} has no patch list for this app. It is applied as it is.</div></div>`;
   return html`<div class="patches"><div class="patches-bar">
-<label class="input grow" style="min-width:180px;max-width:320px">${icon('search', 'i-16')}<span class="sr-only">Filter patches</span><input type="search" data-r="filter" placeholder="Filter ${b.patches.length} patches" value="${D.filter}"></label>
+<label class="input search">${icon('search', 'i-16')}<span class="sr-only">Filter patches</span><input type="search" data-r="filter" placeholder="Filter ${b.patches.length} patches" value="${D.filter}"></label>
 <span class="badge brand" data-r="on"></span><span class="badge" data-r="off"></span><span class="badge lav" data-r="chg" hidden></span><div class="grow"></div>
 <button class="btn subtle small" type="button" data-act="allon">All on</button><button class="btn subtle small" type="button" data-act="reset">Reset to defaults</button></div>
 <div class="patch-list">${b.patches.map(patchRow)}</div></div>`;
@@ -218,7 +218,7 @@ function renderDetail() {
   const m = D.meta;
   const aside = html`<aside>${iconTile(m, 's96')}<div><h2 class="title3" id="d-name">${m.name || m.package}</h2><div class="mono subtle-text" style="margin-top:4px">${m.package}</div></div>
 ${m.description ? html`<p class="subtle-text">${m.description}</p>` : ''}<div data-r="facts">${factsHtml()}</div>
-<button class="btn subtle" type="button" data-act="close" style="justify-content:flex-start;min-width:0;padding:0" aria-label="Close app details">${icon('close')}Close</button></aside>`;
+<div><button class="btn subtle" type="button" data-act="close" aria-label="Close app details">${icon('close')}Close</button></div></aside>`;
   const work = m.enabled
     ? html`<div class="work"><div class="msgbar ok">${icon('check')}<div class="grow"><div class="strong">${m.name || m.package} is enabled</div><div>Change its bundle, patches or download source in <a href="/apps.html?app=${m.app_id}">Apps</a>.</div></div></div></div>`
     : html`<div class="work">
@@ -349,7 +349,25 @@ const onFilter = fn => e => { fn(e.target.value); closeApp(); loadList(true).cat
 $('#q').addEventListener('input', onFilter(v => { S.q = v.trim(); }));
 $('#origin').addEventListener('change', onFilter(v => { S.origin = v; }));
 $('#sort').addEventListener('change', onFilter(v => { S.sort = v; }));
-$('#more').addEventListener('click', () => { S.page += 1; loadList(false).catch(err => console.error('load more:', err)); });
+// Next page when the sentinel after the gallery comes near the viewport.
+let paging = false;
+const pager = new IntersectionObserver(([e]) => { if (e.isIntersecting) loadMore(); }, { rootMargin: '400px' });
+function loadMore() {
+  if (paging || S.apps.length >= S.total) return;
+  paging = true;
+  const want = S.page + 1;
+  S.page = want;
+  loadList(false).then(() => {
+    paging = false;
+    pager.unobserve($('#more')); pager.observe($('#more'));   // observe() re-reports: loads again if the sentinel is still in view
+  }, err => {
+    paging = false;
+    if (S.page === want) S.page = want - 1;   // a filter reset in between owns S.page: otherwise retry the same page
+    console.error('load more:', err);
+    toast(err.message, 'error');
+  });
+}
+pager.observe($('#more'));
 addEventListener('resize', placeDetail);
 
 async function refreshCatalog() {

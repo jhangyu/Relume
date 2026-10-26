@@ -3,12 +3,6 @@
 <style>
 .global { position: relative; overflow: hidden; border-radius: var(--borderRadius3XLarge); padding: 28px 32px; background: linear-gradient(120deg, #ebf3fc 0%, #f5f0fb 55%, #fcf0fa 100%); box-shadow: var(--shadow4); display: grid; grid-template-columns: 1fr auto; gap: 24px 32px; }
 .global::before { content: ""; position: absolute; right: -80px; top: -100px; width: 320px; height: 320px; border-radius: 50%; background: radial-gradient(circle, rgba(135,100,184,.18), transparent 65%); }
-.seg { justify-self: start; display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: var(--borderRadiusCircular); background: rgba(255,255,255,.75); box-shadow: inset 0 0 0 1px var(--colorNeutralStroke2); }
-.seg label { position: relative; }
-.seg input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
-.seg span { display: inline-flex; align-items: center; height: 36px; padding: 0 16px; border-radius: var(--borderRadiusCircular); font-weight: 600; color: var(--colorNeutralForeground2); }
-.seg input:checked + span { background: var(--colorBrandBackground); color: #fff; box-shadow: var(--shadow4); }
-.seg input:focus-visible + span { outline: 2px solid var(--colorNeutralForeground1); outline-offset: 2px; }
 .when { display: grid; gap: 4px; align-content: start; text-align: right; position: relative; }
 .when .big { font: 600 28px/36px var(--fontFamilyDisplay); }
 .pipe { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; position: relative; list-style: none; margin: 0; padding: 0; }
@@ -61,7 +55,7 @@
 <div style="display:grid;gap:16px;margin-top:20px">
 <div class="field"><label for="o-name">Name</label><span class="input"><input id="o-name" maxlength="80" placeholder="Nightly push"></span></div>
 <div class="row wrap" style="gap:16px" id="o-form"></div>
-<div class="field"><label for="o-retries">Retries for offline phones (60 s apart)</label><span class="input" style="width:90px"><input id="o-retries" type="number" min="0" max="5" value="0"></span></div>
+<div class="field"><label for="o-retries">Retries for offline phones (60 s apart)</label><span class="input narrow"><input id="o-retries" type="number" min="0" max="5" value="0"></span></div>
 <fieldset style="border:0;padding:0;margin:0;display:grid;gap:8px"><legend class="label" style="margin-bottom:8px">Phones</legend><div style="display:grid;gap:8px" id="o-devs"></div></fieldset>
 <label class="row"><input type="checkbox" id="o-notify" checked>Notify on result</label>
 <p class="caption" id="o-next" aria-live="polite"></p>

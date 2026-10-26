@@ -19,9 +19,9 @@ function sentence(spec) {
 
 // The day / week / hours form shared by the global Custom choice and the OTA dialog; `p` prefixes the element ids.
 function specForm(p, spec) {
-  return html`<div class="field"><label for="${p}-f">Repeat</label><span class="select"><select class="dropdown" id="${p}-f" style="width:140px"><option value="hours" ${spec.every === 'hours' ? 'selected' : ''}>Hourly</option><option value="day" ${spec.every === 'day' ? 'selected' : ''}>Daily</option><option value="week" ${spec.every === 'week' ? 'selected' : ''}>Weekly</option></select></span></div>
-<div class="field" id="${p}-hw"><label for="${p}-h">Every (hours)</label><span class="input" style="width:100px"><input id="${p}-h" type="number" min="1" max="168" value="${spec.hours || 6}"></span></div>
-<div class="field" id="${p}-aw"><label for="${p}-at">At</label><span class="input" style="width:120px"><input id="${p}-at" type="time" value="${spec.at || DEFAULT_SPEC.at}"></span></div>
+  return html`<div class="field"><label for="${p}-f">Repeat</label><span class="select narrow"><select class="dropdown" id="${p}-f"><option value="hours" ${spec.every === 'hours' ? 'selected' : ''}>Hourly</option><option value="day" ${spec.every === 'day' ? 'selected' : ''}>Daily</option><option value="week" ${spec.every === 'week' ? 'selected' : ''}>Weekly</option></select></span></div>
+<div class="field" id="${p}-hw"><label for="${p}-h">Every (hours)</label><span class="input narrow"><input id="${p}-h" type="number" min="1" max="168" value="${spec.hours || 6}"></span></div>
+<div class="field" id="${p}-aw"><label for="${p}-at">At</label><span class="input narrow"><input id="${p}-at" type="time" value="${spec.at || DEFAULT_SPEC.at}"></span></div>
 <div class="field" id="${p}-dw"><span class="label" id="${p}-dl">On days</span><div class="days" role="group" aria-labelledby="${p}-dl">${UI_DAYS.map((n, i) => html`<label class="row"><input type="checkbox" name="${p}-d" value="${i}" ${spec.every === 'week' && spec.days.map(specToUi).includes(i) ? 'checked' : ''}>${n}</label>`)}</div></div>`;
 }
 
