@@ -16,6 +16,8 @@ class CategoryHueTest {
         assertEquals(CategoryHue.Maps, categoryHue("Maps & Navigation"))
         assertEquals(CategoryHue.News, categoryHue("News & Magazines"))
         assertEquals(CategoryHue.Personalization, categoryHue("Personalization"))
+        assertEquals(CategoryHue.Lifestyle, categoryHue("Health & Fitness"))
+        assertEquals(CategoryHue.Lifestyle, categoryHue("Shopping"))
     }
 
     @Test

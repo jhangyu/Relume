@@ -237,11 +237,11 @@ fun OriginLabel(origin: String) {
 }
 
 /** Category hues of tokens.md section 3. */
-internal enum class CategoryHue { Social, Video, Music, Productivity, Tools, Personalization, Maps, News }
+internal enum class CategoryHue { Social, Video, Music, Productivity, Tools, Personalization, Maps, News, Lifestyle }
 
 /**
  * Store category name -> hue, the same patterns and order as the web's `catSlug` (local/webui/static/app.js CATS),
- * so "Social & Communication" is social and "Tools & Utilities" is tools. The web's lifestyle hue has no Android token.
+ * so "Social & Communication" is social and "Tools & Utilities" is tools.
  */
 private val CATEGORY_PATTERNS = listOf(
     CategoryHue.Social to "social|communicat",
@@ -252,13 +252,17 @@ private val CATEGORY_PATTERNS = listOf(
     CategoryHue.Personalization to "personal",
     CategoryHue.Maps to "map|navig|travel",
     CategoryHue.News to "news|media|book",
+    CategoryHue.Lifestyle to "life|health|shop",
 ).map { (hue, pattern) -> hue to Regex(pattern, RegexOption.IGNORE_CASE) }
 
 /** Hue of a store category; null when the name matches none (m3.css `[data-cat]` default: neutral grey). */
 internal fun categoryHue(category: String?): CategoryHue? =
     category?.let { name -> CATEGORY_PATTERNS.firstOrNull { (_, re) -> re.containsMatchIn(name) }?.first }
 
-/** Category colours: first = container and glyph, second = gradient end. Unknown or missing = neutral grey. */
+/**
+ * Category colours of a store category name: first = container and glyph (on-container), second = gradient end.
+ * Used by [AppTile] (`category = …`), [CategoryTag] and category chips. Unknown or missing = neutral grey.
+ */
 @Composable
 internal fun categoryPastels(category: String?): Pair<Pastel, Pastel> {
     val r = MaterialTheme.relume
@@ -272,6 +276,7 @@ internal fun categoryPastels(category: String?): Pair<Pastel, Pastel> {
         CategoryHue.Personalization -> r.lavender to r.pink
         CategoryHue.Maps -> r.green to r.teal
         CategoryHue.News -> r.blue to r.lavender
+        CategoryHue.Lifestyle -> r.olive to r.coral
         null -> Pastel(s.surfaceContainerHigh, s.onSurfaceVariant) to Pastel(s.surfaceContainerHighest, s.onSurfaceVariant)
     }
 }

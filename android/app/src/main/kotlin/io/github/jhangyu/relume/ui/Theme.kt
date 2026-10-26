@@ -50,6 +50,8 @@ class RelumeColors(
     val pink: Pastel = Pastel(Color(0xFFFDE0EF), Color(0xFF8A1650)),
     val lavender: Pastel = Pastel(Color(0xFFE8E0FF), Color(0xFF4A2A8F)),
     val teal: Pastel = Pastel(Color(0xFFD0F2EE), Color(0xFF0F5249)),
+    /** Lifestyle category (the web's gold-olive lifestyle hue): 7.8:1, and 7.6:1 on the coral gradient end. */
+    val olive: Pastel = Pastel(Color(0xFFF0EDC0), Color(0xFF4D4800)),
     /** Glyph colours by meaning: build, sync and search, add link. */
     val buildGlyph: Color = Color(0xFF34248C),
     val syncGlyph: Color = Color(0xFF0B3D91),
