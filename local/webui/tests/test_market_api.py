@@ -1,15 +1,11 @@
 import json, unittest
 from unittest import mock
-from webui import apklocate, apps, auth, catalog, db, server
+from webui import apklocate, apps, auth, catalog, db, jobs, server
 from webui.tests import catalog_rows
 from webui.tests.helpers import DataTestCase, serve, http, login
 
 FEED = {'feeds': [], 'sources': []}
 
-
-def fake(mod, name, **kw):
-    """patch.object; create=True while task 1.3 has not committed the catalog read functions yet."""
-    return mock.patch.object(mod, name, create=True, **kw)
 
 
 def market_app(package, name, category, origins, bundles, stars, updated):
@@ -28,7 +24,7 @@ class MarketCase(DataTestCase):
     def setUp(self):
         super().setUp()
         self.enterContext(mock.patch.object(auth, 'SCRYPT_N', 2 ** 4))   # fast hashing, the KDF cost is not under test
-        self.enterContext(fake(catalog, 'feed_status', return_value=FEED))
+        self.enterContext(mock.patch.object(catalog, 'feed_status', return_value=FEED))
         self.base = serve(self, names=('market',))
         self.cookie = login(self.base)
 
@@ -44,7 +40,7 @@ class MarketCase(DataTestCase):
 class MarketplaceTest(MarketCase):
     def setUp(self):
         super().setUp()
-        self.enterContext(fake(catalog, 'market_apps', return_value=APPS))
+        self.enterContext(mock.patch.object(catalog, 'market_apps', return_value=APPS))
         with db.tx() as c:
             b = catalog_rows.builtin_id(c)
             self.yt = catalog_rows.add_item(c, 'com.a.youtube', b)
@@ -127,30 +123,26 @@ class AppsTest(MarketCase):
     def test_build_without_url_is_409(self):
         pkg = 'com.x.nourl'   # the seed rows of 010 give YouTube and Reddit a listing URL already
         with db.tx() as c:
-            yt = catalog_rows.add_item(c, pkg, self.basic['builtin'])
-        checks, saved = [], []
-
-        def rebuild(app_id):   # stand-in for apps.rebuild's URL guard (task 1.2)
-            if not apklocate.download_state(pkg)['apkmirror_list_url']:
-                raise server.HttpError(409, f'app {app_id} ({pkg}): build needs an APKMirror listing URL',
-                                       'needs_download_url')
-            return 55
-        self.enterContext(mock.patch.object(apps, 'rebuild', side_effect=rebuild))
-        self.enterContext(mock.patch.object(apps, 'get', return_value={'id': yt, 'package': pkg}))
-        self.enterContext(mock.patch.object(apps, 'check_update', side_effect=lambda i: checks.append(i) or 9))
-        self.enterContext(mock.patch.object(apps, 'update_settings', side_effect=lambda i, f: saved.append(f)))
-        st, body = self.send('POST', f'/api/apps/{yt}/build')
+            app_id = catalog_rows.add_item(c, pkg, self.basic['builtin'])
+        music = self.basic['items'][2]
+        st, body = self.send('POST', f'/api/apps/{app_id}/build')
         self.assertEqual((st, body['code']), (409, 'needs_download_url'))
         self.assertIn('build needs an APKMirror listing URL', body['error'])
-        st, body = self.send('PUT', f'/api/apps/{yt}', {'display_name': 'YT', 'download': {'apkpure_url': 'ftp://x'}})
-        self.assertEqual((st, saved), (400, []))   # the download part is validated before the settings are saved
-        url = {'download': {'apkmirror_list_url': 'https://www.apkmirror.com/uploads/?appcategory=youtube'}}
-        st, body = self.send('PUT', f'/api/apps/{yt}', {'display_name': 'YT', **url})
-        self.assertEqual((st, body['download']['state'], saved), (200, 'manual', [{'display_name': 'YT'}]), body)
-        self.assertEqual(checks, [yt])   # a newly set URL starts a check
-        self.send('PUT', f'/api/apps/{yt}', url)
-        self.assertEqual(checks, [yt])   # an unchanged URL does not
-        self.assertEqual(self.send('POST', f'/api/apps/{yt}/build'), (200, {'job_id': 55}))
+        self.assertEqual(self.send('POST', f'/api/apps/{music}/build')[1]['code'], 'app_disabled')
+        st, body = self.send('PUT', f'/api/apps/{app_id}', {'display_name': 'X', 'download': {'apkpure_url': 'ftp://x'}})
+        self.assertEqual(st, 400)   # the download part is validated before the settings are saved
+        self.assertIsNone(db.conn().execute('SELECT display_name FROM item WHERE id = ?', (app_id,)).fetchone()[0])
+        url = {'download': {'apkmirror_list_url': 'https://www.apkmirror.com/uploads/?appcategory=nourl'}}
+        st, body = self.send('PUT', f'/api/apps/{app_id}', {'display_name': 'X', **url})
+        self.assertEqual((st, body['download']['state'], body['name']), (200, 'manual', 'X'), body)
+        checks = lambda: [json.loads(r[0]) for r in db.conn().execute("SELECT target FROM jobs WHERE kind = 'upstream'")]
+        self.assertEqual(checks(), [{'item_id': app_id}])   # a newly set URL starts a check
+        db.conn().execute("UPDATE jobs SET status = 'success' WHERE kind = 'upstream'")   # a queued duplicate would be merged
+        self.send('PUT', f'/api/apps/{app_id}', url)
+        self.assertEqual(len(checks()), 1)   # an unchanged URL does not
+        st, body = self.send('POST', f'/api/apps/{app_id}/build')
+        self.assertEqual(st, 200, body)
+        self.assertEqual(jobs.get(body['job_id'])['kind'], 'build')
 
 
 class DeviceTokenTest(MarketCase):
@@ -160,11 +152,11 @@ class DeviceTokenTest(MarketCase):
                                       'abi_list': ['arm64-v8a']}})
         self.assertEqual(st, 200, body)
         bearer = {'Authorization': f"Bearer {json.loads(body)['token']}"}
-        self.enterContext(fake(catalog, 'market_apps', return_value=APPS[:1]))
+        self.enterContext(mock.patch.object(catalog, 'market_apps', return_value=APPS[:1]))
         self.enterContext(mock.patch.object(apps, 'list_enabled', return_value=[]))
-        self.enterContext(fake(catalog, 'add_custom', return_value=7))
+        self.enterContext(mock.patch.object(catalog, 'add_custom', return_value=7))
         deleted = []
-        self.enterContext(fake(catalog, 'delete_custom', side_effect=deleted.append))
+        self.enterContext(mock.patch.object(catalog, 'delete_custom', side_effect=deleted.append))
         st, _, body = http('GET', self.base + '/api/marketplace', headers=bearer)
         self.assertEqual((st, json.loads(body)['total']), (200, 1))
         self.assertEqual(http('GET', self.base + '/api/apps', headers=bearer)[::2], (200, b'{"apps": []}'))

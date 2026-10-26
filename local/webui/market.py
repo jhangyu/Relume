@@ -1,15 +1,7 @@
 """Marketplace HTTP API (spec marketplace §6): every new route, on top of apps, catalog, apklocate and build.
 No route here is session-only: the Android app reaches all of them with its device token."""
-from . import apklocate, build, catalog, db
+from . import apklocate, apps, build, catalog, db
 from .server import HttpError, is_int, validate_package
-
-
-
-def _apps():
-    """apps imported on use until task 1.2 commits apps.py; then this becomes a top-level import."""
-    from . import apps
-    return apps
-
 
 SORTS = ("name", "bundles", "stars", "updated")
 ORIGINS = ("official", "builtin", "custom")
@@ -114,7 +106,7 @@ def get_marketplace_app(req):
 
 
 def list_apps(req):
-    return 200, {"apps": [_with_download(a) for a in _apps().list_enabled()]}
+    return 200, {"apps": [_with_download(a) for a in apps.list_enabled()]}
 
 
 def enable_app(req):
@@ -130,56 +122,56 @@ def enable_app(req):
         raise HttpError(400, f"app enable {pkg}: patches expected an object of name: true|false, got {patches!r}")
     if b.get("download") is not None:
         apklocate.put_download(pkg, b["download"])
-    return 201, _with_download(_apps().enable(pkg, bundle_id, patches))
+    return 201, _with_download(apps.enable(pkg, bundle_id, patches))
 
 
 def get_app(req):
-    return 200, _with_download(_apps().get(_id(req)))
+    return 200, _with_download(apps.get(_id(req)))
 
 
 def put_app(req):
     app_id, b = _id(req), req.json
-    pkg = _apps().get(app_id)["package"]
+    pkg = apps.get(app_id)["package"]
     before = apklocate.download_state(pkg)
     had_url = bool(before and (before["apkmirror_list_url"] or before["apkpure_url"]))
     if "download" in b:
         apklocate.validate_download(pkg, b["download"])  # both parts are validated before either writes
     settings = {k: v for k, v in b.items() if k != "download"}
     if settings:
-        _apps().update_settings(app_id, settings)
+        apps.update_settings(app_id, settings)
     if "download" in b:
         apklocate.put_download(pkg, b["download"])
         after = apklocate.download_state(pkg)
         if not had_url and (after["apkmirror_list_url"] or after["apkpure_url"]):
-            _apps().check_update(app_id)
-    return 200, _with_download(_apps().get(app_id))
+            apps.check_update(app_id)
+    return 200, _with_download(apps.get(app_id))
 
 
 def delete_app(req):
-    _apps().disable(_id(req))
+    apps.disable(_id(req))
     return 204, None
 
 
 def get_patches(req):
-    return 200, _apps().get_patches(_id(req))
+    return 200, apps.get_patches(_id(req))
 
 
 def put_patches(req):
-    return 200, _apps().put_patches(_id(req), req.json)
+    return 200, apps.put_patches(_id(req), req.json)
 
 
 def check_app(req):
-    return 200, {"job_id": _apps().check_update(_id(req))}
+    return 200, {"job_id": apps.check_update(_id(req))}
 
 
 def build_app(req):
-    return 200, {"job_id": _apps().rebuild(_id(req))}
+    return 200, {"job_id": apps.rebuild(_id(req))}
 
 
 def locate_app(req):
     app_id = _id(req)
-    apklocate.reset_lookup(_apps().get(app_id)["package"])
-    return 200, {"job_id": _apps().check_update(app_id)}
+    apklocate.reset_lookup(apps.get(app_id)["package"])
+    return 200, {"job_id": apps.check_update(app_id)}
 
 
 def list_artifacts(req):
@@ -187,15 +179,15 @@ def list_artifacts(req):
 
 
 def get_schedule(req):
-    return 200, _apps().get_schedule()
+    return 200, apps.get_schedule()
 
 
 def put_schedule(req):
-    return 200, _apps().put_schedule(req.json)
+    return 200, apps.put_schedule(req.json)
 
 
 def run_schedule(req):
-    return 202, {"job_id": _apps().run_schedule()}
+    return 202, {"job_id": apps.run_schedule()}
 
 
 def catalog_status(req):
