@@ -1,6 +1,9 @@
 package io.github.jhangyu.relume.ui
 
 import android.app.Application
+import android.app.DownloadManager
+import android.net.Uri
+import android.os.Environment
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -13,6 +16,8 @@ import io.github.jhangyu.relume.api.AppObject
 import io.github.jhangyu.relume.api.BundleOption
 import io.github.jhangyu.relume.api.CleanupReport
 import io.github.jhangyu.relume.api.DeviceView
+import io.github.jhangyu.relume.api.FollowedApp
+import io.github.jhangyu.relume.api.FollowedFile
 import io.github.jhangyu.relume.api.Health
 import io.github.jhangyu.relume.api.InstalledPackage
 import io.github.jhangyu.relume.api.InstallPlan
@@ -58,6 +63,8 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         private set
     var apps by mutableStateOf<List<AppObject>>(emptyList())
         private set
+    var followed by mutableStateOf<List<FollowedApp>>(emptyList())
+        private set
     var schedule by mutableStateOf<Schedule?>(null)
         private set
     var otaSchedules by mutableStateOf<List<OtaSchedule>>(emptyList())
@@ -95,6 +102,8 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     fun facts(app: AppObject): AppFacts =
         AppFacts(app, installed[app.packageName], plan?.steps?.firstOrNull { it.refId == app.id && it.kind == StepKind.ITEM })
 
+    fun followedStep(app: FollowedApp): PlanStep? = plan?.steps?.firstOrNull { it.refId == app.id && it.kind == StepKind.PROJECT }
+
     fun signedIn() {
         api = relume.api
         notice = null
@@ -106,6 +115,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         api = null
         notice = reason
         apps = emptyList()
+        followed = emptyList()
         loaded = false
         loadError = null
         schedule = null
@@ -172,7 +182,9 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     /** Null on success, otherwise the failure text [call] put into [error]. */
     private suspend fun loadParts(): String? {
         health = call { it.health() } ?: return error
-        apps = call { it.apps() } ?: return error
+        val list = call { it.apps() } ?: return error
+        apps = list.apps
+        followed = list.followed
         loaded = true
         val update = call { it.schedule() } ?: return error
         schedule = update
@@ -195,7 +207,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     /** Question shown before a run starts. */
     sealed interface InstallPrompt {
         data object NeedPermission : InstallPrompt
-        class Signer(val itemId: Int, val plan: InstallPlan, val step: PlanStep) : InstallPrompt
+        class Signer(val kind: StepKind, val refId: Int, val plan: InstallPlan, val step: PlanStep) : InstallPrompt
         class Dependencies(val plan: InstallPlan) : InstallPrompt
     }
 
@@ -210,7 +222,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         prompt = null
     }
 
-    fun beginInstall(f: AppFacts) {
+    fun beginInstall(kind: StepKind, id: Int) {
         viewModelScope.launch {
             if (!InstallRunner.canInstall(relume)) {
                 prompt = InstallPrompt.NeedPermission
@@ -218,19 +230,22 @@ class AppModel(application: Application) : AndroidViewModel(application) {
             }
             // Fresh assignments: the cached device may predate an install started a moment ago.
             val d = call { it.me().device } ?: return@launch
-            val assigned = d.assignments.map { a -> a.itemId }
-            if (f.app.id !in assigned) {
-                // Spec 8.3: assign to this phone first (projects stay as they are), so OTA keeps it updated too.
-                call { it.putAssignments(d.id, assigned + f.app.id, null) } ?: return@launch
-            }
-            val scoped = call { it.plan(listOf(f.app.id), null) } ?: return@launch
-            evaluate(f.app.id, scoped)
+            val items = d.assignments.map { a -> a.itemId }
+            val projects = d.projects.filter { it.assigned }.map { it.projectId }
+            // Spec 8.3: assign to this phone first, so OTA keeps it updated too.
+            if (kind == StepKind.ITEM && id !in items) call { it.putAssignments(d.id, items + id, null) } ?: return@launch
+            if (kind == StepKind.PROJECT && id !in projects) call { it.putAssignments(d.id, items, projects + id) } ?: return@launch
+            val scoped = scopedPlan(kind, id) ?: return@launch
+            evaluate(kind, id, scoped)
         }
     }
 
-    private fun evaluate(itemId: Int, scoped: InstallPlan) {
+    private suspend fun scopedPlan(kind: StepKind, id: Int) =
+        call { if (kind == StepKind.ITEM) it.plan(listOf(id), null) else it.plan(null, listOf(id)) }
+
+    private fun evaluate(kind: StepKind, id: Int, scoped: InstallPlan) {
         scoped.steps.firstOrNull { it.signerChange != null }?.let {
-            prompt = InstallPrompt.Signer(itemId, scoped, it)
+            prompt = InstallPrompt.Signer(kind, id, scoped, it)
             return
         }
         if (scoped.steps.count { it.action == PlanAction.INSTALL } > 1) {
@@ -251,9 +266,21 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         val change = checkNotNull(p.step.signerChange) { "signer prompt for step ${p.step.refId} without signer_change" }
         viewModelScope.launch {
             call { it.acceptSigner(p.step.refId, change.offered) } ?: return@launch
-            val fresh = call { it.plan(listOf(p.itemId), null) } ?: return@launch
-            evaluate(p.itemId, fresh)
+            val fresh = scopedPlan(p.kind, p.refId) ?: return@launch
+            evaluate(p.kind, p.refId, fresh)
         }
+    }
+
+    /** Download: the system DownloadManager saves the followed APK to Downloads and shows progress and failures itself. */
+    fun download(app: FollowedApp, file: FollowedFile) {
+        val a = checkNotNull(api) { "download of ${app.name} without a signed-in client" }
+        val token = checkNotNull(a.token()) { "download of ${app.name} without a device token" }
+        val request = DownloadManager.Request(Uri.parse(a.url.resolve(file.url).toString()))
+            .addRequestHeader("Authorization", "Bearer $token")
+            .setTitle(app.name)
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, file.name)
+        relume.getSystemService(DownloadManager::class.java).enqueue(request)
     }
 
     private fun start(p: InstallPlan) {

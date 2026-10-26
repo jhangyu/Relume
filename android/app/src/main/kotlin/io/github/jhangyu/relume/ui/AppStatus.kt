@@ -18,6 +18,16 @@ enum class Lookup { NeedsUrl, PickOne }
 /** What this phone has of an app. */
 enum class PhoneState { NotInstalled, Update, Blocked, Installed }
 
+/** Phone state from the plan step; without a step, from the installed package ([newer]: the server has another version). */
+internal fun phoneState(step: PlanStep?, installed: InstalledPackage?, newer: Boolean): PhoneState = when {
+    step?.action == PlanAction.INSTALL -> if (installed == null) PhoneState.NotInstalled else PhoneState.Update
+    step?.action == PlanAction.ERROR -> PhoneState.Blocked
+    step?.action == PlanAction.UP_TO_DATE -> PhoneState.Installed
+    installed == null -> PhoneState.NotInstalled
+    newer -> PhoneState.Update
+    else -> PhoneState.Installed
+}
+
 /** What the phone knows about one enabled app: its installed package, the server plan step (null if not assigned). */
 class AppFacts(val app: AppObject, val installed: InstalledPackage?, val step: PlanStep?) {
     /** Version the install would put on the phone. */
@@ -26,14 +36,7 @@ class AppFacts(val app: AppObject, val installed: InstalledPackage?, val step: P
     val building: Boolean get() = app.status.state == STATE_BUILDING || app.status.state == STATE_QUEUED
 
     val phone: PhoneState
-        get() = when {
-            step?.action == PlanAction.INSTALL -> if (installed == null) PhoneState.NotInstalled else PhoneState.Update
-            step?.action == PlanAction.ERROR -> PhoneState.Blocked
-            step?.action == PlanAction.UP_TO_DATE -> PhoneState.Installed
-            installed == null -> PhoneState.NotInstalled
-            app.appVersion != null && app.appVersion != installed.versionName -> PhoneState.Update
-            else -> PhoneState.Installed
-        }
+        get() = phoneState(step, installed, app.appVersion != null && app.appVersion != installed?.versionName)
 
     /** Download-source problem the Apps card offers a fix for (spec 5.1): null when the app has its URL. */
     val lookup: Lookup?

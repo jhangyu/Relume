@@ -342,6 +342,25 @@ data class AppObject(
     val category: String? = null,
 )
 
+/** One Followed-project app in `GET /api/apps` `followed`: only Download and Install apply. */
+@Serializable
+data class FollowedApp(
+    val id: Int,
+    @SerialName("package") val packageName: String?,
+    val name: String,
+    @SerialName("icon_url") val iconUrl: String?,
+    val version: String?,
+    val blocked: Boolean,
+    val files: List<FollowedFile>,
+) {
+    /** The APK for this phone: first match of the phone ABIs in order, then `universal` (backend `pick_apk` rule); null if none. */
+    fun apkFor(abis: List<String>): FollowedFile? =
+        abis.firstNotNullOfOrNull { abi -> files.firstOrNull { it.abi == abi } } ?: files.firstOrNull { it.abi == "universal" }
+}
+
+@Serializable
+data class FollowedFile(val name: String, val abi: String?, val url: String)
+
 @Serializable
 data class AppBundle(
     @SerialName("bundle_id") val bundleId: Int,
@@ -551,7 +570,7 @@ internal data class PlanEnvelope(val plan: InstallPlan)
 internal data class ArtifactList(val artifacts: List<Artifact>)
 
 @Serializable
-internal data class AppList(val apps: List<AppObject>)
+data class AppList(val apps: List<AppObject>, val followed: List<FollowedApp>)
 
 @Serializable
 internal data class OtaScheduleList(val schedules: List<OtaSchedule>)

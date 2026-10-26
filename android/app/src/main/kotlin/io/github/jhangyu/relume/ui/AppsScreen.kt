@@ -1,5 +1,6 @@
 package io.github.jhangyu.relume.ui
 
+import android.os.Build
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -32,16 +33,18 @@ import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.unit.dp
 import io.github.jhangyu.relume.R
 import io.github.jhangyu.relume.api.AppObject
+import io.github.jhangyu.relume.api.FollowedApp
+import io.github.jhangyu.relume.api.InstalledPackage
 import io.github.jhangyu.relume.api.StepKind
 import io.github.jhangyu.relume.install.InstallRunner
 import kotlinx.coroutines.launch
 
-private enum class AppFilter(val title: String, val matches: (AppFacts) -> Boolean) {
-    All("All", { true }),
-    NotInstalled("Not installed", { it.phone == PhoneState.NotInstalled }),
-    PhoneUpdate("Phone update", { it.phone == PhoneState.Update }),
-    Failed("Failed", { it.app.status.state == STATE_FAILED }),
-    NeedsUrl("Needs URL", { it.lookup != null }),
+private enum class AppFilter(val title: String, val matches: (AppFacts) -> Boolean, val followed: (PhoneState) -> Boolean) {
+    All("All", { true }, { true }),
+    NotInstalled("Not installed", { it.phone == PhoneState.NotInstalled }, { it == PhoneState.NotInstalled }),
+    PhoneUpdate("Phone update", { it.phone == PhoneState.Update }, { it == PhoneState.Update }),
+    Failed("Failed", { it.app.status.state == STATE_FAILED }, { false }),
+    NeedsUrl("Needs URL", { it.lookup != null }, { false }),
 }
 
 /** Apps tab: filter chips, one card per enabled app, pull-to-refresh. Builds reach the phone only through Install and Update. */
@@ -51,9 +54,13 @@ fun AppsScreen(model: AppModel, onOpenSettings: (Int) -> Unit, onOpenLog: (Int, 
     var fixing by remember { mutableStateOf<Pair<AppObject, Lookup>?>(null) }
     val all = model.apps.map(model::facts)
     val visible = all.filter { AppFilter.entries[filter].matches(it) }
+    val followed = model.followed.map { it to phoneState(model.followedStep(it), it.packageName?.let(model.installed::get), newer = false) }
+    val visibleFollowed = followed.filter { (_, p) -> AppFilter.entries[filter].followed(p) }
     val run by InstallRunner.state.collectAsState()
     val installing = run?.steps.orEmpty()
         .filter { it.step.kind == StepKind.ITEM && it.state.active }.map { it.step.refId }.toSet()
+    val installingProjects = run?.steps.orEmpty()
+        .filter { it.step.kind == StepKind.PROJECT && it.state.active }.map { it.step.refId }.toSet()
 
     Column(Modifier.fillMaxSize()) {
         AppBar("Apps", actions = {
@@ -61,7 +68,7 @@ fun AppsScreen(model: AppModel, onOpenSettings: (Int) -> Unit, onOpenLog: (Int, 
             Avatar()
         })
         model.error?.let { Banner("Request failed", Tone.Danger, Modifier.padding(horizontal = ScreenPadding), detail = it, action = "Dismiss", onAction = model::dismissError) }
-        ChipRow(AppFilter.entries.map { f -> if (f == AppFilter.All) "All ${all.size}" else "${f.title} ${all.count(f.matches)}" }, filter) { filter = it }
+        ChipRow(AppFilter.entries.map { f -> if (f == AppFilter.All) "All ${all.size + followed.size}" else "${f.title} ${all.count(f.matches) + followed.count { f.followed(it.second) }}" }, filter) { filter = it }
         PullToRefreshBox(isRefreshing = model.refreshing, onRefresh = model::refresh, modifier = Modifier.weight(1f)) {
             LazyColumn(
                 Modifier.fillMaxSize(),
@@ -71,10 +78,13 @@ fun AppsScreen(model: AppModel, onOpenSettings: (Int) -> Unit, onOpenLog: (Int, 
                 items(visible, key = { it.app.id }) { f ->
                     AppCard(f, model, f.app.id in installing, onOpenSettings, onOpenLog) { fixing = f.app to it }
                 }
-                if (visible.isEmpty() && !model.refreshing) {
+                items(visibleFollowed, key = { "followed-${it.first.id}" }) { (app, phone) ->
+                    FollowedCard(app, phone, app.id in installingProjects, model)
+                }
+                if (visible.isEmpty() && visibleFollowed.isEmpty() && !model.refreshing) {
                     val empty = when {
                         !model.loaded -> model.loadError?.let { "Apps could not be loaded: $it. Pull down to try again." } ?: "Loading…"
-                        all.isEmpty() -> "No apps enabled. Enable one from the Marketplace."
+                        all.isEmpty() && followed.isEmpty() -> "No apps enabled. Enable one from the Marketplace."
                         else -> "Nothing in this filter."
                     }
                     item { Txt(empty, color = muted()) }
@@ -165,29 +175,61 @@ private fun AppCard(
 /** Bottom row of a card, this phone: state pill on the left, Install or Update on the right. */
 @Composable
 private fun PhoneRow(f: AppFacts, installing: Boolean, model: AppModel) {
-    val r = MaterialTheme.relume
-    val s = MaterialTheme.colorScheme
     // Mockup .inst: full-bleed divider above, min 56 dp, padding 8 16 dp, content centred, 8 dp gaps.
     Row(
         Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        when {
-            installing -> Pill("Installing ${f.target.orEmpty()}".trim(), r.blue.container, r.blue.onContainer, R.drawable.ms_progress_activity)
-            f.phone == PhoneState.Installed -> Pill("Installed ${f.installed?.versionName.orEmpty()}".trim(), r.green.container, r.green.onContainer, R.drawable.ms_check)
-            f.phone == PhoneState.Update -> Pill("Phone has ${f.installed?.versionName ?: "an older version"}", r.lavender.container, r.lavender.onContainer, R.drawable.ms_system_update)
-            f.phone == PhoneState.Blocked -> Pill("Install blocked", s.errorContainer, s.onErrorContainer, R.drawable.ms_error)
-            else -> Pill("Not installed", s.surfaceContainerHigh, s.onSurfaceVariant)
-        }
+        PhonePill(installing, f.phone, f.target, f.installed)
         Spacer(Modifier.weight(1f))
         when {
             installing -> Unit
             f.installable && f.phone == PhoneState.NotInstalled ->
-                ActionButton(listOfNotNull("Install", f.target).joinToString(" "), { model.beginInstall(f) }, kind = ButtonKind.Install, icon = R.drawable.ms_install_mobile, size = ButtonSize.Small)
+                ActionButton(listOfNotNull("Install", f.target).joinToString(" "), { model.beginInstall(StepKind.ITEM, f.app.id) }, kind = ButtonKind.Install, icon = R.drawable.ms_install_mobile, size = ButtonSize.Small)
             f.installable && f.phone == PhoneState.Update ->
-                ActionButton("Update", { model.beginInstall(f) }, kind = ButtonKind.Install, icon = R.drawable.ms_system_update, size = ButtonSize.Small)
+                ActionButton("Update", { model.beginInstall(StepKind.ITEM, f.app.id) }, kind = ButtonKind.Install, icon = R.drawable.ms_system_update, size = ButtonSize.Small)
             f.building && f.phone == PhoneState.Update -> Txt("Update after build", style = MaterialTheme.typography.bodySmall, color = muted())
+        }
+    }
+}
+
+/** The state pill of a phone row: installing, installed, older version on the phone, blocked, or not installed. */
+@Composable
+private fun PhonePill(installing: Boolean, phone: PhoneState, target: String?, installed: InstalledPackage?) {
+    val r = MaterialTheme.relume
+    val s = MaterialTheme.colorScheme
+    when {
+        installing -> Pill("Installing ${target.orEmpty()}".trim(), r.blue.container, r.blue.onContainer, R.drawable.ms_progress_activity)
+        phone == PhoneState.Installed -> Pill("Installed ${installed?.versionName.orEmpty()}".trim(), r.green.container, r.green.onContainer, R.drawable.ms_check)
+        phone == PhoneState.Update -> Pill("Phone has ${installed?.versionName ?: "an older version"}", r.lavender.container, r.lavender.onContainer, R.drawable.ms_system_update)
+        phone == PhoneState.Blocked -> Pill("Install blocked", s.errorContainer, s.onErrorContainer, R.drawable.ms_error)
+        else -> Pill("Not installed", s.surfaceContainerHigh, s.onSurfaceVariant)
+    }
+}
+
+/** Followed-project app: the head and the phone row with only Download and Install (spec req 1). */
+@Composable
+private fun FollowedCard(app: FollowedApp, phone: PhoneState, installing: Boolean, model: AppModel) {
+    val apk = app.apkFor(Build.SUPPORTED_ABIS.toList())
+    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerLowest) {
+        Column(Modifier.padding(top = 16.dp)) {
+            Row(Modifier.padding(horizontal = 16.dp).padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                AppTile(app.name, app.iconUrl, model.api, category = null)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Txt(app.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                    Txt(listOfNotNull(app.version, "Followed project").joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = muted(), maxLines = 1)
+                }
+            }
+            Hairline()
+            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                PhonePill(installing, phone, app.version, app.packageName?.let(model.installed::get))
+                Spacer(Modifier.weight(1f))
+                if (apk != null) ActionButton("Download", { model.download(app, apk) }, kind = ButtonKind.Text, size = ButtonSize.Small)
+                if (!installing && !app.blocked && app.files.isNotEmpty() && (phone == PhoneState.NotInstalled || phone == PhoneState.Update)) {
+                    ActionButton(if (phone == PhoneState.Update) "Update" else "Install", { model.beginInstall(StepKind.PROJECT, app.id) }, kind = ButtonKind.Install, icon = R.drawable.ms_install_mobile, size = ButtonSize.Small)
+                }
+            }
         }
     }
 }
