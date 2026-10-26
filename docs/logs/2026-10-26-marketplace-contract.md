@@ -30,4 +30,5 @@ Frozen by the lead 2026-10-26 from plan §0 at commit time; only the user may ch
 
 ## Parking lot
 
-- (empty)
+- Migration 010 drops `app.display_name` without copying it to `store_app`. Apps that are not in the catalog store (for example Tasker) then show their package name until a catalog or custom source names them. Source: impl-migration report, .claude/tmp/mp-1.1/report.md.
+- Android DTOs guessed in f5e23ff (CustomSource, OtaSchedule, PatchView) must be checked against the real API in round 2.
