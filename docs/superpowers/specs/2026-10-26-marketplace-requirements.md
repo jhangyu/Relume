@@ -22,6 +22,8 @@ Relume stops being configured as "patch source × app" items. It reads the commu
 - Version mode per app: auto (newest version the bundle supports; default), pinned, latest; plus the "allow nearest version" switch. Supported versions come from the catalog or the bundle's patch list.
 - One enable switch per app replaces the separate Build (`item.enabled`) and Update (`item.auto_update`) switches.
 - Enabling an app immediately runs the first fetch + build; it does not wait for the schedule.
+- Follow-project dependencies stay: an enabled app can depend on Follow projects (today `item_dependency`, e.g. YouTube → MicroG-RE); OTA push and install bring them along. Set in the Apps tab app settings; existing bindings migrate.
+- Per-patch option values (today `item.patch_overrides` → `options.json`, read via the CLI `list-patches`/`options-create`) stay; `bundles.json` has no options, so options still come from the downloaded bundle.
 
 ## 4. APK download source
 
@@ -36,9 +38,10 @@ Relume stops being configured as "patch source × app" items. It reads the commu
 - The OTA push schedule stays.
 - Multi-target schedules (`schedules` kind `app` with item_ids/all and build/update/force/notify options) are removed.
 
-## 6. UI (web and Android, same features on both)
+## 6. UI
 
 - Web: Fluent 2. Android: Material Design 3, colourful (dynamic-colour style). Icon buttons are SVG.
+- Platform scope: web has every page. Android has Marketplace, Apps and Schedules (global interval + OTA schedules) with the same behaviour as web; devices/OTA management, Follow projects, settings and build history stay web-only. Android today uses a custom Fluent theme (`ui/Theme.kt`, `ui/Components.kt`), so MD3 replaces that component set; minSdk 29 needs a fallback palette where dynamic colour is unavailable (API < 31).
 - **Marketplace** tab: all catalog apps (official + built-in + custom), filter by store category, search, sort; expand an app to see its available bundles and, per bundle, the patches it offers for this app; pick one bundle, toggle patches, enable.
 - **Apps** tab: enabled apps only. Columns: app name, app version, patch bundle used, status. Actions: check for update, rebuild, download. Here the user can also change the bundle, toggle patches and set the version mode.
 - Kept pages, restyled only: build history, devices and OTA, Follow projects, settings. Schedules page shrinks to the global interval plus OTA schedules.
@@ -48,6 +51,7 @@ Relume stops being configured as "patch source × app" items. It reads the commu
 - Custom groups (`grp` table, `item.group_id`, group UI).
 - The "source × app" item model and per-source configuration UI, the separate Build/Update switches, multi-target schedules.
 - Orphan `upstream` rows (22 after the 2026-10-26 source cleanup) and the leftover `apk-cache` package dirs of deleted apps.
+- `catalog-seed.json` and the boot-time `catalog.seed_import` (`__main__.py:34-35`, `catalog.py:854`) that would refill an empty DB with the old sources. The seed's known APKMirror/APKPure URLs (about 40 apps) are kept as pre-filled download URLs, not as sources/items.
 - Their tests and docs go with them.
 
 ## 8. Data migration
@@ -57,7 +61,7 @@ Relume stops being configured as "patch source × app" items. It reads the commu
 
 ## 9. Team process
 
-1. Exploration: 2 sonnet members (backend; web + Android front end). Reports in `docs/logs/`.
+1. Exploration: 2 sonnet members, done: `docs/logs/2026-10-26-explore-backend.md`, `docs/logs/2026-10-26-explore-frontend.md`.
 2. Design, in parallel:
    - 3 opus backend designers by subsystem: (1) catalog layer — fetch/validate, multi-catalog room, built-in + custom sources incl. Xposed, bundle patch lists; (2) app and build flow — enabled-app model, single switch, global schedule, removal of old tables and groups, migration; (3) APKMirror auto-locate and the API shapes for web and Android. Lead merges into one spec.
    - 3 opus UI designers, each a complete candidate (web Fluent 2 + Android MD3 colourful, HTML mockups). The user picks one or a mix.
