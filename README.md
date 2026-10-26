@@ -55,10 +55,170 @@ Uses the published images, nothing to build.
 
 1. Get the keystores: clone this repo (or download `src/keystore/`) onto the host and note the path.
 2. Create the key directory once: `mkdir -p /path/to/relume-key`.
-3. In Portainer: **Stacks > Add stack > Web editor**, paste [`local/docker-compose-portainer.yml`](local/docker-compose-portainer.yml).
-4. In **Environment variables** set `RELUME_DATA_DIR`, `RELUME_KEY_DIR` and `RELUME_KEYSTORE_DIR` (absolute paths), plus `RELUME_NETWORK_MODE`, `RELUME_UID`, `RELUME_GID` and `TZ` as needed. [`local/portainer.env`](local/portainer.env) is a template you can load with "Load variables from .env file" (edit the paths first).
+3. In Portainer: **Stacks > Add stack > Web editor**, paste the stack YAML (copy [`local/docker-compose-portainer.yml`](local/docker-compose-portainer.yml), or the reference YAML below).
+4. In **Environment variables** set `RELUME_DATA_DIR`, `RELUME_KEY_DIR` and `RELUME_KEYSTORE_DIR` (absolute paths), plus `RELUME_NETWORK_MODE`, `RELUME_UID`, `RELUME_GID` and `TZ` as needed: use "Load variables from .env file" with the reference env below (edit the paths first), or paste it into the advanced text mode. [`local/portainer.env`](local/portainer.env) is a similar template.
 5. Deploy the stack, then open `http://<server-ip>:47000`.
 6. After a new release, use **Pull and redeploy** on the stack.
+
+Reference files to copy into Portainer: paste the YAML into the Web editor, load the env with "Load variables from .env file" (or paste it into Environment variables), then **Deploy the stack**.
+
+<details><summary>Reference stack YAML (<code>local/docker-compose-portainer.yml</code>)</summary>
+
+```yaml
+# Relume as a Portainer stack (Stacks > Add stack > Web editor: paste this file). Same services and isolation as
+# local/docker-compose.yml, but the code is in the images, data lives in host directories
+# (RELUME_DATA_DIR regrowable data, RELUME_KEY_DIR the keys; bind mounts), the keystores are mounted, and the GitHub token is entered on the Settings page.
+#
+# Environment variables (Portainer "Environment variables" form):
+#   RELUME_DATA_DIR      required: absolute host directory for everything that regrows from an empty folder (database, logs, artifacts, APK outputs and caches, upstream downloads, work); Compose creates it and the subdirectories work, apk-cache and upstream if missing, so deleting it is safe
+#   RELUME_KEY_DIR       required: absolute host directory for what must survive (the adb key under .android/ and the GitHub token entered on the Settings page); must exist, Compose does not create it. Back it up, never delete it: deleting it re-authorizes every paired phone
+#   RELUME_KEYSTORE_DIR  required: host directory holding fiorenmas.ks, lspatch-signing.p12 and morphe.keystore; only these three files are mounted (never inside an image)
+#   RELUME_NETWORK_MODE  host (default; Linux hosts, mDNS phone discovery) or bridge (Docker Desktop on macOS/Windows:
+#                    host networking is not available there; add phones by IP:port)
+#   RELUME_WEB_PORT      published web port in bridge mode (default 47000; host mode always uses 47000)
+#   RELUME_UID, RELUME_GID   server uid:gid in the container (default 0:0). Docker Desktop (macOS): bind mounts need no chown, keep 0.
+#                    Linux host: RELUME_DATA_DIR and RELUME_KEY_DIR must be owned by RELUME_UID:RELUME_GID (chown -R; create RELUME_DATA_DIR and its work, apk-cache, upstream yourself first, otherwise Compose makes them root-owned), and work and apk-cache must be
+#                    writable by the build runner (uid 10001, same gid as the server): chmod 0770, group RELUME_GID
+#   TZ               default UTC
+#
+# Images: jhangyu/relume-app and jhangyu/relume-browser (linux/arm64) from Docker Hub, published by `python3 scripts/release.py`.
+# After a release use "Pull and redeploy" on the stack.
+services:
+  netns:
+    container_name: relume-netns
+    image: busybox:1.38.0-musl
+    command: ["tail", "-f", "/dev/null"]
+    network_mode: ${RELUME_NETWORK_MODE:-host}
+    ports: ["${RELUME_WEB_PORT:-47000}:47000"]
+    restart: unless-stopped
+  flaresolverr:
+    container_name: relume-flaresolverr
+    image: ghcr.io/flaresolverr/flaresolverr:v3.5.2
+    network_mode: service:netns
+    depends_on: [netns]
+    environment:
+      HOST: "127.0.0.1"
+      PORT: "47191"
+    restart: unless-stopped
+  cfbypass:
+    container_name: relume-cfbypass
+    image: jhangyu/relume-browser:latest
+    command: ["/app/docker-entrypoint.sh", "--host", "127.0.0.1", "--port", "47800"]
+    shm_size: 2g
+    network_mode: service:netns
+    depends_on: [netns]
+    restart: unless-stopped
+  apkmsolver:
+    container_name: relume-apkmsolver
+    image: jhangyu/relume-browser:latest
+    entrypoint: ["sh", "/solver/xrun.sh"]
+    command: ["/app/venv/bin/python3", "-u", "/solver/solver.py", "47900"]
+    shm_size: 2g
+    network_mode: service:netns
+    depends_on: [netns, cfbypass]
+    restart: unless-stopped
+  app:
+    container_name: relume-app
+    image: jhangyu/relume-app:latest
+    network_mode: service:netns
+    depends_on: [netns, flaresolverr, cfbypass, apkmsolver]
+    init: true  # reaps orphaned grandchildren of killed jobs (PID 1 is python3 -m webui)
+    # Spec build §4 step 4, as in local/docker-compose.yml: build children run as RELUME_RUNNER_UID without capabilities; the
+    # server starts as root only so setpriv can drop it to RELUME_UID:RELUME_GID with setuid/setgid/kill/dac_override.
+    user: "0:0"
+    command: ["setpriv", "--reuid=${RELUME_UID:-0}", "--regid=${RELUME_GID:-0}", "--clear-groups",
+              "--inh-caps=+setuid,+setgid,+kill,+dac_override", "--ambient-caps=+setuid,+setgid,+kill,+dac_override",
+              "python3", "-m", "webui"]
+    environment:
+      HOME: /private/key
+      RELUME_KEY: /private/key
+      # RELUME_ADMIN_PASSWORD: <at least 10 characters>   # uncomment, restart, then remove again: sets the admin password at boot and signs out all browser sessions
+      RELUME_DATA: /private/data
+      RELUME_RUNNER_UID: "10001"
+      RELUME_RUNNER_DATA: /data
+      ADB_SERVER_SOCKET: localfilesystem:/private/adb.sock
+      TZ: ${TZ:-UTC}
+      RELUME_NETWORK_MODE: ${RELUME_NETWORK_MODE:-host}
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONPATH: /repo/local
+      FLARESOLVERR_URL: http://127.0.0.1:47191
+      CFBYPASS_URL: http://127.0.0.1:47800
+      APKM_SOLVER_URL: http://127.0.0.1:47900
+    volumes:
+      # Root-only 0700 tmpfs: what the runner uid must not reach (database, HOME with the adb key, adb socket)
+      - type: tmpfs
+        target: /private
+        tmpfs:
+          mode: 0o700
+      - type: tmpfs
+        target: /run/secrets
+        tmpfs:
+          mode: 0o700
+      # DATA regrows from an empty or missing directory: Compose creates the host paths of the data mounts (root-owned; Linux: see the header)
+      - type: bind
+        source: ${RELUME_DATA_DIR:?set RELUME_DATA_DIR to the host data directory}
+        target: /private/data
+        bind:
+          create_host_path: true
+      # what must survive deleting RELUME_DATA_DIR (create_host_path: false, so a missing key dir fails loudly instead of starting without the adb key): the adb key (HOME/.android) and the GitHub token; inside the root-only /private, so the runner uid cannot reach it
+      - type: bind
+        source: ${RELUME_KEY_DIR:?set RELUME_KEY_DIR to the host key directory}
+        target: /private/key
+        bind:
+          create_host_path: false
+      # signing keystores (fiorenmas.ks, lspatch-signing.p12, morphe.keystore) are not in the image: three read-only file mounts from a host directory (other files there, e.g. a github_token, stay invisible to build children)
+      - ${RELUME_KEYSTORE_DIR:?set RELUME_KEYSTORE_DIR to the host directory with the signing keystores}/fiorenmas.ks:/repo/src/keystore/fiorenmas.ks:ro
+      - ${RELUME_KEYSTORE_DIR:?set RELUME_KEYSTORE_DIR to the host directory with the signing keystores}/lspatch-signing.p12:/repo/src/keystore/lspatch-signing.p12:ro
+      - ${RELUME_KEYSTORE_DIR:?set RELUME_KEYSTORE_DIR to the host directory with the signing keystores}/morphe.keystore:/repo/src/keystore/morphe.keystore:ro
+      # the runner's view of DATA (RELUME_RUNNER_DATA): only these three subdirectories
+      - type: bind
+        source: ${RELUME_DATA_DIR:?set RELUME_DATA_DIR to the host data directory}/work
+        target: /data/work
+        bind:
+          create_host_path: true
+      - type: bind
+        source: ${RELUME_DATA_DIR:?set RELUME_DATA_DIR to the host data directory}/apk-cache
+        target: /data/apk-cache
+        bind:
+          create_host_path: true
+      - type: bind
+        source: ${RELUME_DATA_DIR:?set RELUME_DATA_DIR to the host data directory}/upstream
+        target: /data/upstream
+        read_only: true
+        bind:
+          create_host_path: true
+    working_dir: /repo
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:47000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+```
+
+</details>
+
+<details><summary>Reference env (placeholders: replace paths, UID/GID and TZ with your own)</summary>
+
+```dotenv
+# Required: absolute host directory for everything that regrows from an empty folder (database, logs, artifacts, caches); safe to delete
+RELUME_DATA_DIR=/srv/relume/data
+# Required: absolute host directory for what must survive (adb key, GitHub token); must already exist, back it up
+RELUME_KEY_DIR=/srv/relume/key
+# Required: host directory holding fiorenmas.ks, lspatch-signing.p12 and morphe.keystore (e.g. a clone of this repo's src/keystore/)
+RELUME_KEYSTORE_DIR=/srv/relume/keystore
+# host on a Linux host or NAS (mDNS phone discovery), bridge on Docker Desktop (macOS/Windows, add phones by IP:port)
+RELUME_NETWORK_MODE=host
+# Published web port, bridge mode only (host mode always uses 47000)
+RELUME_WEB_PORT=47000
+# Server uid:gid in the container. Linux: your own ids (id -u, id -g) and chown the data and key directories to them. Docker Desktop (macOS): keep 0
+RELUME_UID=1000
+RELUME_GID=1000
+# Time zone (default UTC)
+TZ=UTC
+```
+
+</details>
 
 ### Option B: build locally with Docker Compose
 
@@ -97,13 +257,13 @@ The left sidebar lists the pages in the order you normally use them:
 
 The bottom of the sidebar shows the worker state (idle or running, queue length) and disk usage, plus a `Sign out` button.
 
-![Marketplace page](docs/images/webui-marketplace.png)
+![Marketplace page](docs/images/webui-marketplace.webp)
 
 ### Phone browser and PWA
 
 The same pages work on a phone. Below 900 px width the sidebar becomes a menu (the ☰ button in the top-left corner), tables turn into cards, and button labels shrink to icons.
 
-![Apps page on a phone](docs/images/webui-mobile-apps.png) ![Navigation menu on a phone](docs/images/webui-mobile-nav.png)
+![Apps page on a phone](docs/images/webui-mobile-apps.webp) ![Navigation menu on a phone](docs/images/webui-mobile-nav.webp)
 
 The Web UI ships a manifest (`display: standalone`, Relume icons), so the browser can install it as an app: use "Install app" (Chrome desktop) or "Add to Home Screen" (Android Chrome, iOS Safari). It opens without browser chrome. There is no offline mode: the server must be reachable.
 
@@ -116,7 +276,7 @@ The Web UI ships a manifest (`display: standalone`, Relume icons), so the browse
 
 There is exactly one admin account. Change its password later on the `Settings` page.
 
-![Sign-in page](docs/images/webui-login.png)
+![Sign-in page](docs/images/webui-login.webp)
 
 ## Marketplace
 
@@ -137,7 +297,7 @@ Enabling an app means "keep this app patched and up to date". It takes three ste
 
 Press `Enable and build`. The app moves to `Apps` and its first build is queued immediately. The version defaults to `Auto` (the newest version the bundle supports).
 
-![App detail panel with bundles and patches](docs/images/webui-marketplace-detail.png)
+![App detail panel with bundles and patches](docs/images/webui-marketplace-detail.webp)
 
 ### Add a custom source
 
@@ -169,7 +329,7 @@ Header buttons: `Check all for updates` (runs the whole update check now) and `A
 
 `Needs URL` means Relume could not find the APK download page: open the settings drawer and fill in `Download URLs`.
 
-![Apps page](docs/images/webui-apps.png)
+![Apps page](docs/images/webui-apps.webp)
 
 ### Change an app's settings
 
@@ -187,7 +347,7 @@ The gear button opens the settings drawer. Edit what you need, then press `Save`
 | `Download URLs` | `APKMirror listing` and `APKPure`. When several APKMirror pages match, pick the right one here. |
 | `Display name` | Rename the app. `Refresh icon` re-fetches its icon. |
 
-![App settings drawer](docs/images/webui-app-settings.png)
+![App settings drawer](docs/images/webui-app-settings.webp)
 
 ## Builds
 
@@ -195,7 +355,7 @@ The top panel shows the queue and the log of the selected build (live while it r
 
 Below, `History` lists past runs. Filter with the search box (`Search app or bundle`) and the pills `All`, `Succeeded`, `Failed`, `Cancelled`; `Load older` fetches more. Each row has buttons to view its log, download the APK of a successful build or retry a failed one. Runs of type `Project pull` are checks of followed projects; `Update run` is the scheduled update check.
 
-![Builds page](docs/images/webui-builds.png)
+![Builds page](docs/images/webui-builds.webp)
 
 ## Schedules
 
@@ -209,7 +369,7 @@ The big card, `Keep every enabled app updated`, defines when Relume runs its upd
 
 The card shows the next run (in the server's time zone, shown in the header) and the last run with a `View log` link. `Run now` starts a run immediately; follow it on `Builds`.
 
-![Schedules page](docs/images/webui-schedules.png)
+![Schedules page](docs/images/webui-schedules.webp)
 
 ### OTA push schedules
 
@@ -226,7 +386,7 @@ A phone can be managed two ways: over **wireless ADB** (this page) or through th
    If it is not discovered, use `Manual pairing`: `Phone IP`, `Pairing port`, the six digits of `Pairing code`, optionally `Connect port (optional)`, then `Pair & connect`.
 3. The phone appears under `Paired devices`. Click its name to rename it.
 
-![Devices page](docs/images/webui-devices.png)
+![Devices page](docs/images/webui-devices.webp)
 
 ### Install and update apps on a phone
 
@@ -251,13 +411,13 @@ Follow a GitHub project that publishes finished APKs in its releases (for exampl
 4. Choose the `Channel` (`Stable` or `Pre-release`), an optional `Display name`, `Auto-push` (install new versions on assigned phones right after download; pauses by itself if the signer changes) and the phones to assign.
 5. Press `Follow project`.
 
-![Follow a GitHub project dialog](docs/images/webui-follow-dialog.png)
+![Follow a GitHub project dialog](docs/images/webui-follow-dialog.webp)
 
 Select a project in the list to open its detail pane: `Install to phone`, `Check now`, signer fingerprint, kept versions (2 per project), assigned phones, OTA history. The `⋯` menu has `Edit assets, regex & channel`, `Assign phones` and `Unfollow` (deletes its downloaded APKs; not possible while an app depends on it). `Check all now` in the header checks every project. Filters: `All`, `Needs attention`, `Dependencies`.
 
 If a release is signed with a different certificate than the first one, it is quarantined: auto-push, scheduled OTA and install stop until you open `Review & confirm signer…` and `Trust new signer`. Android also refuses to update over an app with a different signer, so phones must uninstall the old app first.
 
-![Followed projects page](docs/images/webui-projects.png)
+![Followed projects page](docs/images/webui-projects.webp)
 
 ## Settings
 
@@ -267,7 +427,7 @@ If a release is signed with a different certificate than the first one, it is qu
 - **Phones with the Relume app.** Companion app devices that signed in. Revoking signs that phone out; its row and history stay.
 - **Change password.** `Current password`, `New password` (at least 10 characters), `Confirm new password`, then `Update password`.
 
-![Settings page](docs/images/webui-settings.png)
+![Settings page](docs/images/webui-settings.webp)
 
 ## Android companion app
 
@@ -275,9 +435,9 @@ The companion app (`android/`, Kotlin + Compose) installs the APKs that Relume b
 
 You can enable apps and trigger builds in the web UI or in the app. The app's main job is **Install** and **Update** on this phone.
 
-![Marketplace tab](docs/images/android-marketplace.png)
-![Apps tab](docs/images/android-apps.png)
-![Schedules tab](docs/images/android-schedules.png)
+![Marketplace tab](docs/images/android-marketplace.webp)
+![Apps tab](docs/images/android-apps.webp)
+![Schedules tab](docs/images/android-schedules.webp)
 
 ### Get the app
 

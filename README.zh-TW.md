@@ -55,10 +55,170 @@ Relume 是可自行架設的 Web UI（Docker），讓你**免 root** 取得熱�
 
 1. 取得 keystore：把本儲存庫 clone（或下載 `src/keystore/`）到主機上，記下路徑。
 2. 先建立一次金鑰目錄：`mkdir -p /path/to/relume-key`。
-3. 在 Portainer：**Stacks > Add stack > Web editor**，貼上 [`local/docker-compose-portainer.yml`](local/docker-compose-portainer.yml)。
-4. 在 **Environment variables** 設定 `RELUME_DATA_DIR`、`RELUME_KEY_DIR`、`RELUME_KEYSTORE_DIR`（皆為絕對路徑），並視需要設定 `RELUME_NETWORK_MODE`、`RELUME_UID`、`RELUME_GID`、`TZ`。[`local/portainer.env`](local/portainer.env) 是範本，可用「Load variables from .env file」載入（請先修改路徑）。
+3. 在 Portainer：**Stacks > Add stack > Web editor**，貼上堆疊 YAML（複製 [`local/docker-compose-portainer.yml`](local/docker-compose-portainer.yml)，或使用下方的參考 YAML）。
+4. 在 **Environment variables** 設定 `RELUME_DATA_DIR`、`RELUME_KEY_DIR`、`RELUME_KEYSTORE_DIR`（皆為絕對路徑），並視需要設定 `RELUME_NETWORK_MODE`、`RELUME_UID`、`RELUME_GID`、`TZ`：可用「Load variables from .env file」載入下方的參考環境變數（請先修改路徑），或貼到進階文字模式。[`local/portainer.env`](local/portainer.env) 是類似的範本。
 5. 部署堆疊，然後開啟 `http://<伺服器 IP>:47000`。
 6. 發佈新版本後，在堆疊上使用 **Pull and redeploy**。
+
+可直接複製到 Portainer 的參考檔案：把 YAML 貼到 Web editor，用「Load variables from .env file」載入環境變數（或貼進 Environment variables），然後 **Deploy the stack**。
+
+<details><summary>參考堆疊 YAML（<code>local/docker-compose-portainer.yml</code>）</summary>
+
+```yaml
+# Relume as a Portainer stack (Stacks > Add stack > Web editor: paste this file). Same services and isolation as
+# local/docker-compose.yml, but the code is in the images, data lives in host directories
+# (RELUME_DATA_DIR regrowable data, RELUME_KEY_DIR the keys; bind mounts), the keystores are mounted, and the GitHub token is entered on the Settings page.
+#
+# Environment variables (Portainer "Environment variables" form):
+#   RELUME_DATA_DIR      required: absolute host directory for everything that regrows from an empty folder (database, logs, artifacts, APK outputs and caches, upstream downloads, work); Compose creates it and the subdirectories work, apk-cache and upstream if missing, so deleting it is safe
+#   RELUME_KEY_DIR       required: absolute host directory for what must survive (the adb key under .android/ and the GitHub token entered on the Settings page); must exist, Compose does not create it. Back it up, never delete it: deleting it re-authorizes every paired phone
+#   RELUME_KEYSTORE_DIR  required: host directory holding fiorenmas.ks, lspatch-signing.p12 and morphe.keystore; only these three files are mounted (never inside an image)
+#   RELUME_NETWORK_MODE  host (default; Linux hosts, mDNS phone discovery) or bridge (Docker Desktop on macOS/Windows:
+#                    host networking is not available there; add phones by IP:port)
+#   RELUME_WEB_PORT      published web port in bridge mode (default 47000; host mode always uses 47000)
+#   RELUME_UID, RELUME_GID   server uid:gid in the container (default 0:0). Docker Desktop (macOS): bind mounts need no chown, keep 0.
+#                    Linux host: RELUME_DATA_DIR and RELUME_KEY_DIR must be owned by RELUME_UID:RELUME_GID (chown -R; create RELUME_DATA_DIR and its work, apk-cache, upstream yourself first, otherwise Compose makes them root-owned), and work and apk-cache must be
+#                    writable by the build runner (uid 10001, same gid as the server): chmod 0770, group RELUME_GID
+#   TZ               default UTC
+#
+# Images: jhangyu/relume-app and jhangyu/relume-browser (linux/arm64) from Docker Hub, published by `python3 scripts/release.py`.
+# After a release use "Pull and redeploy" on the stack.
+services:
+  netns:
+    container_name: relume-netns
+    image: busybox:1.38.0-musl
+    command: ["tail", "-f", "/dev/null"]
+    network_mode: ${RELUME_NETWORK_MODE:-host}
+    ports: ["${RELUME_WEB_PORT:-47000}:47000"]
+    restart: unless-stopped
+  flaresolverr:
+    container_name: relume-flaresolverr
+    image: ghcr.io/flaresolverr/flaresolverr:v3.5.2
+    network_mode: service:netns
+    depends_on: [netns]
+    environment:
+      HOST: "127.0.0.1"
+      PORT: "47191"
+    restart: unless-stopped
+  cfbypass:
+    container_name: relume-cfbypass
+    image: jhangyu/relume-browser:latest
+    command: ["/app/docker-entrypoint.sh", "--host", "127.0.0.1", "--port", "47800"]
+    shm_size: 2g
+    network_mode: service:netns
+    depends_on: [netns]
+    restart: unless-stopped
+  apkmsolver:
+    container_name: relume-apkmsolver
+    image: jhangyu/relume-browser:latest
+    entrypoint: ["sh", "/solver/xrun.sh"]
+    command: ["/app/venv/bin/python3", "-u", "/solver/solver.py", "47900"]
+    shm_size: 2g
+    network_mode: service:netns
+    depends_on: [netns, cfbypass]
+    restart: unless-stopped
+  app:
+    container_name: relume-app
+    image: jhangyu/relume-app:latest
+    network_mode: service:netns
+    depends_on: [netns, flaresolverr, cfbypass, apkmsolver]
+    init: true  # reaps orphaned grandchildren of killed jobs (PID 1 is python3 -m webui)
+    # Spec build §4 step 4, as in local/docker-compose.yml: build children run as RELUME_RUNNER_UID without capabilities; the
+    # server starts as root only so setpriv can drop it to RELUME_UID:RELUME_GID with setuid/setgid/kill/dac_override.
+    user: "0:0"
+    command: ["setpriv", "--reuid=${RELUME_UID:-0}", "--regid=${RELUME_GID:-0}", "--clear-groups",
+              "--inh-caps=+setuid,+setgid,+kill,+dac_override", "--ambient-caps=+setuid,+setgid,+kill,+dac_override",
+              "python3", "-m", "webui"]
+    environment:
+      HOME: /private/key
+      RELUME_KEY: /private/key
+      # RELUME_ADMIN_PASSWORD: <at least 10 characters>   # uncomment, restart, then remove again: sets the admin password at boot and signs out all browser sessions
+      RELUME_DATA: /private/data
+      RELUME_RUNNER_UID: "10001"
+      RELUME_RUNNER_DATA: /data
+      ADB_SERVER_SOCKET: localfilesystem:/private/adb.sock
+      TZ: ${TZ:-UTC}
+      RELUME_NETWORK_MODE: ${RELUME_NETWORK_MODE:-host}
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONPATH: /repo/local
+      FLARESOLVERR_URL: http://127.0.0.1:47191
+      CFBYPASS_URL: http://127.0.0.1:47800
+      APKM_SOLVER_URL: http://127.0.0.1:47900
+    volumes:
+      # Root-only 0700 tmpfs: what the runner uid must not reach (database, HOME with the adb key, adb socket)
+      - type: tmpfs
+        target: /private
+        tmpfs:
+          mode: 0o700
+      - type: tmpfs
+        target: /run/secrets
+        tmpfs:
+          mode: 0o700
+      # DATA regrows from an empty or missing directory: Compose creates the host paths of the data mounts (root-owned; Linux: see the header)
+      - type: bind
+        source: ${RELUME_DATA_DIR:?set RELUME_DATA_DIR to the host data directory}
+        target: /private/data
+        bind:
+          create_host_path: true
+      # what must survive deleting RELUME_DATA_DIR (create_host_path: false, so a missing key dir fails loudly instead of starting without the adb key): the adb key (HOME/.android) and the GitHub token; inside the root-only /private, so the runner uid cannot reach it
+      - type: bind
+        source: ${RELUME_KEY_DIR:?set RELUME_KEY_DIR to the host key directory}
+        target: /private/key
+        bind:
+          create_host_path: false
+      # signing keystores (fiorenmas.ks, lspatch-signing.p12, morphe.keystore) are not in the image: three read-only file mounts from a host directory (other files there, e.g. a github_token, stay invisible to build children)
+      - ${RELUME_KEYSTORE_DIR:?set RELUME_KEYSTORE_DIR to the host directory with the signing keystores}/fiorenmas.ks:/repo/src/keystore/fiorenmas.ks:ro
+      - ${RELUME_KEYSTORE_DIR:?set RELUME_KEYSTORE_DIR to the host directory with the signing keystores}/lspatch-signing.p12:/repo/src/keystore/lspatch-signing.p12:ro
+      - ${RELUME_KEYSTORE_DIR:?set RELUME_KEYSTORE_DIR to the host directory with the signing keystores}/morphe.keystore:/repo/src/keystore/morphe.keystore:ro
+      # the runner's view of DATA (RELUME_RUNNER_DATA): only these three subdirectories
+      - type: bind
+        source: ${RELUME_DATA_DIR:?set RELUME_DATA_DIR to the host data directory}/work
+        target: /data/work
+        bind:
+          create_host_path: true
+      - type: bind
+        source: ${RELUME_DATA_DIR:?set RELUME_DATA_DIR to the host data directory}/apk-cache
+        target: /data/apk-cache
+        bind:
+          create_host_path: true
+      - type: bind
+        source: ${RELUME_DATA_DIR:?set RELUME_DATA_DIR to the host data directory}/upstream
+        target: /data/upstream
+        read_only: true
+        bind:
+          create_host_path: true
+    working_dir: /repo
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:47000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+```
+
+</details>
+
+<details><summary>參考環境變數（以下皆為範例值：請換成你自己的路徑、UID/GID 與 TZ）</summary>
+
+```dotenv
+# 必填：主機上的絕對路徑，存放所有能從空資料夾重新產生的內容（資料庫、記錄、產出檔、快取）；可安全刪除
+RELUME_DATA_DIR=/srv/relume/data
+# 必填：主機上的絕對路徑，存放必須保留的內容（adb 金鑰、GitHub token）；必須事先存在，請備份
+RELUME_KEY_DIR=/srv/relume/key
+# 必填：主機上存放 fiorenmas.ks、lspatch-signing.p12 與 morphe.keystore 的目錄（例如本儲存庫 src/keystore/ 的複本）
+RELUME_KEYSTORE_DIR=/srv/relume/keystore
+# Linux 主機或 NAS 用 host（以 mDNS 探索手機），Docker Desktop（macOS/Windows）用 bridge（以 IP:埠號新增手機）
+RELUME_NETWORK_MODE=host
+# 對外發佈的 Web 埠，僅 bridge 模式有效（host 模式固定 47000）
+RELUME_WEB_PORT=47000
+# 容器內伺服器的 uid:gid。Linux：填你自己的 id（id -u、id -g），並把資料與金鑰目錄 chown 給它們。Docker Desktop（macOS）：維持 0
+RELUME_UID=1000
+RELUME_GID=1000
+# 時區（預設 UTC）
+TZ=UTC
+```
+
+</details>
 
 ### 方案 B：以 Docker Compose 本機建置
 
@@ -97,13 +257,13 @@ Web UI 是操作 Relume 的地方。用瀏覽器開啟伺服器的位址與連�
 
 側邊欄底部顯示工作程序狀態（閒置或執行中、佇列長度）與磁碟用量，另有 `Sign out` 按鈕。
 
-![Marketplace 頁面](docs/images/webui-marketplace.png)
+![Marketplace 頁面](docs/images/webui-marketplace.webp)
 
 ### 手機瀏覽器與 PWA
 
 手機上也能使用同樣的頁面。寬度低於 900 px 時，側邊欄變成選單（左上角的 ☰ 按鈕），表格改為卡片，按鈕文字縮成圖示。
 
-![手機上的 Apps 頁面](docs/images/webui-mobile-apps.png) ![手機上的導覽選單](docs/images/webui-mobile-nav.png)
+![手機上的 Apps 頁面](docs/images/webui-mobile-apps.webp) ![手機上的導覽選單](docs/images/webui-mobile-nav.webp)
 
 Web UI 附有 manifest（`display: standalone`、Relume 圖示），瀏覽器可以把它安裝成應用程式：桌面 Chrome 用「安裝應用程式」，Android Chrome 或 iOS Safari 用「加入主畫面」。開啟時不顯示瀏覽器外框。沒有離線模式，伺服器必須連得上。
 
@@ -116,7 +276,7 @@ Web UI 附有 manifest（`display: standalone`、Relume 圖示），瀏覽器可
 
 只有一個管理員帳號。之後可在 `Settings` 頁面修改密碼。
 
-![登入頁](docs/images/webui-login.png)
+![登入頁](docs/images/webui-login.webp)
 
 ## Marketplace
 
@@ -137,7 +297,7 @@ Marketplace 列出 Relume 能修補的所有應用程式，來源有三種（用
 
 按 `Enable and build`。應用程式會移到 `Apps`，第一次建置立刻排入佇列。版本預設為 `Auto`（套件支援的最新版本）。
 
-![含套件與修補項目的應用程式詳細面板](docs/images/webui-marketplace-detail.png)
+![含套件與修補項目的應用程式詳細面板](docs/images/webui-marketplace-detail.webp)
 
 ### 新增自訂來源
 
@@ -169,7 +329,7 @@ Marketplace 列出 Relume 能修補的所有應用程式，來源有三種（用
 
 `Needs URL` 代表 Relume 找不到 APK 下載頁：開啟設定抽屜，在 `Download URLs` 填入網址。
 
-![Apps 頁面](docs/images/webui-apps.png)
+![Apps 頁面](docs/images/webui-apps.webp)
 
 ### 修改應用程式設定
 
@@ -187,7 +347,7 @@ Marketplace 列出 Relume 能修補的所有應用程式，來源有三種（用
 | `Download URLs` | `APKMirror listing` 與 `APKPure`。有多個 APKMirror 頁面符合時，在這裡選正確的那個。 |
 | `Display name` | 重新命名應用程式。`Refresh icon` 重新抓取圖示。 |
 
-![應用程式設定抽屜](docs/images/webui-app-settings.png)
+![應用程式設定抽屜](docs/images/webui-app-settings.webp)
 
 ## Builds
 
@@ -195,7 +355,7 @@ Marketplace 列出 Relume 能修補的所有應用程式，來源有三種（用
 
 下方 `History` 列出過去的執行。可用搜尋框（`Search app or bundle`）與標籤 `All`、`Succeeded`、`Failed`、`Cancelled` 篩選；`Load older` 載入更早的紀錄。每列有按鈕可查看記錄、下載成功建置的 APK、或重試失敗的建置。`Project pull` 類型是追蹤專案的檢查；`Update run` 是排程的更新檢查。
 
-![Builds 頁面](docs/images/webui-builds.png)
+![Builds 頁面](docs/images/webui-builds.webp)
 
 ## Schedules
 
@@ -209,7 +369,7 @@ Marketplace 列出 Relume 能修補的所有應用程式，來源有三種（用
 
 卡片顯示下次執行時間（使用伺服器的時區，標題列有顯示）與上次執行及其 `View log` 連結。`Run now` 立即開始一次執行，可在 `Builds` 追蹤。
 
-![Schedules 頁面](docs/images/webui-schedules.png)
+![Schedules 頁面](docs/images/webui-schedules.webp)
 
 ### OTA 推送排程
 
@@ -226,7 +386,7 @@ OTA 排程會在指定時間透過無線 ADB 把最新建置的應用程式推�
    若沒有被發現，改用 `Manual pairing`：填 `Phone IP`、`Pairing port`、`Pairing code` 的六個數字，必要時填 `Connect port (optional)`，再按 `Pair & connect`。
 3. 手機會出現在 `Paired devices`。點選名稱可重新命名。
 
-![Devices 頁面](docs/images/webui-devices.png)
+![Devices 頁面](docs/images/webui-devices.webp)
 
 ### 在手機上安裝與更新應用程式
 
@@ -251,13 +411,13 @@ OTA 排程會在指定時間透過無線 ADB 把最新建置的應用程式推�
 4. 選擇 `Channel`（`Stable` 或 `Pre-release`）、選填的 `Display name`、`Auto-push`（下載完成後立刻安裝到已指派的手機；簽章者改變時會自動暫停），以及要指派的手機。
 5. 按 `Follow project`。
 
-![Follow a GitHub project 對話框](docs/images/webui-follow-dialog.png)
+![Follow a GitHub project 對話框](docs/images/webui-follow-dialog.webp)
 
 在清單中選取專案會開啟詳細窗格：`Install to phone`、`Check now`、簽章指紋、保留的版本（每個專案 2 個）、已指派的手機、OTA 歷史。`⋯` 選單內有 `Edit assets, regex & channel`、`Assign phones` 與 `Unfollow`（會刪除已下載的 APK；有應用程式依賴它時無法使用）。標題列的 `Check all now` 會檢查所有專案。篩選：`All`、`Needs attention`、`Dependencies`。
 
 若某個 release 的簽章憑證與第一次不同，它會被隔離：自動推送、排程 OTA 與安裝都會停止，直到你開啟 `Review & confirm signer…` 並按 `Trust new signer`。Android 也不允許在簽章不同的應用程式上直接更新，所以手機必須先解除安裝舊的應用程式。
 
-![Followed projects 頁面](docs/images/webui-projects.png)
+![Followed projects 頁面](docs/images/webui-projects.webp)
 
 ## Settings
 
@@ -267,7 +427,7 @@ OTA 排程會在指定時間透過無線 ADB 把最新建置的應用程式推�
 - **Phones with the Relume app。** 已登入的同伴應用程式裝置。撤銷（Revoke）會讓該手機登出，其裝置列與歷史仍保留。
 - **Change password。** `Current password`、`New password`（至少 10 個字元）、`Confirm new password`，然後按 `Update password`。
 
-![Settings 頁面](docs/images/webui-settings.png)
+![Settings 頁面](docs/images/webui-settings.webp)
 
 ## Android 配套應用程式
 
@@ -275,9 +435,9 @@ OTA 排程會在指定時間透過無線 ADB 把最新建置的應用程式推�
 
 啟用應用程式與觸發建置，可以在網頁介面或應用程式內進行。應用程式的主要工作是在這支手機上 **Install（安裝）** 與 **Update（更新）**。
 
-![Marketplace 分頁](docs/images/android-marketplace.png)
-![Apps 分頁](docs/images/android-apps.png)
-![Schedules 分頁](docs/images/android-schedules.png)
+![Marketplace 分頁](docs/images/android-marketplace.webp)
+![Apps 分頁](docs/images/android-apps.webp)
+![Schedules 分頁](docs/images/android-schedules.webp)
 
 ### 取得應用程式
 
