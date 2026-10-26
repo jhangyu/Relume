@@ -196,6 +196,13 @@ class PullTest(UpstreamCase):
         self.assertEqual(upstream.affected_items(self.pat), [1, 2])
         self.assertEqual(upstream.affected_items(self.cli), [1, 2])
 
+    def test_rate_limit_leaves_pull_unwrapped_and_the_job_handler_fails(self):
+        self.http({f"{API}/repos/MorpheApp/morphe-patches/releases/latest": (429, {}, {})})
+        with self.assertRaises(upstream.RateLimited):  # apps.run_update stops its GitHub step on it
+            upstream.pull(self.pat, self.log)
+        with self.assertRaisesRegex(jobs.JobFailed, "^rate limited$"):
+            upstream._handler(mock.Mock(id=1, target={"upstream_id": self.pat}, options={}), self.log)
+
     def test_handler_event_carries_job_id(self):
         self.routes()
         upstream._handler(mock.Mock(id=77, target={"upstream_id": self.pat}, options={}), self.log)

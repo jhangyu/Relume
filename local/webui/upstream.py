@@ -144,7 +144,8 @@ def fetch(row):
 
 def affected_items(upstream_id):
     """Enabled items whose bundle uses the row, whose engine uses it as CLI, or that depend on its project."""
-    engines = [e for e in catalog.ENGINE_CLI if catalog.engine_cli(e) == upstream_id]
+    r = db.conn().execute("SELECT repo, channel, tag FROM upstream WHERE id = ?", (upstream_id,)).fetchone()
+    engines = [e for e, cli in catalog.ENGINE_CLI.items() if r is not None and cli[:3] == tuple(r)]   # read only
     rows = db.conn().execute(f"""SELECT i.id FROM item i JOIN bundle b ON b.id = i.bundle_id
         WHERE i.enabled = 1 AND (b.upstream_id = ? OR b.engine IN ({','.join('?' * len(engines))}))
         UNION SELECT i.id FROM item i JOIN item_dependency x ON x.item_id = i.id JOIN project p ON p.id = x.project_id
@@ -380,11 +381,8 @@ def _inspected(row):
 
 
 def _fetch_row(upstream_id, log, job_id=None):
-    """Pull steps 1-2 for one row. True when a new tag was downloaded."""
-    try:
-        row, assets = _check(upstream_id, job_id)
-    except (TokenRejected, RateLimited) as e:
-        raise jobs.JobFailed(str(e))
+    """Pull steps 1-2 for one row. True when a new tag was downloaded. TokenRejected / RateLimited propagate."""
+    row, assets = _check(upstream_id, job_id)
     if assets is None:
         raise jobs.JobFailed(row["check_error"])
     if row["latest_tag"] == row["downloaded_tag"] and tag_dir(upstream_id, row["downloaded_tag"]).is_dir():
@@ -404,7 +402,8 @@ def _fetch_row(upstream_id, log, job_id=None):
 
 
 def pull(upstream_id, log, job_id=None):
-    """Check, download, prune and inspect one row. True when a new tag was downloaded."""
+    """Check, download, prune and inspect one row. True when a new tag was downloaded. A row failure raises
+    jobs.JobFailed; TokenRejected / RateLimited propagate so a caller looping over rows can stop its GitHub step."""
     try:
         row = _row(upstream_id)
     except KeyError:
@@ -427,7 +426,10 @@ def pull(upstream_id, log, job_id=None):
 def _handler(job, log):
     """{upstream_id}: one pull (Follow projects, OTA). {all} / {item_id}: the update run of apps.py."""
     if "upstream_id" in job.target:
-        pull(job.target["upstream_id"], log, job_id=job.id)
+        try:
+            pull(job.target["upstream_id"], log, job_id=job.id)
+        except (TokenRejected, RateLimited) as e:
+            raise jobs.JobFailed(str(e))
         return
     from . import apps   # apps imports this module
     apps.run_update(job, log)
