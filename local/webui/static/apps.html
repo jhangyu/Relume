@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#ffffff">
+<title>Apps · Relume</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/static/icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<style>
+  .summary { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  .sum { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: var(--borderRadius2XLarge); background: var(--colorNeutralBackground1); box-shadow: var(--shadow4); border: 2px solid transparent; cursor: pointer; text-align: left; }
+  .sum[aria-pressed=true] { border-color: var(--colorBrandBackground); }
+  .sum .ic { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; }
+  .sum .n { font: 600 20px/24px var(--fontFamilyDisplay); }
+  .list { margin-top: 20px; }
+  .lhead, .arow { display: grid; grid-template-columns: minmax(200px, 2fr) minmax(110px, .9fr) minmax(150px, 1.3fr) minmax(210px, 1.7fr) 160px; align-items: center; gap: 16px; padding: 0 20px; }
+  .lhead { height: 40px; font-size: 12px; font-weight: 600; color: var(--colorNeutralForeground3); border-bottom: 1px solid var(--colorNeutralStroke2); }
+  .arow { min-height: 80px; padding-top: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--colorNeutralStroke3); }
+  .arow:last-child { border-bottom: 0; }
+  .arow:hover { background: var(--colorNeutralBackground2); }
+  .arow.selected { background: var(--colorBrandBackground2); }
+  .arow .nm { font: 600 15px/20px var(--fontFamilyBase); }
+  .arow .nm a { color: inherit; }
+  .acts { display: flex; justify-content: flex-end; gap: 2px; }
+  .st { display: grid; gap: 6px; }
+  .st .caption a, .st .caption button.link { font-weight: 600; }
+  button.link { border: 0; background: none; padding: 0; cursor: pointer; color: var(--colorBrandForeground1); }
+  .ver-chg { display: inline-flex; align-items: center; gap: 4px; }
+  .empty { padding: 40px 20px; text-align: center; color: var(--colorNeutralForeground3); }
+  /* drawer content */
+  .dsec { padding: 20px 0; border-top: 1px solid var(--colorNeutralStroke3); display: grid; gap: 12px; }
+  .dsec:first-child { border-top: 0; padding-top: 4px; }
+  .dsec h3 { display: flex; align-items: center; gap: 8px; }
+  .bpick { display: grid; gap: 8px; }
+  .bopt { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--colorNeutralStroke2); border-radius: var(--borderRadiusXLarge); cursor: pointer; }
+  .bopt:has(input:checked) { border: 2px solid var(--colorBrandBackground); padding: 9px 11px; background: var(--colorBrandBackground2); }
+  .bopt:has(input:disabled) { opacity: .6; cursor: not-allowed; }
+  .pt { border: 1px solid var(--colorNeutralStroke2); border-radius: var(--borderRadiusXLarge); }
+  .pt-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-top: 1px solid var(--colorNeutralStroke3); }
+  .pt-row:first-child { border-top: 0; }
+  .pt-opts { margin: 0 12px 12px; padding: 12px; border-radius: var(--borderRadiusMedium); background: var(--colorNeutralBackground3); display: grid; gap: 10px; }
+  .modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .mode { position: relative; display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--colorNeutralStroke2); border-radius: var(--borderRadiusXLarge); cursor: pointer; }
+  .mode:has(input:checked) { border: 2px solid var(--colorBrandBackground); padding: 9px 11px; background: var(--colorBrandBackground2); }
+  .mode input { position: absolute; opacity: 0; }
+  .dep { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--colorNeutralStroke2); border-radius: var(--borderRadiusXLarge); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--colorNeutralStroke2); border-radius: var(--borderRadiusCircular); }
+  .input:invalid { border-bottom-color: var(--colorStatusDangerForeground1); }
+  @media (max-width: 1100px) { .summary { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 900px) {
+    .summary { grid-template-columns: repeat(2, 1fr); }
+    .lhead { display: none; }
+    .arow { grid-template-columns: 1fr auto; grid-template-areas: "app app" "ver bun" "st st" "acts acts"; gap: 8px 12px; padding: 16px; }
+    .arow > :nth-child(1) { grid-area: app; } .arow > :nth-child(2) { grid-area: ver; } .arow > :nth-child(3) { grid-area: bun; text-align: right; }
+    .arow > :nth-child(4) { grid-area: st; } .arow > :nth-child(5) { grid-area: acts; justify-content: flex-start; }
+    .modes { grid-template-columns: 1fr; }
+  }
+</style>
+<script type="module" src="/static/apps.js"></script>
+</head>
+<body>
+<a class="sr-only" href="#main">Skip to content</a>
+<div class="shell">
+  <aside class="side" aria-label="Primary"></aside>
+
+  <div class="main">
+    <header class="header">
+      <button class="icon-btn menu-btn" type="button" data-nav-toggle aria-label="Open navigation" title="Open navigation"><svg class="i" aria-hidden="true"><use href="#i-menu"/></svg></button>
+      <h1 class="subtitle1">Apps</h1>
+      <span class="caption hide-m" id="nextrun"></span>
+      <div class="grow"></div>
+      <label class="input search hide-m" style="width:260px"><svg class="i i-16" aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Search enabled apps</span><input type="search" id="q" placeholder="Search enabled apps"></label>
+      <button class="btn" type="button" id="checkall" style="min-width:0"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg><span class="hide-m">Check all for updates</span><span class="sr-only">Check all for updates</span></button>
+      <a class="btn primary" href="/" style="min-width:0;text-decoration:none"><svg class="i" aria-hidden="true"><use href="#i-add"/></svg><span class="hide-m">Add from Marketplace</span><span class="sr-only">Add from Marketplace</span></a>
+    </header>
+
+    <main class="content" id="main">
+      <section class="summary" id="summary" aria-label="Filter by status"></section>
+      <section class="card list" aria-label="Enabled apps">
+        <div class="lhead" role="presentation"><span>App</span><span>App version</span><span>Patch bundle</span><span>Status</span><span style="text-align:right">Actions</span></div>
+        <div id="list"></div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<!-- App settings: Fluent OverlayDrawer -->
+<div class="scrim" id="scrim" hidden></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="dr-t" hidden>
+  <div class="drawer-head">
+    <span id="dr-tile"></span>
+    <div class="grow"><h2 class="subtitle1" id="dr-t">App settings</h2><div class="mono subtle-text" id="dr-pkg"></div></div>
+    <label class="switch" style="margin-top:4px"><input type="checkbox" id="d-en" aria-label="Enabled (kept updated and rebuilt on schedule)"><span class="track"></span><span class="caption">Enabled</span></label>
+    <button class="icon-btn" type="button" id="d-close" aria-label="Close settings" title="Close settings" data-tip="Close"><svg class="i" aria-hidden="true"><use href="#i-close"/></svg></button>
+  </div>
+  <div class="drawer-body">
+    <section class="dsec" id="sec-bundle" aria-labelledby="s-b"></section>
+    <section class="dsec" id="sec-patches" aria-labelledby="s-p">
+      <div class="row"><h3 class="subtitle2 grow" id="s-p"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Patches <span class="caption" style="font-weight:400" id="pcount"></span></h3><button class="btn subtle small" type="button" id="preset">Reset to defaults</button></div>
+      <div id="pnote"></div>
+      <label class="input"><svg class="i i-16" aria-hidden="true"><use href="#i-search"/></svg><span class="sr-only">Filter patches</span><input type="search" id="pfilter" placeholder="Filter patches"></label>
+      <div class="pt" id="plist"></div>
+    </section>
+    <section class="dsec" id="sec-module" aria-labelledby="s-m" hidden></section>
+    <section class="dsec" id="sec-version" aria-labelledby="s-v"></section>
+    <section class="dsec" id="sec-variants" aria-labelledby="s-a"></section>
+    <section class="dsec" id="sec-deps" aria-labelledby="s-d"></section>
+    <section class="dsec" id="sec-url" aria-labelledby="s-u"></section>
+    <section class="dsec" id="sec-name" aria-labelledby="s-n"></section>
+  </div>
+  <div class="drawer-foot">
+    <button class="btn" type="button" id="d-cancel">Cancel</button>
+    <button class="btn" type="button" id="d-save">Save</button>
+    <button class="btn primary" type="button" id="d-saverun"><svg class="i" aria-hidden="true"><use href="#i-rebuild"/></svg>Save and rebuild</button>
+  </div>
+</aside>
+
+<div id="toast" class="toast" role="status" aria-live="polite"><span></span></div>
+</body>
+</html>
