@@ -13,6 +13,7 @@ One pure function decides the phone-side action for every app card (items and fo
 | otherwise | "Installed <version>" pill |
 
 - Bug to fix: a not-installed app shows no Install button. Suspected cause: `AppFacts.installable` (`ui/AppStatus.kt:69`) needs a plan step with INSTALL, or no step plus `appVersion`; other step states drop the button. Confirm on the device before the fix.
+- Package identity: every phone-side comparison (installed lookup, version, patch version, signer) uses the package name of the built APK, not the source app's package. Patches can rename the package (e.g. Google Maps is installed as a separate app); the server plan already uses the artifact package (`ota.py:128-131`), the client must too.
 - Server exposes per app: patch version and signing cert fingerprint of the current build.
 - The phone records the patch version it installed for each package (written when Relume installs a package).
 - A build in progress still hides the action (unchanged).
@@ -21,7 +22,7 @@ One pure function decides the phone-side action for every app card (items and fo
 - The full-page `Screen.Install` becomes a modal lightbox over the Apps tab: per-step download / verify / install progress.
 - Success: the lightbox closes itself and the Apps cards refresh, so the user can start the next install.
 - Failure: the lightbox stays open with the error and Retry / Close.
-- The visual design comes from one of two HTML mockups (designers keep the current Relume palette and components); the user picks one.
+- Visual design: `docs/mockups/install-lightbox-b.html` (bottom sheet; the reinstall confirm uses the same bottom sheet).
 
 ## 3. Uninstall & reinstall (signer mismatch)
 - The existing confirm dialog stays; its text states that the app's data and login are erased.

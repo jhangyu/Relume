@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Relume install lightbox — mockup B (bottom sheet + step rail)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+/* Palette = Theme.kt RelumeLight; dark values derived (tone-shifted, same hues). */
+.light{--primary:#6E5FD4;--onPrimary:#fff;--pc:#E6E1FF;--onPc:#34248C;--tert:#B85A35;--onTert:#fff;--tc:#FFE1D5;--onTc:#7D2A0E;
+--err:#BA1A1A;--ec:#FFDAD6;--onEc:#93000A;--bg:#F8F8F8;--on:#1C1C1C;--sv:#E8E8E8;--onSv:#474747;--s0:#fff;--s1:#F3F3F3;--sh:#E8E8E8;--shh:#E2E2E2;
+--ol:#767676;--olv:#C8C8C8;--blue:#DBE9FF;--onBlue:#0B3D91;--green:#D4F3DC;--onGreen:#14532D;--lav:#E8E0FF;--onLav:#4A2A8F;--amber:#FFEDC2;--onAmber:#6B4500;--scrim:rgba(0,0,0,.42)}
+.dark{--primary:#C9BFFF;--onPrimary:#2A1A7A;--pc:#4F3FB5;--onPc:#E6E1FF;--tert:#FFB59C;--onTert:#5A1D05;--tc:#7D2A0E;--onTc:#FFE1D5;
+--err:#FFB4AB;--ec:#93000A;--onEc:#FFDAD6;--bg:#141414;--on:#E6E6E6;--sv:#303030;--onSv:#C4C4C4;--s0:#1D1D1D;--s1:#202020;--sh:#2A2A2A;--shh:#333;
+--ol:#8E8E8E;--olv:#444;--blue:#16345F;--onBlue:#DBE9FF;--green:#17402A;--onGreen:#D4F3DC;--lav:#3A2E66;--onLav:#E8E0FF;--amber:#4D3A0A;--onAmber:#FFEDC2;--scrim:rgba(0,0,0,.6)}
+*{box-sizing:border-box;margin:0}
+body{background:#d9d9de;font:14px/20px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#222;padding:24px}
+h1{font-size:18px;margin-bottom:4px}p.n{font-size:12px;color:#555;margin-bottom:16px;max-width:900px}
+h2{font-size:13px;margin:22px 0 8px;text-transform:uppercase;letter-spacing:.08em;color:#444}
+.row{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start}
+figure{width:412px}figcaption{font-size:12px;color:#444;margin-top:6px}
+.phone{position:relative;width:412px;height:800px;overflow:hidden;border-radius:28px;background:var(--bg);color:var(--on);box-shadow:0 6px 24px rgba(0,0,0,.25);font-size:14px}
+.bar{height:56px;display:flex;align-items:center;padding:0 16px;font-size:22px;line-height:28px}
+.bar b{font-weight:400;flex:1}
+.chips{display:flex;gap:8px;padding:0 16px 8px;font-size:12px;overflow:hidden}
+.chip{padding:6px 12px;border-radius:8px;border:1px solid var(--olv);white-space:nowrap}.chip.on{background:var(--pc);color:var(--onPc);border-color:transparent}
+.list{padding:8px 16px;display:flex;flex-direction:column;gap:8px}
+.card{background:var(--s0);border-radius:12px;padding-top:16px}
+.top{display:flex;gap:16px;align-items:center;padding:0 16px 12px}
+.ic{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;font-weight:600;font-size:15px}
+.t{flex:1;min-width:0}.t b{display:block;font-weight:500;font-size:14px}.t span{font-size:11px;color:var(--onSv)}
+.act{display:flex;align-items:center;gap:8px;min-height:56px;padding:8px 16px;border-top:1px solid var(--sh)}
+.sp{flex:1}
+.pill{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 10px;border-radius:12px;font-size:11px;font-weight:500}
+.btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 16px;border-radius:18px;border:0;font:500 12px system-ui,sans-serif;letter-spacing:.5px;cursor:default}
+.send{background:var(--tert);color:var(--onTert)}
+.warn{background:var(--ec);color:var(--onEc)}
+.txt{background:none;color:var(--primary)}
+.tonal{background:var(--pc);color:var(--onPc)}
+.nav{position:absolute;bottom:0;left:0;right:0;height:72px;background:var(--s1);display:flex;justify-content:space-around;align-items:center;font-size:11px;color:var(--onSv)}
+.nav i{font-style:normal;padding:4px 18px;border-radius:14px}.nav i.on{background:var(--pc);color:var(--onPc)}
+.scrim{position:absolute;inset:0;background:var(--scrim)}
+/* sheet */
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--s0);border-radius:28px 28px 0 0;padding:12px 20px 24px;box-shadow:0 -8px 32px rgba(0,0,0,.25)}
+.grab{width:36px;height:4px;border-radius:2px;background:var(--olv);margin:0 auto 16px}
+.head{display:flex;gap:14px;align-items:center;margin-bottom:6px}
+.head .ic{width:48px;height:48px;border-radius:14px}
+.head h3{font-size:16px;line-height:24px;font-weight:500}.head small{font-size:11px;color:var(--onSv);font-family:ui-monospace,Menlo,monospace}
+.big{margin:18px 0 6px;font-size:22px;line-height:28px;display:flex;align-items:baseline;gap:8px}.big small{font-size:12px;color:var(--onSv)}
+.bartrack{height:8px;border-radius:4px;background:var(--sh);overflow:hidden}.bartrack i{display:block;height:100%;border-radius:4px;background:var(--tert)}
+.rail{margin:20px 0 4px;position:relative}
+.step{display:flex;gap:14px;position:relative;padding-bottom:18px}
+.step:last-child{padding-bottom:0}
+.step:not(:last-child)::before{content:"";position:absolute;left:11px;top:24px;bottom:0;width:2px;background:var(--olv)}
+.step.done:not(:last-child)::before{background:var(--primary)}
+.dot{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:12px;flex:none;background:var(--sh);color:var(--onSv);z-index:1}
+.done .dot{background:var(--primary);color:var(--onPrimary)}
+.now .dot{background:var(--tert);color:var(--onTert);box-shadow:0 0 0 5px var(--tc)}
+.bad .dot{background:var(--err);color:var(--bg);box-shadow:0 0 0 5px var(--ec)}
+.step b{font-weight:500;display:block}.step span{font-size:11px;color:var(--onSv)}
+.todo b{color:var(--ol)}
+.foot{display:flex;gap:8px;margin-top:20px;justify-content:flex-end}
+.foot .btn{flex:0 0 auto}.foot .grow{flex:1;justify-content:center}
+.errbox{margin-top:16px;background:var(--ec);color:var(--onEc);border-radius:12px;padding:12px;font-size:12px;line-height:16px}
+.errbox code{display:block;margin-top:6px;font:11px/16px ui-monospace,Menlo,monospace}
+.hint{font-size:11px;color:var(--onSv);margin-top:12px;text-align:center}
+@keyframes sh{0%{background-position:0 0}100%{background-position:40px 0}}
+.bartrack i.live{background-image:linear-gradient(115deg,rgba(255,255,255,.28) 25%,transparent 25% 50%,rgba(255,255,255,.28) 50% 75%,transparent 75%);background-size:40px 100%;animation:sh 1s linear infinite}
+@media (prefers-reduced-motion:reduce){.bartrack i.live{animation:none}}
+.why{list-style:none;padding:0;margin:14px 0 0;text-align:left;font-size:12px;line-height:18px;display:flex;flex-direction:column;gap:6px}
+.why li{padding-left:0}
+.foot .warn.grow{background:var(--err);color:var(--bg)}
+</style>
+</head>
+<body>
+<h1>Install lightbox — option B: bottom sheet with step rail</h1>
+<p class="n">Sheet rises over the Apps tab (scrim keeps cards visible so the user keeps context). Vertical rail shows download → verify → install; coral = send-to-phone action and the live step. Reinstall confirm stays a centred system-style dialog. Frames are 412 px wide; same markup renders light and dark.</p>
+<div id="out"></div>
+
+<template id="cards">
+  <div class="bar"><b>Apps</b><span style="color:var(--onSv)">⟳</span></div>
+  <div class="chips"><span class="chip on">All 6</span><span class="chip">Not installed 2</span><span class="chip">Phone update 1</span><span class="chip">Failed 0</span></div>
+  <div class="list">
+    <div class="card"><div class="top"><div class="ic" style="background:var(--blue);color:var(--onBlue)">Yt</div><div class="t"><b>YouTube</b><span>20.14.43 · patch 1.9.2</span></div></div>
+      <div class="act"><span class="sp"></span><button class="btn send">⤓ Install 20.14.43</button></div></div>
+    <div class="card"><div class="top"><div class="ic" style="background:var(--lav);color:var(--onLav)">Rd</div><div class="t"><b>Reddit</b><span>2026.41.0 · patch 1.9.2</span></div></div>
+      <div class="act"><span class="pill" style="background:var(--lav);color:var(--onLav)">Phone has 2026.38.0</span><span class="sp"></span><button class="btn send">⬆ Upgrade</button></div></div>
+    <div class="card"><div class="top"><div class="ic" style="background:var(--amber);color:var(--onAmber)">Sp</div><div class="t"><b>Spotify</b><span>9.0.8 · signed by another key</span></div></div>
+      <div class="act"><span class="pill" style="background:var(--ec);color:var(--onEc)">Different signer</span><span class="sp"></span><button class="btn warn">⟲ Uninstall &amp; reinstall</button></div></div>
+    <div class="card"><div class="top"><div class="ic" style="background:var(--green);color:var(--onGreen)">Tw</div><div class="t"><b>Twitch</b><span>19.8.0 · patch 1.9.2</span></div></div>
+      <div class="act"><span class="pill" style="background:var(--green);color:var(--onGreen)">✓ Installed 19.8.0</span></div></div>
+  </div>
+  <div class="nav"><i>Marketplace</i><i class="on">Apps</i><i>Settings</i></div>
+</template>
+
+<template id="progress">
+  <div class="scrim"></div>
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="Installing YouTube">
+    <div class="grab"></div>
+    <div class="head"><div class="ic" style="background:var(--blue);color:var(--onBlue)">Yt</div><div><h3>Installing YouTube</h3><small>20.14.43 · patch 1.9.2</small></div></div>
+    <div class="big">64%<small>31.2 of 48.8 MB</small></div>
+    <div class="bartrack"><i class="live" style="width:64%"></i></div>
+    <div class="rail">
+      <div class="step now"><div class="dot">1</div><div><b>Downloading</b><span>from your Relume server</span></div></div>
+      <div class="step todo"><div class="dot">2</div><div><b>Verifying</b><span>checksum and signing certificate</span></div></div>
+      <div class="step todo"><div class="dot">3</div><div><b>Installing</b><span>Android will ask you to confirm</span></div></div>
+    </div>
+    <div class="foot"><button class="btn txt">Cancel</button></div>
+    <div class="hint">Closes by itself when done</div>
+  </div>
+</template>
+
+<template id="failure">
+  <div class="scrim"></div>
+  <div class="sheet" role="alertdialog" aria-modal="true" aria-label="Install failed">
+    <div class="grab"></div>
+    <div class="head"><div class="ic" style="background:var(--blue);color:var(--onBlue)">Yt</div><div><h3>Install failed</h3><small>YouTube 20.14.43 · patch 1.9.2</small></div></div>
+    <div class="rail">
+      <div class="step done"><div class="dot">✓</div><div><b>Downloaded</b><span>48.8 MB</span></div></div>
+      <div class="step done"><div class="dot">✓</div><div><b>Verified</b><span>checksum and certificate match</span></div></div>
+      <div class="step bad"><div class="dot">!</div><div><b>Install failed</b><span>stopped at the last step</span></div></div>
+    </div>
+    <div class="errbox">Android refused the package. Free up space or check that installs from Relume are allowed, then retry.<code>INSTALL_FAILED_INSUFFICIENT_STORAGE</code></div>
+    <div class="foot"><button class="btn txt">Close</button><button class="btn send grow">↻ Retry</button></div>
+  </div>
+</template>
+
+<template id="confirm">
+  <div class="scrim"></div>
+  <div class="sheet" role="alertdialog" aria-modal="true" aria-label="Uninstall and reinstall Spotify">
+    <div class="grab"></div>
+    <div class="head"><div class="ic" style="background:var(--amber);color:var(--onAmber)">Sp</div><div><h3>Reinstall Spotify?</h3><small>9.0.8 · signed by another key</small></div></div>
+    <div class="errbox" style="margin-top:14px">The copy on your phone is signed with a different key, so Android cannot update it in place. Relume must remove it first.</div>
+    <ul class="why"><li><b>Data and login are erased</b> — you will sign in again</li><li>Android shows its uninstall prompt next</li><li>After that, the new build installs automatically</li></ul>
+    <div class="foot"><button class="btn txt">Cancel</button><button class="btn warn grow">Erase and reinstall</button></div>
+  </div>
+</template>
+
+<script>
+const out=document.getElementById('out');
+const frames=[["cards","Apps tab — Install / Upgrade / Uninstall &amp; reinstall / Installed pill"],
+["progress","Lightbox in progress — download, verify, install rail"],
+["failure","Lightbox failure — error stays, Retry / Close"],
+["confirm","Reinstall data-loss confirm"]];
+for(const th of ["light","dark"]){
+  out.insertAdjacentHTML('beforeend',`<h2>${th} theme</h2>`);
+  const row=document.createElement('div');row.className='row';out.append(row);
+  for(const [id,cap] of frames){
+    const f=document.createElement('figure');
+    f.innerHTML=`<div class="phone ${th}"></div><figcaption>${cap}</figcaption>`;
+    const p=f.firstChild, tpl=n=>document.getElementById(n).content.cloneNode(true);
+    p.append(tpl("cards"));                       // Apps tab always sits behind overlays
+    if(id!=="cards")p.append(tpl(id));
+    row.append(f);
+  }
+}
+</script>
+</body>
+</html>
