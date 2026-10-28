@@ -279,6 +279,7 @@ def followed_apps():
         out.append({"id": pid, "source": "followed", "name": label(r), "package": r["package"],
                     "icon_url": f"/api/projects/{pid}/icon" if facts else None,
                     "repo": r["repo"], "version": tag if facts else None, "blocked": blocked,
+                    "signer_sha256": facts[0].get("signer_sha256") if facts else None,
                     "files": [] if blocked else [
                         {"name": f["file"], "abi": f["abi"], "size": f["size"], "version_name": f["version_name"],
                          "version_code": f["version_code"], "url": apk_url(pid, f["file"])}

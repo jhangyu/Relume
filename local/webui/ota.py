@@ -258,7 +258,7 @@ def _item_step(s, name):
 def _item_download(a):
     return {'url': f"/api/artifacts/{a['id']}/download", 'file_name': os.path.basename(a['path']), 'size': a['size'],
             'sha256': a['sha256'], 'signer_sha256': a['signer_sha256'], 'version_code': a['version_code'],
-            'version_name': a['version_name'], 'artifact_id': a['id']}
+            'version_name': a['version_name'], 'artifact_id': a['id'], 'patch_version': a['patches_version']}
 
 
 def _project_download(p):

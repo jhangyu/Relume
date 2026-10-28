@@ -268,7 +268,7 @@ class AppPlanTest(helpers.DataTestCase):
         step = self.plan()['steps'][0]
         self.assertEqual(step['download'], {'url': '/api/artifacts/50/download', 'file_name': 'x.apk', 'size': 1,
                                             'sha256': 'bb', 'signer_sha256': 'aa', 'version_code': 1,
-                                            'version_name': '19.47.53', 'artifact_id': 50})
+                                            'version_name': '19.47.53', 'artifact_id': 50, 'patch_version': 'v1'})
         self.assertEqual(step['display_name'], YT)
 
     def test_incomplete_project_becomes_error_step(self):

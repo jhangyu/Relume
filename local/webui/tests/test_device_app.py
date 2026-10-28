@@ -1,7 +1,7 @@
 """Relume app endpoints in ota.py (spec android 5, 5.1, 6.3, 6.4); token routing itself is tested in test_core_auth."""
 from unittest import mock
 
-from webui import build, db, ota, projects
+from webui import build, db, market, ota, projects
 from webui.server import HttpError
 from webui.tests import helpers
 from webui.tests.device_helpers import (add_app_device, add_catalog_item, add_device, add_job, add_project, assign,
@@ -163,3 +163,23 @@ class AppTest(helpers.DataTestCase):
         dev = ota.devices.get(self.me)
         self.assertEqual(ota._recovery_steps(dev, renamed, ['universal'])[0]['ref_id'], 1)
         self.assertIsNone(ota._recovery_steps(dev, YT, ['universal']))
+
+    def test_apps_list_and_plan_carry_built_package_patch_and_signer(self):
+        """Install states compare the built APK (spec install-states 1): renamed package, patch version, signer."""
+        renamed = 'app.morphe.android.youtube'
+        assign(self.me, 1)
+        jid = add_job(kind='build', target={'item_id': 1}, status='success')
+        with db.tx() as c:
+            c.execute("INSERT INTO build_jobs(job_id, item_id) VALUES (?, 1)", (jid,))   # list_apps reads needs_build
+            c.execute("INSERT INTO artifacts(job_id,item_id,variant,abi,package,version_name,version_code,patches_version,"
+                      "signer_sha256,path,size,sha256,created_at) VALUES (?,1,'universal','universal',?,'20.1',7,'v1.25.2',?,"
+                      "'/a/x.apk',3,?,'now')", (jid, renamed, SIGNER, 'cd' * 32))
+        st, body = self.call(market.list_apps)
+        self.assertEqual(st, 200)
+        self.assertEqual(body['apps'][0]['build'], {'package': renamed, 'version_code': 7, 'version_name': '20.1',
+                                                    'patch_version': 'v1.25.2', 'signer_sha256': SIGNER})
+        step = self.call(ota.me_plan)[1]['plan']['steps'][0]
+        self.assertEqual((step['package'], step['download']['patch_version']), (renamed, 'v1.25.2'))
+        with db.tx() as c:
+            c.execute("UPDATE artifacts SET package = '' WHERE job_id = ?", (jid,))
+        self.assertIsNone(self.call(market.list_apps)[1]['apps'][0]['build'])   # never guessed from item.package
