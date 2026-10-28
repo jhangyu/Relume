@@ -12,7 +12,6 @@ sealed interface Screen {
     @Serializable data object Schedules : Screen
     @Serializable data object Settings : Screen
     @Serializable data class Log(val jobId: Int, val appId: Int?) : Screen
-    @Serializable data object Install : Screen
 }
 
 val Screen.isRoot: Boolean get() = this is Screen.Marketplace || this is Screen.Apps || this is Screen.Schedules

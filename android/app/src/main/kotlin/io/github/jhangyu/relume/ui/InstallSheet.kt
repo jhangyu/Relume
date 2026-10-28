@@ -10,15 +10,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -94,50 +92,83 @@ private fun StepState.pastel(): Pair<Color, Color> {
     }
 }
 
-/** Frames 5a and 5b: one block per plan step, phases for the running ones, buttons for the ones that wait for the user. */
+/** Lightbox state (spec install-states 2): open while running, closes itself on success, stays open on failure. */
+internal enum class SheetOutcome { Running, Done, Failed }
+
+private val CLOSING = setOf(StepState.INSTALLED, StepState.UP_TO_DATE, StepState.CANCELLED)
+
+/** [reinstallPending]: package whose `needs_uninstall` step the user confirmed; the system uninstall comes next. */
+internal fun sheetOutcome(run: RunState, reinstallPending: String?): SheetOutcome = when {
+    run.steps.any { it.state.active || it.state == StepState.PENDING } -> SheetOutcome.Running
+    run.steps.any { it.state == StepState.NEEDS_UNINSTALL && it.step.packageName == reinstallPending } -> SheetOutcome.Running
+    run.steps.all { it.state in CLOSING } -> SheetOutcome.Done
+    else -> SheetOutcome.Failed
+}
+
+private fun sheetTitle(run: RunState, outcome: SheetOutcome): String {
+    if (outcome == SheetOutcome.Failed) return "Install failed"
+    val installs = run.steps.filter { it.step.action == PlanAction.INSTALL }
+    return if (installs.size == 1) "Installing ${installs[0].step.displayName}" else "Installing ${installs.size} apps"
+}
+
+/** Mockup install-lightbox-b frames 2 and 3: the install run as a bottom sheet over the current tab. */
 @Composable
-fun InstallScreen(run: RunState?, model: AppModel, onClose: () -> Unit) {
+fun InstallSheet(run: RunState?, model: AppModel) {
     val ctx = LocalContext.current
-    var uninstallIndex by remember { mutableStateOf<Int?>(null) }
     val corrupt by InstallRunner.corrupt.collectAsState()
-    Column(Modifier.fillMaxSize()) {
-        AppBar("Install", onBack = onClose)
-        corrupt?.let { e ->
-            Column(Modifier.padding(ScreenPadding), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Banner("The saved install run is corrupt", Tone.Danger, detail = e.message)
-                ActionButton("Reset install run", { InstallRunner.reset(ctx) }, Modifier.fillMaxWidth(), kind = ButtonKind.Danger)
-            }
-            return@Column
-        }
-        if (run == null) {
-            Txt("No install run.", Modifier.padding(ScreenPadding), color = muted())
-            return@Column
-        }
-        Column(
-            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = ScreenPadding, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
-        ) {
-            if (run.stalePlan) {
-                Banner("The plan changed on the server", Tone.Warn, detail = "Nothing was reinstalled. Go back, refresh and start again.", action = "Refresh", onAction = model::refresh)
-            }
-            run.syncError?.let { Banner("Could not report to the server", Tone.Danger, detail = it) }
-            run.outboxError?.let { Banner("Could not send an earlier result to the server", Tone.Danger, detail = it) }
-            run.steps.forEachIndexed { i, s -> StepBlock(s, i, ctx, model) { uninstallIndex = i } }
-        }
-        Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer).padding(horizontal = ScreenPadding, vertical = 10.dp)) {
-            if (run.isActive || run.steps.any { it.state == StepState.PENDING }) {
-                ActionButton("Cancel", { InstallRunner.cancel(ctx) }, Modifier.fillMaxWidth(), kind = ButtonKind.Outlined)
-            } else {
-                ActionButton("Done", onClose, Modifier.fillMaxWidth(), kind = ButtonKind.Primary)
-            }
+    var confirmIndex by remember { mutableStateOf<Int?>(null) }
+    // "<revision>/<step>" whose system uninstall was already opened: one prompt per step, not one per recomposition.
+    var asked by remember { mutableStateOf<String?>(null) }
+    val pending = model.reinstallPackage
+    val outcome = run?.let { sheetOutcome(it, pending) }
+
+    // Spec install-states 3: a confirmed needs_uninstall step goes to the system uninstall prompt; success re-runs it.
+    LaunchedEffect(run, pending) {
+        val r = run ?: return@LaunchedEffect
+        val i = r.steps.indexOfFirst { it.state == StepState.NEEDS_UNINSTALL && it.step.packageName == pending }
+        val key = "${r.revision}/$i"
+        if (i >= 0 && asked != key) {
+            asked = key
+            InstallRunner.uninstallAndRetry(ctx, i)
         }
     }
-    val index = uninstallIndex
+    LaunchedEffect(outcome, corrupt) {
+        if (outcome == SheetOutcome.Done && corrupt == null) model.closeSheet()
+    }
+
+    RSheet(model::closeSheet) {
+        corrupt?.let { e ->
+            Banner("The saved install run is corrupt", Tone.Danger, detail = e.message)
+            ActionButton("Reset install run", { InstallRunner.reset(ctx) }, Modifier.fillMaxWidth(), kind = ButtonKind.Danger)
+            return@RSheet
+        }
+        if (run == null || outcome == null) {
+            Txt("No install run.", color = muted())
+            return@RSheet
+        }
+        Txt(sheetTitle(run, outcome), style = MaterialTheme.typography.headlineSmall)
+        if (run.stalePlan) Banner("The plan changed on the server", Tone.Warn, detail = "Nothing was reinstalled. Retry fetches the new plan.")
+        run.syncError?.let { Banner("Could not report to the server", Tone.Danger, detail = it) }
+        run.outboxError?.let { Banner("Could not send an earlier result to the server", Tone.Danger, detail = it) }
+        run.steps.forEachIndexed { i, s -> StepBlock(s, i, ctx, model) { confirmIndex = i } }
+        DialogButtons {
+            if (outcome == SheetOutcome.Failed) {
+                ActionButton("Close", model::closeSheet, Modifier.weight(1f), kind = ButtonKind.Text)
+                ActionButton("Retry", model::retryInstall, Modifier.weight(1f), kind = ButtonKind.Install)
+            } else {
+                ActionButton("Cancel", { InstallRunner.cancel(ctx) }, Modifier.weight(1f), kind = ButtonKind.Text)
+            }
+        }
+        if (outcome != SheetOutcome.Failed) Txt("Closes by itself when done", style = MaterialTheme.typography.bodySmall, color = muted())
+    }
+
+    val index = confirmIndex
     val waiting = if (index != null) run?.steps?.getOrNull(index) else null
     if (index != null && waiting != null && waiting.state == StepState.NEEDS_UNINSTALL) {
-        UninstallDialog(waiting, onDismiss = { uninstallIndex = null }) {
-            uninstallIndex = null
-            InstallRunner.uninstallAndRetry(ctx, index)
+        val detail = listOfNotNull(waiting.step.download?.versionName, conflictTitle(waiting.step)).joinToString(" · ")
+        ReinstallSheet(waiting.step.displayName, detail, onDismiss = { confirmIndex = null }) {
+            confirmIndex = null
+            model.markReinstall(waiting.step.packageName)   // the LaunchedEffect above opens the system uninstall
         }
     }
 }
@@ -214,23 +245,6 @@ private fun PhaseList(state: StepState) {
                 }
                 Txt(PHASES[i], color = if (mark == PhaseMark.Waiting) muted() else MaterialTheme.colorScheme.onSurface, bold = mark != PhaseMark.Waiting)
             }
-        }
-    }
-}
-
-/** Frame 5c: uninstall first. The text names both signers or both version codes (the step's error text). */
-@Composable
-private fun UninstallDialog(s: StepRun, onDismiss: () -> Unit, onConfirm: () -> Unit) {
-    var understood by remember { mutableStateOf(false) }
-    RDialog(onDismiss) {
-        DialogIcon(R.drawable.ms_warning, Tone.Danger)
-        Txt(conflictTitle(s.step), style = MaterialTheme.typography.headlineSmall)
-        s.errorText?.let { Txt(it, color = muted()) }
-        Banner("App data will be deleted", Tone.Danger, detail = "Uninstalling deletes this app's data on the phone (logins, downloads, settings). This cannot be undone.")
-        CheckRow("I understand, uninstall first", understood) { understood = it }
-        DialogButtons {
-            ActionButton("Cancel", onDismiss, Modifier.weight(1f), kind = ButtonKind.Text)
-            ActionButton("Uninstall and install", onConfirm, Modifier.weight(1f), kind = ButtonKind.Danger, enabled = understood)
         }
     }
 }

@@ -222,10 +222,6 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     var prompt by mutableStateOf<InstallPrompt?>(null)
         private set
 
-    /** Bumped when a run starts; the root opens the install screen. */
-    var runStarted by mutableStateOf(0)
-        private set
-
     /** The install lightbox is open (spec install-states 2): set when a run starts, cleared by [closeSheet]. */
     var sheetOpen by mutableStateOf(false)
         private set
@@ -316,7 +312,6 @@ class AppModel(application: Application) : AndroidViewModel(application) {
             StartResult.Busy -> error = "an install run is in progress"
             // Corrupt: the install sheet shows the unreadable run file and its reset.
             StartResult.Started, StartResult.Corrupt -> {
-                runStarted++
                 sheetOpen = true
             }
         }

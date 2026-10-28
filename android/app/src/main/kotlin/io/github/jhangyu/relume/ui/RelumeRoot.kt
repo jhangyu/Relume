@@ -91,9 +91,6 @@ private fun ColumnScope.RootContent() {
         // Back from system settings: a granted install permission closes the "allow installs" prompt.
         if (model.prompt == AppModel.InstallPrompt.NeedPermission && InstallRunner.canInstall(ctx)) model.dismissPrompt()
     }
-    LaunchedEffect(model.runStarted) {
-        if (model.runStarted > 0 && stack.last() != Screen.Install) stack = stack + Screen.Install
-    }
     LaunchedEffect(run?.synced) {
         if (run?.synced == true) model.refresh()
     }
@@ -133,7 +130,6 @@ private fun ColumnScope.RootContent() {
                     val app = current.appId?.let(model::app)
                     LogScreen(api, current.jobId, app?.status?.takeIf { it.jobId == current.jobId }?.progress, app?.name, back, model::buildEnded)
                 }
-                Screen.Install -> InstallScreen(run, model, onClose = back)
             }
         }
     }
@@ -142,6 +138,7 @@ private fun ColumnScope.RootContent() {
         NavBar(current, enabledApps = model.apps.size) { stack = listOf(it) }
     }
     InstallPrompts(model)
+    if (model.sheetOpen) InstallSheet(run, model)
 }
 
 /**
