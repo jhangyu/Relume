@@ -64,6 +64,10 @@ android {
         release {
             signingConfig = signingConfigs.getByName("release")
         }
+        // Debug builds share the release key, so either build installs over the other on the phone.
+        debug {
+            signingConfig = signingConfigs.getByName("release")
+        }
     }
 
     buildFeatures {
