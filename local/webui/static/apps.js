@@ -482,7 +482,9 @@ function onEdit(e) {
   } else if (f === 'dex') {
     c.eo.injectdex = t.checked;
   } else if (f === 'abi') {
+    // reads t.checked, not a toggle: a checkbox fires both input and change, and both reach onEdit
     const a = t.value, has = c.variants.some(v => v.abi === a);
+    if (has === t.checked) return;
     if (has && c.variants.length === 1) { t.checked = true; return toast('At least one ABI variant is required', 'error'); }
     if (has) c.variants = c.variants.filter(v => v.abi !== a);
     else c.variants.push({ ...clone(c.variants[0]), name: a, abi: a, strip_libs: a === 'universal' || isModule(chosenEngine()) ? null : a });

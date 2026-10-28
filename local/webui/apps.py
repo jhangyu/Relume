@@ -232,7 +232,8 @@ def update_settings(app_id, fields):
     if 'variants' in fields:
         if catalog.is_module(engine):
             catalog.check_xposed_variants(fields['variants'])
-        sets['variants'] = json.dumps(catalog.validate_variants(fields['variants']))
+        variants = catalog.validate_variants(fields['variants'])
+        sets['variants'] = json.dumps(variants)
     if 'engine_options' in fields:
         eo = catalog.validate_engine_options(engine, fields['engine_options'])
         sets['engine_options'] = None if eo is None else json.dumps(eo)
@@ -252,6 +253,8 @@ def update_settings(app_id, fields):
         if deps is not None:
             c.execute('DELETE FROM item_dependency WHERE item_id = ?', (app_id,))
             c.executemany('INSERT INTO item_dependency(item_id, project_id) VALUES (?, ?)', [(app_id, d) for d in deps])
+    if 'variants' in fields:
+        build.drop_variants(app_id, [v['name'] for v in variants])
     if new_bundle and r['enabled']:
         jobs.enqueue('upstream', {'item_id': app_id}, 'manual')   # same first fetch + build as enable (apps part §4.6)
     return get(app_id)
@@ -578,7 +581,15 @@ def inputs_sha(item_id):
     tag, _, patches = catalog.patch_list(r['bundle_id'], r['package'])
     cli_tag = db.conn().execute('SELECT downloaded_tag FROM upstream WHERE id = ?',
                                 (catalog.engine_cli(r['engine']),)).fetchone()[0]
-    inputs = {'bundle_id': r['bundle_id'], 'patches_tag': tag, 'cli_tag': cli_tag, 'version': _want(r)[1],
-              'overrides': _overrides_in_use(r, patches), 'engine_options': _j(r['engine_options']),
-              'variants': json.loads(r['variants'])}
-    return hashlib.sha256(jobs.canon(inputs).encode()).hexdigest()
+    base = {'bundle_id': r['bundle_id'], 'patches_tag': tag, 'cli_tag': cli_tag, 'version': _want(r)[1],
+            'overrides': _overrides_in_use(r, patches), 'engine_options': _j(r['engine_options'])}
+    h = lambda o: hashlib.sha256(jobs.canon(o).encode()).hexdigest()  # noqa: E731
+    return json.dumps({'base': h(base), 'variants': {v['name']: h(v) for v in json.loads(r['variants'])}}, sort_keys=True)
+
+
+def inputs_cover(stored, current):
+    """True when the build fingerprinted stored made every variant current asks for: dropping a variant needs no rebuild."""
+    if not stored or not stored.startswith('{'):
+        return False   # NULL or a fingerprint from before per-variant hashes: rebuilt once
+    s, c = json.loads(stored), json.loads(current)
+    return s['base'] == c['base'] and c['variants'].items() <= s['variants'].items()

@@ -128,8 +128,9 @@ class NeedsBuildTest(AppsCase):
             c.execute("INSERT INTO build_jobs(job_id, item_id, app_version, inputs_sha) VALUES (?, ?, '20.13.41', ?)",
                       (jid, iid, apps.inputs_sha(iid)))
             if status == "success":
-                c.execute("INSERT INTO artifacts(job_id, item_id, variant, abi, path, created_at) "
-                          "VALUES (?, ?, 'universal', 'universal', '/x', 'now')", (jid, iid))
+                for v in apps.get(iid)["settings"]["variants"]:
+                    c.execute("INSERT INTO artifacts(job_id, item_id, variant, abi, path, created_at) VALUES (?, ?, ?, ?, ?, 'now')",
+                              (jid, iid, v["name"], v["abi"], str(db.DATA / f"{v['name']}.apk")))
 
     def flips(self, change, undo):
         change()
@@ -170,6 +171,20 @@ class NeedsBuildTest(AppsCase):
         self.built()
         db.conn().execute("DELETE FROM artifacts")
         self.assertTrue(build.needs_build(1))   # artifacts cleaned up
+
+    def test_unticking_an_abi_drops_its_apk_and_needs_no_rebuild(self):
+        variants = apps.get(1)["settings"]["variants"]
+        self.assertEqual({v["abi"] for v in variants}, {"universal", "arm64-v8a"})
+        self.built()
+        files = {a: db.DATA / f"{a}.apk" for a in ("universal", "arm64-v8a")}
+        for f in files.values():
+            f.write_bytes(b"x")
+        apps.update_settings(1, {"variants": [v for v in variants if v["abi"] == "arm64-v8a"]})
+        self.assertFalse(build.needs_build(1))
+        self.assertEqual([r[0] for r in db.conn().execute("SELECT abi FROM artifacts")], ["arm64-v8a"])
+        self.assertEqual({a: f.exists() for a, f in files.items()}, {"universal": False, "arm64-v8a": True})
+        apps.update_settings(1, {"variants": variants})
+        self.assertTrue(build.needs_build(1))   # universal is back and has no APK
 
 
 class UpdateRunTest(AppsCase):

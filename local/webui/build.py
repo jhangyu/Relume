@@ -314,10 +314,22 @@ def needs_build(item_id):
     ls, lb = st["last_success"], st["last_build"]
     if ls is None or lb["status"] == "failed":
         return True
-    if not db.conn().execute("SELECT 1 FROM artifacts WHERE item_id = ?", (item_id,)).fetchone():
-        return True  # cleaned up: the build is gone
+    want = {v["name"] for v in json.loads(db.conn().execute("SELECT variants FROM item WHERE id = ?", (item_id,)).fetchone()[0])}
+    have = {r[0] for r in db.conn().execute("SELECT variant FROM artifacts WHERE job_id = ?", (ls["job_id"],))}
+    if not want <= have:
+        return True  # cleaned up, or a variant's APK is gone
     sha = db.conn().execute("SELECT inputs_sha FROM build_jobs WHERE job_id = ?", (ls["job_id"],)).fetchone()[0]
-    return sha != apps.inputs_sha(item_id)  # NULL for builds before migration 010: rebuilt once
+    return not apps.inputs_cover(sha, apps.inputs_sha(item_id))
+
+
+def drop_variants(item_id, keep):
+    """Delete the artifacts of variants no longer in the item's settings (an ABI was unticked)."""
+    rows = db.conn().execute(f"SELECT id, path FROM artifacts WHERE item_id = ? AND variant NOT IN ({','.join('?' * len(keep))})",
+                             (item_id, *keep)).fetchall()
+    with db.tx() as t:
+        t.executemany("DELETE FROM artifacts WHERE id = ?", [(r["id"],) for r in rows])
+    for r in rows:
+        Path(r["path"]).unlink(missing_ok=True)
 
 
 def get_cleanup(req):
