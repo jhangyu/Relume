@@ -2,7 +2,7 @@ package io.github.jhangyu.relume.api
 
 import android.content.Context
 
-enum class CheckInterval { OFF, H1, H6, H24 }
+enum class CheckInterval { OFF, H1, H6, H24, DAILY }
 
 /** Plain app settings (no secrets; the token lives in [TokenStore]). */
 class Prefs(context: Context) {
@@ -16,6 +16,14 @@ class Prefs(context: Context) {
     var checkInterval: CheckInterval
         get() = prefs.getString(KEY_CHECK_INTERVAL, null)?.let(CheckInterval::valueOf) ?: DEFAULT_CHECK_INTERVAL
         set(value) = save { putString(KEY_CHECK_INTERVAL, value.name) }
+
+    /** Time of [CheckInterval.DAILY], minutes after local midnight (spec install-states 4). */
+    var dailyCheckMinute: Int
+        get() = prefs.getInt(KEY_DAILY_CHECK_MINUTE, DEFAULT_DAILY_CHECK_MINUTE)
+        set(value) {
+            require(value in 0 until MINUTES_PER_DAY) { "daily check time: expected 0..${MINUTES_PER_DAY - 1} minutes after midnight, got $value" }
+            save { putInt(KEY_DAILY_CHECK_MINUTE, value) }
+        }
 
     /** `plan.revision` of the last background install run (spec 9.5). */
     var lastBackgroundRevision: String?
@@ -32,6 +40,10 @@ class Prefs(context: Context) {
         const val KEY_SERVER_URL = "server_url"
         const val KEY_CHECK_INTERVAL = "check_interval"
         const val KEY_LAST_BACKGROUND_REVISION = "last_background_revision"
+        const val KEY_DAILY_CHECK_MINUTE = "daily_check_minute"
+        const val MINUTES_PER_DAY = 24 * 60
+        /** Spec install-states 4: 03:15 until the user picks another time. */
+        const val DEFAULT_DAILY_CHECK_MINUTE = 3 * 60 + 15
         /** Spec 9.5: 6 h until the user picks another interval. */
         val DEFAULT_CHECK_INTERVAL = CheckInterval.H6
     }

@@ -37,7 +37,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
                     "$installs install steps: background run started"
                 }
                 StartResult.Busy -> "$installs install steps: an install run is in progress"
-                StartResult.Corrupt -> return fail(CODE_CORRUPT_RUN, "$installs install steps: the install run file is corrupt, reset it on the Install screen")
+                StartResult.Corrupt -> return fail(CODE_CORRUPT_RUN, "$installs install steps: the install run file is corrupt, reset it in the install sheet (start any install on the Apps tab)")
             }
         } else {
             "$installs install steps: no new background run"

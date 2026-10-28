@@ -10,11 +10,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TimeInput
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -34,7 +38,17 @@ import kotlinx.coroutines.launch
 import java.io.IOException
 import java.time.Instant
 
-private val INTERVAL_LABELS = listOf(CheckInterval.OFF to "Off", CheckInterval.H1 to "1 h", CheckInterval.H6 to "6 h", CheckInterval.H24 to "24 h")
+private val INTERVALS = listOf(CheckInterval.OFF, CheckInterval.H1, CheckInterval.H6, CheckInterval.H24, CheckInterval.DAILY)
+
+private fun clock(minute: Int) = "%02d:%02d".format(minute / 60, minute % 60)
+
+private fun intervalLabel(i: CheckInterval, dailyMinute: Int) = when (i) {
+    CheckInterval.OFF -> "Off"
+    CheckInterval.H1 -> "1 h"
+    CheckInterval.H6 -> "6 h"
+    CheckInterval.H24 -> "24 h"
+    CheckInterval.DAILY -> "Daily at ${clock(dailyMinute)}"
+}
 
 /** Phone settings and account, opened from the avatar. [notificationsOn] and [askNotifications] come from the root, which owns the API 33 permission request. */
 @Composable
@@ -42,6 +56,8 @@ fun SettingsScreen(model: AppModel, notificationsOn: Boolean, askNotifications: 
     val ctx = LocalContext.current
     val prefs = model.relume.prefs
     var interval by remember { mutableStateOf(prefs.checkInterval) }
+    var dailyMinute by remember { mutableIntStateOf(prefs.dailyCheckMinute) }
+    var pickTime by remember { mutableStateOf(false) }
     var editUrl by remember { mutableStateOf(false) }
     val lastCheck by CheckScheduler.lastCheck.collectAsState(initial = null)
     val device = model.device
@@ -78,12 +94,16 @@ fun SettingsScreen(model: AppModel, notificationsOn: Boolean, askNotifications: 
             SectionHeader("Background")
             InsetGroup {
                 Txt("Check for new builds", Modifier.padding(start = 16.dp, top = 12.dp))
-                ChipRow(INTERVAL_LABELS.map { it.second }, INTERVAL_LABELS.indexOfFirst { it.first == interval }) { i ->
-                    val value = INTERVAL_LABELS[i].first
+                ChipRow(INTERVALS.map { intervalLabel(it, dailyMinute) }, INTERVALS.indexOf(interval)) { i ->
+                    val value = INTERVALS[i]
                     interval = value
                     prefs.checkInterval = value
                     CheckScheduler.apply(ctx, value)
                     if (value != CheckInterval.OFF && !notificationsOn) askNotifications()
+                }
+                if (interval == CheckInterval.DAILY) {
+                    Hairline()
+                    ListRow("Check time", Modifier.clickable { pickTime = true }, supporting = "${clock(dailyMinute)} · while charging on unmetered Wi-Fi")
                 }
                 Hairline()
                 ListRow(
@@ -137,6 +157,12 @@ fun SettingsScreen(model: AppModel, notificationsOn: Boolean, askNotifications: 
         editUrl = false
         model.signOutLocally("Server changed to $url. Sign in again.")
     }
+    if (pickTime) DailyTimeDialog(dailyMinute, onDismiss = { pickTime = false }) { m ->
+        pickTime = false
+        dailyMinute = m
+        prefs.dailyCheckMinute = m
+        CheckScheduler.apply(ctx, CheckInterval.DAILY)
+    }
 }
 
 @Composable
@@ -180,4 +206,20 @@ private fun ServerUrlDialog(current: ServerUrl?, onDismiss: () -> Unit, onSaved:
         confirmButton = { ActionButton("Save", ::save, kind = ButtonKind.Text, enabled = !busy && text.isNotBlank() && text.trim() != current?.toString()) },
         dismissButton = { ActionButton("Cancel", onDismiss, kind = ButtonKind.Text, enabled = !busy) },
     )
+}
+
+/** "Daily at" time picker (spec install-states 4): 24 h text input, the check runs near this time. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DailyTimeDialog(minute: Int, onDismiss: () -> Unit, onPick: (Int) -> Unit) {
+    val state = rememberTimePickerState(minute / 60, minute % 60, true)
+    RDialog(onDismiss) {
+        Txt("Daily check time", style = MaterialTheme.typography.headlineSmall)
+        TimeInput(state)
+        Txt("Android runs the check near this time, while the phone charges on an unmetered network.", color = muted())
+        DialogButtons {
+            ActionButton("Cancel", onDismiss, Modifier.weight(1f), kind = ButtonKind.Text)
+            ActionButton("Save", { onPick(state.hour * 60 + state.minute) }, Modifier.weight(1f))
+        }
+    }
 }
