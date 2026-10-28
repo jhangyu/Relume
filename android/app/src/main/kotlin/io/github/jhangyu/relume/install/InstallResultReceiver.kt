@@ -10,6 +10,12 @@ import androidx.core.content.IntentCompat
 class InstallResultReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
+        // Some installers (vivo) never report the uninstall success to the IntentSender; the removal itself is the signal.
+        if (intent.action == Intent.ACTION_PACKAGE_FULLY_REMOVED) {
+            val pkg = checkNotNull(intent.data?.schemeSpecificPart) { "package removed: no package in ${intent.data}" }
+            InstallRunner.onPackageRemoved(context, pkg)
+            return
+        }
         val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, MISSING)
         check(status != MISSING) { "install result ${intent.action}: extra ${PackageInstaller.EXTRA_STATUS} missing" }
         val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)

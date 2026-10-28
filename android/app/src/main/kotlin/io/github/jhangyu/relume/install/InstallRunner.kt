@@ -155,6 +155,14 @@ object InstallRunner {
         }
     }
 
+    /** [packageName] is gone from the phone: its `needs_uninstall` step re-runs (spec install-states 3). */
+    internal fun onPackageRemoved(context: Context, packageName: String) {
+        InstallRunStore.load(context)
+        val run = InstallRunStore.state.value ?: return
+        val index = run.steps.indexOfFirst { it.state == StepState.NEEDS_UNINSTALL && it.step.packageName == packageName }
+        if (index >= 0) retry(context, index)
+    }
+
     private fun prompt(context: Context, index: Int, name: String, confirm: Intent) {
         if (AppVisibility.visible) {
             context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
