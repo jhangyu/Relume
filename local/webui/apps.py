@@ -54,7 +54,7 @@ def _status(r, st):
     active, last = st['active_job'], st['last_build']
     if active is not None:
         out.update(state='queued' if active['status'] == 'queued' else 'building', job_id=active['job_id'])
-        if active['status'] == 'running':
+        if active['status'] == 'running' and active['step'] is not None:
             out['progress'] = {'step': active['step'], 'index': active['step_index'], 'count': active['step_count']}
     elif _missing_url(r):
         out['state'] = 'needs_download_url'
@@ -80,10 +80,20 @@ def _app_obj(r, st):
             'app_version': ls['app_version'] if ls else None, 'status': _status(r, st)}
 
 
-def list_enabled():
+def _build_facts(item_id, abi):
+    """The built APK a phone of this ABI would install (spec install-states 1): its package can differ from
+    item.package (package-rename patch). None when there is no success build or its artifact has no package."""
+    a = build.latest_artifact(item_id, abi)
+    if a is None or not a['package']:
+        return None
+    return {'package': a['package'], 'version_code': a['version_code'], 'version_name': a['version_name'],
+            'patch_version': a['patches_version'], 'signer_sha256': a['signer_sha256']}
+
+
+def list_enabled(abi='universal'):
     rows = db.conn().execute(ROW_SQL + ' WHERE i.enabled = 1 ORDER BY i.id').fetchall()
     status = build.item_status([r['id'] for r in rows])
-    return [_app_obj(r, status[r['id']]) for r in rows]
+    return [dict(_app_obj(r, status[r['id']]), build=_build_facts(r['id'], abi)) for r in rows]
 
 
 def _supported(r):

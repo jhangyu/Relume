@@ -161,4 +161,13 @@ class MarketParseTest {
         assertEquals(listOf("a", "b"), opts[1].values)
         assertNull(opts[1].default)   // JSON null decodes to Kotlin null, not JsonNull
     }
+
+    /** Regression: a build step without an `i/n` counter (`::step::verify`) broke `GET /api/apps` decoding. */
+    @Test
+    fun buildProgressWithoutCounterParses() {
+        val p = ApiJson.decodeFromString(BuildProgress.serializer(), """{"step": "verify", "index": null, "count": null}""")
+        assertEquals("verify", p.step)
+        assertNull(p.fraction)
+        assertEquals(0.5f, ApiJson.decodeFromString(BuildProgress.serializer(), """{"step": "patch", "index": 1, "count": 2}""").fraction)
+    }
 }

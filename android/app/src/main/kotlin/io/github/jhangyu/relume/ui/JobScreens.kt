@@ -118,11 +118,11 @@ fun LogScreen(api: RelumeApi, jobId: Int, progress: BuildProgress?, label: Strin
         Column(Modifier.weight(1f).padding(horizontal = ScreenPadding, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 job?.let { JobChip(it.status) }
-                if (job != null && progress != null) Txt("${progress.step} ${progress.index}/${progress.count}", style = MonoSmall, color = muted())
+                if (job != null && progress != null) Txt(listOfNotNull(progress.step, progress.index?.let { "$it/${progress.count}" }).joinToString(" "), style = MonoSmall, color = muted())
             }
-            if (progress != null && progress.count > 0) {
+            progress?.fraction?.let { f ->
                 LinearProgressIndicator(
-                    { progress.index.toFloat() / progress.count },
+                    { f },
                     Modifier.fillMaxWidth(),
                     color = MaterialTheme.relume.blue.onContainer,
                     trackColor = MaterialTheme.relume.blue.container,

@@ -377,7 +377,10 @@ data class AppStatusDto(
 )
 
 @Serializable
-data class BuildProgress(val step: String, val index: Int, val count: Int)
+data class BuildProgress(val step: String, val index: Int?, val count: Int?) {
+    /** Done share in 0..1; null when the step carries no `i/n` counter. */
+    val fraction: Float? get() = if (index != null && count != null && count > 0) index.toFloat() / count else null
+}
 
 /** APKMirror / APKPure download source of an app (not the install-plan [Download]). */
 @Serializable

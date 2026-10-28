@@ -52,7 +52,7 @@ class AppFacts(val app: AppObject, val installed: InstalledPackage?, val step: P
             val s = app.status
             val d = app.download
             return when (s.state) {
-                STATE_BUILDING -> s.progress?.let { "${it.step}, step ${it.index} of ${it.count}" } ?: "Building"
+                STATE_BUILDING -> s.progress?.let { p -> p.index?.let { "${p.step}, step $it of ${p.count}" } ?: p.step } ?: "Building"
                 STATE_FAILED -> s.failDetail ?: s.failCode ?: "Build failed"
                 STATE_NEEDS_URL -> d.error ?: when (d.state) {
                     LOOKUP_AMBIGUOUS -> "${d.candidates.size} APKMirror pages match"

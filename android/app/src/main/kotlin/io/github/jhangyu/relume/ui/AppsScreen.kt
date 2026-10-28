@@ -126,9 +126,9 @@ private fun AppCard(
                 }
                 StatusPill(status.state)
             }
-            status.progress?.let { p ->
+            status.progress?.fraction?.let { f ->
                 LinearProgressIndicator(
-                    { p.index.toFloat() / p.count },
+                    { f },
                     Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, end = 16.dp),
                     color = MaterialTheme.relume.blue.onContainer,
                     trackColor = MaterialTheme.relume.blue.container,
