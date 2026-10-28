@@ -180,8 +180,15 @@ object InstallRun {
         return run.replace(index, s.copy(receiptDue = false, receiptError = if (stale) null else error)).copy(stalePlan = run.stalePlan || stale)
     }
 
-    /** Replaces the error text of step [index] without changing its state or receipt. */
-    fun note(run: RunState, index: Int, text: String): RunState = run.replace(index, run.steps[index].copy(errorText = text))
+    /**
+     * The system uninstall of `needs_uninstall` step [index] did not succeed: the step ends in [outcome] (`cancelled`
+     * when the user declined, else `failed`). Its failure receipt was already due as `needs_uninstall`; none is added.
+     */
+    fun endUninstall(run: RunState, index: Int, outcome: StepOutcome): RunState {
+        val s = run.steps[index]
+        check(s.state == StepState.NEEDS_UNINSTALL) { "end uninstall: step $index (${s.step.displayName}) is ${s.state}, expected NEEDS_UNINSTALL" }
+        return run.replace(index, s.copy(state = outcome.state, errorCode = outcome.errorCode, errorText = outcome.errorText))
+    }
 
     /** User cancel: every step that has not ended becomes `cancelled`; dependents become `dependency_failed`. */
     fun cancelAll(run: RunState): RunState =

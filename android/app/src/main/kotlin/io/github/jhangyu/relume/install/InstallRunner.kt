@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.util.Log
 import io.github.jhangyu.relume.api.InstallPlan
+import io.github.jhangyu.relume.api.PlanStep
 import io.github.jhangyu.relume.inventory.Inventory
 import io.github.jhangyu.relume.sync.CheckScheduler
 import io.github.jhangyu.relume.sync.Notifications
@@ -97,6 +98,7 @@ object InstallRunner {
                 if (waiting && (id == null || !Installer.sessionExists(context, id))) InstallRun.finish(acc, i, lostSession(context, s)) else acc
             }
         }
+        after?.steps?.forEachIndexed { i, s -> if (s.state == StepState.INSTALLED && run.steps[i].state != StepState.INSTALLED) recordPatch(context, s.step) }
         if (after != run) InstallWorker.enqueue(context, run.passOrigin, replace = false)
     }
 
@@ -124,7 +126,8 @@ object InstallRunner {
         }
         confirmIntents.remove(index)
         Notifications.cancelStep(context, index)
-        InstallRunStore.update(context) { cur -> cur?.let { InstallRun.finish(it, index, outcome) } }
+        val after = InstallRunStore.update(context) { cur -> cur?.let { InstallRun.finish(it, index, outcome) } }
+        if (after?.steps?.get(index)?.state == StepState.INSTALLED) recordPatch(context, run.steps[index].step)
         if (outcome.state == StepState.NEEDS_UNINSTALL && run.origin == Origin.BACKGROUND) Notifications.needsReinstall(context, index, name)
         InstallWorker.enqueue(context, run.passOrigin, replace = false)
     }
@@ -142,9 +145,12 @@ object InstallRunner {
             PackageInstaller.STATUS_PENDING_USER_ACTION ->
                 prompt(context, stepIndex, s.step.displayName, checkNotNull(confirm) { "uninstall of ${s.step.packageName}: no EXTRA_INTENT" })
             PackageInstaller.STATUS_SUCCESS -> retry(context, stepIndex)
+            PackageInstaller.STATUS_FAILURE_ABORTED -> InstallRunStore.update(context) { cur ->
+                cur?.let { InstallRun.endUninstall(it, stepIndex, StepOutcome(StepState.CANCELLED, ErrorCodes.USER_REJECTED, "uninstall of ${s.step.packageName} cancelled by the user")) }
+            }
             else -> {
                 val text = "uninstall of ${s.step.packageName} failed: ${InstallResult.statusName(status)}" + (message?.let { ": $it" } ?: "")
-                InstallRunStore.update(context) { cur -> cur?.let { InstallRun.note(it, stepIndex, text) } }
+                InstallRunStore.update(context) { cur -> cur?.let { InstallRun.endUninstall(it, stepIndex, StepOutcome(StepState.FAILED, ErrorCodes.INSTALLER_ERROR, text)) } }
             }
         }
     }
@@ -156,6 +162,11 @@ object InstallRunner {
             confirmIntents[index] = confirm
             Notifications.confirmInstall(context, index, name, confirm)
         }
+    }
+
+    /** Records the patch version of a step that ended `installed` under its built APK package (spec install-states 1). */
+    private fun recordPatch(context: Context, step: PlanStep) {
+        step.download?.patchVersion?.let { InstalledPatches.record(context, step.packageName, it) }
     }
 
     /** Re-runs step [index] after a user action (confirm, uninstall): network CONNECTED only, even for a background run. */
