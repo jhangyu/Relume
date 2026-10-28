@@ -21,20 +21,26 @@ val SIGNING_STORE_PASSWORD = "morphe"
 val SIGNING_KEY_ALIAS = "fiorenmas"
 val SIGNING_KEY_PASSWORD = "morphe"
 
-val releaseEnvNames = listOf(
-    "RELUME_COMPANION_VERSION_CODE",
-    "RELUME_COMPANION_VERSION_NAME",
-)
-val releaseEnv = releaseEnvNames.associateWith { providers.environmentVariable(it).orNull }
+// versionName/versionCode come from the nearest companion-v<MAJOR>.<MINOR>.<PATCH> tag reachable from HEAD, for every build type.
+val VERSION_TAG_PATTERN = Regex("^companion-v([0-9]{1,4})\\.([0-9]{1,4})\\.([0-9]{1,4})$")
+val VERSION_PART_LIMIT = 1000
+val VERSION_CODE_LIMIT = 2_100_000_000L
 
-val checkReleaseEnv = tasks.register("checkReleaseEnv") {
-    val values = releaseEnv
-    doLast {
-        val missing = values.filterValues { it.isNullOrEmpty() }.keys
-        if (missing.isNotEmpty()) {
-            throw GradleException("release build needs environment variables ${missing.joinToString()}: missing or empty")
-        }
-    }
+val tagResult = providers.exec {
+    commandLine("git", "describe", "--tags", "--match", "companion-v*", "--abbrev=0")
+    workingDir = rootProject.projectDir
+    isIgnoreExitValue = true
+}
+val versionTag = tagResult.standardOutput.asText.get().trim()
+if (tagResult.result.get().exitValue != 0 || versionTag.isEmpty()) {
+    throw GradleException("expected a git tag companion-v<MAJOR>.<MINOR>.<PATCH> reachable from HEAD, got none (git: ${tagResult.standardError.asText.get().trim()}); fetch tags")
+}
+val tagMatch = VERSION_TAG_PATTERN.matchEntire(versionTag)
+    ?: throw GradleException("tag must match companion-v<MAJOR>.<MINOR>.<PATCH>, got '$versionTag'")
+val (tagMajor, tagMinor, tagPatch) = tagMatch.destructured.toList().map { it.toLong() }
+val tagVersionCode = tagMajor * 1_000_000 + tagMinor * 1000 + tagPatch
+if (tagMinor >= VERSION_PART_LIMIT || tagPatch >= VERSION_PART_LIMIT || tagVersionCode > VERSION_CODE_LIMIT) {
+    throw GradleException("MINOR and PATCH must be < $VERSION_PART_LIMIT and versionCode <= $VERSION_CODE_LIMIT, got '$versionTag' (code $tagVersionCode)")
 }
 
 android {
@@ -45,8 +51,8 @@ android {
         applicationId = "io.github.jhangyu.relume"
         minSdk = 29
         targetSdk = 37
-        versionCode = 1
-        versionName = "dev"
+        versionCode = tagVersionCode.toInt()
+        versionName = "$tagMajor.$tagMinor.$tagPatch"
     }
 
     signingConfigs {
@@ -78,21 +84,6 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-}
-
-androidComponents {
-    onVariants(selector().withBuildType("release")) { variant ->
-        variant.outputs.forEach { output ->
-            output.versionCode.set(providers.environmentVariable("RELUME_COMPANION_VERSION_CODE").map { v -> v.toIntOrNull() ?: error("RELUME_COMPANION_VERSION_CODE: expected an integer, got '$v'") })
-            output.versionName.set(providers.environmentVariable("RELUME_COMPANION_VERSION_NAME"))
-        }
-    }
-}
-
-tasks.configureEach {
-    if (name == "preReleaseBuild" || name == "validateSigningRelease") {
-        dependsOn(checkReleaseEnv)
     }
 }
 

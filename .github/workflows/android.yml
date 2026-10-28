@@ -9,16 +9,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          fetch-tags: true
       - run: python3 scripts/ci_guard.py
-      - name: Derive version from tag
-        run: |
-          re='^companion-v([0-9]{1,4})\.([0-9]{1,4})\.([0-9]{1,4})$'
-          [[ "$GITHUB_REF_NAME" =~ $re ]] || { echo "tag must match companion-v<MAJOR>.<MINOR>.<PATCH>, got '$GITHUB_REF_NAME'" >&2; exit 1; }
-          major=$((10#${BASH_REMATCH[1]})) minor=$((10#${BASH_REMATCH[2]})) patch=$((10#${BASH_REMATCH[3]}))
-          code=$((major * 1000000 + minor * 1000 + patch))
-          (( minor < 1000 && patch < 1000 && code <= 2100000000 )) || { echo "MINOR and PATCH must be < 1000 and versionCode <= 2100000000, got '$GITHUB_REF_NAME' (code $code)" >&2; exit 1; }
-          echo "RELUME_COMPANION_VERSION_NAME=$major.$minor.$patch" >> "$GITHUB_ENV"
-          echo "RELUME_COMPANION_VERSION_CODE=$code" >> "$GITHUB_ENV"
       - uses: actions/setup-java@v6.1.0
         with:
           distribution: temurin
@@ -32,5 +25,5 @@ jobs:
         run: |
           cp android/app/build/outputs/apk/release/relume-release.apk relume-companion.apk
           gh release create "$GITHUB_REF_NAME" relume-companion.apk \
-            --title "Relume companion $RELUME_COMPANION_VERSION_NAME" \
+            --title "Relume companion ${GITHUB_REF_NAME#companion-v}" \
             --notes "${{ github.sha }}"

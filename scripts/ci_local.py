@@ -7,8 +7,6 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-# version values are what the tag step of android.yml derives; any valid pair builds the same code
-VERSION_ENV = {"RELUME_COMPANION_VERSION_NAME": "0.0.0", "RELUME_COMPANION_VERSION_CODE": "1"}
 
 
 def fail(step, detail):
@@ -33,7 +31,7 @@ def run(step, cmd, env):
 
 
 def main():
-    env = {**VERSION_ENV, **os.environ}
+    env = os.environ.copy()
     run("ci_guard", [sys.executable, "scripts/ci_guard.py"], env)
     check_sdk()
     run("assembleRelease", ["android/gradlew", "-p", "android", "assembleRelease", "--no-watch-fs"], env)

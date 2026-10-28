@@ -415,10 +415,9 @@ serialization plugin 2.4.21, Compose BOM 2026.09.00 (ui 1.12.1, material3 1.4.0)
 `androidx.activity:activity-compose` 1.13.0, `androidx.lifecycle:lifecycle-viewmodel-compose` 2.11.0,
 `androidx.work:work-runtime-ktx` 2.12.0, `org.jetbrains.kotlinx:kotlinx-serialization-json` 1.12.0, `junit:junit`
 4.13.2. HTTP = `HttpURLConnection`. Java/Kotlin bytecode target 17 (no toolchain block: builds with any JDK ≥ 17).
-applicationId and namespace `io.github.jhangyu.relume`. Debug: versionCode 1, versionName `dev`. Release:
-versionCode from env `RELUME_COMPANION_VERSION_CODE`, versionName from `RELUME_COMPANION_VERSION_NAME`; signing with
-`src/keystore/lspatch-signing.p12` (public credentials as named constants in `build.gradle.kts`); a missing version variable
-fails the release task naming it. `android/.gitignore`:
+applicationId and namespace `io.github.jhangyu.relume`. Every build type: versionName `X.Y.Z` and versionCode `X*1000000+Y*1000+Z` from the nearest
+`companion-vX.Y.Z` git tag reachable from HEAD (no tag or a malformed tag fails the build); signing with
+`src/keystore/lspatch-signing.p12` (public credentials as named constants in `build.gradle.kts`). `android/.gitignore`:
 `.gradle/`, `build/`, `app/build/`, `local.properties`.
 
 ### 11.2 CI `.github/workflows/android.yml`
