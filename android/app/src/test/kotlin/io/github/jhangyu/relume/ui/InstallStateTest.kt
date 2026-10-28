@@ -6,17 +6,16 @@ import io.github.jhangyu.relume.api.AppStatusDto
 import io.github.jhangyu.relume.api.Candidate
 import io.github.jhangyu.relume.api.DownloadState
 import io.github.jhangyu.relume.api.InstalledPackage
-import io.github.jhangyu.relume.api.PlanAction
-import io.github.jhangyu.relume.api.StepKind
-import io.github.jhangyu.relume.install.step
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The Apps card's phone row (not installed / update / installed / blocked) and its download-URL fix. */
+/** The Apps card's one action (spec install-states 1) and its download-URL fix. */
 class InstallStateTest {
+    private val signer = "cd".repeat(32)
+
     private fun app(state: String = "up_to_date", version: String? = "1.0", lookup: String = "manual", candidates: Int = 0) = AppObject(
         id = 7, packageName = "p.item.7", name = "App", iconUrl = null,
         bundle = AppBundle(1, "Morphe Patches", "builtin", "morphe", "v1"), appVersion = version,
@@ -28,27 +27,34 @@ class InstallStateTest {
         ),
     )
 
-    private fun installed(version: String) = InstalledPackage("p.item.7", 1, version, "cd".repeat(32))
+    // The built APK is a renamed package: the comparisons must use it, not the source app's p.item.7.
+    private val target = InstallTarget("p.renamed.7", versionCode = 5, versionName = "1.0", patchVersion = "v1.25.2", signerSha256 = signer)
+
+    private fun installed(code: Long, signerSha256: String = signer) = InstalledPackage("p.renamed.7", code, "x", signerSha256)
 
     @Test
-    fun planStepDecidesWhenAssigned() {
-        val install = step(StepKind.ITEM, 7)
-        assertEquals(PhoneState.NotInstalled, AppFacts(app(), null, install).phone)
-        assertEquals(PhoneState.Update, AppFacts(app(), installed("0.9"), install).phone)
-        assertEquals(PhoneState.Installed, AppFacts(app(), installed("1.0"), step(StepKind.ITEM, 7, action = PlanAction.UP_TO_DATE)).phone)
-        assertEquals(PhoneState.Blocked, AppFacts(app(), null, step(StepKind.ITEM, 7, action = PlanAction.ERROR)).phone)
-        assertTrue(AppFacts(app(), installed("0.9"), install).installable)
+    fun cardActionFollowsTheFourConditionsInOrder() {
+        assertEquals(CardAction.Install, cardAction(target, null, null))
+        // A different signer wins over an older version: Android cannot update in place.
+        assertEquals(CardAction.Reinstall, cardAction(target, installed(4, "ef".repeat(32)), "v1.0.0"))
+        assertEquals(CardAction.Installed, cardAction(target, installed(5, signer.uppercase()), "v1.25.2"))   // hex case does not matter
+        assertEquals(CardAction.Upgrade, cardAction(target, installed(4), "v1.25.2"))                       // app version older
+        assertEquals(CardAction.Upgrade, cardAction(target, installed(5), "v1.25.1"))                       // patch version older
+        assertEquals(CardAction.Installed, cardAction(target, installed(6), "v1.26.0"))                     // phone is newer: no downgrade offer
+        assertEquals(CardAction.Installed, cardAction(target, installed(5), null))                          // no record: patch not compared
+        assertEquals(CardAction.Installed, cardAction(target.copy(signerSha256 = null, versionCode = null, patchVersion = null), installed(1), "v0"))
     }
 
     @Test
-    fun unassignedAppComparesTheBuiltVersion() {
-        val fresh = AppFacts(app(), null, null)
-        assertEquals(PhoneState.NotInstalled, fresh.phone)
-        assertTrue(fresh.installable)   // Install assigns the app to this phone first
-        assertEquals(PhoneState.Update, AppFacts(app(), installed("0.9"), null).phone)
-        assertEquals(PhoneState.Installed, AppFacts(app(), installed("1.0"), null).phone)
-        assertFalse(AppFacts(app(version = null, state = "not_built"), null, null).installable)
-        assertFalse(AppFacts(app(state = "building"), null, null).installable)
+    fun patchVersionComparesLikeTheServer() {
+        // Same cases as catalog.version_key (local/webui/catalog.py).
+        assertTrue(versionOlder("v1.9.2", "v1.10.0"))       // numeric, not text order
+        assertTrue(versionOlder("1.48.0-dev.3", "1.48.0"))  // prerelease before release
+        assertTrue(versionOlder("v1.0-rc1", "v1.0"))
+        assertFalse(versionOlder("v2.0", "2.0"))            // one leading v is dropped
+        assertFalse(versionOlder("1.48.0", "1.48.0-dev.3"))
+        assertTrue(versionOlder("1.2", "1.2.1"))            // shorter prefix is older
+        assertFalse(versionOlder("20251231000000", "1"))    // date-style tags compare as numbers
     }
 
     @Test

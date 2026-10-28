@@ -73,6 +73,8 @@ data class Download(
     @SerialName("artifact_id") val artifactId: Int? = null,
     /** Present for project steps; [PlanStep] init checks it. */
     val tag: String? = null,
+    /** Patch version of an item build (null for project steps and builds without one). */
+    @SerialName("patch_version") val patchVersion: String? = null,
 ) {
     init {
         // sha256 names the download file (`<sha256>.part`): only 64 lowercase hex may reach a path.
@@ -340,6 +342,18 @@ data class AppObject(
     val download: DownloadState,
     /** Store category of the package (colours the tile); null when the store has none. */
     val category: String? = null,
+    /** The built APK this phone would install (server picks its ABI); null while nothing is built. */
+    val build: AppBuild? = null,
+)
+
+/** Facts of the built APK in `GET /api/apps` `build` (spec install-states 1); its package can differ from [AppObject.packageName]. */
+@Serializable
+data class AppBuild(
+    @SerialName("package") val packageName: String,
+    @SerialName("version_code") val versionCode: Long?,
+    @SerialName("version_name") val versionName: String?,
+    @SerialName("patch_version") val patchVersion: String?,
+    @SerialName("signer_sha256") val signerSha256: String?,
 )
 
 /** One Followed-project app in `GET /api/apps` `followed`: only Install applies. */
@@ -352,10 +366,18 @@ data class FollowedApp(
     val version: String?,
     val blocked: Boolean,
     val files: List<FollowedFile>,
+    /** Signer of the downloaded release; null when nothing is downloaded. */
+    @SerialName("signer_sha256") val signerSha256: String? = null,
 )
 
 @Serializable
-data class FollowedFile(val name: String, val abi: String?, @SerialName("version_name") val versionName: String?, val url: String)
+data class FollowedFile(
+    val name: String,
+    val abi: String?,
+    @SerialName("version_name") val versionName: String?,
+    val url: String,
+    @SerialName("version_code") val versionCode: Long? = null,
+)
 
 @Serializable
 data class AppBundle(
