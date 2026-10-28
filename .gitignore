@@ -10,3 +10,4 @@ __pycache__/
 local/.env.bak*
 .DS_Store
 local/verify/
+scripts/tmp/
