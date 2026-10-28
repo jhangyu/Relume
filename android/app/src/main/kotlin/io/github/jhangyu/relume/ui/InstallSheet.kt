@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -25,6 +26,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -42,12 +46,27 @@ import io.github.jhangyu.relume.inventory.Inventory
 private const val PHASE_DOWNLOAD = 0
 private const val PHASE_VERIFY = 1
 private const val PHASE_SYSTEM = 2
-private val PHASES = listOf("Download", "Verify sha256 and signer", "System install")
 private const val KEY_PREVIEW = 16
+private const val PERCENT = 100
+private val DOT_SIZE = 24.dp
+private val HALO_WIDTH = 5.dp
+private val RAIL_LINE_WIDTH = 2.dp
+private val RAIL_GAP = 18.dp
+private val PROGRESS_HEIGHT = 8.dp
 
-private enum class PhaseMark { Done, Active, Waiting }
+/** Rail row text: [doing] while it runs or waits, [done] once finished, [hint] under the not yet finished rows. */
+private class Phase(val doing: String, val done: String, val hint: String)
 
-/** Which of the three phases is done or active for a step state. */
+private val PHASES = listOf(
+    Phase("Downloading", "Downloaded", "from your Relume server"),
+    Phase("Verifying", "Verified", "checksum and signing certificate"),
+    Phase("Installing", "Installed", "Android will ask you to confirm"),
+)
+private const val FAILED_HINT = "stopped at the last step"
+
+private enum class PhaseMark { Done, Active, Waiting, Failed }
+
+/** Which of the three phases is done, active or failed for a step state. */
 private fun phaseMarks(state: StepState): List<PhaseMark> {
     val current = when (state) {
         StepState.PENDING, StepState.DOWNLOADING -> PHASE_DOWNLOAD
@@ -55,9 +74,11 @@ private fun phaseMarks(state: StepState): List<PhaseMark> {
         else -> PHASE_SYSTEM
     }
     val allDone = state == StepState.INSTALLED
+    val failed = state == StepState.FAILED || state == StepState.SERVER_ERROR
     return PHASES.indices.map { i ->
         when {
             allDone || i < current -> PhaseMark.Done
+            i == current && failed -> PhaseMark.Failed
             i == current && state != StepState.PENDING -> PhaseMark.Active
             else -> PhaseMark.Waiting
         }
@@ -77,19 +98,6 @@ private fun StepState.label(): String = when (this) {
     StepState.CANCELLED -> "Cancelled"
     StepState.DEPENDENCY_FAILED -> "Dependency failed"
     StepState.SERVER_ERROR -> "Server refused"
-}
-
-@Composable
-private fun StepState.pastel(): Pair<Color, Color> {
-    val r = MaterialTheme.relume
-    val s = MaterialTheme.colorScheme
-    return when (this) {
-        StepState.INSTALLED, StepState.UP_TO_DATE -> r.green.container to r.green.onContainer
-        StepState.FAILED, StepState.NEEDS_UNINSTALL, StepState.DEPENDENCY_FAILED, StepState.SERVER_ERROR -> s.errorContainer to s.onErrorContainer
-        StepState.AWAITING_USER -> r.amber.container to r.amber.onContainer
-        StepState.CANCELLED, StepState.PENDING -> s.surfaceContainerHigh to s.onSurfaceVariant
-        StepState.DOWNLOADING, StepState.VERIFYING, StepState.COMMITTED -> r.blue.container to r.blue.onContainer
-    }
 }
 
 /** Lightbox state (spec install-states 2): open while running, closes itself on success, stays open on failure. */
@@ -179,27 +187,16 @@ private fun StepBlock(s: StepRun, index: Int, ctx: Context, model: AppModel, onU
     val icon = if (step.kind == StepKind.ITEM) model.app(step.refId)?.iconUrl else null // project steps have no icon
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            AppTile(step.displayName, icon, model.api, 56.dp)
+            AppTile(step.displayName, icon, model.api, 48.dp)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Txt(step.displayName, style = MaterialTheme.typography.headlineSmall)
+                Txt(step.displayName, style = MaterialTheme.typography.titleLarge)
                 step.download?.let { d -> Txt("${d.versionName ?: d.versionCode} · ${formatMb(d.size)}", style = Mono, color = muted()) }
             }
-            val (container, onContainer) = s.state.pastel()
-            Pill(s.state.label(), container, onContainer)
         }
         when (s.state) {
-            StepState.PENDING, StepState.DOWNLOADING, StepState.VERIFYING, StepState.COMMITTED, StepState.INSTALLED, StepState.AWAITING_USER -> {
-                PhaseList(s.state)
-                val d = step.download
-                if (s.state == StepState.DOWNLOADING && d != null) {
-                    LinearProgressIndicator(
-                        { s.downloadedBytes.toFloat() / d.size },
-                        Modifier.fillMaxWidth(),
-                        color = MaterialTheme.relume.blue.onContainer,
-                        trackColor = MaterialTheme.relume.blue.container,
-                    )
-                    Txt("${formatMb(s.downloadedBytes)} of ${formatMb(d.size)}", style = Mono, color = muted())
-                }
+            StepState.PENDING, StepState.DOWNLOADING, StepState.VERIFYING, StepState.COMMITTED, StepState.AWAITING_USER -> {
+                step.download?.let { d -> Progress(s, d.size) }
+                PhaseRail(s.state)
                 if (s.state == StepState.PENDING && Inventory.needsConfirmation(ctx, step.packageName)) {
                     Txt("One confirmation needed in the Android dialog.", style = MaterialTheme.typography.bodyMedium, color = muted())
                 }
@@ -207,44 +204,107 @@ private fun StepBlock(s: StepRun, index: Int, ctx: Context, model: AppModel, onU
                     ActionButton("Confirm", { InstallRunner.confirm(ctx, index) }, Modifier.fillMaxWidth(), kind = ButtonKind.Install)
                 }
             }
+            StepState.INSTALLED -> PhaseRail(s.state)
             StepState.NEEDS_UNINSTALL -> {
                 Banner(conflictTitle(step), Tone.Danger, detail = s.errorText)
                 ActionButton("Uninstall and install…", onUninstall, Modifier.fillMaxWidth(), kind = ButtonKind.Danger)
             }
             StepState.UP_TO_DATE -> Unit
-            StepState.FAILED, StepState.CANCELLED, StepState.DEPENDENCY_FAILED, StepState.SERVER_ERROR ->
-                Banner(s.state.label(), Tone.Danger, detail = listOfNotNull(s.errorCode, s.errorText).joinToString(": ").ifEmpty { step.reason })
+            StepState.FAILED, StepState.SERVER_ERROR -> {
+                PhaseRail(s.state)
+                Banner(s.state.label(), Tone.Danger, detail = failureDetail(s))
+            }
+            StepState.CANCELLED, StepState.DEPENDENCY_FAILED -> Banner(s.state.label(), Tone.Danger, detail = failureDetail(s))
         }
         s.receiptError?.let { Banner("Could not send the result to the server", Tone.Danger, detail = it) }
     }
 }
 
+private fun failureDetail(s: StepRun) = listOfNotNull(s.errorCode, s.errorText).joinToString(": ").ifEmpty { s.step.reason }
+
 private fun conflictTitle(step: PlanStep) = if (step.signerConflict) "Signature doesn't match" else "A newer version is installed"
 
+/** Large percent readout above the bar: download progress while downloading, full once the bytes are on the phone. */
 @Composable
-private fun PhaseList(state: StepState) {
-    val ok = MaterialTheme.relume.green.onContainer
-    val active = MaterialTheme.colorScheme.secondary
-    val idle = MaterialTheme.colorScheme.outline
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+private fun Progress(s: StepRun, size: Long) {
+    val fraction = when (s.state) {
+        StepState.PENDING -> 0f
+        StepState.DOWNLOADING -> s.downloadedBytes.toFloat() / size
+        else -> 1f
+    }
+    val coral = MaterialTheme.colorScheme.tertiary
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) {
+        Txt("${(fraction * PERCENT).toInt()}%", style = MaterialTheme.typography.headlineSmall)
+        if (s.state == StepState.DOWNLOADING) Txt("${formatMb(s.downloadedBytes)} of ${formatMb(size)}", style = Mono, color = muted())
+    }
+    LinearProgressIndicator(
+        { fraction },
+        Modifier.fillMaxWidth().height(PROGRESS_HEIGHT),
+        color = coral,
+        trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    )
+}
+
+/** Mockup B rail: dots joined by a line, coral halo on the live step, red "!" on the failed one. */
+@Composable
+private fun PhaseRail(state: StepState) {
+    val s = MaterialTheme.colorScheme
+    Column {
         phaseMarks(state).forEachIndexed { i, mark ->
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier
-                        .size(24.dp)
-                        .clip(CircleShape)
-                        .background(if (mark == PhaseMark.Done) ok else Color.Transparent)
-                        .border(1.5.dp, if (mark == PhaseMark.Active) active else if (mark == PhaseMark.Done) ok else idle, CircleShape),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    when (mark) {
-                        PhaseMark.Done -> Glyph(R.drawable.ms_check, Color.White, 14.dp)
-                        PhaseMark.Active -> Box(Modifier.size(10.dp).clip(CircleShape).background(active))
-                        PhaseMark.Waiting -> Unit
+            val last = i == PHASES.lastIndex
+            val lineColor = if (mark == PhaseMark.Done) s.primary else s.outlineVariant
+            Row(
+                Modifier
+                    .drawBehind {
+                        if (!last) drawRect(lineColor, Offset((DOT_SIZE - RAIL_LINE_WIDTH).toPx() / 2, DOT_SIZE.toPx()), Size(RAIL_LINE_WIDTH.toPx(), size.height - DOT_SIZE.toPx()))
+                    }
+                    .padding(bottom = if (last) 0.dp else RAIL_GAP),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                RailDot(i, mark)
+                Column {
+                    val phase = PHASES[i]
+                    val title = when (mark) {
+                        PhaseMark.Done -> phase.done
+                        PhaseMark.Failed -> "Install failed"
+                        else -> phase.doing
+                    }
+                    Txt(title, color = if (mark == PhaseMark.Waiting) s.outline else s.onSurface, bold = true)
+                    if (mark != PhaseMark.Done) {
+                        Txt(if (mark == PhaseMark.Failed) FAILED_HINT else phase.hint, style = MaterialTheme.typography.bodySmall, color = muted())
                     }
                 }
-                Txt(PHASES[i], color = if (mark == PhaseMark.Waiting) muted() else MaterialTheme.colorScheme.onSurface, bold = mark != PhaseMark.Waiting)
             }
+        }
+    }
+}
+
+@Composable
+private fun RailDot(index: Int, mark: PhaseMark) {
+    val s = MaterialTheme.colorScheme
+    val (fill, onFill) = when (mark) {
+        PhaseMark.Done -> s.primary to s.onPrimary
+        PhaseMark.Active -> s.tertiary to s.onTertiary
+        PhaseMark.Failed -> s.error to s.onError
+        PhaseMark.Waiting -> s.surfaceContainerHigh to s.onSurfaceVariant
+    }
+    val halo = when (mark) {
+        PhaseMark.Active -> s.tertiaryContainer
+        PhaseMark.Failed -> s.errorContainer
+        else -> Color.Transparent
+    }
+    Box(
+        Modifier
+            .size(DOT_SIZE)
+            .drawBehind { drawCircle(halo, radius = size.minDimension / 2 + HALO_WIDTH.toPx()) }
+            .clip(CircleShape)
+            .background(fill),
+        contentAlignment = Alignment.Center,
+    ) {
+        when (mark) {
+            PhaseMark.Done -> Glyph(R.drawable.ms_check, onFill, 14.dp)
+            PhaseMark.Failed -> Txt("!", style = MaterialTheme.typography.labelMedium, color = onFill, bold = true)
+            else -> Txt("${index + 1}", style = MaterialTheme.typography.labelMedium, color = onFill)
         }
     }
 }
