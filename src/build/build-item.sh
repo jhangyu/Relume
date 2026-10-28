@@ -77,6 +77,9 @@ fetch_input() {
 	minver=$(jq -r '.minver // empty' <<<"$d")
 	url=$(jq -r '.url // empty' <<<"$d")
 	[[ $type == bundle_extract ]] && ext=apkm
+	local -a want
+	mapfile -t want < <(jq -r --argjson d "$d" '[.recipe.variants[] | select(.download == $d and .abi != "universal") | .abi] | unique[]' "$job")
+	local label="$package $version (download $kind type=$type arch=${arch:-any})" got
 	local spec_key cache_dir="${RELUME_APK_CACHE:-}/$package" use_cache=0
 	spec_key=$(printf -- '-%s-%s-%s' "$type" "${arch:-any}" "${dpi:-any}" | tr -c 'A-Za-z0-9._-' '_')
 	local vkey cache_file
@@ -87,13 +90,16 @@ fetch_input() {
 		green_log "[+] Input from cache: $(basename "$cache_file")"
 		cp "$cache_file" "download/$name.$ext" || fail internal "cannot copy from cache"
 		[[ $ext == apkm ]] && unzip -q "download/$name.apkm" -d "download/$name"
+		got="download/$name.$ext"
+		[[ -d "download/$name" ]] && got="download/$name"
+		check_abis "$got" "$label" "${want[@]}" || { rm -f "$cache_file"; fail download_failed "$LAST_ERR (cached file removed)"; }
 		return 0
 	fi
 	case "$kind" in
 	apkmirror)
 		[[ -n "$list_url" ]] || fail apk_not_listed "no APKMirror list URL for $package"
 		[[ $allow_near -eq 1 ]] && near_version=1
-		get_apk "$package" "$name" "$type" "$arch" "$dpi" "$minver" "$list_url" "$ex1" "$ex2" ||
+		get_apk "$package" "$name" "$type" "$arch" "$dpi" "$minver" "$list_url" "$ex1" "$ex2" "${want[*]}" ||
 			fail download_failed "${LAST_ERR:-download failed}"
 		;;
 	apkpure)
@@ -104,6 +110,9 @@ fetch_input() {
 		;;
 	*) fail internal "unknown download kind $kind" ;;
 	esac
+	got="download/$name.$ext"
+	[[ -d "download/$name" ]] && got="download/$name"
+	check_abis "$got" "$label" "${want[@]}" || fail download_failed "$LAST_ERR"
 	if [[ $use_cache -eq 1 && -s "download/$name.$ext" ]]; then
 		mkdir -p "$cache_dir" && rm -f "$cache_dir"/*"$spec_key".* && cp "download/$name.$ext" "$cache_file"
 	fi
@@ -149,6 +158,10 @@ for v in "${variants[@]}"; do
 	[[ -s "$input" ]] || fail merge_failed "no input APK for variant $name"
 	FAIL_CODE=""
 	patch_variant "$input" "release/$name.apk" "$strip" || fail "${FAIL_CODE:-patch_failed}" "${LAST_ERR:-patch failed}"
+	vabi=$(jq -r .abi <<<"$v")
+	if [[ $vabi != universal ]]; then
+		check_abis "release/$name.apk" "$package variant $name" "$vabi" || fail patch_failed "$LAST_ERR"
+	fi
 done
 
 # ---- verify and write result.json ----

@@ -55,6 +55,16 @@ if [ "$out" = OK ] && [ -s "$T/work/release/x.apk" ] && grep -q -- "--striplibs 
 	pass patch_variant_argv
 else fail patch_variant_argv "$out / $log"; fi
 
+mkdir -p "$T/abi/lib/armeabi-v7a" "$T/abi/lib/arm64-v8a"
+: > "$T/abi/lib/armeabi-v7a/libx.so"
+: > "$T/abi/lib/arm64-v8a/libx.so"
+(cd "$T/abi" && zip -q "$T/v7.apk" lib/armeabi-v7a/libx.so && zip -q "$T/both.apk" lib/armeabi-v7a/libx.so lib/arm64-v8a/libx.so)
+out=$(source "$REPO/src/build/utils.sh" && check_abis "$T/v7.apk" pkg arm64-v8a; echo "rc=$?")
+ok=$(source "$REPO/src/build/utils.sh" && check_abis "$T/both.apk" pkg arm64-v8a && check_abis "$SHIM_SERVE/input.apk" pkg arm64-v8a && echo OK)
+if grep -q 'expected ABIs \[arm64-v8a\], found \[armeabi-v7a\]' <<<"$out" && grep -q 'rc=1' <<<"$out" && [ "$ok" = OK ]; then
+	pass check_abis
+else fail check_abis "$out / $ok"; fi
+
 # ---- runner cases (Task P3.3) ----
 run_runner() { (bash "$REPO/src/build/build-item.sh" "$T/job.json" > "$T/out.txt" 2>&1); echo $?; }
 fail_lines() { grep -c '^::fail::' "$T/out.txt"; }

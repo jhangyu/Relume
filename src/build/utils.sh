@@ -124,10 +124,11 @@ emit_apkm_versions() {
 	return 0
 }
 
-# get_apk <pkg> <name> <type> <arch> <dpi> <minver> <list_url> <example_url> <example_url2>
+# get_apk <pkg> <name> <type> <arch> <dpi> <minver> <list_url> <example_url> <example_url2> <want_abis>
+# want_abis (space-separated) steers the variant pick when <arch> is empty; check_abis verifies the result.
 get_apk() {
 	local pkg_name=$1 apk_name=$2
-	local pkg_type=${3:-apk} arch=${4:-} dpi=${5:-} minver=${6:-}
+	local pkg_type=${3:-apk} arch=${4:-} dpi=${5:-} minver=${6:-} want_abis=${10:-}
 	local list_url=${7:-}
 	local allow_near_version=${near_version:-0}
 	unset near_version
@@ -276,6 +277,13 @@ get_apk() {
 		filtered_rows=$(echo "$rows" | grep -iP "apkm-badge[^>]*>\s*$try_type\s*<")
 		[[ -n "$arch" ]] && filtered_rows=$(echo "$filtered_rows" | grep -iF -- "$arch")
 		[[ -n "$minver" ]] && filtered_rows=$(echo "$filtered_rows" | grep -iF -- "$minver")
+		if [[ -z "$arch" && -n "$want_abis" && -n "$filtered_rows" ]]; then
+			local arch_rows w
+			arch_rows=$filtered_rows
+			for w in $want_abis; do arch_rows=$(echo "$arch_rows" | grep -iF -- "$w"); done
+			[[ -z "$arch_rows" ]] && arch_rows=$(echo "$filtered_rows" | grep -iwE -- 'universal|noarch')
+			if [[ -n "$arch_rows" ]]; then filtered_rows=$arch_rows; else yellow_log "[!] No $try_type variant lists ABIs $want_abis, universal or noarch"; fi
+		fi
 
 		if [[ -n "$dpi" ]]; then
 			local dpi_filtered fb_dpi
@@ -477,6 +485,29 @@ get_apkpure() {
 	elif [[ "$pkg_type" == "bundle_extract" ]]; then
 		unzip "./download/$base_apk" -d "./download/$(basename "$base_apk" .xapk)" > /dev/null 2>&1
 	fi
+}
+
+#################################################
+
+# apk_abis <apk | extracted bundle dir>: unique ABIs under lib/<abi>/ (a bundle dir: across all its split APKs)
+apk_abis() {
+	local f files=()
+	if [[ -d "$1" ]]; then mapfile -t files < <(find "$1" -name '*.apk'); else files=("$1"); fi
+	[[ ${#files[@]} -gt 0 ]] || { echo "no APK in $1" >&2; return 1; }
+	for f in "${files[@]}"; do unzip -Z1 "$f" || return 1; done | sed -n 's#^lib/\([^/]*\)/.*#\1#p' | sort -u
+}
+
+# check_abis <apk | bundle dir> <label> <abi>...: return 1 (LAST_ERR set) when the input has native libs
+# but lacks one of the given ABIs. No lib/ at all = pure Java = OK.
+check_abis() {
+	local src=$1 label=$2 found a missing=()
+	shift 2
+	found=$(apk_abis "$src") || { red_log "[-] $label: cannot list native libs of $src"; return 1; }
+	[[ -z "$found" ]] && return 0
+	for a in "$@"; do grep -qxF -- "$a" <<<"$found" || missing+=("$a"); done
+	[[ ${#missing[@]} -eq 0 ]] && return 0
+	red_log "[-] $label: expected ABIs [$*], found [$(paste -sd, - <<<"$found")], missing [${missing[*]}]"
+	return 1
 }
 
 #################################################
