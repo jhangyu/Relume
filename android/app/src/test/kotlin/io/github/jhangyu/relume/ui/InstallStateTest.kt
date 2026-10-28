@@ -59,9 +59,9 @@ class InstallStateTest {
 
     @Test
     fun lookupOffersPickOrPaste() {
-        assertEquals(Lookup.PickOne, AppFacts(app("needs_download_url", lookup = "ambiguous", candidates = 2), null, null).lookup)
-        assertEquals(Lookup.NeedsUrl, AppFacts(app("needs_download_url", lookup = "not_found"), null, null).lookup)
-        assertNull(AppFacts(app(), null, null).lookup)
-        assertEquals("2 APKMirror pages match", AppFacts(app("needs_download_url", lookup = "ambiguous", candidates = 2), null, null).statusLine)
+        assertEquals(Lookup.PickOne, AppFacts(app("needs_download_url", lookup = "ambiguous", candidates = 2), null, null, null).lookup)
+        assertEquals(Lookup.NeedsUrl, AppFacts(app("needs_download_url", lookup = "not_found"), null, null, null).lookup)
+        assertNull(AppFacts(app(), null, null, null).lookup)
+        assertEquals("2 APKMirror pages match", AppFacts(app("needs_download_url", lookup = "ambiguous", candidates = 2), null, null, null).statusLine)
     }
 }

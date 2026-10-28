@@ -3,7 +3,6 @@ package io.github.jhangyu.relume.ui
 import io.github.jhangyu.relume.api.AppObject
 import io.github.jhangyu.relume.api.FollowedApp
 import io.github.jhangyu.relume.api.InstalledPackage
-import io.github.jhangyu.relume.api.PlanAction
 import io.github.jhangyu.relume.api.PlanStep
 
 internal const val STATE_BUILDING = "building"
@@ -16,28 +15,12 @@ internal const val LOOKUP_AMBIGUOUS = "ambiguous"
 /** Apps card fix for a missing download URL: paste one, or pick one of the APKMirror candidates. */
 enum class Lookup { NeedsUrl, PickOne }
 
-/** What this phone has of an app. */
-enum class PhoneState { NotInstalled, Update, Blocked, Installed }
-
-/** Phone state from the plan step; without a step, from the installed package ([newer]: the server has another version). */
-internal fun phoneState(step: PlanStep?, installed: InstalledPackage?, newer: Boolean): PhoneState = when {
-    step?.action == PlanAction.INSTALL -> if (installed == null) PhoneState.NotInstalled else PhoneState.Update
-    step?.action == PlanAction.ERROR -> PhoneState.Blocked
-    step?.action == PlanAction.UP_TO_DATE -> PhoneState.Installed
-    installed == null -> PhoneState.NotInstalled
-    newer -> PhoneState.Update
-    else -> PhoneState.Installed
-}
-
-/** What the phone knows about one enabled app: its installed package, the server plan step (null if not assigned). */
-class AppFacts(val app: AppObject, val installed: InstalledPackage?, val step: PlanStep?) {
-    /** Version the install would put on the phone. */
-    val target: String? get() = step?.download?.versionName ?: app.appVersion
-
+/** What the phone knows about one enabled app: the built APK it would install, that package on the phone, its recorded patch version. */
+class AppFacts(val app: AppObject, val target: InstallTarget?, val installed: InstalledPackage?, val installedPatch: String?) {
     val building: Boolean get() = app.status.state == STATE_BUILDING || app.status.state == STATE_QUEUED
 
-    val phone: PhoneState
-        get() = phoneState(step, installed, app.appVersion != null && app.appVersion != installed?.versionName)
+    /** The card's one action (spec install-states 1); null while nothing is built. */
+    val action: CardAction? get() = target?.let { cardAction(it, installed, installedPatch) }
 
     /** Download-source problem the Apps card offers a fix for (spec 5.1): null when the app has its URL. */
     val lookup: Lookup?
@@ -65,11 +48,6 @@ class AppFacts(val app: AppObject, val installed: InstalledPackage?, val step: P
                 else -> null
             }
         }
-
-    /** An install can start: the plan offers one, or a build exists and the app is not yet planned. */
-    val installable: Boolean
-        get() = !building && (phone == PhoneState.NotInstalled || phone == PhoneState.Update) &&
-            (step?.action == PlanAction.INSTALL || (step == null && app.appVersion != null))
 }
 
 

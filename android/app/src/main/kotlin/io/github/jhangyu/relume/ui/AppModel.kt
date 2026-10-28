@@ -27,6 +27,7 @@ import io.github.jhangyu.relume.api.PatchesView
 import io.github.jhangyu.relume.api.Project
 import io.github.jhangyu.relume.api.StepKind
 import io.github.jhangyu.relume.install.InstallRunner
+import io.github.jhangyu.relume.install.InstalledPatches
 import io.github.jhangyu.relume.install.Origin
 import io.github.jhangyu.relume.install.StartResult
 import io.github.jhangyu.relume.inventory.Inventory
@@ -95,19 +96,20 @@ class AppModel(application: Application) : AndroidViewModel(application) {
 
     fun app(id: Int): AppObject? = apps.firstOrNull { it.id == id }
 
-    fun facts(app: AppObject): AppFacts =
-        AppFacts(app, installed[app.packageName], plan?.steps?.firstOrNull { it.refId == app.id && it.kind == StepKind.ITEM })
+    /** Card facts looked up by the built APK package, never the source app's package (a patch can rename it). */
+    fun facts(app: AppObject): AppFacts {
+        val t = app.target
+        return AppFacts(app, t, t?.let { installed[it.packageName] }, t?.let { InstalledPatches.get(relume, it.packageName) })
+    }
 
     fun followedStep(app: FollowedApp): PlanStep? = plan?.steps?.firstOrNull { it.refId == app.id && it.kind == StepKind.PROJECT }
 
-    /** Version Install would put on the phone: the plan step's file, else the first listed file with a version. */
-    fun followedTarget(app: FollowedApp): String? = followedStep(app)?.download?.versionName ?: app.files.firstNotNullOfOrNull { it.versionName }
+    /** What Install would put on the phone: the plan step's file, else the first listed file. */
+    fun followedTarget(app: FollowedApp): InstallTarget? = app.target(followedStep(app))
 
-    fun followedPhone(app: FollowedApp): PhoneState {
-        val installed = app.packageName?.let(installed::get)
-        val target = followedTarget(app)
-        return phoneState(followedStep(app), installed, target != null && target != installed?.versionName)
-    }
+    /** The followed card's action (same function as item cards); null when the project has nothing to install. */
+    fun followedAction(app: FollowedApp): CardAction? =
+        followedTarget(app)?.let { cardAction(it, installed[it.packageName], InstalledPatches.get(relume, it.packageName)) }
 
     fun signedIn() {
         api = relume.api
@@ -131,6 +133,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         plan = null
         installed = emptyMap()
         health = null
+        closeSheet()
         CheckScheduler.apply(relume, CheckInterval.OFF)
         watching.values.forEach { it.cancel() }
         watching.clear()
@@ -223,11 +226,43 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     var runStarted by mutableStateOf(0)
         private set
 
+    /** The install lightbox is open (spec install-states 2): set when a run starts, cleared by [closeSheet]. */
+    var sheetOpen by mutableStateOf(false)
+        private set
+
+    /** Built APK package whose `needs_uninstall` step the user already confirmed; the lightbox then opens the system uninstall. */
+    var reinstallPackage by mutableStateOf<String?>(null)
+        private set
+
+    /** Card of the last install start, for the lightbox Retry. */
+    private var lastInstall: Pair<StepKind, Int>? = null
+
+    fun closeSheet() {
+        sheetOpen = false
+        reinstallPackage = null
+    }
+
+    fun markReinstall(packageName: String) {
+        reinstallPackage = packageName
+    }
+
+    /** "Uninstall & reinstall" confirmed (spec install-states 3): the run's `needs_uninstall` step goes straight to the system prompt. */
+    fun beginReinstall(kind: StepKind, id: Int, packageName: String) {
+        markReinstall(packageName)
+        beginInstall(kind, id)
+    }
+
+    fun retryInstall() {
+        val (kind, id) = checkNotNull(lastInstall) { "install retry: expected an install started from a card in this session, found none" }
+        beginInstall(kind, id)
+    }
+
     fun dismissPrompt() {
         prompt = null
     }
 
     fun beginInstall(kind: StepKind, id: Int) {
+        lastInstall = kind to id
         viewModelScope.launch {
             if (!InstallRunner.canInstall(relume)) {
                 prompt = InstallPrompt.NeedPermission
@@ -279,8 +314,11 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     private fun start(p: InstallPlan) {
         when (InstallRunner.start(relume, p, Origin.UI)) {
             StartResult.Busy -> error = "an install run is in progress"
-            // Corrupt: the Install screen shows the unreadable run file and its reset.
-            StartResult.Started, StartResult.Corrupt -> runStarted++
+            // Corrupt: the install sheet shows the unreadable run file and its reset.
+            StartResult.Started, StartResult.Corrupt -> {
+                runStarted++
+                sheetOpen = true
+            }
         }
     }
 

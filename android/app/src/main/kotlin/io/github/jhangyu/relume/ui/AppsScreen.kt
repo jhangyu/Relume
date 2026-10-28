@@ -38,23 +38,30 @@ import io.github.jhangyu.relume.api.StepKind
 import io.github.jhangyu.relume.install.InstallRunner
 import kotlinx.coroutines.launch
 
-private enum class AppFilter(val title: String, val matches: (AppFacts) -> Boolean, val followed: (PhoneState) -> Boolean) {
+private enum class AppFilter(val title: String, val matches: (AppFacts) -> Boolean, val followed: (CardAction?) -> Boolean) {
     All("All", { true }, { true }),
-    NotInstalled("Not installed", { it.phone == PhoneState.NotInstalled }, { it == PhoneState.NotInstalled }),
-    PhoneUpdate("Phone update", { it.phone == PhoneState.Update }, { it == PhoneState.Update }),
+    NotInstalled("Not installed", { it.action == CardAction.Install }, { it == CardAction.Install }),
+    PhoneUpdate("Phone update", { it.action.updates }, { it.updates }),
     Failed("Failed", { it.app.status.state == STATE_FAILED }, { false }),
     NeedsUrl("Needs URL", { it.lookup != null }, { false }),
 }
 
-/** Apps tab: filter chips, one card per enabled app, pull-to-refresh. Builds reach the phone only through Install and Update. */
+/** The phone has an older or differently signed copy. */
+private val CardAction?.updates: Boolean get() = this == CardAction.Upgrade || this == CardAction.Reinstall
+
+/** A pending "Uninstall & reinstall" confirm. */
+private class ReinstallAsk(val kind: StepKind, val id: Int, val name: String, val target: InstallTarget)
+
+/** Apps tab: filter chips, one card per enabled app, pull-to-refresh. Builds reach the phone only through the card action. */
 @Composable
 fun AppsScreen(model: AppModel, onOpenSettings: (Int) -> Unit, onOpenLog: (Int, Int?) -> Unit) {
     var filter by rememberSaveable { mutableIntStateOf(0) }
     var fixing by remember { mutableStateOf<Pair<AppObject, Lookup>?>(null) }
+    var reinstall by remember { mutableStateOf<ReinstallAsk?>(null) }
     val all = model.apps.map(model::facts)
     val visible = all.filter { AppFilter.entries[filter].matches(it) }
-    val followed = model.followed.map { it to model.followedPhone(it) }
-    val visibleFollowed = followed.filter { (_, p) -> AppFilter.entries[filter].followed(p) }
+    val followed = model.followed.map { it to model.followedAction(it) }
+    val visibleFollowed = followed.filter { (_, a) -> AppFilter.entries[filter].followed(a) }
     val run by InstallRunner.state.collectAsState()
     val installing = run?.steps.orEmpty()
         .filter { it.step.kind == StepKind.ITEM && it.state.active }.map { it.step.refId }.toSet()
@@ -75,10 +82,10 @@ fun AppsScreen(model: AppModel, onOpenSettings: (Int) -> Unit, onOpenLog: (Int, 
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(visible, key = { it.app.id }) { f ->
-                    AppCard(f, model, f.app.id in installing, onOpenSettings, onOpenLog) { fixing = f.app to it }
+                    AppCard(f, model, f.app.id in installing, onOpenSettings, onOpenLog, onFix = { fixing = f.app to it }, onReinstall = { reinstall = it })
                 }
-                items(visibleFollowed, key = { "followed-${it.first.id}" }) { (app, phone) ->
-                    FollowedCard(app, phone, app.id in installingProjects, model)
+                items(visibleFollowed, key = { "followed-${it.first.id}" }) { (app, action) ->
+                    FollowedCard(app, action, app.id in installingProjects, model) { reinstall = it }
                 }
                 if (visible.isEmpty() && visibleFollowed.isEmpty() && !model.refreshing) {
                     val empty = when {
@@ -98,6 +105,12 @@ fun AppsScreen(model: AppModel, onOpenSettings: (Int) -> Unit, onOpenLog: (Int, 
             Lookup.PickOne -> PickDialog(app, close) { model.setListUrl(app.id, it, close) }
         }
     }
+    reinstall?.let { r ->
+        ReinstallSheet(r.name, listOfNotNull(r.target.versionName, "signed by another key").joinToString(" · "), onDismiss = { reinstall = null }) {
+            reinstall = null
+            model.beginReinstall(r.kind, r.id, r.target.packageName)
+        }
+    }
 }
 
 @Composable
@@ -108,6 +121,7 @@ private fun AppCard(
     onOpenSettings: (Int) -> Unit,
     onOpenLog: (Int, Int?) -> Unit,
     onFix: (Lookup) -> Unit,
+    onReinstall: (ReinstallAsk) -> Unit,
 ) {
     val app = f.app
     val status = app.status
@@ -122,7 +136,8 @@ private fun AppCard(
                 AppTile(app.name, app.iconUrl, model.api, category = app.category)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Txt(app.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
-                    Txt(listOfNotNull(app.appVersion, app.bundle.name).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = muted(), maxLines = 1)
+                    val second = app.build?.patchVersion?.let { "patch $it" } ?: app.bundle.name
+                    Txt(listOfNotNull(app.appVersion, second).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = muted(), maxLines = 1)
                 }
                 StatusPill(status.state)
             }
@@ -166,50 +181,64 @@ private fun AppCard(
                 )
             }
             Hairline()
-            PhoneRow(f, installing, model)
+            PhoneRow(
+                f.action, f.target, f.installed, installing, f.building,
+                onInstall = { model.beginInstall(StepKind.ITEM, app.id) },
+                onReinstall = { onReinstall(ReinstallAsk(StepKind.ITEM, app.id, app.name, checkNotNull(f.target) { "reinstall of ${app.name}: expected a built APK, found none" })) },
+            )
         }
     }
 }
 
-/** Bottom row of a card, this phone: state pill on the left, Install or Update on the right. */
+/** Bottom row of a card, this phone (spec install-states 1): state pill on the left, the one action on the right. */
 @Composable
-private fun PhoneRow(f: AppFacts, installing: Boolean, model: AppModel) {
+private fun PhoneRow(
+    action: CardAction?,
+    target: InstallTarget?,
+    installed: InstalledPackage?,
+    installing: Boolean,
+    building: Boolean,
+    onInstall: () -> Unit,
+    onReinstall: () -> Unit,
+) {
     // Mockup .inst: full-bleed divider above, min 56 dp, padding 8 16 dp, content centred, 8 dp gaps.
     Row(
         Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PhonePill(installing, f.phone, f.target, f.installed)
+        PhonePill(installing, action, target, installed)
         Spacer(Modifier.weight(1f))
         when {
-            installing -> Unit
-            f.installable && f.phone == PhoneState.NotInstalled ->
-                ActionButton(listOfNotNull("Install", f.target).joinToString(" "), { model.beginInstall(StepKind.ITEM, f.app.id) }, kind = ButtonKind.Install, icon = R.drawable.ms_install_mobile, size = ButtonSize.Small)
-            f.installable && f.phone == PhoneState.Update ->
-                ActionButton("Update", { model.beginInstall(StepKind.ITEM, f.app.id) }, kind = ButtonKind.Install, icon = R.drawable.ms_system_update, size = ButtonSize.Small)
-            f.building && f.phone == PhoneState.Update -> Txt("Update after build", style = MaterialTheme.typography.bodySmall, color = muted())
+            installing || action == null || action == CardAction.Installed -> Unit
+            building -> if (action == CardAction.Upgrade) Txt("Upgrade after build", style = MaterialTheme.typography.bodySmall, color = muted())
+            action == CardAction.Install ->
+                ActionButton(listOfNotNull("Install", target?.versionName).joinToString(" "), onInstall, kind = ButtonKind.Install, icon = R.drawable.ms_install_mobile, size = ButtonSize.Small)
+            action == CardAction.Upgrade ->
+                ActionButton("Upgrade", onInstall, kind = ButtonKind.Install, icon = R.drawable.ms_system_update, size = ButtonSize.Small)
+            action == CardAction.Reinstall ->
+                ActionButton("Uninstall & reinstall", onReinstall, kind = ButtonKind.Danger, icon = R.drawable.ms_warning, size = ButtonSize.Small)
         }
     }
 }
 
-/** The state pill of a phone row: installing, installed, older version on the phone, blocked, or not installed. */
+/** The state pill of a phone row (mockup frame 1): installing, installed, older copy, other signer; none when not installed. */
 @Composable
-private fun PhonePill(installing: Boolean, phone: PhoneState, target: String?, installed: InstalledPackage?) {
+private fun PhonePill(installing: Boolean, action: CardAction?, target: InstallTarget?, installed: InstalledPackage?) {
     val r = MaterialTheme.relume
     val s = MaterialTheme.colorScheme
     when {
-        installing -> Pill("Installing ${target.orEmpty()}".trim(), r.blue.container, r.blue.onContainer, R.drawable.ms_progress_activity)
-        phone == PhoneState.Installed -> Pill("Installed ${installed?.versionName.orEmpty()}".trim(), r.green.container, r.green.onContainer, R.drawable.ms_check)
-        phone == PhoneState.Update -> Pill("Phone has ${installed?.versionName ?: "an older version"}", r.lavender.container, r.lavender.onContainer, R.drawable.ms_system_update)
-        phone == PhoneState.Blocked -> Pill("Install blocked", s.errorContainer, s.onErrorContainer, R.drawable.ms_error)
-        else -> Pill("Not installed", s.surfaceContainerHigh, s.onSurfaceVariant)
+        installing -> Pill("Installing ${target?.versionName.orEmpty()}".trim(), r.blue.container, r.blue.onContainer, R.drawable.ms_progress_activity)
+        action == CardAction.Installed -> Pill("Installed ${installed?.versionName.orEmpty()}".trim(), r.green.container, r.green.onContainer, R.drawable.ms_check)
+        action == CardAction.Upgrade -> Pill("Phone has ${installed?.versionName ?: "an older version"}", r.lavender.container, r.lavender.onContainer, R.drawable.ms_system_update)
+        action == CardAction.Reinstall -> Pill("Different signer", s.errorContainer, s.onErrorContainer, R.drawable.ms_error)
     }
 }
 
-/** Followed-project app: the head and the phone row with only Install. */
+/** Followed-project app: the head and the same phone row as item cards. */
 @Composable
-private fun FollowedCard(app: FollowedApp, phone: PhoneState, installing: Boolean, model: AppModel) {
+private fun FollowedCard(app: FollowedApp, action: CardAction?, installing: Boolean, model: AppModel, onReinstall: (ReinstallAsk) -> Unit) {
+    val target = model.followedTarget(app)
     Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerLowest) {
         Column(Modifier.padding(top = 16.dp)) {
             Row(Modifier.padding(horizontal = 16.dp).padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -220,13 +249,11 @@ private fun FollowedCard(app: FollowedApp, phone: PhoneState, installing: Boolea
                 }
             }
             Hairline()
-            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                PhonePill(installing, phone, model.followedTarget(app), app.packageName?.let(model.installed::get))
-                Spacer(Modifier.weight(1f))
-                if (!installing && !app.blocked && app.files.isNotEmpty() && (phone == PhoneState.NotInstalled || phone == PhoneState.Update)) {
-                    ActionButton(if (phone == PhoneState.Update) "Update" else "Install", { model.beginInstall(StepKind.PROJECT, app.id) }, kind = ButtonKind.Install, icon = R.drawable.ms_install_mobile, size = ButtonSize.Small)
-                }
-            }
+            PhoneRow(
+                action, target, target?.let { model.installed[it.packageName] }, installing, building = false,
+                onInstall = { model.beginInstall(StepKind.PROJECT, app.id) },
+                onReinstall = { onReinstall(ReinstallAsk(StepKind.PROJECT, app.id, app.name, checkNotNull(target) { "reinstall of ${app.name}: expected a release file, found none" })) },
+            )
         }
     }
 }
