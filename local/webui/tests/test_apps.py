@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from webui import apklocate, apps, build, catalog, db, jobs, server, upstream
+from webui import apklocate, apps, build, catalog, db, jobs, server, settings, upstream
 from webui.tests.catalog_rows import CatalogCase, FakeLog, add_bundle, add_item
 
 YT, REDDIT = "com.google.android.youtube", "com.reddit.frontpage"
@@ -82,6 +82,26 @@ class ApkpureFallbackTest(unittest.TestCase):
         self.assertEqual(apps._missing_url(self.row(None, None)), "apkmirror")
 
 
+class GooglePlayKindTest(unittest.TestCase):
+    def row(self, kind):
+        return {"variants": json.dumps([{"name": "v", "download": {"kind": kind}}]),
+                "apkmirror_list_url": None, "apkpure_url": None}
+
+    def test_kind_validates_without_url(self):
+        v = [{"name": "u", "abi": "universal", "download": {"kind": "googleplay"}}]
+        self.assertEqual(catalog.validate_variants(v)[0]["download"]["kind"], "googleplay")
+        v[0]["download"]["url"] = "https://x.invalid/a.apk"
+        with self.assertRaises(server.HttpError):
+            catalog.validate_variants(v)
+
+    def test_missing_url_needs_credentials(self):
+        with mock.patch.object(settings, "google_play", return_value=None):
+            self.assertEqual(apps._missing_url(self.row("googleplay")), "googleplay")
+        with mock.patch.object(settings, "google_play", return_value={"email": "a@b.c", "aas_token": "t"}):
+            self.assertIsNone(apps._missing_url(self.row("googleplay")))
+            self.assertEqual(apps._missing_url(self.row("apkmirror")), "apkmirror")
+
+
 class VersionTest(AppsCase):
     def test_job_input_version_modes(self):
         self.assertEqual(apps.job_input(1)["version"], {"value": "20.13.41", "near": False})
@@ -96,7 +116,7 @@ class VersionTest(AppsCase):
 
     def test_job_json_has_version_value_not_mode(self):
         j = apps.job_input(1)
-        self.assertEqual(set(j), set(JOB_FIXTURE) - {"job_id", "work_dir"})
+        self.assertEqual(set(j), set(JOB_FIXTURE) - {"job_id", "work_dir", "googleplay"})  # googleplay: added by build.handler
         self.assertEqual(set(j["version"]), {"value", "near"})
         self.assertEqual(set(j["apkmirror"]), set(JOB_FIXTURE["apkmirror"]))
         self.assertEqual(j["options_file_json"], [{"patches": {"Hide ads": {"enabled": False}}}])

@@ -464,6 +464,24 @@ get_apkpure() {
 		red_log "[-] Failed to download $apk_name"
 		return 1
 	fi
+	place_download "$apk_name" "$pkg_type"
+}
+
+# get_googleplay <apk file | split dir (the server's apkeep output)> <name> <type>
+get_googleplay() {
+	local src=$1 apk_name=$2 pkg_type=${3:-apk}
+	if [[ -d "$src" ]]; then
+		(cd "$src" && zip -qr - .) > "./download/$apk_name.xapk" || { red_log "[-] Cannot pack split dir $src"; return 1; }
+	else
+		cp "$src" "./download/$apk_name.xapk" || { red_log "[-] Cannot copy $src"; return 1; }
+	fi
+	place_download "$apk_name" "$pkg_type"
+}
+
+# place_download <name> <type>: ./download/<name>.xapk (APK or XAPK, detected from the file) ->
+# <name>.apk (standalone or merged) or, for bundle_extract, <name>.apkm plus its extracted dir <name>/
+place_download() {
+	local apk_name=$1 pkg_type=$2 base_apk="$1.xapk"
 	local entries
 	entries=$(unzip -Z1 "./download/$base_apk" 2>/dev/null)
 	if grep -qxF 'AndroidManifest.xml' <<<"$entries"; then

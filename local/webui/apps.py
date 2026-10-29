@@ -7,7 +7,7 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import apklocate, build, catalog, db, jobs, projects, scheduler, server, upstream
+from . import apklocate, build, catalog, db, jobs, projects, scheduler, server, settings, upstream
 
 KEYSTORE = {'morphe': 'morphe.keystore', 'lspatch': 'lspatch-signing.p12', 'npatch': 'fiorenmas.ks'}
 SETTING_KEYS = ('bundle_id', 'version', 'project_ids', 'variants', 'engine_options', 'display_name')
@@ -51,8 +51,13 @@ def _variants(r):
 
 
 def _missing_url(r):
-    """Download kind of the first variant whose kind needs an app URL that is not set, else None."""
+    """Download kind of the first variant whose kind needs an app URL (googleplay: the Google Play credentials in
+    Settings) that is not set, else None."""
     for v in _variants(r):
+        if v['download']['kind'] == 'googleplay':
+            if settings.google_play() is None:
+                return 'googleplay'
+            continue
         col = URL_COLUMN.get(v['download']['kind'])
         if col is not None and not r[col]:
             return v['download']['kind']
@@ -383,7 +388,8 @@ def rebuild(app_id):
     _require_enabled(r)
     kind = _missing_url(r)
     if kind is not None:
-        what = 'an APKMirror listing URL' if kind == 'apkmirror' else 'an APKPure URL'
+        what = {'apkmirror': 'an APKMirror listing URL', 'apkpure': 'an APKPure URL',
+                'googleplay': 'the Google Play credentials (email + AAS token) in Settings'}[kind]
         raise server.HttpError(409, f"app {r['id']} ({r['package']}): build needs {what}; lookup state is "
                                     f"{r['apkm_state']}", code='needs_download_url')
     return jobs.enqueue('build', {'item_id': r['id']}, 'manual')
@@ -506,7 +512,7 @@ def run_update(job, log):
     for r in items:
         if job.cancel_event.is_set():
             return
-        if not r['apkmirror_list_url'] and not r['apkpure_url']:
+        if not r['apkmirror_list_url'] and any(v['download']['kind'] == 'apkmirror' for v in _variants(r)):
             apklocate.locate(r['package'], log, job.cancel_event)
             r = _row(r['id'])
         if _missing_url(r):

@@ -762,7 +762,7 @@ def validate_variants(variants):
         if v.get("abi") not in ABIS:
             raise server.HttpError(400, "invalid abi")
         d = v.get("download")
-        if (not isinstance(d, dict) or d.get("kind") not in ("apkmirror", "apkpure", "url")
+        if (not isinstance(d, dict) or d.get("kind") not in ("apkmirror", "apkpure", "googleplay", "url")
                 or d.get("type", "apk") not in ("apk", "bundle", "bundle_extract")):
             raise server.HttpError(400, "invalid download")
         url = _opt(d.get("url"), URL_RE, "download url")

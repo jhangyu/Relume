@@ -107,6 +107,24 @@ class UiTokenTest(SettingsTest):
         for bad in ('has space', 'x' * 256, 5, 'a\nb'):
             self.assertEqual(self.put({'github_token': bad})[0], 400, bad)
 
+    def test_google_play_write_only(self):
+        gp = {'email': 'someone@example.com', 'aas_token': 'aas_et/FAKE_TOKEN_123='}
+        self.assertEqual(self.get()['google_play'], {'set': False, 'email': None})
+        st, _, body = self.put({'google_play': gp})
+        self.assertEqual(st, 200)
+        self.assertNotIn(b'FAKE_TOKEN', body)
+        self.assertNotIn(b'FAKE_TOKEN', http('GET', self.base + '/api/settings', cookie=self.c)[2])
+        self.assertEqual(self.get()['google_play'], {'set': True, 'email': 'someone@example.com'})
+        self.assertEqual(settings.google_play(), gp)
+        f = settings.google_play_path()
+        self.assertEqual((f.stat().st_mode & 0o777, f.parent.stat().st_mode & 0o777), (0o600, 0o700))
+        self.assertFalse(any('FAKE_TOKEN' in r[0] for r in settings.db.conn().execute('SELECT value FROM settings')))
+        for bad in ({'email': 'x'}, {'email': 'nope', 'aas_token': 't'}, {'email': 'a@b.c', 'aas_token': 'has space'}, 'str'):
+            self.assertEqual(self.put({'google_play': bad})[0], 400, bad)
+        self.put({'google_play': None})
+        self.assertFalse(f.exists())
+        self.assertEqual(self.get()['google_play'], {'set': False, 'email': None})
+
     def check_output(self):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):

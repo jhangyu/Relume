@@ -5,6 +5,7 @@
 set -o pipefail
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
 FIX=$REPO/src/build/test-fixtures
+YT=com.google.android.youtube
 fails=0
 pass() { echo "PASS $1"; }
 fail() { echo "FAIL $1: $2"; fails=$((fails + 1)); }
@@ -105,6 +106,30 @@ else fail runner_version_null_takes_downloaded "rc=$rc $(grep '^::' "$T/out.txt"
 new_env; make_job '.recipe.variants[].download.kind="apkmirror"'
 rc=$(run_runner)
 if [ "$rc" != 0 ] && grep -q '^::fail::apk_not_listed::' "$T/out.txt"; then pass runner_apk_not_listed; else fail runner_apk_not_listed "rc=$rc"; fi
+
+# googleplay: the server's apkeep output (one <pkg>.apk, or a split dir <pkg>/) is named in job.json
+GP='.recipe.variants[].download={"kind":"googleplay","type":"apk","arch":null,"dpi":null,"minver":null,"url":null}'
+gp_job() { make_job "$GP | .version.value=$1 | .googleplay=[{download:.recipe.variants[0].download, path:\"$2\"}]"; }
+new_env; mkdir -p "$T/gp"; cp "$SHIM_SERVE/input.apk" "$T/gp/$YT.apk"; gp_job null "$T/gp/$YT.apk"
+rc=$(run_runner)
+if [ "$rc" = 0 ] && [ -s "$T/work/download/in-0.apk" ] && [ "$(jq -r .app_version "$T/work/result.json")" = 21.20.405 ]; then
+	pass googleplay_single_apk
+else fail googleplay_single_apk "rc=$rc $(tail -3 "$T/out.txt")"; fi
+
+new_env; mkdir -p "$T/gp/$YT"; cp "$SHIM_SERVE/input.apk" "$T/gp/$YT/$YT.apk"; cp "$SHIM_SERVE/input.apk" "$T/gp/$YT/$YT.config.arm64_v8a.apk"
+gp_job '"21.20.405"' "$T/gp/$YT"
+rc=$(run_runner)
+if [ "$rc" = 0 ] && [ -s "$T/work/download/in-0.apk" ] && grep -q "java -jar $T/APKEditor.jar m -i ./download/in-0.xapk" "$SHIM_LOG" &&
+	unzip -Z1 "$T/work/download/in-0.apk" | grep -qxF "$YT.config.arm64_v8a.apk"; then
+	pass googleplay_split_dir
+else fail googleplay_split_dir "rc=$rc $(tail -3 "$T/out.txt")"; fi
+
+new_env; mkdir -p "$T/gp"; cp "$SHIM_SERVE/input.apk" "$T/gp/$YT.apk"; gp_job '"1.0.0"' "$T/gp/$YT.apk"
+rc=$(run_runner)
+if [ "$rc" != 0 ] && [ "$(fail_lines)" = 1 ] &&
+	grep -qxF '::fail::download_failed::Google Play serves only the latest version: expected 1.0.0, downloaded 21.20.405' "$T/out.txt"; then
+	pass googleplay_version_mismatch
+else fail googleplay_version_mismatch "rc=$rc $(grep '^::fail::' "$T/out.txt")"; fi
 
 # ---- Xposed engine cases (P8, spec xposed 5.3 / 11) ----
 XP_LS='.engine="lspatch" | .engine_options={"sigbypass":3,"injectdex":true} | .keystore="lspatch-signing.p12" | .recipe.variants=[.recipe.variants[0] | .name="arm64-v8a" | .abi="arm64-v8a" | .strip_libs=null]'

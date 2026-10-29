@@ -16,6 +16,8 @@ _gh_cache = {}
 _gh_lock = threading.Lock()
 LIMITS = {'job_history_count': (1, 100000), 'artifact_retention': (1, 100)}
 TOKEN_RE = re.compile(r'[A-Za-z0-9_]{0,255}\Z')  # GitHub classic and fine-grained tokens; '' clears
+EMAIL_RE = re.compile(r'[^\s@]{1,64}@[^\s@]{1,190}\Z')
+AAS_TOKEN_RE = re.compile(r'[A-Za-z0-9._/+=-]{1,4096}\Z')  # aas_et/... master token
 
 
 def get(key, default=None):
@@ -54,22 +56,41 @@ def github_token():
     return _token_source()[0]
 
 
-def set_github_token(token):
-    """'' deletes the UI token (the mounted file, if any, applies again)."""
-    f = ui_token_path()
+def write_secret(f, text):
+    """Secret file in the key dir (see ui_token_path): dir 0700, file 0600, atomic. None deletes it."""
     f.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     f.parent.chmod(0o700)
-    if not token:
+    if text is None:
         f.unlink(missing_ok=True)
-    else:
-        tmp = f.with_name(f.name + '.tmp')
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, 'w') as fh:
-            fh.write(token + '\n')
-        os.chmod(tmp, 0o600)
-        os.replace(tmp, f)
+        return
+    tmp = f.with_name(f.name + '.tmp')
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w') as fh:
+        fh.write(text)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, f)
+
+
+def set_github_token(token):
+    """'' deletes the UI token (the mounted file, if any, applies again)."""
+    write_secret(ui_token_path(), token + '\n' if token else None)
     with _gh_lock:
         _gh_cache.clear()
+
+
+def google_play_path():
+    return db.KEY / 'google_play'
+
+
+def google_play():
+    """{'email', 'aas_token'} entered on the Settings page, or None when not set."""
+    t = _read(google_play_path())
+    return json.loads(t) if t else None
+
+
+def _google_play_status():
+    gp = google_play()
+    return {'set': gp is not None, 'email': gp['email'] if gp else None}
 
 
 def check_token_file():
@@ -131,7 +152,7 @@ def server_info():
 def _payload(recheck=False):
     return {'job_history_count': get('job_history_count', 500), 'base_url': get('base_url', ''),
             'artifact_retention': get('artifact_retention', build.ARTIFACT_RETENTION_DEFAULT),
-            'github': github_status(recheck), 'server': server_info()}
+            'github': github_status(recheck), 'google_play': _google_play_status(), 'server': server_info()}
 
 
 def health(req):
@@ -144,8 +165,13 @@ def get_route(req):
 
 def put_route(req):
     b = req.json
-    if not isinstance(b, dict) or set(b) - {'job_history_count', 'base_url', 'artifact_retention', 'github_token'}:
+    if not isinstance(b, dict) or set(b) - {'job_history_count', 'base_url', 'artifact_retention', 'github_token', 'google_play'}:
         raise server.HttpError(400, 'unknown setting')
+    gp = b.get('google_play')
+    if gp is not None and not (isinstance(gp, dict) and set(gp) == {'email', 'aas_token'}
+                               and isinstance(gp['email'], str) and EMAIL_RE.match(gp['email'])
+                               and isinstance(gp['aas_token'], str) and AAS_TOKEN_RE.match(gp['aas_token'])):
+        raise server.HttpError(400, 'invalid google_play: expected null or {"email": <address>, "aas_token": <token>}')
     if 'github_token' in b and not (isinstance(b['github_token'], str) and TOKEN_RE.match(b['github_token'])):
         raise server.HttpError(400, 'invalid github_token')
     for k, (lo, hi) in LIMITS.items():
@@ -157,6 +183,8 @@ def put_route(req):
     for k, v in b.items():
         if k == 'github_token':
             set_github_token(v)   # write-only: never stored in the settings table, never returned
+        elif k == 'google_play':   # write-only like github_token: the token is never returned
+            write_secret(google_play_path(), None if v is None else json.dumps(v))
         else:
             put(k, v.rstrip('/') if k == 'base_url' else v)
     if 'artifact_retention' in b and b['artifact_retention'] != old_keep:

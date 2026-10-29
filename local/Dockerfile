@@ -9,6 +9,12 @@ ARG TARGETARCH
 RUN wget -q -O /tmp/pup.zip "https://github.com/ericchiang/pup/releases/download/v0.4.0/pup_v0.4.0_linux_${TARGETARCH}.zip" \
     && unzip -q /tmp/pup.zip -d /out && chmod 755 /out/pup
 
+FROM alpine:3.23 AS dl-apkeep
+ARG TARGETARCH
+RUN case "$TARGETARCH" in amd64) t=x86_64 ;; arm64) t=aarch64 ;; *) echo "apkeep: no build for $TARGETARCH" >&2; exit 1 ;; esac \
+    && mkdir /out && wget -q -O /out/apkeep "https://github.com/EFForg/apkeep/releases/download/1.1.0/apkeep-$t-unknown-linux-gnu" \
+    && chmod 755 /out/apkeep
+
 FROM alpine:3.23 AS dl-apkeditor
 RUN wget -q -O /APKEditor.jar https://github.com/REAndroid/APKEditor/releases/download/V1.4.9/APKEditor-1.4.9.jar
 
@@ -19,6 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       openjdk-21-jre-headless python3 apksigner \
     && rm -rf /var/lib/apt/lists/*
 COPY --link --from=dl-pup /out/pup /usr/local/bin/pup
+COPY --link --from=dl-apkeep /out/apkeep /usr/local/bin/apkeep
 COPY --link --from=dl-apkeditor /APKEditor.jar /opt/APKEditor.jar
 ENV HOME=/data/home PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/repo/local
 WORKDIR /repo

@@ -13,6 +13,10 @@ RUNNER = str(db.REPO_ROOT / "src" / "build" / "build-item.sh")
 FAIL_CODES = ("upstream_missing", "apk_not_listed", "download_failed",
               "merge_failed", "patch_failed", "timeout", "internal")
 SOLVER_ENV = ("FLARESOLVERR_URL", "CFBYPASS_URL", "APKM_SOLVER_URL")  # passed to the isolated runner
+APKEEP = "apkeep"
+APKEEP_TIMEOUT = 1800  # one Google Play login + download per distinct googleplay spec
+APKEEP_DEVICE = {"arm64-v8a": "px_9a", "armeabi-v7a": "sm_a13_5g", "x86_64": "google_kiwi_x86_64"}  # single-ABI profiles
+APKEEP_MULTI_DEVICE = "mi_a1"  # arm64-v8a + armeabi-v7a: universal or several ABIs
 FAILED_PATCH_PREFIX = "ERROR: FAILED: "  # patcher CLI line for a patch that did not apply
 _steps = {}
 _steps_lock = threading.Lock()
@@ -107,6 +111,43 @@ def _register(job, item_id, inp, work, result, failed_patches, sha):
                                     "patches_version": inp["upstream_tag"], "artifacts": ids})
 
 
+def _googleplay(job, item_id, inp, work, log):
+    """apkeep download of each distinct googleplay download spec, run by the server outside run_isolated so the
+    Google credentials never reach the isolated runner (only an ini file in the 0700 key dir names them, not argv
+    or env). Returns [{download, path}] for job.json: path = <pkg>.apk or the split dir <pkg>/."""
+    variants = inp["recipe"]["variants"]
+    specs = []
+    for v in variants:
+        if v["download"]["kind"] == "googleplay" and v["download"] not in specs:
+            specs.append(v["download"])
+    if not specs:
+        return []
+    gp = settings.google_play()
+    if gp is None:
+        _fail(job, item_id, "download_failed", "Google Play credentials not set in Settings")
+    ini = db.KEY / f"apkeep-{job.id}.ini"
+    settings.write_secret(ini, f"[google]\nemail = {gp['email']}\naas_token = {gp['aas_token']}\n")
+    out = []
+    try:
+        for n, d in enumerate(specs):
+            abis = sorted({v["abi"] for v in variants if v["download"] == d})  # universal among them -> multi-ABI
+            device = APKEEP_DEVICE[abis[0]] if len(abis) == 1 and abis[0] in APKEEP_DEVICE else APKEEP_MULTI_DEVICE
+            dest = work / "googleplay" / str(n)
+            dest.mkdir(parents=True)
+            log.line(f"[*] Google Play download of {inp['package']} (device={device})")
+            rc = log.run([APKEEP, "-a", inp["package"], "-d", "google-play", "-i", str(ini),
+                          "-o", f"device={device},split_apk=true", str(dest)], cwd=str(dest), env=None,
+                         timeout=APKEEP_TIMEOUT)
+            got = [p for p in (dest / f"{inp['package']}.apk", dest / inp["package"]) if p.exists()]
+            if rc != 0 or not got:
+                _fail(job, item_id, "download_failed", f"apkeep exited {rc}: expected {inp['package']}.apk or "
+                      f"{inp['package']}/ in the output, found {sorted(p.name for p in dest.iterdir())}")
+            out.append({"download": d, "path": jobs.runner_path(got[0])})
+    finally:
+        ini.unlink(missing_ok=True)
+    return out
+
+
 def handler(job, log):
     item_id = job.target["item_id"]
     work = db.DATA / "work" / str(job.id)
@@ -122,16 +163,18 @@ def handler(job, log):
         work.chmod(0o770)  # the isolated runner uid shares the server's gid
         rp = jobs.runner_path
         rwork = rp(work)
-        (work / "job.json").write_text(json.dumps(dict(inp, job_id=job.id, work_dir=rwork, cli_jar=rp(inp["cli_jar"]),
-                                                       patches_files=[rp(f) for f in inp["patches_files"]]), indent=2))
-        if inp["options_file_json"] is not None:
-            (work / "options.json").write_text(json.dumps(inp["options_file_json"]))
         with db.tx() as c:
             c.execute("INSERT INTO build_jobs(job_id, item_id, patches_version, cli_version, inputs_sha) VALUES (?, ?, ?, ?, ?)",
                       (job.id, item_id, inp["upstream_tag"], inp["cli_tag"], sha))
         missing = [p for p in [*inp["patches_files"], inp["cli_jar"]] if not Path(p).is_file()]
         if missing:
             _fail(job, item_id, "upstream_missing", f"missing file {Path(missing[0]).name}")
+        googleplay = _googleplay(job, item_id, inp, work, log)
+        (work / "job.json").write_text(json.dumps(dict(inp, job_id=job.id, work_dir=rwork, cli_jar=rp(inp["cli_jar"]),
+                                                       patches_files=[rp(f) for f in inp["patches_files"]],
+                                                       googleplay=googleplay), indent=2))
+        if inp["options_file_json"] is not None:
+            (work / "options.json").write_text(json.dumps(inp["options_file_json"]))
         m = _Markers(job.id, inp["package"])
         try:
             rc = jobs.run_isolated(log, ["bash", RUNNER, rp(work / "job.json")], rwork, env_keys=SOLVER_ENV,

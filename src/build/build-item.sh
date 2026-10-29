@@ -85,7 +85,8 @@ fetch_input() {
 	local vkey cache_file
 	vkey=$(printf '%s' "$version" | tr -c 'A-Za-z0-9._-' '_')
 	cache_file="$cache_dir/$vkey$spec_key.$ext"
-	[[ -n "${RELUME_APK_CACHE:-}" && -n "$version" && $allow_near -eq 0 ]] && use_cache=1
+	# googleplay: the server already downloaded the file, nothing to cache
+	[[ -n "${RELUME_APK_CACHE:-}" && -n "$version" && $allow_near -eq 0 && $kind != googleplay ]] && use_cache=1
 	if [[ $use_cache -eq 1 && -s "$cache_file" ]]; then
 		green_log "[+] Input from cache: $(basename "$cache_file")"
 		cp "$cache_file" "download/$name.$ext" || fail internal "cannot copy from cache"
@@ -104,6 +105,20 @@ fetch_input() {
 		;;
 	apkpure)
 		get_apkpure "$package" "$name" "$type" "$apkpure_url" || fail download_failed "${LAST_ERR:-download failed}"
+		;;
+	googleplay)
+		local gp base gpver
+		gp=$(jq -r --argjson d "$d" 'first(.googleplay[] | select(.download == $d) | .path) // empty' "$job")
+		[[ -n "$gp" && -e "$gp" ]] || fail internal "no Google Play download for $d"
+		base=$gp
+		[[ -d "$gp" ]] && base=$gp/$package.apk
+		gpver=$(apk_info "$base" | sed -n 's/^version_name=//p')
+		[[ -n "$gpver" ]] || fail download_failed "cannot read versionName of $base"
+		# Google Play serves only the latest version (apkeep cannot pin one)
+		[[ -z "$version" || "$version" == "$gpver" ]] ||
+			fail download_failed "Google Play serves only the latest version: expected $version, downloaded $gpver"
+		version=$gpver
+		get_googleplay "$gp" "$name" "$type" || fail download_failed "${LAST_ERR:-Google Play input failed}"
 		;;
 	url)
 		req "$url" "$name.apk" || fail download_failed "download failed: $url"

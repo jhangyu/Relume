@@ -189,6 +189,48 @@ class HandlerFailTest(BuildCase):
         self.assertIn("FLARESOLVERR_URL", keys)
         self.assertNotIn("GITHUB_TOKEN", log.env)
 
+    def googleplay_run(self):
+        self.enterContext(mock.patch.object(build, "APKEEP", str(FIX / "apkeep-fake.sh")))
+        real_input, calls, real = self.cat.job_input, [], StreamLog.run
+
+        def job_input(item_id):
+            j = json.loads(json.dumps(real_input(item_id)))   # the fixture's nested dicts are shared
+            for v in j["recipe"]["variants"]:
+                v["download"] = dict(v["download"], kind="googleplay", url=None)
+            return j
+
+        def spy(log, argv, cwd, env, timeout=None, on_line=None):
+            job_json = Path(argv[2]).read_text() if argv[0] == "bash" else None
+            calls.append((argv, env, job_json))
+            return real(log, argv, cwd, env, timeout, on_line)
+
+        self.enterContext(mock.patch.object(apps, "job_input", job_input))
+        with mock.patch.object(StreamLog, "run", spy):
+            job, log, err = self.run_handler("runner-noresult.sh")
+        return job, calls, err
+
+    def test_googleplay_token_stays_with_the_server(self):
+        settings.write_secret(settings.google_play_path(), json.dumps({"email": "a@b.c", "aas_token": "aas_et/SECRET9"}))
+        job, calls, err = self.googleplay_run()
+        (keep_argv, keep_env, _), (run_argv, run_env, job_json) = calls
+        self.assertEqual(keep_argv[keep_argv.index("-o") + 1], "device=mi_a1,split_apk=true")  # universal + arm64 share the spec
+        self.assertNotIn("SECRET9", " ".join(keep_argv))
+        self.assertNotIn("SECRET9", job_json)
+        self.assertNotIn("SECRET9", json.dumps(run_env))
+        gp = json.loads(job_json)["googleplay"]
+        self.assertEqual([Path(g["path"]).name for g in gp], [f"{YT}.apk"])
+        self.assertEqual(list(db.KEY.glob("apkeep-*")), [])   # the credentials ini is gone after the download
+
+    def test_googleplay_failures(self):
+        job, calls, err = self.googleplay_run()
+        self.assertEqual((self.bj(job)["fail_code"], self.bj(job)["fail_detail"]),
+                         ("download_failed", "Google Play credentials not set in Settings"))
+        settings.write_secret(settings.google_play_path(), json.dumps({"email": "a@b.c", "aas_token": "t"}))
+        with mock.patch.dict(os.environ, {"SHIM_APKEEP_FAIL": "1"}):
+            job, calls, err = self.googleplay_run()
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(self.bj(job)["fail_detail"].startswith(f"apkeep exited 1: expected {YT}.apk or {YT}/"))
+
     def test_markers(self):
         job = self.job()
         with db.tx() as c:
