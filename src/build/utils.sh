@@ -416,12 +416,8 @@ get_apkpure() {
 
 	export version
 
-	local base_apk
-	if [[ "$pkg_type" == "bundle" ]] || [[ "$pkg_type" == "bundle_extract" ]]; then
-		base_apk="$apk_name.xapk"
-	else
-		base_apk="$apk_name.apk"
-	fi
+	# APKPure serves XAPK or APK per version: download under a neutral name, detect the format from the file
+	local base_apk="$apk_name.xapk"
 
 	local dl_page_url
 	if [[ -n "$version" ]]; then
@@ -468,22 +464,30 @@ get_apkpure() {
 		red_log "[-] Failed to download $apk_name"
 		return 1
 	fi
-	if [[ "$pkg_type" == "bundle" ]]; then
-		if unzip -l "./download/$base_apk" 2>/dev/null | grep -q '\.apk$'; then
-			green_log "[+] Merge splits apk to standalone apk"
-			if ! java -jar "$APKEditor" m -i "./download/$apk_name.xapk" -o "./download/$apk_name.apk" > /dev/null 2>&1; then
-				red_log "[-] Failed to merge $apk_name.xapk to standalone apk"
-				return 1
-			fi
-		elif unzip -l "./download/$base_apk" 2>/dev/null | grep -q 'AndroidManifest.xml'; then
-			green_log "[+] File is already a standalone APK, renaming"
-			mv "./download/$base_apk" "./download/$apk_name.apk"
-		else
-			red_log "[-] Unknown file format for $base_apk"
+	local entries
+	entries=$(unzip -Z1 "./download/$base_apk" 2>/dev/null)
+	if grep -qxF 'AndroidManifest.xml' <<<"$entries"; then
+		if [[ "$pkg_type" == "bundle_extract" ]]; then
+			red_log "[-] $base_apk is a standalone APK but type=bundle_extract expects an XAPK bundle"
 			return 1
 		fi
-	elif [[ "$pkg_type" == "bundle_extract" ]]; then
-		unzip "./download/$base_apk" -d "./download/$(basename "$base_apk" .xapk)" > /dev/null 2>&1
+		green_log "[+] File is a standalone APK, renaming"
+		mv "./download/$base_apk" "./download/$apk_name.apk"
+	elif grep -q '\.apk$' <<<"$entries"; then
+		if [[ "$pkg_type" == "bundle_extract" ]]; then
+			mv "./download/$base_apk" "./download/$apk_name.apkm"
+			unzip "./download/$apk_name.apkm" -d "./download/$apk_name" > /dev/null 2>&1
+		else
+			green_log "[+] Merge splits apk to standalone apk"
+			if ! java -jar "$APKEditor" m -i "./download/$base_apk" -o "./download/$apk_name.apk" > /dev/null 2>&1; then
+				red_log "[-] Failed to merge $base_apk to standalone apk"
+				return 1
+			fi
+			rm -f "./download/$base_apk"
+		fi
+	else
+		red_log "[-] Unknown file format for $base_apk: expected root AndroidManifest.xml (APK) or *.apk entries (XAPK), found [$(head -5 <<<"$entries" | paste -sd, -)]"
+		return 1
 	fi
 }
 
