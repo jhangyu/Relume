@@ -62,6 +62,23 @@ import kotlinx.serialization.json.put
 private val VERSION_MODES = listOf("auto", "pinned", "latest")
 private val ABIS = listOf("universal", "arm64-v8a", "armeabi-v7a", "x86", "x86_64")
 private val MAX_SIGBYPASS = mapOf("lspatch" to 3, "npatch" to 4)
+/** Download sources in the picker (variant `download.kind`); `url` is offered only to a variant that already uses it. */
+private val SOURCES = listOf("apkmirror" to "APKMirror", "apkpure" to "APKPure", "googleplay" to "Google Play (apkeep)")
+private const val KIND_URL = "url"
+private const val KIND_APKMIRROR = "apkmirror"
+private const val KIND_APKPURE = "apkpure"
+private const val KIND_GOOGLEPLAY = "googleplay"
+
+internal fun kindOf(v: JsonObject): String = v["download"]?.let { it as? JsonObject }?.get("kind")?.jsonPrimitive?.content ?: KIND_APKMIRROR
+
+/** Every variant downloads from `kind`; other `download` fields stay as they are. */
+internal fun withKind(variants: List<JsonObject>, kind: String): List<JsonObject> = variants.map { v ->
+    val dl = (v["download"] as? JsonObject).orEmpty()
+    JsonObject(v + ("download" to JsonObject(dl + ("kind" to JsonPrimitive(kind)))))
+}
+
+private fun JsonObject?.orEmpty(): JsonObject = this ?: JsonObject(emptyMap())
+
 /** Lookup states the manual retry refuses (409): the URL is already known. */
 private val LOOKUP_DONE = setOf("found", "manual")
 
@@ -128,6 +145,8 @@ fun AppSettingsScreen(model: AppModel, appId: Int, onBack: () -> Unit, onOpenLog
         val dl = d.detail.app.download
         var listUrl by remember(d) { mutableStateOf(dl.apkmirrorListUrl.orEmpty()) }
         var pureUrl by remember(d) { mutableStateOf(dl.apkpureUrl.orEmpty()) }
+        val kindNow = kindOf(s.variants.first())
+        var kind by remember(d) { mutableStateOf(kindNow) }
         var badOptions by remember(d) { mutableStateOf(emptySet<String>()) }
 
         val bundleChanged = bundleId != app.bundle.bundleId
@@ -142,7 +161,9 @@ fun AppSettingsScreen(model: AppModel, appId: Int, onBack: () -> Unit, onOpenLog
                         put("allow_nearest", nearest)
                     })
                 }
-                if (abis != abisNow && !bundleChanged) put("variants", JsonArray(variantsFor(s.variants, abis, engine)))
+                if ((abis != abisNow || kind != kindNow) && !bundleChanged) {
+                    put("variants", JsonArray(withKind(variantsFor(s.variants, abis, engine), kind)))
+                }
                 if ((sigbypass != sigNow || injectdex != dexNow) && !bundleChanged) {
                     put("engine_options", buildJsonObject { put("sigbypass", sigbypass); put("injectdex", injectdex) })
                 }
@@ -255,7 +276,13 @@ fun AppSettingsScreen(model: AppModel, appId: Int, onBack: () -> Unit, onOpenLog
             Txt("Install and OTA push bring these along.", style = MaterialTheme.typography.bodySmall, color = muted())
             Hairline()
 
-            SectionHeader("Download URLs")
+            SectionHeader("Download source")
+            val sources = if (kindNow == KIND_URL) SOURCES + (KIND_URL to "URL") else SOURCES
+            ChipRow(sources.map { it.second }, sources.indexOfFirst { it.first == kind }.coerceAtLeast(0)) { kind = sources[it].first }
+            if (kind == KIND_GOOGLEPLAY) {
+                Txt("Google Play serves only the latest version. Set the Google account in the web Settings.", style = MaterialTheme.typography.bodySmall, color = muted())
+            }
+            if (kind == KIND_APKMIRROR) {
             Field("APKMirror listing", listUrl, { listUrl = it }, leadingIcon = R.drawable.ms_link, mono = true, trailing = {
                 IconAction(R.drawable.ms_search, "Locate APKMirror page again", { model.locate(appId) }, IconTone.Sync, enabled = dl.state !in LOOKUP_DONE)
             })
@@ -273,7 +300,10 @@ fun AppSettingsScreen(model: AppModel, appId: Int, onBack: () -> Unit, onOpenLog
                 }
             }
             dl.error?.let { Txt(it, style = MaterialTheme.typography.bodySmall, color = muted()) }
-            Field("APKPure (optional)", pureUrl, { pureUrl = it }, leadingIcon = R.drawable.ms_link, mono = true)
+            }
+            if (kind == KIND_APKMIRROR || kind == KIND_APKPURE) {
+                Field(if (kind == KIND_APKPURE) "APKPure" else "APKPure (optional)", pureUrl, { pureUrl = it }, leadingIcon = R.drawable.ms_link, mono = true)
+            }
 
             SectionHeader("Display name")
             Field("Name in lists", name, { name = it }, hint = "Empty = the catalog name")
