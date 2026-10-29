@@ -61,6 +61,12 @@ function renderSettings() {
   $('#gh-src').textContent = { ui: 'set (saved here)', file: 'set (secret file)' }[g.source] || 'not set';
   $('#gh-clear').hidden = g.source !== 'ui';
   $('#gh-60').hidden = g.state !== 'unauthenticated';
+  const gp = s.google_play;
+  $('#gp-state').className = `badge ${gp.set ? 'ok' : ''}`;
+  $('#gp-state').textContent = gp.set ? 'set' : 'not set';
+  $('#gp-email').textContent = gp.email || 'No account set';
+  $('#gp-mail').value = gp.email || '';
+  $('#gp-clear').hidden = !gp.set;
 }
 
 async function loadSettings(recheck) {
@@ -129,6 +135,17 @@ async function saveToken(v) {
 }
 $('#gh-save').addEventListener('click', () => { if ($('#gh-token').value.trim()) saveToken($('#gh-token').value.trim()).catch(() => {}); });
 $('#gh-clear').addEventListener('click', () => saveToken('').catch(() => {}));
+async function saveGooglePlay(v) {
+  Z.settings = await act('PUT', '/api/settings', { google_play: v }, v ? 'Google Play account saved' : 'Google Play account removed');
+  $('#gp-token').value = '';
+  renderSettings();
+}
+$('#gp-save').addEventListener('click', () => {
+  const email = $('#gp-mail').value.trim(), aas_token = $('#gp-token').value.trim();
+  if (!email || !aas_token) return toast('Email and AAS token are both required', 'error');
+  saveGooglePlay({ email, aas_token }).catch(() => {});
+});
+$('#gp-clear').addEventListener('click', () => saveGooglePlay(null).catch(() => {}));
 $('#gh-recheck').addEventListener('click', () => loadSettings(true).then(() => toast('Re-checked')).catch(() => {}));
 ['#pw-old', '#pw-new', '#pw-new2'].forEach(s => $(s).addEventListener('input', checkPw));
 $('#pw-save').addEventListener('click', async () => {
