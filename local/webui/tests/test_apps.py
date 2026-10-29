@@ -1,6 +1,7 @@
 """Enabled-app model, build input, rebuild fingerprint and update run (spec §3, apps part §4-§5, §8)."""
 import json
 import threading
+import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -63,6 +64,22 @@ class AppsCase(CatalogCase):
         except server.HttpError as e:
             return e.status, e.code
         return None
+
+
+class ApkpureFallbackTest(unittest.TestCase):
+    def row(self, mirror, pure):
+        return {"variants": json.dumps([{"name": "v", "download": {"kind": "apkmirror"}}]),
+                "apkmirror_list_url": mirror, "apkpure_url": pure}
+
+    def test_apkpure_only_app_downloads_from_apkpure(self):
+        r = self.row(None, "https://apkpure.com/x")
+        self.assertIsNone(apps._missing_url(r))
+        self.assertEqual(apps._variants(r)[0]["download"]["kind"], "apkpure")
+
+    def test_apkmirror_listing_wins(self):
+        r = self.row("https://apkmirror.com/x", "https://apkpure.com/x")
+        self.assertEqual(apps._variants(r)[0]["download"]["kind"], "apkmirror")
+        self.assertEqual(apps._missing_url(self.row(None, None)), "apkmirror")
 
 
 class VersionTest(AppsCase):

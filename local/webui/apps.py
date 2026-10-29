@@ -40,9 +40,19 @@ def _label(r):
     return r['display_name'] or r['store_name'] or r['package']
 
 
+def _variants(r):
+    """Recipe variants; an apkmirror download with no APKMirror listing but an APKPure URL downloads from APKPure."""
+    variants = json.loads(r['variants'])
+    if not r['apkmirror_list_url'] and r['apkpure_url']:
+        for v in variants:
+            if v['download']['kind'] == 'apkmirror':
+                v['download']['kind'] = 'apkpure'
+    return variants
+
+
 def _missing_url(r):
     """Download kind of the first variant whose kind needs an app URL that is not set, else None."""
-    for v in json.loads(r['variants']):
+    for v in _variants(r):
         col = URL_COLUMN.get(v['download']['kind'])
         if col is not None and not r[col]:
             return v['download']['kind']
@@ -572,7 +582,7 @@ def job_input(item_id):
                       'example_url2': r['apkmirror_example_url2'],
                       'versions_due': _versions_due(r['apkmirror_checked_at'])},
         'apkpure_url': r['apkpure_url'], 'keystore': KEYSTORE[r['engine']],
-        'recipe': {'variants': json.loads(r['variants'])},
+        'recipe': {'variants': _variants(r)},
     }
 
 
