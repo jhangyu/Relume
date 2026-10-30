@@ -24,7 +24,7 @@ info) cat "$SHIM_FIXTURES/apkeditor-info.txt" ;;
 m)
 	in="" out="" prev=""
 	for a in "$@"; do case $prev in -i) in=$a ;; -o) out=$a ;; esac; prev=$a; done
-	out=$(realpath -m "$out")
+	case $out in /*) ;; *) out=$PWD/$out ;; esac
 	if [ -d "$in" ]; then (cd "$in" && zip -qr "$out" .); else cp "$in" "$out"; fi
 	;;
 *.apk)

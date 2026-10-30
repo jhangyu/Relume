@@ -514,7 +514,7 @@ place_download() {
 # apk_abis <apk | extracted bundle dir>: unique ABIs under lib/<abi>/ (a bundle dir: across all its split APKs)
 apk_abis() {
 	local f files=()
-	if [[ -d "$1" ]]; then mapfile -t files < <(find "$1" -name '*.apk'); else files=("$1"); fi
+	if [[ -d "$1" ]]; then while IFS= read -r f; do files+=("$f"); done < <(find "$1" -name '*.apk'); else files=("$1"); fi
 	[[ ${#files[@]} -gt 0 ]] || { echo "no APK in $1" >&2; return 1; }
 	for f in "${files[@]}"; do unzip -Z1 "$f" || return 1; done | sed -n 's#^lib/\([^/]*\)/.*#\1#p' | sort -u
 }

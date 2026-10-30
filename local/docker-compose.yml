@@ -21,37 +21,8 @@ services:
     # build-only: the upstream browser image as-is (pinned commit; its Dockerfile is multi-arch: ubuntu:rolling + CloakBrowser linux-arm64),
     # the base of the browser target in local/Dockerfile. Never started.
     deploy: {replicas: 0}
-    # dockerfile_inline = the upstream Dockerfile at the pinned commit, plus build-time mirrors only: apt (NCHC ubuntu-ports, sources
-    # restored in the same RUN) and pip (Aliyun via ARG, so no mirror ENV/pip.conf reaches the published image). Update it when the pin moves.
     build:
       context: https://github.com/sarperavci/CloudflareBypassForScraping.git#0f628b9ccbea9ab69ca61bc1c896c2ef766a0f06
-      dockerfile_inline: |
-        FROM ubuntu:rolling
-        ENV DEBIAN_FRONTEND=noninteractive
-        ENV CLOAKBROWSER_AUTO_UPDATE=false
-        ENV PYTHONUNBUFFERED=1
-        ARG PIP_INDEX=https://mirrors.aliyun.com/pypi/simple/
-        ARG APT_MIRROR=http://free.nchc.org.tw/ubuntu-ports/
-        USER root
-        RUN sed -i "s#http://ports.ubuntu.com/ubuntu-ports/#$$APT_MIRROR#" /etc/apt/sources.list.d/ubuntu.sources \
-            && apt-get update && apt-get install -y \
-            python3-pip python3-venv wget curl ca-certificates xvfb fonts-liberation fonts-noto-color-emoji \
-            libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
-            libxdamage1 libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2t64 libatspi2.0-0 \
-            libx11-6 libxcb1 libxext6 libgtk-3-0 \
-            && sed -i "s#$$APT_MIRROR#http://ports.ubuntu.com/ubuntu-ports/#" /etc/apt/sources.list.d/ubuntu.sources \
-            && rm -rf /var/lib/apt/lists/*
-        WORKDIR /app
-        COPY . .
-        RUN chmod +x /app/docker-entrypoint.sh
-        RUN chown -R ubuntu:ubuntu /app
-        USER ubuntu
-        RUN python3 -m venv /app/venv
-        ENV PATH="/app/venv/bin:$PATH"
-        RUN pip install --index-url "$$PIP_INDEX" --upgrade pip
-        RUN pip install --index-url "$$PIP_INDEX" --no-cache-dir -r server_requirements.txt
-        RUN python3 -c "import cloakbrowser; print(cloakbrowser.ensure_binary())"
-        CMD ["/app/docker-entrypoint.sh"]
     image: relume-upstream-browser:0f628b9
   cfbypass:
     build:

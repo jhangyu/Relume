@@ -11,7 +11,8 @@ fail() {
 	exit 1
 }
 
-job=$(realpath -e "${1:-/nonexistent}" 2>/dev/null) || fail internal "job.json missing: ${1:-}"
+[ -e "${1:-}" ] || fail internal "job.json missing: ${1:-}"
+job=$(realpath "$1")
 # shellcheck source=src/build/utils.sh
 source "$RELUME_REPO/src/build/utils.sh"
 
@@ -37,9 +38,9 @@ upstream_tag=$(j .upstream_tag)
 cli_tag=$(j .cli_tag)
 [[ -n "$work" && -d "$work" && -n "$package" && -n "$engine" && -n "$cli_jar" && -n "$keystore" ]] ||
 	fail internal "job.json lacks work_dir, package, engine, cli_jar or keystore"
-mapfile -t patches_files < <(jq -r '.patches_files[]' "$job")
-mapfile -t variants < <(jq -c '.recipe.variants[]' "$job")
-mapfile -t specs < <(jq -cS '[.recipe.variants[].download] | unique | .[]' "$job")
+patches_files=(); while IFS= read -r x; do patches_files+=("$x"); done < <(jq -r '.patches_files[]' "$job")
+variants=(); while IFS= read -r x; do variants+=("$x"); done < <(jq -c '.recipe.variants[]' "$job")
+specs=(); while IFS= read -r x; do specs+=("$x"); done < <(jq -cS '[.recipe.variants[].download] | unique | .[]' "$job")
 n_var=${#variants[@]}
 [[ $n_var -ge 1 ]] || fail internal "recipe has no variants"
 
@@ -78,7 +79,7 @@ fetch_input() {
 	url=$(jq -r '.url // empty' <<<"$d")
 	[[ $type == bundle_extract ]] && ext=apkm
 	local -a want
-	mapfile -t want < <(jq -r --argjson d "$d" '[.recipe.variants[] | select(.download == $d and .abi != "universal") | .abi] | unique[]' "$job")
+	want=(); while IFS= read -r x; do want+=("$x"); done < <(jq -r --argjson d "$d" '[.recipe.variants[] | select(.download == $d and .abi != "universal") | .abi] | unique[]' "$job")
 	local label="$package $version (download $kind type=$type arch=${arch:-any})" got
 	local spec_key cache_dir="${RELUME_APK_CACHE:-}/$package" use_cache=0
 	spec_key=$(printf -- '-%s-%s-%s' "$type" "${arch:-any}" "${dpi:-any}" | tr -c 'A-Za-z0-9._-' '_')
@@ -194,7 +195,7 @@ for v in "${variants[@]}"; do
 	[[ -z "$first_vname" ]] && first_vname=$vname
 	signer=$(apk_signer "$f") || signer=""
 	sha=$(sha256sum "$f" | cut -d' ' -f1)
-	size=$(stat -c %s "$f")
+	size=$(wc -c < "$f" | tr -d ' ')
 	jq -nc --arg name "$name" --arg abi "$abi" --arg file "$f" --argjson size "$size" --arg sha "$sha" \
 		--arg pkg "$vpkg" --arg vname "$vname" --arg vcode "$vcode" --arg signer "$signer" \
 		'{name:$name, abi:$abi, file:$file, size:$size, sha256:$sha, package:$pkg, version_name:$vname,
