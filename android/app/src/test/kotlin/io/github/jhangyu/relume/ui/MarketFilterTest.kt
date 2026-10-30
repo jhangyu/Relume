@@ -1,6 +1,5 @@
 package io.github.jhangyu.relume.ui
 
-import io.github.jhangyu.relume.api.FeedStatus
 import io.github.jhangyu.relume.api.MarketApp
 import io.github.jhangyu.relume.api.MarketList
 import io.github.jhangyu.relume.api.RelumeApi
@@ -14,7 +13,7 @@ class MarketFilterTest {
         MarketApp(pkg, pkg, null, null, 1, null, listOf("official"), updated, null, false)
 
     private fun page(n: Int, perPage: Int, total: Int, vararg pkgs: String) =
-        MarketList(total, n, perPage, emptyList(), pkgs.map { app(it) }, FeedStatus(emptyList(), emptyList()))
+        MarketList(total, n, perPage, emptyList(), pkgs.map { app(it) })
 
     @Test
     fun pagingRequestsPage2AfterPage1AndStopsAtTotal() = runBlocking {
@@ -45,7 +44,7 @@ class MarketFilterTest {
         val featured = featuredApps { origin, sort, perPage ->
             val key = Triple(origin, sort, perPage)
             requests += key
-            MarketList(99, 1, perPage, emptyList(), answers.getValue(key), FeedStatus(emptyList(), emptyList()))
+            MarketList(99, 1, perPage, emptyList(), answers.getValue(key))
         }
         assertEquals(answers.keys.toList(), requests)
         // top 3 by bundles | built-in | recent; each app once, never-updated apps are not "recent"

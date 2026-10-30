@@ -7,7 +7,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** JSON samples copied from API part 2.1/2.2/2.3 with the spec 6 amendments (stars, updated_at, feed). */
+/** JSON samples copied from API part 2.1/2.2/2.3 with the spec 6 amendments (stars, updated_at). */
 class MarketParseTest {
     @Test
     fun marketplaceListParses() {
@@ -16,13 +16,7 @@ class MarketParseTest {
              "categories": [{"name": "Social", "count": 88}],
              "apps": [{"package": "com.reddit.frontpage", "name": "Reddit", "category": "Social",
                        "icon_url": "/api/apps/com.reddit.frontpage/icon", "bundle_count": 4, "stars": 1200,
-                       "origins": ["builtin", "official"], "updated_at": "2026-10-20T10:00:00Z", "app_id": 12, "enabled": true}],
-             "feed": {"feeds": [{"feed": "bundles.json", "origin": "official", "last_ok_at": "2026-10-26T08:00:00Z",
-                                 "last_attempt_at": "2026-10-26T08:00:00Z", "last_error": null, "bundle_count": 297,
-                                 "app_count": 1207, "duplicates": [],
-                                 "skipped": [{"where": "bundles[12]", "repo": "o/r", "error": "bad"}]}],
-                      "sources": [{"bundle_id": 1, "origin": "builtin", "repo": "MorpheApp/morphe-patches",
-                                   "list_tag": "v1.48.0", "last_error": null}]}}
+                       "origins": ["builtin", "official"], "updated_at": "2026-10-20T10:00:00Z", "app_id": 12, "enabled": true}]}
         """
         val list = ApiJson.decodeFromString(MarketList.serializer(), text)
         val app = list.apps.single()
@@ -34,9 +28,22 @@ class MarketParseTest {
         assertEquals(listOf("builtin", "official"), app.origins)
         assertEquals(12, app.appId)
         assertTrue(app.enabled)
-        assertEquals(297, list.feed.feeds.single().bundleCount)
-        assertEquals("bundles[12]", list.feed.feeds.single().skipped.single().where)
-        assertNull(list.feed.sources.single().lastError)
+    }
+
+    @Test
+    fun catalogStatusParses() {
+        val text = """
+            {"feeds": [{"feed": "bundles.json", "origin": "official", "last_ok_at": "2026-10-26T08:00:00Z",
+                        "last_attempt_at": "2026-10-26T08:00:00Z", "last_error": null, "bundle_count": 297,
+                        "app_count": 1207, "duplicates": [],
+                        "skipped": [{"where": "bundles[12]", "repo": "o/r", "error": "bad"}]}],
+             "sources": [{"bundle_id": 1, "origin": "builtin", "repo": "MorpheApp/morphe-patches",
+                          "list_tag": "v1.48.0", "last_error": null}]}
+        """
+        val feed = ApiJson.decodeFromString(FeedStatus.serializer(), text)
+        assertEquals(297, feed.feeds.single().bundleCount)
+        assertEquals("bundles[12]", feed.feeds.single().skipped.single().where)
+        assertNull(feed.sources.single().lastError)
     }
 
     @Test

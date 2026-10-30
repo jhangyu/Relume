@@ -12,6 +12,7 @@ import io.github.jhangyu.relume.api.AppDetail
 import io.github.jhangyu.relume.api.AppObject
 import io.github.jhangyu.relume.api.BundleOption
 import io.github.jhangyu.relume.api.CleanupReport
+import io.github.jhangyu.relume.api.FeedStatus
 import io.github.jhangyu.relume.api.DeviceView
 import io.github.jhangyu.relume.api.FollowedApp
 import io.github.jhangyu.relume.api.Health
@@ -410,6 +411,14 @@ class AppModel(application: Application) : AndroidViewModel(application) {
             call { it.runSchedule() }
             refresh()
         }
+    }
+
+    /** Settings "Catalog": the last refresh's errors and skipped entries, null until loaded. */
+    var catalogStatus by mutableStateOf<FeedStatus?>(null)
+        private set
+
+    fun loadCatalogStatus() {
+        viewModelScope.launch { call { it.catalogStatus() }?.let { catalogStatus = it } }
     }
 
     /** Settings "Clean up": [cleanupPreview] is the pending confirmation, [cleanupFreed] the result of the last run. */

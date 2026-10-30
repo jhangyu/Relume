@@ -41,7 +41,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import io.github.jhangyu.relume.R
-import io.github.jhangyu.relume.api.FeedStatus
 import io.github.jhangyu.relume.api.MarketApp
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -62,10 +61,6 @@ private val FEATURED_TILE_SMALL = 40.dp
 /** Server sort keys in menu order, with their labels (spec 7.3). */
 private val SORTS = listOf("bundles" to "Most bundles", "stars" to "Most stars", "updated" to "Recently updated", "name" to "Name A–Z")
 private val ORIGINS = listOf(null to "All origins", "official" to "Official catalog", "builtin" to "Built-in", "custom" to "Custom")
-
-/** Every feed or source that failed, with the server's error text as is. */
-private fun FeedStatus.errors(): List<String> =
-    feeds.mapNotNull { f -> f.lastError?.let { "${f.feed}: $it" } } + sources.mapNotNull { s -> s.lastError?.let { "${s.repo}: $it" } }
 
 /** Marketplace tab: search bar, category chips, featured carousel, "All apps" with sort, two-line app list. Pull down refreshes the catalog. */
 @Composable
@@ -107,7 +102,7 @@ fun MarketplaceScreen(model: MarketModel, onOpen: (String) -> Unit, onAddSource:
         PullToRefreshBox(isRefreshing = model.refreshing, onRefresh = model::refreshCatalog, modifier = Modifier.weight(1f)) {
             LazyColumn(Modifier.fillMaxSize(), state = listState) {
                 if (unfiltered && model.listLoad.emptyCatalog) {
-                    item(key = "empty") { EmptyCatalog(checkNotNull(list).feed, model.refreshing, model::refreshCatalog) }
+                    item(key = "empty") { EmptyCatalog(model.refreshing, model::refreshCatalog) }
                 }
                 val featured = model.featured
                 if (unfiltered && featured == null) {
@@ -182,11 +177,10 @@ private fun AppRow(app: MarketApp, model: MarketModel, onOpen: (String) -> Unit)
 
 /** Shown before the first catalog refresh: never a silent blank. */
 @Composable
-private fun EmptyCatalog(feed: FeedStatus, refreshing: Boolean, onRefresh: () -> Unit) {
+private fun EmptyCatalog(refreshing: Boolean, onRefresh: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(ScreenPadding), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Txt("The Marketplace is empty", style = MaterialTheme.typography.titleLarge)
         Txt("No catalog has been loaded yet. Refresh the catalog to list apps and patch bundles.", color = muted())
-        feed.errors().forEach { Banner("Feed failed", Tone.Danger, detail = it) }
         ActionButton(if (refreshing) "Refreshing…" else "Refresh catalog", onRefresh, Modifier.fillMaxWidth(), enabled = !refreshing, icon = R.drawable.ms_sync)
     }
 }

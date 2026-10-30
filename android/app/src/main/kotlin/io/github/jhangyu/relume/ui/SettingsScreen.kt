@@ -16,6 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TimeInput
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -61,6 +62,7 @@ fun SettingsScreen(model: AppModel, notificationsOn: Boolean, askNotifications: 
     var editUrl by remember { mutableStateOf(false) }
     val lastCheck by CheckScheduler.lastCheck.collectAsState(initial = null)
     val device = model.device
+    LaunchedEffect(Unit) { model.loadCatalogStatus() }
 
     Column(Modifier.fillMaxSize()) {
         AppBar("Settings", onBack = onBack)
@@ -118,6 +120,18 @@ fun SettingsScreen(model: AppModel, notificationsOn: Boolean, askNotifications: 
                     supporting = if (last == null) "never" else (if (last.ok) "ok" else "failed${last.code?.let { " $it" }.orEmpty()}") +
                         " · ${formatTime(Instant.ofEpochMilli(last.atEpochMillis).toString())} · ${last.message}",
                 )
+            }
+
+            SectionHeader("Catalog")
+            InsetGroup {
+                val feed = model.catalogStatus
+                val errors = feed?.feeds.orEmpty().mapNotNull { f -> f.lastError?.let { "${f.feed}: $it" } } +
+                    feed?.sources.orEmpty().mapNotNull { s -> s.lastError?.let { "${s.repo}: $it" } }
+                val skipped = feed?.feeds.orEmpty().flatMap { f -> f.skipped.map { "${f.feed} skipped ${it.where}${it.repo?.let { r -> " ($r)" }.orEmpty()}: ${it.error}" } }
+                if (feed == null) ListRow("Catalog status", supporting = "–")
+                else if (errors.isEmpty() && skipped.isEmpty()) ListRow("Catalog status", supporting = "No errors or skipped entries")
+                errors.forEach { Banner("Catalog refresh failed", Tone.Danger, Modifier.padding(8.dp), detail = it) }
+                skipped.forEach { Banner("Entry skipped as invalid", Tone.Warn, Modifier.padding(8.dp), detail = it) }
             }
 
             SectionHeader("Storage")

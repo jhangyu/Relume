@@ -242,7 +242,6 @@ data class MarketList(
     @SerialName("per_page") val perPage: Int,
     val categories: List<MarketCategory>,
     val apps: List<MarketApp>,
-    val feed: FeedStatus,
 )
 
 @Serializable

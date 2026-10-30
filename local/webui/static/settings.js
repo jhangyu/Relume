@@ -1,4 +1,4 @@
-import { $, $$, act, api, confirmDialog, fmt, html, shell, toast } from '/static/app.js';
+import { $, $$, act, api, confirmDialog, fmt, html, icon, shell, toast } from '/static/app.js';
 
 const FIELDS = {
   telegram: { bot_token: '#tg-token', chat_id: '#tg-chat' },
@@ -161,6 +161,15 @@ $('#pw-save').addEventListener('click', async () => {
   }
 });
 
+async function loadCatalog() {
+  const feed = await api('GET', '/api/catalog/status');
+  const errs = [...feed.feeds.filter(f => f.last_error).map(f => `Catalog feed ${f.feed}: ${f.last_error}`),
+    ...feed.sources.filter(s => s.last_error).map(s => `Source ${s.repo}: ${s.last_error}`)];
+  const skipped = feed.feeds.flatMap(f => f.skipped.map(s => `${f.feed} skipped ${s.where}${s.repo ? ` (${s.repo})` : ''}: ${s.error}`));
+  const n = skipped.length;
+  $('#catalog-notice').innerHTML = html`${errs.length ? html`<div class="msgbar err">${icon('error')}<div class="grow"><div class="strong">The last catalog refresh failed</div>${errs.map(e => html`<div>${e}</div>`)}</div></div>` : ''}${n ? html`<div class="msgbar warn">${icon('warning')}<div class="grow"><details><summary>${n} catalog ${n === 1 ? 'entry' : 'entries'} skipped as invalid</summary>${skipped.map(e => html`<div class="mono">${e}</div>`)}</details></div></div>` : ''}${errs.length || n ? '' : html`<p class="sm muted">No catalog errors or skipped entries.</p>`}`;
+}
+
 async function loadAppDevices() {
   const { devices } = await api('GET', '/api/devices');
   const apps = Z.appDevs = devices.filter(d => d.kind === 'app');
@@ -181,6 +190,6 @@ $('#app-devs').addEventListener('click', async e => {
 (async () => {
   shell();
   Z.items = (await api('GET', '/api/apps')).apps;
-  await Promise.all([loadNotify(), loadSettings(false), loadAppDevices()]);
+  await Promise.all([loadNotify(), loadSettings(false), loadAppDevices(), loadCatalog()]);
   checkPw();
 })().catch(e => toast(e.message, 'error'));

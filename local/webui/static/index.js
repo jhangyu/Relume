@@ -28,15 +28,7 @@ const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const starBadge = n => (n ? html`<span class="row" style="gap:3px">${icon('star')}${stars(n)}</span>` : '');
 const authorColor = s => AUTHOR_COLORS[[...s].reduce((h, c) => h + c.charCodeAt(0), 0) % AUTHOR_COLORS.length];
 
-// ---------- header, notices, stats ----------
-function renderNotice() {
-  const feed = S.feed;
-  const errs = [...feed.feeds.filter(f => f.last_error).map(f => `Catalog feed ${f.feed}: ${f.last_error}`),
-    ...feed.sources.filter(s => s.last_error).map(s => `Source ${s.repo}: ${s.last_error}`)];
-  const skipped = feed.feeds.flatMap(f => f.skipped.map(s => `${f.feed} skipped ${s.where}${s.repo ? ` (${s.repo})` : ''}: ${s.error}`));
-  $('#notice').innerHTML = html`${errs.length ? html`<div class="msgbar err">${icon('error')}<div class="grow"><div class="strong">The last catalog refresh failed</div>${errs.map(e => html`<div>${e}</div>`)}</div></div>` : ''}${skipped.length ? html`<div class="msgbar warn">${icon('warning')}<div class="grow"><details><summary>${plural(skipped.length, 'catalog entry', 'catalog entries')} skipped as invalid</summary>${skipped.map(e => html`<div class="mono">${e}</div>`)}</details></div></div>` : ''}`;
-}
-
+// ---------- header, stats ----------
 function renderStats() {
   const feed = S.feed, official = feed.feeds.filter(f => f.origin === 'official');
   const okAt = official.map(f => f.last_ok_at).filter(Boolean).sort().pop();
@@ -121,7 +113,6 @@ async function loadList(reset) {
   S.feed = d.feed;
   if (!S.origin && !S.q && !S.category) S.universe = d.total;
   else if (S.universe === null) S.universe = (await api('GET', '/api/marketplace?per_page=1')).total;
-  renderNotice();
   renderStats();
   renderCats();
   renderGallery();
@@ -377,7 +368,7 @@ async function refreshCatalog() {
   try {
     await act('POST', '/api/catalog/refresh', {}, 'Catalog refreshed');
   } catch (err) {
-    console.error('catalog refresh:', err);   // act() showed the failure, the feed error text follows from the reload
+    console.error('catalog refresh:', err);   // act() showed the failure; Settings lists the feed errors
   }
   await loadAll();
   $('#refresh').disabled = false;

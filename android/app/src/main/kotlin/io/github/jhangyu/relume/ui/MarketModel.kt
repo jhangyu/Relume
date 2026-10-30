@@ -107,7 +107,7 @@ class MarketModel(private val host: AppModel) {
 
     fun dismissError() = host.dismissError()
 
-    /** Pull every feed now. A failed feed stays visible in [list]`.feed`; a request failure lands in [error]. */
+    /** Pull every feed now. A failed feed is listed under Settings "Catalog"; a request failure lands in [error]. */
     fun refreshCatalog() {
         host.viewModelScope.launch {
             refreshing = true
