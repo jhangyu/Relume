@@ -184,6 +184,15 @@ class SourceTest(FeedCase):
                          [("Change package name", False), ("Hide ads", True), ("Spoof client", False)])
         self.assertEqual(builtin["versions"], ["20.14.1", "20.12.46"])
 
+    def test_refresh_clears_stale_list_error_on_unchanged_tag(self):
+        self.serve()
+        catalog.refresh(self.log)
+        with db.tx() as c:
+            c.execute("UPDATE bundle SET list_error = 'rate limited until 2026-10-28T14:53:05Z' WHERE repo = ?",
+                      ("MorpheApp/morphe-patches",))
+        catalog.refresh(self.log)
+        self.assertTrue(self.bundles()["MorpheApp/morphe-patches"]["list_error"].startswith("skipped: patches[3].name"))
+
     def test_add_custom_module_rules(self):
         f = self.http({})
         url, rx = "https://github.com/revenge-mod/revenge-xposed", r"^app-release\.apk$"

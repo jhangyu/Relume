@@ -447,7 +447,8 @@ def _refresh_list(b, log):
         if row["check_error"]:
             raise ValueError(f"release check: {row['check_error']}")
         tag = row["latest_tag"]
-        if tag == b["list_tag"]:
+        # a failure recorded on an unchanged tag (e.g. rate limit) re-reads the list so _store_list clears it
+        if tag == b["list_tag"] and (not b["list_error"] or b["list_error"].startswith("skipped: ")):
             return
         parsed = parse_patches_list(_get_list(b["repo"], tag))
     except (OSError, ValueError, upstream.TokenRejected, upstream.RateLimited) as e:
