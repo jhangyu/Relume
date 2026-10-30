@@ -1,0 +1,45 @@
+/* Shared confirmation-lightbox styles for every native-dialogs mockup.
+   NEW CSS — to be added to local/webui/static/app.css:
+   - the three tokens go into the :root token block, next to --colorStatusDanger*1 (app.css:30);
+   - the .btn.destructive rules go right after .btn.primary:active (app.css:112) (their selectors make the order irrelevant);
+   - the .dlg-msg rules and the phone rule go right after .dlg-actions (app.css:230).
+   Everything else (dialog box, 24px padding, backdrop, .dlg-actions row, .btn, .subtitle1, .subtle-text) is app.css as is.
+
+   Markup contract (other designers use these names, do not redefine them):
+   <dialog id="dlg-x" aria-labelledby="x-t" aria-describedby="x-msg"><form method="dialog">
+     <h2 class="subtitle1" id="x-t">Delete source?</h2>
+     <p class="subtle-text dlg-msg" id="x-msg"><strong>user name, set with textContent</strong> is deleted. …</p>
+     <div class="dlg-actions"><button class="btn" value="cancel" autofocus>Cancel</button><button class="btn destructive" value="ok">Delete</button></div>
+   </form></dialog>
+   - No leading icon in confirm dialogs (Fluent 2 Dialog default, same as every existing dialog).
+   - Title = short question naming the object type ("Delete source?"); body = statement; the user-provided name goes in the
+     body inside <strong>, never in the title.
+   - Width: the app.css dialog width (min(600px, 100vw - 32px)); no page-local confirm widths.
+   - Destructive action: .btn.destructive. Non-destructive action: .btn.primary. Label = verb, never "OK". Cancel first.
+   - Keyboard: Escape closes the dialog with returnValue '' (ask() treats it as cancel); Cancel button returns 'cancel'.
+     Destructive dialogs put `autofocus` on Cancel so Enter/Space never fires the action by accident. */
+
+:root {
+  /* Fluent 2 cranberry ramp (primary / shade10 / shade20) = colorStatusDangerBackground3 / Hover / Pressed (white text 5.9:1 / 6.7:1 / 8.6:1) */
+  --colorStatusDangerBackground3: #c50f1f;
+  --colorStatusDangerBackground3Hover: #b10e1c;
+  --colorStatusDangerBackground3Pressed: #960b18;
+}
+
+/* Destructive button: solid red, white text. The class is .btn.destructive because .btn.danger already exists
+   (red-text buttons via the .danger utility, devices.js/projects.js/settings.js). Every rule carries :not([disabled]),
+   so it beats .btn:hover and .btn.subtle wherever it is pasted, and .btn[disabled] (app.css:117) still styles a disabled one.
+   Focus ring is the global :focus-visible (app.css:69), same as .btn.primary. */
+.btn.destructive:not([disabled]) { background: var(--colorStatusDangerBackground3); border-color: transparent; color: #fff; }
+.btn.destructive:not([disabled]):hover { background: var(--colorStatusDangerBackground3Hover); }
+.btn.destructive:not([disabled]):active { background: var(--colorStatusDangerBackground3Pressed); }
+
+/* Confirm dialog message: long user names wrap instead of widening the dialog. */
+.dlg-msg { margin-top: var(--spacingS); overflow-wrap: anywhere; }
+.dlg-msg strong { color: var(--colorNeutralForeground1); font-weight: 600; }
+
+/* Phone: dialog buttons share one row at equal width (Fluent mobile dialog pattern), Cancel left, action right.
+   Scoped to dialog because .dlg-actions is also the card footer class on Devices and Settings. */
+@media (max-width: 480px) {
+  dialog .dlg-actions > .btn { flex: 1 1 0; }
+}

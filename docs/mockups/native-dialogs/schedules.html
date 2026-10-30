@@ -1,0 +1,42 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Schedules dialog · mockup</title>
+<link rel="stylesheet" href="../../../local/webui/static/app.css">
+<link rel="stylesheet" href="shared.css">
+<style>
+/* Mockup scaffolding only (frames, faded page). Not for implementation. */
+body{padding:24px;background:#d8d8d8}
+h1{font:600 20px/28px var(--fontFamilyDisplay);margin:0 0 4px}
+.lead{margin:0 0 20px}
+.sets{display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start}
+.cap{font:600 12px/16px var(--fontFamilyBase);margin:0 0 8px;color:var(--colorNeutralForeground2)}
+.frame{position:relative;overflow:hidden;display:grid;place-items:center;background:var(--colorNeutralBackground2);height:360px;box-shadow:var(--shadow8)}
+.frame.desk{width:880px} .frame.mob{width:390px}
+.fade{position:absolute;inset:0;opacity:.55;display:flex;flex-direction:column}
+.fade .hd{height:60px;border-bottom:1px solid var(--colorNeutralStroke3);display:flex;align-items:center;padding:0 24px;font:600 20px/28px var(--fontFamilyDisplay)}
+.fade .bd{padding:24px;display:grid;gap:12px}
+.fade .cd{background:var(--colorNeutralBackground1);border-radius:var(--borderRadiusXLarge);box-shadow:var(--shadow2);padding:16px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.scrim{position:absolute;inset:0;z-index:1;background:rgba(0,0,0,.4)}
+.frame dialog{position:relative;z-index:2;background:var(--colorNeutralBackground1);color:var(--colorNeutralForeground1);margin:0;inset:auto}
+.mob dialog{width:min(600px,calc(100% - 34px))}
+.mob .dlg-actions>.btn{flex:1 1 0} /* emulates shared.css 480px rule: frame is not a real viewport */
+/* NEW CSS — to be added to local/webui/static/schedules.html: none (shared.css only) */
+</style></head><body>
+<h1>Schedules: delete confirm</h1><p class="lead subtle-text">schedules.js:167 (replaces confirm(`Delete schedule "${name}"?`)). Mobile frame uses an 80-character name to prove wrapping.</p>
+<!-- Keyboard: Escape closes the dialog (returnValue '' = cancel in ask()); Cancel returns 'cancel'. Cancel has autofocus (destructive), so Enter/Space never fires the action. Open with ask(dlg) from app.js. -->
+<!-- Wire-up: inside the existing delegated click handler at schedules.js:160 use `if (await ask(byId("dlg-del-sch")) !== "ok") return;` after setting the <strong> via textContent. Original confirm sits inside try/catch, so the dialog fits there. -->
+<div class="sets"><div><p class="cap">Desktop (880 px)</p><div class="frame desk"><div class="fade"><div class="hd">Schedules</div><div class="bd">
+<div class="cd"><div><div class="subtitle2">OTA push schedules</div><div class="caption">Push built apps to paired phones</div></div><button class="btn primary" tabindex="-1">New OTA schedule</button></div>
+<div class="cd"><div><div class="subtitle2">Nightly push</div><div class="caption">Every day 03:00 · 2 phones</div></div><button class="icon-btn" tabindex="-1"></button></div>
+</div></div><div class="scrim"></div><dialog open id="dlg-del-sch" aria-labelledby="dlg-del-sch-t" aria-describedby="dlg-del-sch-msg"><form method="dialog">
+<h2 class="subtitle1" id="dlg-del-sch-t">Delete schedule?</h2>
+<p class="subtle-text dlg-msg" id="dlg-del-sch-msg"><!-- name is user-entered (max 80 chars): HTML-escape in implementation (html`` tag / textContent). --><strong>Nightly push</strong> is deleted and stops running.</p>
+<div class="dlg-actions"><button class="btn" value="cancel" autofocus>Cancel</button><button class="btn destructive" value="ok">Delete</button></div>
+</form></dialog></div></div><div><p class="cap">Mobile (390 px)</p><div class="frame mob"><div class="fade"><div class="hd">Schedules</div><div class="bd">
+<div class="cd"><div><div class="subtitle2">OTA push schedules</div><div class="caption">Push built apps to paired phones</div></div><button class="btn primary" tabindex="-1">New OTA schedule</button></div>
+<div class="cd"><div><div class="subtitle2">Nightly push</div><div class="caption">Every day 03:00 · 2 phones</div></div><button class="icon-btn" tabindex="-1"></button></div>
+</div></div><div class="scrim"></div><dialog open id="dlg-del-sch-m" aria-labelledby="dlg-del-sch-m-t" aria-describedby="dlg-del-sch-m-msg"><form method="dialog">
+<h2 class="subtitle1" id="dlg-del-sch-m-t">Delete schedule?</h2>
+<p class="subtle-text dlg-msg" id="dlg-del-sch-m-msg"><strong>Weekend rollout of every patched social and video app to the whole family fleet</strong> is deleted and stops running.</p>
+<div class="dlg-actions"><button class="btn" value="cancel" autofocus>Cancel</button><button class="btn destructive" value="ok">Delete</button></div>
+</form></dialog></div></div></div>
+</body></html>

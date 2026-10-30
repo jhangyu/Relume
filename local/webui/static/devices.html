@@ -11,6 +11,9 @@
 #ota th:first-child,#ota td:first-child{padding-left:24px}#ota th:last-child,#ota td:last-child{padding-right:24px}
 .newer{color:var(--colorStatusWarningForeground1)}
 #disc{list-style:none;padding:0;margin:0}#disc li{display:grid;grid-template-columns:16px minmax(0,1fr) auto;gap:.625rem;align-items:center;padding:.625rem 1.5rem;border-top:1px solid var(--colorNeutralStroke3)}
+.field-err{display:flex;align-items:flex-start;gap:var(--spacingXS)}
+.field-err .i{flex:none}
+.dlg-msg + .field{margin-top:var(--spacingM)}
 [data-rename]:focus{outline:2px solid var(--colorBrandForeground1);outline-offset:2px}
 </style>
 <script type="module" src="/static/devices.js"></script></head><body><a class="skip" href="#main">Skip to content</a>
@@ -37,5 +40,10 @@
 <div class="card-pad stack-sm" style="max-height:60vh;overflow:auto"><div class="stack-sm" id="as-items"></div><div class="stack-sm" id="as-projects"></div></div>
 <div class="dlg-actions"><button class="btn" value="cancel">Cancel</button><button class="btn primary" value="ok">Save</button></div></form></dialog>
 </main></div></div>
+<dialog id="dlg-port" aria-labelledby="rp-t" aria-describedby="rp-m"><form method="dialog">
+<h2 class="subtitle1" id="rp-t">Reconnect</h2><p class="subtle-text dlg-msg" id="rp-m">The phone is offline at its last known port. Open Wireless debugging on the phone and enter the port shown next to IP address &amp; Port.</p>
+<div class="field"><label class="label" for="rp-port">Connect port</label><input class="input mono" id="rp-port" inputmode="numeric" autocomplete="off" placeholder="e.g. 37215" autofocus aria-describedby="rp-hint"><span class="hint" id="rp-hint">Whole number from 1 to 65535.</span><span class="hint danger field-err" id="rp-err" role="alert" hidden><svg class="i i-16" aria-hidden="true"><use href="#i-error"/></svg><span id="rp-errtxt"></span></span></div>
+<div class="dlg-actions"><button class="btn" value="cancel" type="submit" formnovalidate>Cancel</button><button class="btn primary" value="ok">Reconnect</button></div>
+</form></dialog>
 <div id="toast" class="toast" role="status" aria-live="polite"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg><span></span></div>
 </body></html>

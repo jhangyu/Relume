@@ -28,6 +28,8 @@
   --colorStatusSuccessBackground1: #f1faf1; --colorStatusSuccessForeground1: #0e700e; --colorStatusSuccessBorder1: #9fd89f;
   --colorStatusWarningBackground1: #fff9f5; --colorStatusWarningForeground1: #bc4b09; --colorStatusWarningBorder1: #fdcfb4;
   --colorStatusDangerBackground1: #fdf3f4;  --colorStatusDangerForeground1: #b10e1c;  --colorStatusDangerBorder1: #eeacb2;
+  /* Fluent 2 cranberry ramp (primary / shade10 / shade20): white text 5.9:1 / 6.7:1 / 8.6:1 */
+  --colorStatusDangerBackground3: #c50f1f; --colorStatusDangerBackground3Hover: #b10e1c; --colorStatusDangerBackground3Pressed: #960b18;
   --colorPaletteLavenderBackground2: #f0effd; --colorPaletteLavenderForeground2: #3c32a6; --colorPaletteLavenderBorderActive: #a6a0f5;
   --colorPaletteMarigoldBackground2: #fef7e6; --colorPaletteMarigoldForeground2: #7a4f00;
   /* shape, depth, type, motion */
@@ -110,6 +112,11 @@ button, input, select { font: inherit; color: inherit; }
 .btn.primary { background: var(--colorBrandBackground); border-color: transparent; color: #fff; }
 .btn.primary:hover { background: var(--colorBrandBackgroundHover); }
 .btn.primary:active { background: var(--colorBrandBackgroundPressed); }
+/* Destructive button: solid red, white text. Distinct from .btn.danger (red-text via the .danger utility).
+   Every rule carries :not([disabled]) so it beats .btn:hover and .btn.subtle, and .btn[disabled] still styles a disabled one. */
+.btn.destructive:not([disabled]) { background: var(--colorStatusDangerBackground3); border-color: transparent; color: #fff; }
+.btn.destructive:not([disabled]):hover { background: var(--colorStatusDangerBackground3Hover); }
+.btn.destructive:not([disabled]):active { background: var(--colorStatusDangerBackground3Pressed); }
 .btn.subtle { background: transparent; border-color: transparent; }
 .btn.subtle:hover { background: var(--colorSubtleBackgroundHover); }
 .btn.large { height: 40px; padding: 0 16px; font-size: 16px; border-radius: var(--borderRadiusLarge); }
@@ -138,6 +145,7 @@ button, input, select { font: inherit; color: inherit; }
 select.dropdown { height: 32px; padding: 0 32px 0 10px; border: 1px solid var(--colorNeutralStroke1); border-bottom-color: var(--colorNeutralStrokeAccessible); border-radius: var(--borderRadiusMedium); background: var(--colorNeutralBackground1); appearance: none; width: 100%; }
 .select { position: relative; display: inline-flex; }
 .input:invalid, .input[aria-invalid=true] { border-color: var(--colorStatusDangerForeground1); }
+.input[aria-invalid=true] { border-bottom-color: var(--colorStatusDangerForeground1); box-shadow: inset 0 -1px 0 var(--colorStatusDangerForeground1); }
 textarea.input { height: auto; padding: 6px 10px; }
 input[type=color] { width: 44px; height: 32px; padding: 2px; border: 1px solid var(--colorNeutralStroke1); border-radius: var(--borderRadiusMedium); background: var(--colorNeutralBackground1); }
 .input.narrow, .select.narrow { width: 128px; }
@@ -228,6 +236,14 @@ input[type=checkbox], input[type=radio] { accent-color: var(--colorBrandBackgrou
 dialog { border: 0; border-radius: var(--borderRadiusXLarge); box-shadow: var(--shadow64); padding: 24px; width: min(600px, calc(100vw - 32px)); }
 dialog::backdrop { background: rgba(0,0,0,.4); }
 .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+/* Confirm dialog message: long user names wrap instead of widening the dialog. */
+.dlg-msg { margin-top: var(--spacingS); overflow-wrap: anywhere; }
+.dlg-msg strong { color: var(--colorNeutralForeground1); font-weight: 600; }
+/* Phone: dialog buttons share one row at equal width (Fluent mobile dialog pattern), Cancel left, action right.
+   Scoped to dialog because .dlg-actions is also the card footer class on Devices and Settings. */
+@media (max-width: 480px) {
+  dialog .dlg-actions > .btn { flex: 1 1 0; }
+}
 
 /* Tabs (Fluent TabList) */
 .tablist { display: flex; gap: 4px; border-bottom: 1px solid var(--colorNeutralStroke2); }

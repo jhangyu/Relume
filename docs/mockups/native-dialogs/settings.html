@@ -1,0 +1,68 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Settings dialogs · mockup</title>
+<link rel="stylesheet" href="../../../local/webui/static/app.css">
+<link rel="stylesheet" href="shared.css">
+<style>
+/* Mockup scaffolding only (frames, faded page). Not for implementation. */
+body{padding:24px;background:#d8d8d8}
+h1{font:600 20px/28px var(--fontFamilyDisplay);margin:0 0 4px}
+.lead{margin:0 0 20px}
+.sets{display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start}
+.cap{font:600 12px/16px var(--fontFamilyBase);margin:0 0 8px;color:var(--colorNeutralForeground2)}
+.frame{position:relative;overflow:hidden;display:grid;place-items:center;background:var(--colorNeutralBackground2);height:420px;box-shadow:var(--shadow8)}
+.frame.desk{width:880px} .frame.mob{width:390px}
+.fade{position:absolute;inset:0;opacity:.55;display:flex;flex-direction:column}
+.fade .hd{height:60px;border-bottom:1px solid var(--colorNeutralStroke3);display:flex;align-items:center;padding:0 24px;font:600 20px/28px var(--fontFamilyDisplay)}
+.fade .bd{padding:24px;display:grid;gap:12px}
+.fade .cd{background:var(--colorNeutralBackground1);border-radius:var(--borderRadiusXLarge);box-shadow:var(--shadow2);padding:16px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.scrim{position:absolute;inset:0;z-index:1;background:rgba(0,0,0,.4)}
+.frame dialog{position:relative;z-index:2;background:var(--colorNeutralBackground1);color:var(--colorNeutralForeground1);margin:0;inset:auto}
+.mob dialog{width:min(600px,calc(100% - 34px))}
+.mob .dlg-actions>.btn{flex:1 1 0} /* emulates shared.css 480px rule: frame is not a real viewport */
+/* NEW CSS — to be added to local/webui/static/app.css (after the .dlg-* rules from shared.css) */
+.dlg-facts { margin: var(--spacingL) 0 0; border: 1px solid var(--colorNeutralStroke2); border-radius: var(--borderRadiusLarge); overflow: hidden; }
+.dlg-facts > div { display: flex; justify-content: space-between; align-items: baseline; gap: var(--spacingL); padding: var(--spacingS) var(--spacingM); }
+.dlg-facts > div + div { border-top: 1px solid var(--colorNeutralStroke3); }
+.dlg-facts dt { color: var(--colorNeutralForeground3); }
+.dlg-facts dd { margin: 0; font-weight: 600; color: var(--colorNeutralForeground1); text-align: right; }
+.dlg-sub { margin-top: var(--spacingXS); }
+</style></head><body>
+<h1>Settings: two destructive confirms</h1><p class="lead subtle-text">settings.js:124 Clean up (summary replaces one long sentence) · settings.js:170 Revoke (now names the phone).</p>
+<!-- Keyboard: Escape closes the dialog (returnValue '' = cancel in ask()); Cancel returns 'cancel'. Cancel has autofocus (destructive), so Enter/Space never fires the action. Open with ask(dlg) from app.js. -->
+<!-- settings.js:124 (#cleanup) and settings.js:170 ([data-revoke]). settings.html has no <dialog> today: add both as direct children of <body> (like index.html #dlg-del). All values come from the GET /api/cleanup response (p.bytes via fmt.bytes, p.artifact_items, p.cache_files); the original message's literal "app(s)"/"file(s)" becomes proper singular/plural in the summary.
+ Revoke row data (settings.js:165): d.name, d.model, d.android_release, d.created_at, d.last_seen_at are all available, so the phone CAN be named. loadAppDevices() keeps `apps` in a local const: hoist it (e.g. Z.appDevs) so the click handler can look the row up by data-revoke id. d.name is user-visible text from the device: HTML-escape in implementation (the html`` tag does). -->
+<p class="cap">1 · Clean up</p><div class="sets"><div><p class="cap">Desktop (880 px)</p><div class="frame desk"><div class="fade"><div class="hd">Settings</div><div class="bd">
+<div class="cd"><div><div class="subtitle2">Application</div><div class="caption">Disk and cleanup</div></div><button class="btn" tabindex="-1">Clean up</button></div>
+<div class="cd"><div><div class="subtitle2">Phones signed in with the app</div><div class="caption">Pixel 8 · Android 15</div></div><button class="btn small danger" tabindex="-1">Revoke</button></div>
+</div></div><div class="scrim"></div><dialog open id="dlg-cleanup" aria-labelledby="dlg-cleanup-t" aria-describedby="dlg-cleanup-msg"><form method="dialog">
+<h2 class="subtitle1" id="dlg-cleanup-t">Delete 1.4 GB?</h2>
+<p class="subtle-text dlg-msg" id="dlg-cleanup-msg">An app rebuilds when you enable it again.</p>
+<dl class="dlg-facts"><div><dt>Builds of apps not enabled</dt><dd>3 apps</dd></div><div><dt>Cached download files</dt><dd>12 files</dd></div></dl>
+<div class="dlg-actions"><button class="btn" value="cancel" autofocus>Cancel</button><button class="btn destructive" value="ok">Delete</button></div>
+</form></dialog></div></div><div><p class="cap">Mobile (390 px)</p><div class="frame mob"><div class="fade"><div class="hd">Settings</div><div class="bd">
+<div class="cd"><div><div class="subtitle2">Application</div><div class="caption">Disk and cleanup</div></div><button class="btn" tabindex="-1">Clean up</button></div>
+<div class="cd"><div><div class="subtitle2">Phones signed in with the app</div><div class="caption">Pixel 8 · Android 15</div></div><button class="btn small danger" tabindex="-1">Revoke</button></div>
+</div></div><div class="scrim"></div><dialog open id="dlg-cleanup-m" aria-labelledby="dlg-cleanup-m-t" aria-describedby="dlg-cleanup-m-msg"><form method="dialog">
+<h2 class="subtitle1" id="dlg-cleanup-m-t">Delete 1.4 GB?</h2>
+<p class="subtle-text dlg-msg" id="dlg-cleanup-m-msg">An app rebuilds when you enable it again.</p>
+<dl class="dlg-facts"><div><dt>Builds of apps not enabled</dt><dd>3 apps</dd></div><div><dt>Cached download files</dt><dd>12 files</dd></div></dl>
+<div class="dlg-actions"><button class="btn" value="cancel" autofocus>Cancel</button><button class="btn destructive" value="ok">Delete</button></div>
+</form></dialog></div></div></div>
+<p class="cap" style="margin-top:28px">2 · Revoke phone (mobile frame shows a long device name)</p><div class="sets"><div><p class="cap">Desktop (880 px)</p><div class="frame desk"><div class="fade"><div class="hd">Settings</div><div class="bd">
+<div class="cd"><div><div class="subtitle2">Application</div><div class="caption">Disk and cleanup</div></div><button class="btn" tabindex="-1">Clean up</button></div>
+<div class="cd"><div><div class="subtitle2">Phones signed in with the app</div><div class="caption">Pixel 8 · Android 15</div></div><button class="btn small danger" tabindex="-1">Revoke</button></div>
+</div></div><div class="scrim"></div><dialog open id="dlg-revoke" aria-labelledby="dlg-revoke-t" aria-describedby="dlg-revoke-msg"><form method="dialog">
+<h2 class="subtitle1" id="dlg-revoke-t">Revoke this phone?</h2>
+<p class="subtle-text dlg-msg" id="dlg-revoke-msg"><strong>Pixel 8</strong> is signed out of the app and must log in again.</p>
+<p class="caption dlg-sub">Pixel 8 · Android 15 · last seen 2 h ago</p>
+<div class="dlg-actions"><button class="btn" value="cancel" autofocus>Cancel</button><button class="btn destructive" value="ok">Revoke</button></div>
+</form></dialog></div></div><div><p class="cap">Mobile (390 px)</p><div class="frame mob"><div class="fade"><div class="hd">Settings</div><div class="bd">
+<div class="cd"><div><div class="subtitle2">Application</div><div class="caption">Disk and cleanup</div></div><button class="btn" tabindex="-1">Clean up</button></div>
+<div class="cd"><div><div class="subtitle2">Phones signed in with the app</div><div class="caption">Pixel 8 · Android 15</div></div><button class="btn small danger" tabindex="-1">Revoke</button></div>
+</div></div><div class="scrim"></div><dialog open id="dlg-revoke-m" aria-labelledby="dlg-revoke-m-t" aria-describedby="dlg-revoke-m-msg"><form method="dialog">
+<h2 class="subtitle1" id="dlg-revoke-m-t">Revoke this phone?</h2>
+<p class="subtle-text dlg-msg" id="dlg-revoke-m-msg"><strong>Pixel 8 (Living-room tablet with a very long device name)</strong> is signed out of the app and must log in again.</p>
+<p class="caption dlg-sub">Pixel 8 · Android 15 · last seen 2 h ago</p>
+<div class="dlg-actions"><button class="btn" value="cancel" autofocus>Cancel</button><button class="btn destructive" value="ok">Revoke</button></div>
+</form></dialog></div></div></div>
+</body></html>

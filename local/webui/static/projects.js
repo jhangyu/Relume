@@ -1,5 +1,5 @@
 // Followed projects page (spec 2026-10-23-follow-project-design §8).
-import { $, $$, act, api, ask, every, fmt, html, icon, iconTile, shell, toast } from '/static/app.js';
+import { $, $$, act, api, ask, confirmDialog, every, fmt, html, icon, iconTile, shell, toast } from '/static/app.js';
 
 const S = { projects: [], devices: [], items: new Map(), schedule: null, running: [], queued: [], ota: [], cur: null, filter: 'all', q: '' };
 const byId = id => S.projects.find(p => p.id === id);
@@ -198,7 +198,7 @@ $('#pane').addEventListener('click', async e => {
     } else if (t('[data-rx-save]')) {
       await act('PUT', `/api/projects/${p.id}`, { asset_regex: $('[data-rx-edit]', $('#pane')).value }, `Regex saved; re-checking ${p.label}…`);
     } else if (t('[data-unfollow]')) {
-      if (!confirm(`Unfollow ${p.label}? Its downloaded APKs are deleted.`)) return;
+      if (!await confirmDialog({ title: 'Unfollow project?', body: html`<strong>${p.label}</strong> is unfollowed and its downloaded APKs are deleted.`, action: 'Unfollow' })) return;
       await act('DELETE', `/api/projects/${p.id}`, {}, `Unfollowed ${p.label}`);
       S.cur = null;
     } else return;
@@ -360,8 +360,8 @@ function addDialog(p) {
 $('#addBtn').addEventListener('click', () => addDialog(null));
 $('#fetchBtn').addEventListener('click', fetchRelease);
 $('#url').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); fetchRelease(); } });
-$('#assets').addEventListener('change', () => {
-  if (A.dirty && !confirm('Replace your edited regex with one derived from the ticked assets?')) return;
+$('#assets').addEventListener('change', async () => {
+  if (A.dirty && !await confirmDialog({ title: 'Replace your regex?', body: 'The regex you edited is replaced with one derived from the ticked assets.', action: 'Replace', destructive: false, cls: 'nested' })) return;
   A.dirty = false;
   derive();
 });

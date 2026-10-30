@@ -1,0 +1,111 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Devices dialogs · mockup</title>
+<link rel="stylesheet" href="../../../local/webui/static/app.css">
+<link rel="stylesheet" href="shared.css">
+<style>
+/* NEW CSS — to be added to local/webui/static/app.css (line 140: extend the existing .input[aria-invalid=true] rule) and devices.html (the other two rules) */
+.input[aria-invalid=true]{border-color:var(--colorStatusDangerForeground1);border-bottom-color:var(--colorStatusDangerForeground1);box-shadow:inset 0 -1px 0 var(--colorStatusDangerForeground1)}
+.field-err{display:flex;align-items:flex-start;gap:var(--spacingXS)}
+.field-err .i{flex:none}
+.dlg-msg + .field{margin-top:var(--spacingM)}
+
+/* ---- MOCKUP-ONLY scaffolding (not for implementation) ---- */
+body{background:#e9e9e9;margin:0;padding:24px;display:block}
+h1.mk{font:600 20px/28px var(--fontFamilyDisplay);margin:24px 0 4px}
+p.mk{margin:0 0 12px;color:var(--colorNeutralForeground3);font-size:13px}
+.frames{display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start}
+.frame{position:relative;overflow:hidden;background:var(--colorNeutralBackground2);border-radius:8px;border:1px solid #bbb;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}
+.frame.d{width:760px;min-height:420px}
+.frame.m{width:390px;min-height:520px;padding:16px 17px}
+.bgpage{position:absolute;inset:0;padding:16px;display:flex;flex-direction:column;gap:12px;opacity:.55;pointer-events:none}
+.bgpage .bar{height:40px;background:#fff;border-radius:6px}.bgpage .card{height:120px;background:#fff;border-radius:8px}
+.scrim-m{position:absolute;inset:0;background:rgba(0,0,0,.4)}
+.frame dialog{position:relative;inset:auto;margin:0;z-index:2;width:min(600px,100%)}
+.frame.m .dlg-actions>.btn{flex:1 1 0} /* emulates shared.css 480px rule, which a div cannot trigger */
+</style></head><body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<!-- Sprite symbols copied from app.js; i-warning and i-error and i-delete already exist there, nothing new to add. -->
+<symbol id="i-warning" viewBox="0 0 20 20" fill="currentColor"><path d="M7.37013 3.55566C8.50949 1.48158 11.4895 1.48168 12.629 3.55566L18.1251 13.5605C19.2227 15.5597 17.7759 18.0046 15.4952 18.0049H4.5039C2.22288 18.0048 0.776902 15.5598 1.87498 13.5605L7.37013 3.55566ZM11.753 4.03711C10.9934 2.65441 9.00677 2.65456 8.24709 4.03711L2.75096 14.042C2.01908 15.3748 2.98329 17.0048 4.5039 17.0049H15.4952C17.0156 17.0046 17.9798 15.3747 17.2481 14.042L11.753 4.03711ZM10 12.75C10.4142 12.7501 10.75 13.0858 10.75 13.5C10.75 13.9141 10.4141 14.2499 10 14.25C9.58587 14.25 9.2501 13.9141 9.25003 13.5C9.25003 13.0858 9.58582 12.75 10 12.75ZM10 6.5C10.2761 6.50007 10.5 6.7239 10.5 7V11C10.5 11.276 10.2761 11.4999 10 11.5C9.72394 11.5 9.50011 11.2761 9.50003 11V7C9.50003 6.72386 9.72389 6.5 10 6.5Z"/></symbol>
+<symbol id="i-error" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2C14.4183 2 18 5.58172 18 10C18 14.4183 14.4183 18 10 18C5.58172 18 2 14.4183 2 10C2 5.58172 5.58172 2 10 2ZM10 3C6.13401 3 3 6.13401 3 10C3 13.866 6.13401 17 10 17C13.866 17 17 13.866 17 10C17 6.13401 13.866 3 10 3ZM10 12.5C10.4142 12.5 10.75 12.8358 10.75 13.25C10.75 13.6642 10.4142 14 10 14C9.58579 14 9.25 13.6642 9.25 13.25C9.25 12.8358 9.58579 12.5 10 12.5ZM10 6C10.2455 6 10.4496 6.17688 10.4919 6.41012L10.5 6.5V11C10.5 11.2761 10.2761 11.5 10 11.5C9.75454 11.5 9.55039 11.3231 9.50806 11.0899L9.5 11V6.5C9.5 6.22386 9.72386 6 10 6Z"/></symbol>
+</svg>
+
+<h1 class="mk">1 · Reconnect port prompt (devices.js:96)</h1>
+<p class="mk">Shown after Reconnect fails with DEVICE_OFFLINE. Left to right at desktop: empty, filled, error. Then the same three at 390 px. Enter submits (form method=dialog → Reconnect); Escape and Cancel cancel; initial focus on the port field (non-destructive). Reconnect click validates inline: whole number 1–65535 (server.py:115); invalid → preventDefault, dialog stays open, aria-invalid=true + error text below the field, focus returns to the field.</p>
+<div class="frames">
+  <!-- PORT: empty -->
+  <div class="frame d"><div class="bgpage"><div class="bar"></div><div class="card"></div><div class="card"></div></div><div class="scrim-m"></div>
+  <dialog open aria-labelledby="pp1" aria-describedby="dm1"><form method="dialog">
+    <h2 class="subtitle1" id="pp1">Reconnect Pixel 8</h2><p class="subtle-text dlg-msg" id="dm1">The phone is offline at its last known port. Open Wireless debugging on the phone and enter the port shown next to IP address &amp; Port.</p>
+    <div class="field"><label class="label" for="cp1">Connect port</label><input class="input mono" id="cp1" inputmode="numeric" autocomplete="off" placeholder="e.g. 37215" autofocus><span class="hint">Whole number from 1 to 65535.</span></div>
+    <div class="dlg-actions"><button class="btn" value="cancel" type="submit" formnovalidate>Cancel</button><button class="btn primary" value="ok">Reconnect</button></div>
+  </form></dialog></div>
+  <!-- PORT: filled -->
+  <div class="frame d"><div class="bgpage"><div class="bar"></div><div class="card"></div><div class="card"></div></div><div class="scrim-m"></div>
+  <dialog open aria-labelledby="pp2" aria-describedby="dm2"><form method="dialog">
+    <h2 class="subtitle1" id="pp2">Reconnect Pixel 8</h2><p class="subtle-text dlg-msg" id="dm2">The phone is offline at its last known port. Open Wireless debugging on the phone and enter the port shown next to IP address &amp; Port.</p>
+    <div class="field"><label class="label" for="cp2">Connect port</label><input class="input mono" id="cp2" inputmode="numeric" autocomplete="off" value="37215"><span class="hint">Whole number from 1 to 65535.</span></div>
+    <div class="dlg-actions"><button class="btn" value="cancel" type="submit" formnovalidate>Cancel</button><button class="btn primary" value="ok">Reconnect</button></div>
+  </form></dialog></div>
+  <!-- PORT: error -->
+  <div class="frame d"><div class="bgpage"><div class="bar"></div><div class="card"></div><div class="card"></div></div><div class="scrim-m"></div>
+  <dialog open aria-labelledby="pp3" aria-describedby="dm3"><form method="dialog">
+    <h2 class="subtitle1" id="pp3">Reconnect Pixel 8</h2><p class="subtle-text dlg-msg" id="dm3">The phone is offline at its last known port. Open Wireless debugging on the phone and enter the port shown next to IP address &amp; Port.</p>
+    <div class="field"><label class="label" for="cp3">Connect port</label><input class="input mono" id="cp3" inputmode="numeric" autocomplete="off" value="70000" aria-invalid="true" aria-describedby="ce3"><span class="hint danger field-err" id="ce3" role="alert"><svg class="i i-16" aria-hidden="true"><use href="#i-error"/></svg>Enter a whole number from 1 to 65535. Got 70000.</span></div>
+    <div class="dlg-actions"><button class="btn" value="cancel" type="submit" formnovalidate>Cancel</button><button class="btn primary" value="ok">Reconnect</button></div>
+  </form></dialog></div>
+</div>
+<div class="frames" style="margin-top:24px">
+  <div class="frame m"><div class="bgpage"><div class="bar"></div><div class="card"></div></div><div class="scrim-m"></div>
+  <dialog open aria-labelledby="pm1" aria-describedby="dm4"><form method="dialog">
+    <h2 class="subtitle1" id="pm1">Reconnect Pixel 8</h2><p class="subtle-text dlg-msg" id="dm4">The phone is offline at its last known port. Open Wireless debugging on the phone and enter the port shown next to IP address &amp; Port.</p>
+    <div class="field"><label class="label" for="cm1">Connect port</label><input class="input mono" id="cm1" inputmode="numeric" autocomplete="off" placeholder="e.g. 37215"><span class="hint">Whole number from 1 to 65535.</span></div>
+    <div class="dlg-actions"><button class="btn" value="cancel" type="submit" formnovalidate>Cancel</button><button class="btn primary" value="ok">Reconnect</button></div>
+  </form></dialog></div>
+  <div class="frame m"><div class="bgpage"><div class="bar"></div><div class="card"></div></div><div class="scrim-m"></div>
+  <dialog open aria-labelledby="pm2" aria-describedby="dm5"><form method="dialog">
+    <h2 class="subtitle1" id="pm2">Reconnect Pixel 8</h2><p class="subtle-text dlg-msg" id="dm5">The phone is offline at its last known port. Open Wireless debugging on the phone and enter the port shown next to IP address &amp; Port.</p>
+    <div class="field"><label class="label" for="cm2">Connect port</label><input class="input mono" id="cm2" inputmode="numeric" autocomplete="off" value="37215"><span class="hint">Whole number from 1 to 65535.</span></div>
+    <div class="dlg-actions"><button class="btn" value="cancel" type="submit" formnovalidate>Cancel</button><button class="btn primary" value="ok">Reconnect</button></div>
+  </form></dialog></div>
+  <div class="frame m"><div class="bgpage"><div class="bar"></div><div class="card"></div></div><div class="scrim-m"></div>
+  <dialog open aria-labelledby="pm3" aria-describedby="dm6"><form method="dialog">
+    <h2 class="subtitle1" id="pm3">Reconnect Pixel 8</h2><p class="subtle-text dlg-msg" id="dm6">The phone is offline at its last known port. Open Wireless debugging on the phone and enter the port shown next to IP address &amp; Port.</p>
+    <div class="field"><label class="label" for="cm3">Connect port</label><input class="input mono" id="cm3" inputmode="numeric" autocomplete="off" value="abc" aria-invalid="true" aria-describedby="me3"><span class="hint danger field-err" id="me3" role="alert"><svg class="i i-16" aria-hidden="true"><use href="#i-error"/></svg>Enter a whole number from 1 to 65535. Got abc.</span></div>
+    <div class="dlg-actions"><button class="btn" value="cancel" type="submit" formnovalidate>Cancel</button><button class="btn primary" value="ok">Reconnect</button></div>
+  </form></dialog></div>
+</div>
+
+<h1 class="mk">2 · Remove device (devices.js:138)</h1>
+<p class="mk">Destructive confirm. Device name in &lt;strong&gt; (HTML-escape in implementation). Escape and Cancel cancel; initial focus on Cancel (autofocus). Action label is the verb: Remove.</p>
+<div class="frames">
+  <div class="frame d"><div class="bgpage"><div class="bar"></div><div class="card"></div><div class="card"></div></div><div class="scrim-m"></div>
+  <dialog open aria-labelledby="rd1" aria-describedby="dm7"><form method="dialog">
+    <h2 class="subtitle1" id="rd1">Remove device?</h2>
+    <p class="subtle-text dlg-msg" id="dm7"><strong>Pixel 8</strong> is removed. On the phone, also tap Forget under Wireless debugging.</p>
+    <div class="dlg-actions"><button class="btn" value="cancel" autofocus>Cancel</button><button class="btn destructive" value="ok">Remove</button></div>
+  </form></dialog></div>
+  <div class="frame m"><div class="bgpage"><div class="bar"></div><div class="card"></div></div><div class="scrim-m"></div>
+  <dialog open aria-labelledby="rd2" aria-describedby="dm8"><form method="dialog">
+    <h2 class="subtitle1" id="rd2">Remove device?</h2>
+    <p class="subtle-text dlg-msg" id="dm8"><strong>Samsung Galaxy S24 Ultra of the whole family living room</strong> is removed. On the phone, also tap Forget under Wireless debugging.</p>
+    <div class="dlg-actions"><button class="btn" value="cancel" autofocus>Cancel</button><button class="btn destructive" value="ok">Remove</button></div>
+  </form></dialog></div>
+</div>
+
+<h1 class="mk">3 · Uninstall and reinstall (devices.js:142)</h1>
+<p class="mk">Data-loss confirm. Same layout as the other confirms; the data-loss sentence closes the message and the button is .btn.destructive. No icons (lead decision). Package in &lt;strong class="mono"&gt;. Initial focus on Cancel.</p>
+<div class="frames">
+  <div class="frame d"><div class="bgpage"><div class="bar"></div><div class="card"></div><div class="card"></div></div><div class="scrim-m"></div>
+  <dialog open aria-labelledby="fr1" aria-describedby="dm9"><form method="dialog">
+    <h2 class="subtitle1" id="fr1">Uninstall and reinstall?</h2>
+    <p class="subtle-text dlg-msg" id="dm9"><strong class="mono">com.google.android.youtube</strong> is uninstalled and the patched app is installed. All app data on the phone is lost.</p>
+    <div class="dlg-actions"><button class="btn" value="cancel" autofocus>Cancel</button><button class="btn destructive" value="ok">Uninstall &amp; retry</button></div>
+  </form></dialog></div>
+  <div class="frame m"><div class="bgpage"><div class="bar"></div><div class="card"></div></div><div class="scrim-m"></div>
+  <dialog open aria-labelledby="fr2" aria-describedby="dm10"><form method="dialog">
+    <h2 class="subtitle1" id="fr2">Uninstall and reinstall?</h2>
+    <p class="subtle-text dlg-msg" id="dm10"><strong class="mono">com.google.android.youtube</strong> is uninstalled and the patched app is installed. All app data on the phone is lost.</p>
+    <div class="dlg-actions"><button class="btn" value="cancel" autofocus>Cancel</button><button class="btn destructive" value="ok">Uninstall &amp; retry</button></div>
+  </form></dialog></div>
+</div>
+</body></html>

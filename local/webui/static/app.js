@@ -99,6 +99,25 @@ export function ask(dlg) {
   });
 }
 
+// confirmDialog({ title, body, extra, action, destructive = true, cls = '' }) -> Promise<boolean>
+// extra: optional html`` result rendered after the message paragraph.
+// body: html`` result (escaped interpolations) or plain string. True only when the action button closed it.
+let confirmSeq = 0;
+export async function confirmDialog({ title, body, extra, action, destructive = true, cls = '' }) {
+  const n = ++confirmSeq;
+  const dlg = document.createElement('dialog');
+  if (cls) dlg.className = cls;
+  dlg.setAttribute('aria-labelledby', `cf-t${n}`);
+  dlg.setAttribute('aria-describedby', `cf-m${n}`);
+  dlg.innerHTML = html`<form method="dialog">
+<h2 class="subtitle1" id="cf-t${n}">${title}</h2>
+<p class="subtle-text dlg-msg" id="cf-m${n}">${body}</p>
+${extra}
+<div class="dlg-actions"><button class="btn" value="cancel" ${destructive ? 'autofocus' : ''}>Cancel</button><button class="btn ${destructive ? 'destructive' : 'primary'}" value="ok">${action}</button></div>
+</form>`.toString();
+  document.body.append(dlg);
+  try { return (await ask(dlg)) === 'ok'; } finally { dlg.remove(); }
+}
 
 // Build states of spec §6.2 (`app.status.state`) and the badge class each one wears.
 export const STATUS = {

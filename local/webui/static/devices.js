@@ -1,4 +1,4 @@
-import { $, $$, act, api, ask, every, fmt, html, shell, toast } from '/static/app.js';
+import { $, $$, act, api, ask, confirmDialog, every, fmt, html, shell, toast } from '/static/app.js';
 
 const D = { devices: [], items: new Map(), projects: [], last: new Map() };
 const label = id => (D.items.get(id) || {}).label || `app ${id}`;
@@ -87,14 +87,43 @@ async function pair(body) {
   }
 }
 
+const MAX_PORT = 65535;
+
+// Reconnect port dialog: resolves the validated port, or 0 on cancel; an invalid entry keeps it open.
+async function askPort(d) {
+  const dlg = $('#dlg-port'), inp = $('#rp-port'), err = $('#rp-err');
+  $('#rp-t').textContent = `Reconnect ${d.name}`;
+  inp.value = '';
+  const clear = () => { inp.removeAttribute('aria-invalid'); inp.setAttribute('aria-describedby', 'rp-hint'); err.hidden = true; $('#rp-hint').hidden = false; };
+  clear();
+  let port = 0;
+  const onClick = e => {
+    if (!e.target.closest('button[value=ok]')) return;
+    const v = inp.value.trim();
+    const n = Number(v);
+    if (/^\d+$/.test(v) && n >= 1 && n <= MAX_PORT) { port = n; return; }
+    e.preventDefault();
+    inp.setAttribute('aria-invalid', 'true');
+    inp.setAttribute('aria-describedby', 'rp-err');
+    $('#rp-errtxt').textContent = `Enter a whole number from 1 to ${MAX_PORT}. Got ${v || 'nothing'}.`;
+    err.hidden = false; $('#rp-hint').hidden = true;
+    inp.focus();
+  };
+  const onKey = e => { if (e.key === 'Enter') { e.preventDefault(); $('button[value=ok]', dlg).click(); } };  // implicit submit would hit Cancel (first submit button)
+  dlg.addEventListener('click', onClick);
+  inp.addEventListener('input', clear);
+  inp.addEventListener('keydown', onKey);
+  try { return await ask(dlg) === 'ok' ? port : 0; } finally { dlg.removeEventListener('click', onClick); inp.removeEventListener('input', clear); inp.removeEventListener('keydown', onKey); }
+}
+
 async function reconnect(d) {
   try {
     await api('POST', `/api/devices/${d.id}/connect`, {});
     toast(`${d.name} connected`);
   } catch (e) {
     if (e.status === 409 && e.data && e.data.error === 'DEVICE_OFFLINE') {
-      const port = prompt('New connect port shown on the phone (Wireless debugging → IP address & Port)');
-      if (port) await act('POST', `/api/devices/${d.id}/connect`, { connect_port: Number(port) }, `${d.name} connected`).catch(() => {});
+      const port = await askPort(d);
+      if (port) await act('POST', `/api/devices/${d.id}/connect`, { connect_port: port }, `${d.name} connected`).catch(() => {});
     } else {
       toast(e.message, 'error');
     }
@@ -135,11 +164,11 @@ document.addEventListener('click', async e => {
     }
     if (d && t('[data-ota]')) await act('POST', `/api/devices/${d.id}/ota`, {}, `OTA queued on ${d.name}`);
     else if (d && t('[data-unpair]')) {
-      if (!confirm(`Remove ${d.name}? On the phone, also tap Forget under Wireless debugging.`)) return;
+      if (!await confirmDialog({ title: 'Remove device?', body: html`<strong>${d.name}</strong> is removed. On the phone, also tap Forget under Wireless debugging.`, action: 'Remove' })) return;
       await act('DELETE', `/api/devices/${d.id}`, {}, 'Device removed');
     } else if (t('[data-force]')) {
       const f = t('[data-force]');
-      if (!confirm(`Uninstall ${f.dataset.pkg} and install the patched app? All app data on the phone is lost.`)) return;
+      if (!await confirmDialog({ title: 'Uninstall and reinstall?', body: html`<strong class="mono">${f.dataset.pkg}</strong> is uninstalled and the patched app is installed. All app data on the phone is lost.`, action: 'Uninstall & retry' })) return;
       await act('POST', `/api/ota/${f.dataset.force}/force-reinstall`, { install_id: Number(f.dataset.install) }, 'Reinstall queued');
     } else if (t('[data-down]')) {
       const dn = t('[data-down]');

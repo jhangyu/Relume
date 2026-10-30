@@ -1,11 +1,11 @@
-import { $, $$, act, api, fmt, html, shell, toast } from '/static/app.js';
+import { $, $$, act, api, confirmDialog, fmt, html, shell, toast } from '/static/app.js';
 
 const FIELDS = {
   telegram: { bot_token: '#tg-token', chat_id: '#tg-chat' },
   discord: { webhook_url: '#dc-url' },
   ntfy: { server_url: '#nt-url', topic: '#nt-topic', token: '#nt-token' },
 };
-const Z = { settings: null, items: [], notify: null };
+const Z = { settings: null, items: [], notify: null, appDevs: [] };
 
 function showChannel(t) {
   $$('[data-ch]').forEach(p => { p.hidden = p.dataset.ch !== t; });
@@ -121,7 +121,9 @@ $('#cleanup').addEventListener('click', async () => {
   try {
     const p = await api('GET', '/api/cleanup');
     if (!p.bytes) { toast('Nothing to clean up'); return; }
-    if (!confirm(`Delete ${fmt.bytes(p.bytes)}: builds of ${p.artifact_items} app(s) that are not enabled and ${p.cache_files} cached download file(s)? An app rebuilds when you enable it again.`)) return;
+    const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+    const extra = html`<dl class="dlg-facts"><div><dt>Builds of apps not enabled</dt><dd>${plural(p.artifact_items, 'app')}</dd></div><div><dt>Cached download files</dt><dd>${plural(p.cache_files, 'file')}</dd></div></dl>`;
+    if (!await confirmDialog({ title: `Delete ${fmt.bytes(p.bytes)}?`, body: 'An app rebuilds when you enable it again.', extra, action: 'Delete' })) return;
     const r = await api('POST', '/api/cleanup', {});
     toast(`Freed ${fmt.bytes(r.bytes)}`);
     await loadSettings(false);
@@ -161,13 +163,17 @@ $('#pw-save').addEventListener('click', async () => {
 
 async function loadAppDevices() {
   const { devices } = await api('GET', '/api/devices');
-  const apps = devices.filter(d => d.kind === 'app');
+  const apps = Z.appDevs = devices.filter(d => d.kind === 'app');
   $('#app-devs').innerHTML = html`${apps.length ? apps.map(d => html`<li data-app-dev="${d.id}"><div><div class="sm" style="font-weight:500">${d.name}</div><div class="xs muted">${d.model} · Android ${d.android_release} · created ${fmt.abs(d.created_at)} · last seen ${fmt.rel(d.last_seen_at)}</div></div>${d.has_token ? html`<button class="btn small danger" type="button" data-revoke="${d.id}">Revoke</button>` : html`<span class="badge">revoked</span>`}</li>`) : html`<li><span class="sm muted">No phones have signed in with the app.</span></li>`}`;
 }
 
 $('#app-devs').addEventListener('click', async e => {
   const b = e.target.closest('[data-revoke]');
-  if (!b || !confirm('Revoke this phone? The app is signed out and must log in again.')) return;
+  if (!b) return;
+  const d = Z.appDevs.find(x => x.id === Number(b.dataset.revoke));
+  const body = html`<strong>${d.name}</strong> is signed out of the app and must log in again.`;
+  const extra = html`<p class="caption dlg-sub">${d.model} · Android ${d.android_release} · last seen ${fmt.rel(d.last_seen_at)}</p>`;
+  if (!await confirmDialog({ title: 'Revoke this phone?', body, extra, action: 'Revoke' })) return;
   await act('DELETE', `/api/devices/${b.dataset.revoke}/token`, {}, 'Token revoked');   // act() toasts a failure and rethrows
   await loadAppDevices();
 });

@@ -1,4 +1,4 @@
-import { $, $$, act, api, fmt, html, icon, shell, toast } from '/static/app.js';
+import { $, $$, act, api, confirmDialog, fmt, html, icon, shell, toast } from '/static/app.js';
 
 const DAYS = ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'];
 const UI_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -164,7 +164,8 @@ $('#list').addEventListener('click', async e => {
     if (run) { await act('POST', `/api/schedules/${run.dataset.run}/run`, {}, `Started: ${find(run.dataset.run).name} — see Builds`); await load(); }
     else if (edit) openDialog(find(edit.dataset.edit));
     else if (del) {
-      if (!confirm(`Delete schedule "${find(del.dataset.del).name}"?`)) return;
+      const body = html`<strong>${find(del.dataset.del).name}</strong> is deleted and stops running.`;
+      if (!await confirmDialog({ title: 'Delete schedule?', body, action: 'Delete' })) return;
       await act('DELETE', `/api/schedules/${del.dataset.del}`, {}, 'Schedule deleted');
       await load();
     } else if (en) { await act('PUT', `/api/schedules/${en.dataset.en}`, { enabled: en.checked }); await load(); }

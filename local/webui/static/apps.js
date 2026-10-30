@@ -1,4 +1,4 @@
-import { $, $$, act, api, every, fillDownloads, fmt, html, icon, iconTile, shell, STATUS, toast } from '/static/app.js';
+import { $, $$, act, api, confirmDialog, every, fillDownloads, fmt, html, icon, iconTile, shell, STATUS, toast } from '/static/app.js';
 
 const REFRESH_MS = 5000;
 const COLOR = /^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/;
@@ -141,9 +141,12 @@ document.addEventListener('click', e => {
   if (S.menuOpen && !e.target.closest('.menu') && !e.target.closest('[data-act=dl]')) closeMenus();
 });
 document.addEventListener('keydown', e => {
-  if (e.key !== 'Escape') return;
+  if (e.key !== 'Escape' || document.querySelector('dialog[open]')) return;
   if (S.menuOpen) closeMenus();
-  else if (D) closeDrawer().catch(() => {});
+  else if (D) {
+    e.preventDefault(); // the same keypress must not also cancel the Discard dialog that closeDrawer opens
+    closeDrawer().catch(() => {});
+  }
 });
 
 $('#list').addEventListener('click', async e => {
@@ -428,7 +431,7 @@ async function openDrawer(id, scrollTo) {
 }
 
 async function closeDrawer() {
-  if (dirty() && !confirm('Discard unsaved changes?')) return false;
+  if (dirty() && !(await confirmDialog({ title: 'Discard unsaved changes?', body: "Your changes to this app's settings will be lost.", action: 'Discard' }))) return false;
   D = null;
   $('#drawer').hidden = $('#scrim').hidden = true;
   history.replaceState(null, '', location.pathname);
@@ -562,7 +565,7 @@ async function save(rebuild) {
   const id = D.app.id, c = D.cur;
   try {
     if (!c.enabled && D.orig.enabled) {
-      if (!confirm(`Disable ${D.app.name}? It stops updating and building. Its settings and builds are kept.`)) return;
+      if (!(await confirmDialog({ title: 'Disable app?', body: html`<strong>${D.app.name}</strong> stops updating and building. Its settings and builds are kept.`, action: 'Disable' }))) return;
       await act('DELETE', `/api/apps/${id}`, {}, `${D.app.name} disabled`);
       D = null;
       await closeDrawer();

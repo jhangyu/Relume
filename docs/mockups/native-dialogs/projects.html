@@ -1,0 +1,201 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mockup · Followed projects confirmations</title>
+<link rel="stylesheet" href="../../../local/webui/static/app.css"><link rel="stylesheet" href="shared.css">
+<!--
+Followed-projects page: two confirmations replacing window.confirm (projects.js:201 and projects.js:364).
+Layout decision: both new dialogs follow the SHARED confirm layout (shared.css: h2.subtitle1 + p.subtle-text + .dlg-actions inside the 24px dialog padding,
+Cancel first, .btn.destructive / .btn.primary second), NOT projects.html's .dlg-h/.dlg-b/.dlg-f (bordered header/footer bands built for the tall wizard dialogs).
+Reason: consistency across the app (devices page confirms must look identical) wins; a 2-line confirm in ruled bands would look heavier than its content.
+Page-local consistency is kept by using the same tokens (24px padding, same buttons, same dialog shell) and the same dialog shell as #asgDlg/#sigDlg; implementers reuse markup via ask(dlg).
+User-provided names (p.label) are shown in <strong> and MUST be HTML-escaped in the implementation.
+Keyboard: Escape and Cancel both resolve to cancel (returnValue ''/cancel). Initial focus: Cancel on the destructive Unfollow dialog (autofocus on Cancel);
+the non-destructive Replace dialog has no autofocus (browser default: first focusable = Cancel), same as the shared neutral confirm. No title icons (lead decision).
+Stacking: #addDlg stays open (showModal); the confirm is a second showModal() dialog, so the browser top layer paints a second ::backdrop above #addDlg
+(darkening it again) - this is what the 2nd scrim below simulates. Escape closes only the topmost dialog (the confirm). The Unfollow confirm uses the base app.css 600px width. Only the stacked Replace confirm is narrower (min(420px, 100vw-32px)) than #addDlg (760px) so the lower dialog stays visible around it.
+Checkbox behavior unchanged: the clicked checkbox keeps its new state on Cancel.
+Message text is the native text; titles are short question forms so the dialog has a heading (aria-labelledby).
+Icons: only the sprite symbols the page frame needs; the sprite below is copied from app.js only because the mockup does not load app.js.
+-->
+<style>
+/* NEW CSS — to be added to local/webui/static/projects.html (inline <style>) — only what shared.css does not already define */
+dialog.confirm.nested{width:min(420px,calc(100vw - 32px))}
+dialog.confirm form{display:block;max-height:none}
+/* END NEW CSS */
+
+/* ===== projects.html inline styles, copied verbatim so #addDlg renders as in the real page (mockup only) ===== */
+
+.content{display:grid;gap:16px;align-content:start}
+.content h2,.card-head h2{font:600 18px/24px var(--fontFamilyDisplay);margin:0}
+.card .dlg-actions{padding:12px 24px 16px;border-top:1px solid var(--colorNeutralStroke3);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin:0}
+.content.wide{max-width:1520px}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:1rem;align-items:start}
+.toolbar{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;padding:.75rem 1rem;border-bottom:1px solid var(--colorNeutralStroke3)}
+.sumline{display:flex;gap:1rem;flex-wrap:wrap;font-size:.8125rem;color:var(--colorNeutralForeground3)}
+.sumline b{color:var(--colorNeutralForeground1);font-weight:600}
+.ptbl{width:100%;border-collapse:collapse;font-size:.8125rem}
+.ptbl th{text-align:left;font-weight:500;color:var(--colorNeutralForeground3);height:2.25rem;padding:0 .75rem;border-bottom:1px solid var(--colorNeutralStroke3);font-size:.75rem;white-space:nowrap;background:color-mix(in srgb,var(--colorNeutralBackground3) 50%,transparent)}
+.ptbl td{padding:.5rem .75rem;border-bottom:1px solid var(--colorNeutralStroke3);vertical-align:middle}
+.ptbl tbody tr{cursor:pointer;transition:background .12s}
+.ptbl tbody tr:hover{background:color-mix(in srgb,var(--colorNeutralBackground3) 50%,transparent)}
+.ptbl tbody tr[aria-selected=true]{background:color-mix(in srgb,var(--colorBrandForeground1) 7%,transparent);box-shadow:inset 3px 0 0 var(--colorBrandForeground1)}
+.ptbl tbody tr:last-child td{border-bottom-width:0}
+.pname{display:flex;gap:.625rem;align-items:center;min-width:0}
+.rowbtn{background:none;border:0;padding:0;font:inherit;color:inherit;font-weight:600;cursor:pointer;text-align:left;border-radius:4px}
+.repo{font-size:.71875rem;color:var(--colorNeutralForeground3)}
+.tag{white-space:nowrap;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.78rem}
+.tag small{display:block;font-family:ui-sans-serif,system-ui,sans-serif;color:var(--colorNeutralForeground3);font-size:.6875rem}
+.chiprow{display:flex;gap:.25rem;flex-wrap:wrap}
+.ph{display:inline-flex;gap:2px}
+.ph i{font-style:normal;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:.625rem;font-weight:600;background:var(--colorNeutralBackground3);color:var(--colorNeutralForeground1);box-shadow:0 0 0 2px var(--colorNeutralBackground1)}
+.ph i.behind{background:color-mix(in srgb,var(--colorStatusWarningForeground1) 18%,transparent);color:var(--colorStatusWarningForeground1)}
+.ph i.off{opacity:.55}
+.ch{font-size:.6875rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--colorNeutralForeground3)}
+.ch.pre{color:var(--colorBrandForeground1)}
+/* detail panel: Fluent-like elevated pane */
+.pane{position:sticky;top:5.5rem;max-height:calc(100vh - 6.5rem);overflow:auto;background:var(--colorNeutralBackground1);border:1px solid var(--colorNeutralStroke2);border-radius:calc(var(--borderRadiusLarge) + 4px);box-shadow:0 2px 4px rgb(0 0 0/.04),0 8px 24px -8px rgb(0 0 0/.12)}
+.pane:focus{outline:none}
+.pane-h{padding:1rem 1.25rem;border-bottom:1px solid var(--colorNeutralStroke3);display:grid;gap:.75rem;position:sticky;top:0;background:var(--colorNeutralBackground1);z-index:2}
+.pane-s{padding:1rem 1.25rem;border-bottom:1px solid var(--colorNeutralStroke3);display:grid;gap:.625rem}
+.pane-s:last-child{border-bottom-width:0}
+.pane-close{display:none!important}
+.lbl-s{font-size:.6875rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--colorNeutralForeground3)}
+.rel{border:1px solid var(--colorNeutralStroke2);border-radius:var(--borderRadiusLarge);overflow:hidden}
+.rel-h{display:flex;justify-content:space-between;align-items:center;gap:.5rem;padding:.5rem .75rem;background:color-mix(in srgb,var(--colorNeutralBackground3) 60%,transparent);font-size:.8125rem}
+.alist2{list-style:none;margin:0;padding:0}
+.alist2 li{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:.5rem;align-items:center;padding:.4rem .75rem;border-top:1px solid var(--colorNeutralStroke3);font-size:.75rem}
+.abi{font-size:.6875rem;font-family:ui-monospace,Menlo,monospace;padding:0 .375rem;border-radius:4px;border:1px solid var(--colorNeutralStroke2);white-space:nowrap}
+.abi.u{border-style:dashed}
+.sha{font-family:ui-monospace,Menlo,monospace;font-size:.72rem;word-break:break-all;line-height:1.55;padding:.5rem .625rem;border-radius:var(--borderRadiusLarge);background:var(--colorNeutralBackground3)}
+.sha.new{background:color-mix(in srgb,var(--colorStatusDangerForeground1) 7%,transparent);color:var(--colorStatusDangerForeground1)}
+.otbl{width:100%;border-collapse:collapse;font-size:.75rem}
+.otbl td{padding:.375rem 0;border-bottom:1px solid var(--colorNeutralStroke3);vertical-align:top}.otbl tr:last-child td{border-bottom-width:0}
+.otbl td+td{padding-left:.5rem}
+.res-ok{color:var(--colorStatusSuccessForeground1)}.res-fail{color:var(--colorStatusDangerForeground1)}.res-skip{color:var(--colorStatusWarningForeground1)}
+.deps{list-style:none;margin:0;padding:0;display:grid;gap:.375rem}
+.deps li{display:flex;gap:.5rem;align-items:center;font-size:.8125rem}
+.empty{font-size:.8125rem;color:var(--colorNeutralForeground3)}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+/* add dialog */
+dialog.wide{width:min(760px,96vw);max-height:92vh}
+dialog form{display:grid;max-height:92vh;grid-template-rows:auto minmax(0,1fr) auto}
+.dlg-h{padding:1.25rem 1.5rem .75rem;border-bottom:1px solid var(--colorNeutralStroke3);display:grid;gap:.75rem}
+.dlg-b{padding:1rem 1.5rem;overflow:auto;display:grid;gap:1.25rem}
+.dlg-f{padding:1rem 1.5rem;border-top:1px solid var(--colorNeutralStroke3);display:flex;gap:.5rem;justify-content:flex-end;align-items:center;flex-wrap:wrap}
+.steps{display:flex;gap:.25rem;list-style:none;margin:0;padding:0;font-size:.75rem;flex-wrap:wrap}
+.steps li{display:flex;align-items:center;gap:.375rem;color:var(--colorNeutralForeground3);padding-right:.75rem}
+.steps li b{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--colorNeutralStroke2);font-size:.6875rem}
+.steps li.now{color:var(--colorNeutralForeground1);font-weight:500}.steps li.now b{background:var(--colorBrandBackground);color:#fff;border-color:transparent}
+.steps li.done b{background:var(--colorBrandForeground1);color:#fff;border-color:transparent}
+.atbl{width:100%;border-collapse:collapse;font-size:.8125rem;border:1px solid var(--colorNeutralStroke2)}
+.atbl td,.atbl th{padding:.4rem .625rem;border-bottom:1px solid var(--colorNeutralStroke3);text-align:left}
+.atbl th{font-size:.6875rem;font-weight:500;color:var(--colorNeutralForeground3);background:color-mix(in srgb,var(--colorNeutralBackground3) 50%,transparent)}
+.atbl tr.nomatch label{color:var(--colorNeutralForeground3)}
+.atbl tr.match{background:color-mix(in srgb,var(--colorBrandForeground1) 5%,transparent)}
+.atbl label{cursor:pointer;word-break:break-all}
+.rx{font-family:ui-monospace,Menlo,monospace;font-size:.8125rem}
+.phl{display:grid;gap:.375rem}
+.phl label{display:grid;grid-template-columns:16px minmax(0,1fr) auto;gap:.625rem;align-items:center;padding:.5rem .75rem;border:1px solid var(--colorNeutralStroke2);border-radius:var(--borderRadiusLarge);cursor:pointer;font-size:.8125rem}
+.phl label:has(input:checked){border-color:var(--colorBrandForeground1);background:color-mix(in srgb,var(--colorBrandForeground1) 5%,transparent)}
+.drawer-bg{display:none}
+@media (max-width:1279px){
+ .layout{grid-template-columns:minmax(0,1fr)}
+ .pane{position:fixed;top:0;right:0;bottom:0;width:min(440px,100vw);max-height:none;border-radius:0;z-index:45;transform:translateX(105%);transition:transform .2s;visibility:hidden}
+ body.pane-open .pane{transform:none;visibility:visible}
+ body.pane-open .drawer-bg{display:block;position:fixed;inset:0;background:rgb(0 0 0/.4);z-index:44}
+ .pane-close{display:inline-flex!important}
+}
+@media (max-width:960px){.c-dl{display:none}}
+@media (max-width:768px){.c-ph{display:none}.ptbl thead{display:none}.ptbl tbody tr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.25rem .75rem;padding:.625rem .75rem;border-bottom:1px solid var(--colorNeutralStroke3)}.ptbl tbody tr:last-child{border-bottom-width:0}.ptbl tbody td{display:block;padding:0;border:0}.ptbl tbody td:nth-child(2){grid-column:2;grid-row:1;text-align:right}.ptbl tbody td:nth-child(4){grid-column:1;grid-row:2}.ptbl tbody td:nth-child(6){grid-column:2;grid-row:2}.ptbl tbody tr{align-items:center}.ptbl tbody td.c-dl{grid-column:1;grid-row:3}.ptbl tbody td.c-dl::before{content:"On disk ";font-family:var(--fontFamilyBase);color:var(--colorNeutralForeground3)}.ptbl tbody td.c-ph{grid-column:2;grid-row:3;justify-self:end}.ptbl tbody td[colspan]{grid-column:1/-1}.ptbl td,.ptbl th{padding-left:.5rem;padding-right:.5rem}.dlg-h,.dlg-b,.dlg-f{padding-left:1rem;padding-right:1rem}.atbl .c-size{display:none}}
+
+/* ===== MOCKUP FRAME ONLY (not for implementation) ===== */
+.m390 .dlg-actions>.btn{flex:1 1 0}
+.m390 .dlg-h,.m390 .dlg-b,.m390 .dlg-f{padding-left:1rem;padding-right:1rem}
+.m390 .atbl .c-size{display:none}
+.m390 .hide-m span{display:none}
+body{padding:24px;background:#d9d9d9}
+.fr-wrap{margin:0 0 40px}
+.fr-title{font:600 14px/20px var(--fontFamilyBase);margin:0 0 8px}
+.frames{display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start}
+.frame{position:relative;overflow:hidden;height:640px;background:var(--colorNeutralBackground2);border:1px solid var(--colorNeutralStroke1);max-width:100%}
+.frame .pg{position:absolute;inset:0}
+.pg-head{display:flex;align-items:center;gap:12px;height:60px;padding:0 20px;border-bottom:1px solid var(--colorNeutralStroke3);background:var(--colorNeutralBackground2)}
+.pg-head b{white-space:nowrap}
+.pg-head .btn{margin-left:auto;min-width:0}
+.pg-body{padding:16px 20px}
+.pg-row{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--colorNeutralStroke3)}
+.pg-row.sel{background:color-mix(in srgb,var(--colorBrandForeground1) 7%,transparent);box-shadow:inset 3px 0 0 var(--colorBrandForeground1)}
+.pg-row .repo{font-size:11.5px;color:var(--colorNeutralForeground3)}
+.scrim{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.4);padding:16px}
+.scrim dialog{position:relative;inset:auto;margin:0;max-height:calc(100% - 8px)}
+.scrim dialog.wide{width:min(760px,100%)}
+.scrim.s2{background:rgba(0,0,0,.4)}
+.scrim.s2:not(:only-child){position:absolute}
+.addrender .dlg-b{overflow:hidden}
+.m390 .addrender{width:100%}
+</style>
+</head><body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<symbol id="i-delete" viewBox="0 0 20 20" fill="currentColor"><path d="M8.5 4H11.5C11.5 3.17157 10.8284 2.5 10 2.5C9.17157 2.5 8.5 3.17157 8.5 4ZM7.5 4C7.5 2.61929 8.61929 1.5 10 1.5C11.3807 1.5 12.5 2.61929 12.5 4H17.5C17.7761 4 18 4.22386 18 4.5C18 4.77614 17.7761 5 17.5 5H16.4456L15.2521 15.3439C15.0774 16.8576 13.7957 18 12.2719 18H7.72813C6.20431 18 4.92256 16.8576 4.7479 15.3439L3.55437 5H2.5C2.22386 5 2 4.77614 2 4.5C2 4.22386 2.22386 4 2.5 4H7.5ZM5.74131 15.2292C5.85775 16.2384 6.71225 17 7.72813 17H12.2719C13.2878 17 14.1422 16.2384 14.2587 15.2292L15.439 5H4.56101L5.74131 15.2292ZM8.5 7.5C8.77614 7.5 9 7.72386 9 8V14C9 14.2761 8.77614 14.5 8.5 14.5C8.22386 14.5 8 14.2761 8 14V8C8 7.72386 8.22386 7.5 8.5 7.5ZM12 8C12 7.72386 11.7761 7.5 11.5 7.5C11.2239 7.5 11 7.72386 11 8V14C11 14.2761 11.2239 14.5 11.5 14.5C11.7761 14.5 12 14.2761 12 14V8Z"/></symbol>
+<symbol id="i-sync" viewBox="0 0 20 20" fill="currentColor"><path d="M11.4142 3.63503C11.6095 3.43977 11.6095 3.12319 11.4142 2.92792L9.29289 0.806603C9.09763 0.611341 8.78104 0.611341 8.58578 0.806603C8.39052 1.00186 8.39052 1.31845 8.58578 1.51371L9.58264 2.51056C7.80518 2.60911 6.05488 3.33754 4.69671 4.6957C1.76776 7.62463 1.76776 12.3734 4.69671 15.3023C4.95359 15.5592 5.2247 15.7937 5.50757 16.0058C5.72852 16.1714 6.04191 16.1266 6.20756 15.9057C6.3732 15.6847 6.32838 15.3713 6.10743 15.2057C5.86235 15.0219 5.6271 14.8185 5.40382 14.5952C2.8654 12.0568 2.8654 7.94121 5.40382 5.40281C6.68997 4.11666 8.38002 3.48223 10.0664 3.49934C10.0915 3.49959 10.1162 3.49799 10.1404 3.49466L8.58578 5.04924C8.39052 5.24451 8.39052 5.56109 8.58578 5.75635C8.78104 5.95161 9.09763 5.95161 9.29289 5.75635L11.4142 3.63503ZM8.58578 16.363C8.39052 16.5582 8.39052 16.8748 8.58578 17.0701L10.7071 19.1914C10.9024 19.3866 11.219 19.3866 11.4142 19.1914C11.6095 18.9961 11.6095 18.6795 11.4142 18.4843L10.4174 17.4874C12.1948 17.3889 13.9451 16.6605 15.3033 15.3023C18.2322 12.3734 18.2322 7.62462 15.3033 4.69569C15.0464 4.43881 14.7753 4.20428 14.4924 3.99221C14.2715 3.82656 13.9581 3.87139 13.7924 4.09233C13.6268 4.31327 13.6716 4.62667 13.8926 4.79231C14.1377 4.97606 14.3729 5.17952 14.5962 5.40279C17.1346 7.9412 17.1346 12.0568 14.5962 14.5952C13.31 15.8813 11.62 16.5158 9.9336 16.4987C9.90849 16.4984 9.88379 16.5 9.85963 16.5033L11.4142 14.9487C11.6095 14.7535 11.6095 14.4369 11.4142 14.2416C11.219 14.0464 10.9024 14.0464 10.7071 14.2416L8.58578 16.363Z"/></symbol>
+<symbol id="i-warning" viewBox="0 0 20 20" fill="currentColor"><path d="M7.37013 3.55566C8.50949 1.48158 11.4895 1.48168 12.629 3.55566L18.1251 13.5605C19.2227 15.5597 17.7759 18.0046 15.4952 18.0049H4.5039C2.22288 18.0048 0.776902 15.5598 1.87498 13.5605L7.37013 3.55566ZM11.753 4.03711C10.9934 2.65441 9.00677 2.65456 8.24709 4.03711L2.75096 14.042C2.01908 15.3748 2.98329 17.0048 4.5039 17.0049H15.4952C17.0156 17.0046 17.9798 15.3747 17.2481 14.042L11.753 4.03711ZM10 12.75C10.4142 12.7501 10.75 13.0858 10.75 13.5C10.75 13.9141 10.4141 14.2499 10 14.25C9.58587 14.25 9.2501 13.9141 9.25003 13.5C9.25003 13.0858 9.58582 12.75 10 12.75ZM10 6.5C10.2761 6.50007 10.5 6.7239 10.5 7V11C10.5 11.276 10.2761 11.4999 10 11.5C9.72394 11.5 9.50011 11.2761 9.50003 11V7C9.50003 6.72386 9.72389 6.5 10 6.5Z"/></symbol>
+<symbol id="i-close" viewBox="0 0 20 20" fill="currentColor"><path d="M4.08859 4.21569L4.14645 4.14645C4.32001 3.97288 4.58944 3.9536 4.78431 4.08859L4.85355 4.14645L10 9.293L15.1464 4.14645C15.32 3.97288 15.5894 3.9536 15.7843 4.08859L15.8536 4.14645C16.0271 4.32001 16.0464 4.58944 15.9114 4.78431L15.8536 4.85355L10.707 10L15.8536 15.1464C16.0271 15.32 16.0464 15.5894 15.9114 15.7843L15.8536 15.8536C15.68 16.0271 15.4106 16.0464 15.2157 15.9114L15.1464 15.8536L10 10.707L4.85355 15.8536C4.67999 16.0271 4.41056 16.0464 4.21569 15.9114L4.14645 15.8536C3.97288 15.68 3.9536 15.4106 4.08859 15.2157L4.14645 15.1464L9.293 10L4.14645 4.85355C3.97288 4.67999 3.9536 4.41056 4.08859 4.21569L4.14645 4.14645L4.08859 4.21569Z"/></symbol>
+<symbol id="i-add" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2.5C10.2761 2.5 10.5 2.72386 10.5 3V9.5H17C17.2761 9.5 17.5 9.72386 17.5 10C17.5 10.2761 17.2761 10.5 17 10.5H10.5V17C10.5 17.2761 10.2761 17.5 10 17.5C9.72386 17.5 9.5 17.2761 9.5 17V10.5H3C2.72386 10.5 2.5 10.2761 2.5 10C2.5 9.72386 2.72386 9.5 3 9.5H9.5V3C9.5 2.72386 9.72386 2.5 10 2.5Z"/></symbol>
+<symbol id="i-info" viewBox="0 0 20 20" fill="currentColor"><path d="M10.4921 8.91012C10.4497 8.67687 10.2456 8.49999 10.0001 8.49999C9.72397 8.49999 9.50011 8.72385 9.50011 8.99999V13.5021L9.50817 13.592C9.55051 13.8253 9.75465 14.0021 10.0001 14.0021C10.2763 14.0021 10.5001 13.7783 10.5001 13.5021V8.99999L10.4921 8.91012ZM10.7988 6.74999C10.7988 6.33578 10.463 5.99999 10.0488 5.99999C9.63461 5.99999 9.29883 6.33578 9.29883 6.74999C9.29883 7.16421 9.63461 7.49999 10.0488 7.49999C10.463 7.49999 10.7988 7.16421 10.7988 6.74999ZM18 10C18 5.58172 14.4183 2 10 2C5.58172 2 2 5.58172 2 10C2 14.4183 5.58172 18 10 18C14.4183 18 18 14.4183 18 10ZM3 10C3 6.13401 6.13401 3 10 3C13.866 3 17 6.13401 17 10C17 13.866 13.866 17 10 17C6.13401 17 3 13.866 3 10Z"/></symbol>
+<symbol id="i-menu" viewBox="0 0 20 20" fill="currentColor"><path d="M2 4.5C2 4.22386 2.22386 4 2.5 4H17.5C17.7761 4 18 4.22386 18 4.5C18 4.77614 17.7761 5 17.5 5H2.5C2.22386 5 2 4.77614 2 4.5ZM2 9.5C2 9.22386 2.22386 9 2.5 9H17.5C17.7761 9 18 9.22386 18 9.5C18 9.77614 17.7761 10 17.5 10H2.5C2.22386 10 2 9.77614 2 9.5ZM2.5 14C2.22386 14 2 14.2239 2 14.5C2 14.7761 2.22386 15 2.5 15H17.5C17.7761 15 18 14.7761 18 14.5C18 14.2239 17.7761 14 17.5 14H2.5Z"/></symbol>
+<symbol id="i-follow" viewBox="0 0 20 20" fill="currentColor"><path d="M9 5C9 3.34315 7.65685 2 6 2C4.34315 2 3 3.34315 3 5C3 6.4865 4.08114 7.72048 5.5 7.95852V12.0415C4.08114 12.2795 3 13.5135 3 15C3 16.6569 4.34315 18 6 18C7.65685 18 9 16.6569 9 15C9 13.5135 7.91886 12.2795 6.5 12.0415V11H12C13.3807 11 14.5 9.88071 14.5 8.5V7.95852C15.9189 7.72048 17 6.4865 17 5C17 3.34315 15.6569 2 14 2C12.3431 2 11 3.34315 11 5C11 6.4865 12.0811 7.72048 13.5 7.95852V8.5C13.5 9.32843 12.8284 10 12 10H6.5V7.95852C7.91886 7.72048 9 6.4865 9 5ZM6 7C4.89543 7 4 6.10457 4 5C4 3.89543 4.89543 3 6 3C7.10457 3 8 3.89543 8 5C8 6.10457 7.10457 7 6 7ZM6 17C4.89543 17 4 16.1046 4 15C4 13.8954 4.89543 13 6 13C7.10457 13 8 13.8954 8 15C8 16.1046 7.10457 17 6 17ZM16 5C16 6.10457 15.1046 7 14 7C12.8954 7 12 6.10457 12 5C12 3.89543 12.8954 3 14 3C15.1046 3 16 3.89543 16 5Z"/></symbol>
+<symbol id="i-search" viewBox="0 0 20 20" fill="currentColor"><path d="M13.7291 14.4362C12.5924 15.411 11.115 16 9.5 16C5.91015 16 3 13.0899 3 9.5C3 5.91015 5.91015 3 9.5 3C13.0899 3 16 5.91015 16 9.5C16 11.115 15.411 12.5924 14.4361 13.7292L17.8535 17.1465C18.0487 17.3417 18.0487 17.6583 17.8535 17.8536C17.6799 18.0271 17.4105 18.0464 17.2156 17.9114L17.1464 17.8536L13.7291 14.4362ZM13.0196 13.7266C13.276 13.5128 13.5127 13.2761 13.7265 13.0197C14.5216 12.0659 15 10.8388 15 9.5C15 6.46243 12.5376 4 9.5 4C6.46243 4 4 6.46243 4 9.5C4 12.5376 6.46243 15 9.5 15C10.8388 15 12.0658 14.5217 13.0196 13.7266Z"/></symbol>
+<symbol id="i-edit" viewBox="0 0 20 20" fill="currentColor"><path d="M17.1813 2.92689C16.029 1.71505 14.1046 1.69077 12.9222 2.87317L3.54735 12.2475C3.21952 12.5754 2.99198 12.9899 2.89142 13.4424L2.0138 17.3923C1.97672 17.5592 2.02748 17.7335 2.14838 17.8544C2.26928 17.9753 2.44356 18.026 2.61044 17.9889L6.53683 17.1157C7.00426 17.0118 7.43237 16.7767 7.77096 16.4381L17.129 7.08003C18.27 5.939 18.2932 4.09631 17.1813 2.92689ZM13.6293 3.58029C14.4142 2.79538 15.6917 2.8115 16.4566 3.61596C17.1947 4.39225 17.1793 5.61548 16.4218 6.37293L15.7506 7.04418L12.958 4.25155L13.6293 3.58029ZM12.2508 4.95864L15.0435 7.7513L7.06385 15.731C6.8597 15.9352 6.60158 16.0769 6.31975 16.1396L3.16044 16.8421L3.86762 13.6593C3.92692 13.3924 4.0611 13.148 4.25444 12.9547L12.2508 4.95864Z"/></symbol>
+</svg>
+<h1 class="subtitle1" style="margin:0 0 16px">Followed projects · confirmations</h1>
+<div class="frames">
+<section class="fr-wrap"><h3 class="fr-title">1a. Unfollow · desktop (960px)</h3><div class="frame " style="width:960px"><div class="pg"><div class="pg-head"><svg class="i " aria-hidden="true"><use href="#i-menu"/></svg><b class="subtitle1">Followed projects</b><button class="btn primary" type="button" tabindex="-1"><svg class="i " aria-hidden="true"><use href="#i-add"/></svg><span>Follow project</span></button></div><div class="pg-body"><div class="card pg-list"><div class="pg-row sel"><div><b>Chiggi Threads</b><div class="repo">jhangyu/morphe_patches</div></div><span class="tag">v1.25.2</span></div><div class="pg-row"><div><b>Picsart</b><div class="repo">example/picsart-patches</div></div><span class="tag">v3.4.0</span></div><div class="pg-row"><div><b>Reddit Revanced</b><div class="repo">example/reddit-patches</div></div><span class="tag">v2.1.0</span></div></div></div></div><div class="scrim"><dialog open class="confirm" aria-labelledby="u1-t" aria-describedby="u1-d"><form method="dialog">
+<h2 class="subtitle1" id="u1-t">Unfollow project?</h2>
+<p class="subtle-text dlg-msg" id="u1-d"><strong>Chiggi Threads</strong> is unfollowed and its downloaded APKs are deleted.</p>
+<div class="dlg-actions"><button class="btn" value="cancel" autofocus>Cancel</button><button class="btn destructive" value="ok">Unfollow</button></div>
+</form></dialog></div></div></section>
+<section class="fr-wrap"><h3 class="fr-title">1b. Unfollow · 390px</h3><div class="frame m390" style="width:390px"><div class="pg"><div class="pg-head"><svg class="i " aria-hidden="true"><use href="#i-menu"/></svg><b class="subtitle1">Followed projects</b><button class="btn primary" type="button" tabindex="-1"><svg class="i " aria-hidden="true"><use href="#i-add"/></svg><span>Follow project</span></button></div><div class="pg-body"><div class="card pg-list"><div class="pg-row sel"><div><b>Chiggi Threads</b><div class="repo">jhangyu/morphe_patches</div></div><span class="tag">v1.25.2</span></div><div class="pg-row"><div><b>Picsart</b><div class="repo">example/picsart-patches</div></div><span class="tag">v3.4.0</span></div><div class="pg-row"><div><b>Reddit Revanced</b><div class="repo">example/reddit-patches</div></div><span class="tag">v2.1.0</span></div></div></div></div><div class="scrim"><dialog open class="confirm" aria-labelledby="u2-t" aria-describedby="u2-d"><form method="dialog">
+<h2 class="subtitle1" id="u2-t">Unfollow project?</h2>
+<p class="subtle-text dlg-msg" id="u2-d"><strong>Chiggi Threads</strong> is unfollowed and its downloaded APKs are deleted.</p>
+<div class="dlg-actions"><button class="btn" value="cancel" autofocus>Cancel</button><button class="btn destructive" value="ok">Unfollow</button></div>
+</form></dialog></div></div></section>
+<section class="fr-wrap"><h3 class="fr-title">1c. Unfollow · 390px, long label wraps</h3><div class="frame m390" style="width:390px"><div class="pg"><div class="pg-head"><svg class="i " aria-hidden="true"><use href="#i-menu"/></svg><b class="subtitle1">Followed projects</b><button class="btn primary" type="button" tabindex="-1"><svg class="i " aria-hidden="true"><use href="#i-add"/></svg><span>Follow project</span></button></div><div class="pg-body"><div class="card pg-list"><div class="pg-row sel"><div><b>Chiggi Threads</b><div class="repo">jhangyu/morphe_patches</div></div><span class="tag">v1.25.2</span></div><div class="pg-row"><div><b>Picsart</b><div class="repo">example/picsart-patches</div></div><span class="tag">v3.4.0</span></div><div class="pg-row"><div><b>Reddit Revanced</b><div class="repo">example/reddit-patches</div></div><span class="tag">v2.1.0</span></div></div></div></div><div class="scrim"><dialog open class="confirm" aria-labelledby="u3-t" aria-describedby="u3-d"><form method="dialog">
+<h2 class="subtitle1" id="u3-t">Unfollow project?</h2>
+<p class="subtle-text dlg-msg" id="u3-d"><strong>My very long followed project display name that must wrap</strong> is unfollowed and its downloaded APKs are deleted.</p>
+<div class="dlg-actions"><button class="btn" value="cancel" autofocus>Cancel</button><button class="btn destructive" value="ok">Unfollow</button></div>
+</form></dialog></div></div></section>
+<section class="fr-wrap"><h3 class="fr-title">2a. Replace regex, stacked over #addDlg · desktop (960px)</h3><div class="frame " style="width:960px"><div class="pg"><div class="pg-head"><svg class="i " aria-hidden="true"><use href="#i-menu"/></svg><b class="subtitle1">Followed projects</b><button class="btn primary" type="button" tabindex="-1"><svg class="i " aria-hidden="true"><use href="#i-add"/></svg><span>Follow project</span></button></div><div class="pg-body"><div class="card pg-list"><div class="pg-row sel"><div><b>Chiggi Threads</b><div class="repo">jhangyu/morphe_patches</div></div><span class="tag">v1.25.2</span></div><div class="pg-row"><div><b>Picsart</b><div class="repo">example/picsart-patches</div></div><span class="tag">v3.4.0</span></div><div class="pg-row"><div><b>Reddit Revanced</b><div class="repo">example/reddit-patches</div></div><span class="tag">v2.1.0</span></div></div></div></div><div class="scrim"><dialog open class="wide addrender" aria-labelledby="addT"><form method="dialog">
+<div class="dlg-h"><div class="row between"><h2 id="addT">Follow a GitHub project</h2><button class="icon-btn" type="button" tabindex="-1" aria-label="Close"><svg class="i " aria-hidden="true"><use href="#i-close"/></svg></button></div>
+<ol class="steps"><li class="done"><b>1</b>Repository</li><li class="now"><b>2</b>Pick assets</li><li><b>3</b>Channel &amp; phones</li></ol></div>
+<div class="dlg-b"><div class="stack">
+<div><h3>Latest release <span class="tag">v1.25.2</span> <span class="badge ok">Stable</span></h3><p class="xs muted">jhangyu/morphe_patches · 3 APK assets</p></div>
+<table class="atbl"><thead><tr><th style="width:1%"><span class="vh">Select</span></th><th>Asset file</th><th class="c-size" style="text-align:right">Size</th></tr></thead><tbody>
+<tr class="match"><td><input type="checkbox" checked></td><td><label>threads-patched-arm64-v8a.apk</label></td><td class="c-size" style="text-align:right">142 MB</td></tr>
+<tr class="match"><td><input type="checkbox" checked></td><td><label>threads-patched-universal.apk</label></td><td class="c-size" style="text-align:right">188 MB</td></tr>
+<tr class="nomatch"><td><input type="checkbox"></td><td><label>threads-patched-x86_64.apk</label></td><td class="c-size" style="text-align:right">150 MB</td></tr></tbody></table>
+<div class="field"><label class="label">Asset regex <span class="xs muted" style="font-weight:400">· derived from your ticks, editable</span></label><div class="input"><input class="rx" value="^threads-patched-(arm64-v8a|universal)\.apk$" readonly></div></div>
+</div></div>
+<div class="dlg-f"><span class="xs muted" style="margin-right:auto"></span><button class="btn" type="button" tabindex="-1">Cancel</button><button class="btn primary" type="button" tabindex="-1" disabled>Follow project</button></div>
+</form></dialog></div><div class="scrim s2"><dialog open class="confirm nested" aria-labelledby="rp-t" aria-describedby="rp-d"><form method="dialog">
+<h2 class="subtitle1" id="rp-t">Replace your regex?</h2>
+<p class="subtle-text dlg-msg" id="rp-d">The regex you edited is replaced with one derived from the ticked assets.</p>
+<div class="dlg-actions"><button class="btn" value="cancel">Cancel</button><button class="btn primary" value="ok">Replace</button></div>
+</form></dialog></div></div></section>
+<section class="fr-wrap"><h3 class="fr-title">2b. Replace regex, stacked over #addDlg · 390px</h3><div class="frame m390" style="width:390px"><div class="pg"><div class="pg-head"><svg class="i " aria-hidden="true"><use href="#i-menu"/></svg><b class="subtitle1">Followed projects</b><button class="btn primary" type="button" tabindex="-1"><svg class="i " aria-hidden="true"><use href="#i-add"/></svg><span>Follow project</span></button></div><div class="pg-body"><div class="card pg-list"><div class="pg-row sel"><div><b>Chiggi Threads</b><div class="repo">jhangyu/morphe_patches</div></div><span class="tag">v1.25.2</span></div><div class="pg-row"><div><b>Picsart</b><div class="repo">example/picsart-patches</div></div><span class="tag">v3.4.0</span></div><div class="pg-row"><div><b>Reddit Revanced</b><div class="repo">example/reddit-patches</div></div><span class="tag">v2.1.0</span></div></div></div></div><div class="scrim"><dialog open class="wide addrender" aria-labelledby="addT"><form method="dialog">
+<div class="dlg-h"><div class="row between"><h2 id="addT">Follow a GitHub project</h2><button class="icon-btn" type="button" tabindex="-1" aria-label="Close"><svg class="i " aria-hidden="true"><use href="#i-close"/></svg></button></div>
+<ol class="steps"><li class="done"><b>1</b>Repository</li><li class="now"><b>2</b>Pick assets</li><li><b>3</b>Channel &amp; phones</li></ol></div>
+<div class="dlg-b"><div class="stack">
+<div><h3>Latest release <span class="tag">v1.25.2</span> <span class="badge ok">Stable</span></h3><p class="xs muted">jhangyu/morphe_patches · 3 APK assets</p></div>
+<table class="atbl"><thead><tr><th style="width:1%"><span class="vh">Select</span></th><th>Asset file</th><th class="c-size" style="text-align:right">Size</th></tr></thead><tbody>
+<tr class="match"><td><input type="checkbox" checked></td><td><label>threads-patched-arm64-v8a.apk</label></td><td class="c-size" style="text-align:right">142 MB</td></tr>
+<tr class="match"><td><input type="checkbox" checked></td><td><label>threads-patched-universal.apk</label></td><td class="c-size" style="text-align:right">188 MB</td></tr>
+<tr class="nomatch"><td><input type="checkbox"></td><td><label>threads-patched-x86_64.apk</label></td><td class="c-size" style="text-align:right">150 MB</td></tr></tbody></table>
+<div class="field"><label class="label">Asset regex <span class="xs muted" style="font-weight:400">· derived from your ticks, editable</span></label><div class="input"><input class="rx" value="^threads-patched-(arm64-v8a|universal)\.apk$" readonly></div></div>
+</div></div>
+<div class="dlg-f"><span class="xs muted" style="margin-right:auto"></span><button class="btn" type="button" tabindex="-1">Cancel</button><button class="btn primary" type="button" tabindex="-1" disabled>Follow project</button></div>
+</form></dialog></div><div class="scrim s2"><dialog open class="confirm nested" aria-labelledby="rp-t" aria-describedby="rp-d"><form method="dialog">
+<h2 class="subtitle1" id="rp-t">Replace your regex?</h2>
+<p class="subtle-text dlg-msg" id="rp-d">The regex you edited is replaced with one derived from the ticked assets.</p>
+<div class="dlg-actions"><button class="btn" value="cancel">Cancel</button><button class="btn primary" value="ok">Replace</button></div>
+</form></dialog></div></div></section>
+</div>
+</body></html>

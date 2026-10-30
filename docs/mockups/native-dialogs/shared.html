@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup · Shared confirm lightbox · Relume</title>
+<link rel="stylesheet" href="../../../local/webui/static/app.css">
+<link rel="stylesheet" href="shared.css">
+<style>
+  /* mockup scaffolding only (not to be implemented): ?d=<id> opens that dialog for real over a plain page; no ?d= shows the gallery */
+  body.gallery { background: var(--colorNeutralBackground3); padding: 32px; display: grid; gap: 32px; }
+  body:not(.gallery) .notes { display: none; }
+  .notes { display: grid; gap: 12px; }
+  .frames { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
+  .frames figure { margin: 0; display: grid; gap: 6px; }
+  .frames iframe { border: 1px solid var(--colorNeutralStroke1); border-radius: var(--borderRadiusXLarge); background: #fff; }
+</style>
+</head>
+<body class="gallery">
+<h1 class="title3 notes">Shared confirm lightbox (shared.css)</h1>
+<div class="notes">
+  <section><h2 class="subtitle1">Neutral confirm (.btn.primary)</h2><div class="frames">
+    <figure><iframe data-src="?d=neutral" width="1024" height="420" title="Neutral confirm (.btn.primary), desktop"></iframe><figcaption class="caption">Desktop</figcaption></figure>
+    <figure><iframe data-src="?d=neutral" width="390" height="420" title="Neutral confirm (.btn.primary), phone 390 px"></iframe><figcaption class="caption">Phone 390 px</figcaption></figure>
+  </div></section>
+  <section><h2 class="subtitle1">Destructive confirm (.btn.destructive)</h2><div class="frames">
+    <figure><iframe data-src="?d=danger" width="1024" height="420" title="Destructive confirm (.btn.destructive), desktop"></iframe><figcaption class="caption">Desktop</figcaption></figure>
+    <figure><iframe data-src="?d=danger" width="390" height="420" title="Destructive confirm (.btn.destructive), phone 390 px"></iframe><figcaption class="caption">Phone 390 px</figcaption></figure>
+  </div></section>
+</div>
+
+<!-- Neutral: non-destructive action uses .btn.primary; initial focus may stay on the first button (Cancel) like every dialog. -->
+<dialog id="dlg-neutral" aria-labelledby="n-t" aria-describedby="n-msg"><form method="dialog">
+<h2 class="subtitle1" id="n-t">Rebuild all apps?</h2>
+<p class="subtle-text dlg-msg" id="n-msg">Every enabled app is queued for a new build.</p>
+<div class="dlg-actions"><button class="btn" value="cancel">Cancel</button><button class="btn primary" value="ok">Rebuild</button></div>
+</form></dialog>
+
+<!-- Destructive: .btn.destructive, Cancel first with autofocus; Escape and Cancel both cancel. No leading icon. The user name goes in the body in <strong>, set with textContent (HTML-escaped), never in the title. -->
+<dialog id="dlg-danger" aria-labelledby="d-t" aria-describedby="d-msg"><form method="dialog">
+<h2 class="subtitle1" id="d-t">Delete source?</h2>
+<p class="subtle-text dlg-msg" id="d-msg"><strong>My patches</strong> is deleted. Apps that use it fall back to the default bundle.</p>
+<div class="dlg-actions"><button class="btn" value="cancel" autofocus>Cancel</button><button class="btn destructive" value="ok">Delete</button></div>
+</form></dialog>
+
+
+<script>
+  const d = new URLSearchParams(location.search).get('d');
+  // iframes get their src only in gallery mode, so a scene never loads nested scenes.
+  if (!d) document.querySelectorAll('iframe[data-src]').forEach(f => { f.src = f.dataset.src; });
+  if (d) {
+    document.body.classList.remove('gallery');
+    const dlg = document.getElementById('dlg-' + d);
+    dlg.showModal();
+    dlg.addEventListener('close', () => dlg.showModal());
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup · Apps page confirmations · Relume</title>
+<link rel="stylesheet" href="../../../local/webui/static/app.css">
+<link rel="stylesheet" href="shared.css">
+<style>
+  /* NEW CSS — to be added to local/webui/static/apps.html: none. Both Apps dialogs use only app.css + shared.css. */
+
+  /* ---- mockup scaffolding only (not to be implemented) ---- */
+  /* Copy of the apps.html list/drawer rules the faded page needs. */
+  .lhead, .arow { display: grid; grid-template-columns: minmax(200px, 2fr) minmax(110px, .9fr) minmax(150px, 1.3fr) minmax(210px, 1.7fr) 160px; align-items: center; gap: 16px; padding: 0 20px; }
+  .lhead { height: 40px; font-size: 12px; font-weight: 600; color: var(--colorNeutralForeground3); border-bottom: 1px solid var(--colorNeutralStroke2); }
+  .arow { min-height: 80px; padding-top: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--colorNeutralStroke3); }
+  .arow.selected { background: var(--colorBrandBackground2); }
+  .arow .nm { font: 600 15px/20px var(--fontFamilyBase); }
+  .acts { display: flex; justify-content: flex-end; gap: 2px; }
+  .arow .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .list { margin-top: 20px; }
+  .scene .drawer { animation: none; } /* static picture: no slide-in, so screenshots never catch the drawer half-faded */
+  .dsec { padding: 20px 0; border-top: 1px solid var(--colorNeutralStroke3); display: grid; gap: 12px; }
+  .dsec:first-child { border-top: 0; padding-top: 4px; }
+  .dsec h3 { display: flex; align-items: center; gap: 8px; }
+  .pt { border: 1px solid var(--colorNeutralStroke2); border-radius: var(--borderRadiusXLarge); }
+  .pt-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-top: 1px solid var(--colorNeutralStroke3); }
+  .pt-row:first-child { border-top: 0; }
+  @media (max-width: 900px) {
+    .lhead { display: none; }
+    .arow { grid-template-columns: 1fr auto; grid-template-areas: "app app" "ver bun" "st st" "acts acts"; gap: 8px 12px; padding: 16px; }
+    .arow > :nth-child(1) { grid-area: app; } .arow > :nth-child(2) { grid-area: ver; } .arow > :nth-child(3) { grid-area: bun; text-align: right; }
+    .arow > :nth-child(4) { grid-area: st; } .arow > :nth-child(5) { grid-area: acts; justify-content: flex-start; }
+  }
+  /* Gallery: each dialog is shown in two real viewports (iframes of this file with ?d=…), so
+     showModal(), the top layer, the backdrop, vw units and the 480px phone rule all behave as in the app. */
+  body.gallery { background: var(--colorNeutralBackground3); padding: 32px; }
+  .gallery .scene { display: none; }
+  body:not(.gallery) .notes { display: none; }
+  .notes { display: grid; gap: 32px; max-width: 1760px; }
+  .notes section { display: grid; gap: 12px; }
+  .frames { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
+  .frames figure { margin: 0; display: grid; gap: 6px; }
+  .frames iframe { border: 1px solid var(--colorNeutralStroke1); border-radius: var(--borderRadiusXLarge); background: #fff; }
+  .notes ul { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+</style>
+</head>
+<body class="gallery">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<symbol id="i-add" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2.5C10.2761 2.5 10.5 2.72386 10.5 3V9.5H17C17.2761 9.5 17.5 9.72386 17.5 10C17.5 10.2761 17.2761 10.5 17 10.5H10.5V17C10.5 17.2761 10.2761 17.5 10 17.5C9.72386 17.5 9.5 17.2761 9.5 17V10.5H3C2.72386 10.5 2.5 10.2761 2.5 10C2.5 9.72386 2.72386 9.5 3 9.5H9.5V3C9.5 2.72386 9.72386 2.5 10 2.5Z"/></symbol>
+<symbol id="i-apps" viewBox="0 0 20 20" fill="currentColor"><path d="M4.5 17.0009C3.7203 17.0009 3.07955 16.406 3.00687 15.6454L3 15.5009V4.50092C3 3.72122 3.59489 3.08047 4.35554 3.00778L4.5 3.00092H9C9.7797 3.00092 10.4204 3.5958 10.4931 4.35646L10.5 4.50092V4.75534L12.6886 2.48609C13.2276 1.92691 14.0959 1.8766 14.6956 2.34798L14.8118 2.44922L17.5694 5.17386C18.1219 5.71976 18.1614 6.5886 17.68 7.18505L17.5767 7.30053L15.266 9.50034L15.5 9.50092C16.2797 9.50092 16.9204 10.0958 16.9931 10.8565L17 11.0009V15.5009C17 16.2806 16.4051 16.9214 15.6445 16.994L15.5 17.0009H4.5ZM9.5 10.5009H4V15.5009C4 15.7157 4.13542 15.8988 4.32553 15.9696L4.41012 15.9929L4.5 16.0009H9.5V10.5009ZM15.5 10.5009H10.5V16.0009H15.5C15.7455 16.0009 15.9496 15.824 15.9919 15.5908L16 15.5009V11.0009C16 10.7555 15.8231 10.5513 15.5899 10.509L15.5 10.5009ZM10.5 7.71034V9.50034H12.29L10.5 7.71034ZM9 4.00092H4.5C4.25454 4.00092 4.05039 4.17779 4.00806 4.41104L4 4.50092V9.50092H9.5V4.50092C9.5 4.28614 9.36458 4.10299 9.17447 4.0322L9.08988 4.00897L9 4.00092ZM14.1222 3.17357C13.9396 2.99744 13.6692 2.98247 13.4768 3.12096L13.4086 3.18007L10.7926 5.89421C10.6271 6.06592 10.6086 6.32593 10.7356 6.51736L10.799 6.59475L13.4147 9.21046C13.5826 9.37838 13.8409 9.40226 14.0345 9.28022L14.1131 9.21898L16.8708 6.59231C17.0433 6.4177 17.061 6.14817 16.9248 5.95411L16.8665 5.88521L14.1222 3.17357Z"/></symbol>
+<symbol id="i-builds" viewBox="0 0 20 20" fill="currentColor"><path d="M5.64645 9.14645C5.84171 8.95118 6.15829 8.95118 6.35355 9.14645L8.35355 11.1464C8.44732 11.2402 8.5 11.3674 8.5 11.5C8.5 11.6326 8.44732 11.7598 8.35355 11.8536L6.35355 13.8536C6.15829 14.0488 5.84171 14.0488 5.64645 13.8536C5.45118 13.6583 5.45118 13.3417 5.64645 13.1464L7.29289 11.5L5.64645 9.85355C5.45118 9.65829 5.45118 9.34171 5.64645 9.14645ZM14.5 13H9.5C9.22386 13 9 13.2239 9 13.5C9 13.7761 9.22386 14 9.5 14H14.5C14.7761 14 15 13.7761 15 13.5C15 13.2239 14.7761 13 14.5 13ZM2.99609 5.5C2.99609 4.11929 4.11538 3 5.49609 3H14.4961C15.8768 3 16.9961 4.11929 16.9961 5.5V6H16.999V7H16.9961V14.5C16.9961 15.8807 15.8768 17 14.4961 17H5.49609C4.11538 17 2.99609 15.8807 2.99609 14.5V5.5ZM15.9961 6V5.5C15.9961 4.67157 15.3245 4 14.4961 4H5.49609C4.66767 4 3.99609 4.67157 3.99609 5.5V6H15.9961ZM3.99609 7V14.5C3.99609 15.3284 4.66767 16 5.49609 16H14.4961C15.3245 16 15.9961 15.3284 15.9961 14.5V7H3.99609Z"/></symbol>
+<symbol id="i-check" viewBox="0 0 20 20" fill="currentColor"><path d="M3.37371 10.1678C3.19025 9.96143 2.87421 9.94284 2.66782 10.1263C2.46143 10.3098 2.44284 10.6258 2.6263 10.8322L6.6263 15.3322C6.81743 15.5472 7.15013 15.557 7.35356 15.3536L17.8536 4.85355C18.0488 4.65829 18.0488 4.34171 17.8536 4.14645C17.6583 3.95118 17.3417 3.95118 17.1465 4.14645L7.02141 14.2715L3.37371 10.1678Z"/></symbol>
+<symbol id="i-close" viewBox="0 0 20 20" fill="currentColor"><path d="M4.08859 4.21569L4.14645 4.14645C4.32001 3.97288 4.58944 3.9536 4.78431 4.08859L4.85355 4.14645L10 9.293L15.1464 4.14645C15.32 3.97288 15.5894 3.9536 15.7843 4.08859L15.8536 4.14645C16.0271 4.32001 16.0464 4.58944 15.9114 4.78431L15.8536 4.85355L10.707 10L15.8536 15.1464C16.0271 15.32 16.0464 15.5894 15.9114 15.7843L15.8536 15.8536C15.68 16.0271 15.4106 16.0464 15.2157 15.9114L15.1464 15.8536L10 10.707L4.85355 15.8536C4.67999 16.0271 4.41056 16.0464 4.21569 15.9114L4.14645 15.8536C3.97288 15.68 3.9536 15.4106 4.08859 15.2157L4.14645 15.1464L9.293 10L4.14645 4.85355C3.97288 4.67999 3.9536 4.41056 4.08859 4.21569L4.14645 4.14645L4.08859 4.21569Z"/></symbol>
+<symbol id="i-devices" viewBox="0 0 20 20" fill="currentColor"><path d="M9 14C8.72386 14 8.5 14.2239 8.5 14.5C8.5 14.7761 8.72386 15 9 15H11C11.2761 15 11.5 14.7761 11.5 14.5C11.5 14.2239 11.2761 14 11 14H9ZM7 2C5.89543 2 5 2.89543 5 4V16C5 17.1046 5.89543 18 7 18H13C14.1046 18 15 17.1046 15 16V4C15 2.89543 14.1046 2 13 2H7ZM6 4C6 3.44772 6.44772 3 7 3H13C13.5523 3 14 3.44772 14 4V16C14 16.5523 13.5523 17 13 17H7C6.44772 17 6 16.5523 6 16V4Z"/></symbol>
+<symbol id="i-follow" viewBox="0 0 20 20" fill="currentColor"><path d="M9 5C9 3.34315 7.65685 2 6 2C4.34315 2 3 3.34315 3 5C3 6.4865 4.08114 7.72048 5.5 7.95852V12.0415C4.08114 12.2795 3 13.5135 3 15C3 16.6569 4.34315 18 6 18C7.65685 18 9 16.6569 9 15C9 13.5135 7.91886 12.2795 6.5 12.0415V11H12C13.3807 11 14.5 9.88071 14.5 8.5V7.95852C15.9189 7.72048 17 6.4865 17 5C17 3.34315 15.6569 2 14 2C12.3431 2 11 3.34315 11 5C11 6.4865 12.0811 7.72048 13.5 7.95852V8.5C13.5 9.32843 12.8284 10 12 10H6.5V7.95852C7.91886 7.72048 9 6.4865 9 5ZM6 7C4.89543 7 4 6.10457 4 5C4 3.89543 4.89543 3 6 3C7.10457 3 8 3.89543 8 5C8 6.10457 7.10457 7 6 7ZM6 17C4.89543 17 4 16.1046 4 15C4 13.8954 4.89543 13 6 13C7.10457 13 8 13.8954 8 15C8 16.1046 7.10457 17 6 17ZM16 5C16 6.10457 15.1046 7 14 7C12.8954 7 12 6.10457 12 5C12 3.89543 12.8954 3 14 3C15.1046 3 16 3.89543 16 5Z"/></symbol>
+<symbol id="i-menu" viewBox="0 0 20 20" fill="currentColor"><path d="M2 4.5C2 4.22386 2.22386 4 2.5 4H17.5C17.7761 4 18 4.22386 18 4.5C18 4.77614 17.7761 5 17.5 5H2.5C2.22386 5 2 4.77614 2 4.5ZM2 9.5C2 9.22386 2.22386 9 2.5 9H17.5C17.7761 9 18 9.22386 18 9.5C18 9.77614 17.7761 10 17.5 10H2.5C2.22386 10 2 9.77614 2 9.5ZM2.5 14C2.22386 14 2 14.2239 2 14.5C2 14.7761 2.22386 15 2.5 15H17.5C17.7761 15 18 14.7761 18 14.5C18 14.2239 17.7761 14 17.5 14H2.5Z"/></symbol>
+<symbol id="i-rebuild" viewBox="0 0 20 20" fill="currentColor"><path d="M8.99952 6.5C8.99952 4.01472 11.0142 2 13.4995 2C14.1589 2 14.7864 2.14214 15.352 2.39792C15.5016 2.46556 15.6084 2.60232 15.6379 2.76381C15.6673 2.92531 15.6156 3.09097 15.4996 3.20705L13.2066 5.49998L14.4996 6.79287L16.7925 4.49998C16.9086 4.3839 17.0742 4.33219 17.2357 4.36164C17.3972 4.39108 17.534 4.49793 17.6016 4.6475C17.8574 5.2131 17.9995 5.84062 17.9995 6.5C17.9995 8.98528 15.9848 11 13.4995 11C13.1189 11 12.7488 10.9526 12.395 10.8633L6.03016 17.3113C5.18266 18.1698 3.82373 18.25 2.88117 17.497C1.79605 16.6302 1.69173 15.0178 2.65608 14.0184L9.08153 7.35911C9.02767 7.08069 8.99952 6.79343 8.99952 6.5ZM13.4995 3C11.5665 3 9.99952 4.567 9.99952 6.5C9.99952 6.80674 10.0389 7.10354 10.1125 7.38597C10.1565 7.55458 10.1095 7.73392 9.98849 7.85931L3.37571 14.7127C2.82045 15.2882 2.88051 16.2166 3.50531 16.7157C4.04803 17.1493 4.8305 17.1031 5.31848 16.6088L11.8923 9.94909C12.0256 9.81397 12.2241 9.76605 12.4044 9.8254C12.7483 9.93857 13.1162 10 13.4995 10C15.4325 10 16.9995 8.433 16.9995 6.5C16.9995 6.25328 16.9741 6.01282 16.9257 5.78097L14.8531 7.85352C14.6579 8.04878 14.3413 8.04879 14.146 7.85353L12.146 5.85355C12.0522 5.75979 11.9995 5.63261 11.9995 5.5C11.9995 5.36739 12.0522 5.24021 12.1459 5.14644L14.2186 3.07383C13.9867 3.02545 13.7462 3 13.4995 3Z"/></symbol>
+<symbol id="i-schedule" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2C14.4183 2 18 5.58172 18 10C18 14.4183 14.4183 18 10 18C5.58172 18 2 14.4183 2 10C2 5.58172 5.58172 2 10 2ZM10 3C6.13401 3 3 6.13401 3 10C3 13.866 6.13401 17 10 17C13.866 17 17 13.866 17 10C17 6.13401 13.866 3 10 3ZM9.5 5C9.74546 5 9.94961 5.17688 9.99194 5.41012L10 5.5V10H12.5C12.7761 10 13 10.2239 13 10.5C13 10.7455 12.8231 10.9496 12.5899 10.9919L12.5 11H9.5C9.25454 11 9.05039 10.8231 9.00806 10.5899L9 10.5V5.5C9 5.22386 9.22386 5 9.5 5Z"/></symbol>
+<symbol id="i-settings" viewBox="0 0 20 20" fill="currentColor"><path d="M1.91099 7.38266C2.28028 6.24053 2.88863 5.19213 3.69133 4.30364C3.82707 4.15339 4.04002 4.09984 4.23069 4.16802L6.14897 4.85392C6.66905 5.03977 7.24131 4.76883 7.42716 4.24875C7.44544 4.19762 7.45952 4.14507 7.46925 4.09173L7.83471 2.08573C7.87104 1.88627 8.02422 1.7285 8.22251 1.6863C8.8027 1.5628 9.39758 1.5 10.0003 1.5C10.6026 1.5 11.1971 1.56273 11.7769 1.68607C11.9752 1.72824 12.1284 1.88591 12.1648 2.08529L12.5313 4.09165C12.6303 4.63497 13.1511 4.9951 13.6944 4.89601C13.7479 4.88627 13.8004 4.87219 13.8515 4.85395L15.7698 4.16802C15.9605 4.09984 16.1734 4.15339 16.3092 4.30364C17.1119 5.19213 17.7202 6.24053 18.0895 7.38266C18.1518 7.57534 18.0918 7.78658 17.9374 7.91764L16.3825 9.23773C15.9615 9.5952 15.9101 10.2263 16.2675 10.6473C16.3027 10.6887 16.3411 10.7271 16.3825 10.7623L17.9374 12.0824C18.0918 12.2134 18.1518 12.4247 18.0895 12.6173C17.7202 13.7595 17.1119 14.8079 16.3092 15.6964C16.1734 15.8466 15.9605 15.9002 15.7698 15.832L13.8515 15.1461C13.3315 14.9602 12.7592 15.2312 12.5733 15.7512C12.5551 15.8024 12.541 15.8549 12.5312 15.9085L12.1648 17.9147C12.1284 18.1141 11.9752 18.2718 11.7769 18.3139C11.1971 18.4373 10.6026 18.5 10.0003 18.5C9.39758 18.5 8.8027 18.4372 8.22251 18.3137C8.02422 18.2715 7.87104 18.1137 7.83471 17.9143L7.46926 15.9084C7.37018 15.365 6.8494 15.0049 6.30608 15.104C6.25265 15.1137 6.20011 15.1278 6.14906 15.1461L4.23069 15.832C4.04002 15.9002 3.82707 15.8466 3.69133 15.6964C2.88863 14.8079 2.28028 13.7595 1.91099 12.6173C1.84869 12.4247 1.90876 12.2134 2.06313 12.0824L3.61798 10.7623C4.03897 10.4048 4.09046 9.77373 3.73299 9.35274C3.69784 9.31135 3.65937 9.27288 3.618 9.23775L2.06313 7.91764C1.90876 7.78658 1.84869 7.57534 1.91099 7.38266ZM2.97154 7.37709L4.26523 8.47546C4.34803 8.54576 4.42496 8.62269 4.49526 8.70548C5.2102 9.54746 5.10721 10.8096 4.26521 11.5246L2.97154 12.6229C3.26359 13.4051 3.68504 14.1322 4.21648 14.7751L5.81246 14.2044C5.91473 14.1679 6.01982 14.1397 6.12667 14.1202C7.21332 13.922 8.25487 14.6423 8.45305 15.729L8.75702 17.3975C9.16489 17.4655 9.58024 17.5 10.0003 17.5C10.42 17.5 10.8351 17.4656 11.2427 17.3976L11.5475 15.7289C11.567 15.6221 11.5951 15.517 11.6317 15.4147C12.0034 14.3746 13.1479 13.8327 14.1881 14.2044L15.784 14.7751C16.3155 14.1322 16.7369 13.4051 17.029 12.6229L15.7353 11.5245C15.6525 11.4542 15.5756 11.3773 15.5053 11.2945C14.7903 10.4525 14.8933 9.1904 15.7353 8.47544L17.029 7.37709C16.7369 6.59486 16.3155 5.86783 15.784 5.22494L14.1881 5.79559C14.0858 5.83214 13.9807 5.8603 13.8738 5.87979C12.7872 6.07796 11.7456 5.3577 11.5475 4.27119L11.2427 2.60235C10.8351 2.53443 10.42 2.5 10.0003 2.5C9.58024 2.5 9.16489 2.53448 8.75702 2.60249L8.45304 4.27105C8.43355 4.37791 8.40539 4.48299 8.36884 4.58527C7.99714 5.62542 6.8526 6.1673 5.81237 5.79556L4.21648 5.22494C3.68504 5.86783 3.26359 6.59486 2.97154 7.37709ZM7.50026 10C7.50026 8.61929 8.61954 7.5 10.0003 7.5C11.381 7.5 12.5003 8.61929 12.5003 10C12.5003 11.3807 11.381 12.5 10.0003 12.5C8.61954 12.5 7.50026 11.3807 7.50026 10ZM8.50026 10C8.50026 10.8284 9.17183 11.5 10.0003 11.5C10.8287 11.5 11.5003 10.8284 11.5003 10C11.5003 9.17157 10.8287 8.5 10.0003 8.5C9.17183 8.5 8.50026 9.17157 8.50026 10Z"/></symbol>
+<symbol id="i-store" viewBox="0 0 20 20" fill="currentColor"><path d="M9.5 7V10H6.5V7H9.5ZM9.5 14V11H6.5V14H9.5ZM13.5 7V10H10.5V7H13.5ZM13.5 14V11H10.5V14H13.5ZM7 4V2.5C7 1.67157 7.67157 1 8.5 1H11.5C12.3284 1 13 1.67157 13 2.5V4H17.5C17.7761 4 18 4.22386 18 4.5V14.5C18 15.8807 16.8807 17 15.5 17H4.5C3.11929 17 2 15.8807 2 14.5V4.5C2 4.22386 2.22386 4 2.5 4H7ZM8 2.5V4H12V2.5C12 2.22386 11.7761 2 11.5 2H8.5C8.22386 2 8 2.22386 8 2.5ZM3 14.5C3 15.3284 3.67157 16 4.5 16H15.5C16.3284 16 17 15.3284 17 14.5V5H3V14.5Z"/></symbol>
+<symbol id="i-sync" viewBox="0 0 20 20" fill="currentColor"><path d="M11.4142 3.63503C11.6095 3.43977 11.6095 3.12319 11.4142 2.92792L9.29289 0.806603C9.09763 0.611341 8.78104 0.611341 8.58578 0.806603C8.39052 1.00186 8.39052 1.31845 8.58578 1.51371L9.58264 2.51056C7.80518 2.60911 6.05488 3.33754 4.69671 4.6957C1.76776 7.62463 1.76776 12.3734 4.69671 15.3023C4.95359 15.5592 5.2247 15.7937 5.50757 16.0058C5.72852 16.1714 6.04191 16.1266 6.20756 15.9057C6.3732 15.6847 6.32838 15.3713 6.10743 15.2057C5.86235 15.0219 5.6271 14.8185 5.40382 14.5952C2.8654 12.0568 2.8654 7.94121 5.40382 5.40281C6.68997 4.11666 8.38002 3.48223 10.0664 3.49934C10.0915 3.49959 10.1162 3.49799 10.1404 3.49466L8.58578 5.04924C8.39052 5.24451 8.39052 5.56109 8.58578 5.75635C8.78104 5.95161 9.09763 5.95161 9.29289 5.75635L11.4142 3.63503ZM8.58578 16.363C8.39052 16.5582 8.39052 16.8748 8.58578 17.0701L10.7071 19.1914C10.9024 19.3866 11.219 19.3866 11.4142 19.1914C11.6095 18.9961 11.6095 18.6795 11.4142 18.4843L10.4174 17.4874C12.1948 17.3889 13.9451 16.6605 15.3033 15.3023C18.2322 12.3734 18.2322 7.62462 15.3033 4.69569C15.0464 4.43881 14.7753 4.20428 14.4924 3.99221C14.2715 3.82656 13.9581 3.87139 13.7924 4.09233C13.6268 4.31327 13.6716 4.62667 13.8926 4.79231C14.1377 4.97606 14.3729 5.17952 14.5962 5.40279C17.1346 7.9412 17.1346 12.0568 14.5962 14.5952C13.31 15.8813 11.62 16.5158 9.9336 16.4987C9.90849 16.4984 9.88379 16.5 9.85963 16.5033L11.4142 14.9487C11.6095 14.7535 11.6095 14.4369 11.4142 14.2416C11.219 14.0464 10.9024 14.0464 10.7071 14.2416L8.58578 16.363Z"/></symbol>
+</svg>
+
+<!-- ===================== Gallery (shown when the file is opened without ?d=) ===================== -->
+<div class="notes">
+  <header class="row"><h1 class="title3">Apps page: native confirms → Fluent 2 lightboxes</h1></header>
+  <section>
+    <h2 class="subtitle1">1 · Discard unsaved changes (apps.js:431, closeDrawer)</h2>
+    <div class="frames">
+      <figure><iframe data-src="?d=discard" width="1280" height="800" title="Discard, desktop 1280 px"></iframe><figcaption class="caption">Desktop 1280 × 800</figcaption></figure>
+      <figure><iframe data-src="?d=discard" width="390" height="800" title="Discard, phone 390 px"></iframe><figcaption class="caption">Phone 390 px</figcaption></figure>
+    </div>
+  </section>
+  <section>
+    <h2 class="subtitle1">2 · Disable app (apps.js:565, save)</h2>
+    <div class="frames">
+      <figure><iframe data-src="?d=disable" width="1280" height="800" title="Disable, desktop 1280 px"></iframe><figcaption class="caption">Desktop 1280 × 800</figcaption></figure>
+      <figure><iframe data-src="?d=disable" width="390" height="800" title="Disable, phone 390 px"></iframe><figcaption class="caption">Phone 390 px</figcaption></figure>
+      <figure><iframe data-src="?d=disable-long" width="390" height="800" title="Disable, phone 390 px, long app name"></iframe><figcaption class="caption">Phone 390 px, long app name (wrap check)</figcaption></figure>
+    </div>
+  </section>
+  <section>
+    <h2 class="subtitle1">Implementation notes</h2>
+    <ul>
+      <li>Both dialogs go at the end of <code>&lt;body&gt;</code> in apps.html, before <code>#toast</code> (same place as index.html <code>#dlg-del</code>). Add <code>ask</code> to the app.js import in apps.js.</li>
+      <li>Discard: in <code>closeDrawer()</code> replace the confirm with <code>if (dirty() &amp;&amp; await ask($('#dlg-discard')) !== 'ok') return false;</code>. It opens with <code>showModal()</code>, so it sits in the top layer above the drawer (z-index 30) and its scrim.</li>
+      <li>Disable: set <code>$('#dis-name').textContent = D.app.name</code> (textContent, never innerHTML: the name is user-editable), then <code>if (await ask($('#dlg-disable')) !== 'ok') return;</code>.</li>
+      <li>Escape: the document keydown handler (apps.js:146) also sees the Escape that closes the lightbox, because keydown bubbles to document before the dialog closes. Without a guard it calls <code>closeDrawer()</code> again while the lightbox is open. Add a first line to that handler: <code>if (document.querySelector('dialog[open]')) return;</code>. The dialog then handles Escape alone (returnValue '' → cancel).</li>
+      <li>Focus: Cancel has <code>autofocus</code>, so <code>showModal()</code> focuses it; Enter/Space never fires Discard/Disable by accident. When the dialog closes, the browser returns focus to the drawer control that opened it.</li>
+    </ul>
+  </section>
+</div>
+
+<!-- ===================== Scene: faded copy of the real Apps page with the drawer open ===================== -->
+<div class="scene">
+<div class="shell">
+  <aside class="side" aria-label="Primary">
+    <div class="brand"><span class="logo" aria-hidden="true">R</span>Relume</div>
+    <a href="#"><svg class="i" aria-hidden="true"><use href="#i-store"/></svg>Marketplace</a>
+    <a href="#" aria-current="page"><svg class="i" aria-hidden="true"><use href="#i-apps"/></svg>Apps<span class="count">3</span></a>
+    <a href="#"><svg class="i" aria-hidden="true"><use href="#i-schedule"/></svg>Schedules</a>
+    <div class="nav-section">Manage</div>
+    <a href="#"><svg class="i" aria-hidden="true"><use href="#i-builds"/></svg>Builds</a>
+    <a href="#"><svg class="i" aria-hidden="true"><use href="#i-devices"/></svg>Devices</a>
+    <a href="#"><svg class="i" aria-hidden="true"><use href="#i-follow"/></svg>Followed projects</a>
+    <a href="#"><svg class="i" aria-hidden="true"><use href="#i-settings"/></svg>Settings</a>
+  </aside>
+  <div class="main">
+    <header class="header">
+      <button class="icon-btn menu-btn" type="button" aria-label="Open navigation"><svg class="i" aria-hidden="true"><use href="#i-menu"/></svg></button>
+      <h1 class="subtitle1">Apps</h1>
+      <div class="grow"></div>
+      <button class="btn" type="button"><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg><span class="hide-m">Check all for updates</span></button>
+      <a class="btn primary" href="#"><svg class="i" aria-hidden="true"><use href="#i-add"/></svg><span class="hide-m">Add from Marketplace</span></a>
+    </header>
+    <main class="content">
+      <section class="card list" aria-label="Apps">
+        <div class="lhead"><span>App</span><span>App version</span><span>Source</span><span>Status</span><span style="text-align:right">Actions</span></div>
+        <div class="arow selected"><div class="row" style="gap:14px"><span class="tile s48" data-cat="video">YT</span><div class="grow"><div class="nm">YouTube</div><div class="mono subtle-text">com.google.android.youtube</div></div></div><div><div class="mono">20.14.43</div><div class="caption">Latest supported</div></div><div><div class="strong">Morphe patches</div><div class="mono subtle-text">v1.25.2</div></div><div class="st"><span><span class="badge ok">Up to date</span></span></div><div class="acts"><button class="icon-btn"><svg class="i"><use href="#i-sync"/></svg></button><button class="icon-btn"><svg class="i"><use href="#i-rebuild"/></svg></button><button class="icon-btn"><svg class="i"><use href="#i-settings"/></svg></button></div></div>
+        <div class="arow"><div class="row" style="gap:14px"><span class="tile s48" data-cat="music">YM</span><div class="grow"><div class="nm">YouTube Music</div><div class="mono subtle-text">com.google.android.apps.youtube.music</div></div></div><div><div class="mono">8.10.52</div><div class="caption">Latest supported</div></div><div><div class="strong">Morphe patches</div><div class="mono subtle-text">v1.25.2</div></div><div class="st"><span><span class="badge lav">Update available</span></span></div><div class="acts"><button class="icon-btn"><svg class="i"><use href="#i-sync"/></svg></button><button class="icon-btn"><svg class="i"><use href="#i-rebuild"/></svg></button><button class="icon-btn"><svg class="i"><use href="#i-settings"/></svg></button></div></div>
+        <div class="arow"><div class="row" style="gap:14px"><span class="tile s48" data-cat="social">TH</span><div class="grow"><div class="nm">Threads</div><div class="mono subtle-text">com.instagram.barcelona</div></div></div><div><div class="mono">372.0.0</div><div class="caption">Pinned</div></div><div><div class="strong">Chiggi Threads</div><div class="mono subtle-text">v1.25.2</div></div><div class="st"><span><span class="badge ok">Up to date</span></span></div><div class="acts"><button class="icon-btn"><svg class="i"><use href="#i-sync"/></svg></button><button class="icon-btn"><svg class="i"><use href="#i-rebuild"/></svg></button><button class="icon-btn"><svg class="i"><use href="#i-settings"/></svg></button></div></div>
+      </section>
+    </main>
+  </div>
+</div>
+<div class="scrim"></div>
+<aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dr-t">
+  <div class="drawer-head">
+    <span class="tile s48" data-cat="video">YT</span>
+    <div class="grow"><h2 class="subtitle1" id="dr-t">YouTube settings</h2><div class="mono subtle-text">com.google.android.youtube</div></div>
+    <label class="switch" style="margin-top:4px"><input type="checkbox" id="d-en" checked><span class="track"></span><span class="caption">Enabled</span></label>
+    <button class="icon-btn" type="button" aria-label="Close settings"><svg class="i" aria-hidden="true"><use href="#i-close"/></svg></button>
+  </div>
+  <div class="drawer-body">
+    <section class="dsec"><h3 class="subtitle2"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Patches <span class="caption" style="font-weight:400">12 of 48 on</span></h3>
+      <div class="pt">
+        <label class="pt-row"><input type="checkbox" checked><span class="grow">Hide ads</span></label>
+        <label class="pt-row"><input type="checkbox"><span class="grow">Hide Shorts components</span></label>
+        <label class="pt-row"><input type="checkbox" checked><span class="grow">SponsorBlock</span></label>
+        <label class="pt-row"><input type="checkbox" checked><span class="grow">Return YouTube Dislike</span></label>
+      </div>
+    </section>
+  </div>
+  <div class="drawer-foot">
+    <button class="btn" type="button">Cancel</button>
+    <button class="btn" type="button">Save</button>
+    <button class="btn primary" type="button"><svg class="i" aria-hidden="true"><use href="#i-rebuild"/></svg>Save and rebuild</button>
+  </div>
+</aside>
+</div>
+
+<!-- ===================== The two dialogs (copy these into apps.html) ===================== -->
+<!-- 1. apps.js:431 closeDrawer(): static text, no user data.
+     Escape and Cancel both return non-'ok' (Escape → '', Cancel → 'cancel'); Cancel has autofocus (destructive).
+     apps.js:146 must skip its Escape branch while a dialog is open — see implementation notes above. -->
+<dialog id="dlg-discard" aria-labelledby="dc-t" aria-describedby="dc-msg"><form method="dialog">
+<h2 class="subtitle1" id="dc-t">Discard unsaved changes?</h2>
+<p class="subtle-text dlg-msg" id="dc-msg">Your changes to this app's settings will be lost.</p>
+<div class="dlg-actions"><button class="btn" value="cancel" autofocus>Cancel</button><button class="btn destructive" value="ok">Discard</button></div>
+</form></dialog>
+
+<!-- 2. apps.js:565 save(): app name is user-editable → set #dis-name with textContent (HTML-escaped), never innerHTML.
+     Escape and Cancel both cancel; Cancel has autofocus (destructive). -->
+<dialog id="dlg-disable" aria-labelledby="dis-t" aria-describedby="dis-msg"><form method="dialog">
+<h2 class="subtitle1" id="dis-t">Disable app?</h2>
+<p class="subtle-text dlg-msg" id="dis-msg"><strong id="dis-name">YouTube</strong> stops updating and building. Its settings and builds are kept.</p>
+<div class="dlg-actions"><button class="btn" value="cancel" autofocus>Cancel</button><button class="btn destructive" value="ok">Disable</button></div>
+</form></dialog>
+
+<!-- Mockup-only copy of dialog 2 with a long name, to check wrapping. Not to be implemented. -->
+<dialog id="dlg-disable-long" aria-labelledby="dl-t"><form method="dialog">
+<h2 class="subtitle1" id="dl-t">Disable app?</h2>
+<p class="subtle-text dlg-msg"><strong>YouTube ReVanced Extended — work profile build with an extraordinarily long display name</strong> stops updating and building. Its settings and builds are kept.</p>
+<div class="dlg-actions"><button class="btn" value="cancel" autofocus>Cancel</button><button class="btn destructive" value="ok">Disable</button></div>
+</form></dialog>
+
+<script>
+  // Mockup only: ?d=<id> renders the faded page and opens that dialog for real; no ?d= shows the gallery.
+  const d = new URLSearchParams(location.search).get('d');
+  // iframes get their src only in gallery mode, so a scene never loads nested scenes.
+  if (!d) document.querySelectorAll('iframe[data-src]').forEach(f => { f.src = f.dataset.src; });
+  if (d) {
+    document.body.classList.remove('gallery');
+    if (d.startsWith('disable')) document.getElementById('d-en').checked = false;
+    const dlg = document.getElementById('dlg-' + d);
+    dlg.showModal();
+    dlg.addEventListener('close', () => dlg.showModal()); // keep it on screen while reviewers click around
+  }
+</script>
+</body>
+</html>
