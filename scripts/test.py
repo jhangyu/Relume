@@ -22,6 +22,8 @@ from pathlib import Path
 TOTAL_BUDGET_S = 90
 PER_TEST_BUDGET_S = 1.0
 SLOWEST_SHOWN = 10
+# Each child spawns subprocesses (bash, jq, sqlite I/O): half the cores keeps wall time close to test time.
+PYTHON_WORKERS = max(1, (os.cpu_count() or 2) // 2)
 ALL_LEGS = ("python", "shell", "android")
 FORBIDDEN = re.compile(r"sleep|delay\(", re.IGNORECASE)
 CHILD_FLAG = "--child"
@@ -127,7 +129,7 @@ def python_leg(root):
                           "detail": f"child rc={proc.returncode}, results={len(units)}\n{proc.stderr[-2000:]}"})
         return units
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() or 2) as pool:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=PYTHON_WORKERS) as pool:
         return [u for units in pool.map(one, modules) for u in units]
 
 

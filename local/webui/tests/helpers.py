@@ -1,5 +1,7 @@
+import atexit
 import json
 import pathlib
+import shutil
 import socket
 import tempfile
 import threading
@@ -11,8 +13,23 @@ import urllib.request
 from webui import auth, db, events, jobs, server, settings
 
 
+_templates = {}  # schema_dir -> data dir holding a migrated, closed (no -wal) database
+
+
+def _template(schema_dir):
+    """Migrate once per process per schema_dir; every test copies the result instead of migrating again."""
+    if schema_dir not in _templates:
+        tmp = tempfile.mkdtemp()
+        atexit.register(shutil.rmtree, tmp, True)
+        db.init(tmp)
+        db.migrate(schema_dir)
+        db.close()  # last connection of a WAL database checkpoints and removes -wal/-shm
+        _templates[schema_dir] = tmp
+    return _templates[schema_dir]
+
+
 class DataTestCase(unittest.TestCase):
-    """Fresh RELUME_DATA dir + all schema files for every test."""
+    """Fresh RELUME_DATA dir holding a copy of the migrated schema database for every test."""
     schema_dir = None
 
     def setUp(self):
@@ -22,8 +39,8 @@ class DataTestCase(unittest.TestCase):
         self.addCleanup(jobs.stop)      # runs before tmp.cleanup (LIFO): no worker touches a removed dir
         self.addCleanup(db.close)       # this thread's connection; the last test's would finalize unclosed
         self.data = pathlib.Path(tmp.name)
+        shutil.copytree(_template(self.schema_dir), self.data, dirs_exist_ok=True)
         db.init(self.data)
-        db.migrate(self.schema_dir)
         events.reset()
         jobs.reset()
         auth.reset_lockout()
