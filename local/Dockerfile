@@ -20,9 +20,13 @@ RUN wget -q -O /APKEditor.jar https://github.com/REAndroid/APKEditor/releases/do
 
 FROM debian:trixie-slim AS app
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# build-time apt mirror (NCHC has no debian-security, that stays official); restored in the same RUN so the image keeps stock sources
+ARG DEBIAN_MIRROR=http://free.nchc.org.tw/debian
+RUN sed -i "s#http://deb.debian.org/debian\$#$DEBIAN_MIRROR#" /etc/apt/sources.list.d/debian.sources \
+    && apt-get update && apt-get install -y --no-install-recommends \
       bash curl wget jq unzip zip ca-certificates tzdata adb \
       openjdk-21-jre-headless python3 apksigner \
+    && sed -i "s#$DEBIAN_MIRROR#http://deb.debian.org/debian#" /etc/apt/sources.list.d/debian.sources \
     && rm -rf /var/lib/apt/lists/*
 COPY --link --from=dl-pup /out/pup /usr/local/bin/pup
 COPY --link --from=dl-apkeep /out/apkeep /usr/local/bin/apkeep
