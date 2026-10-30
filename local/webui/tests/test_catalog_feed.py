@@ -52,6 +52,13 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(cat.store[REDDIT].description, "Front page & more")
         self.assertEqual((cat.store[CARDS].icon_url, cat.store[CARDS].description), (None, None))
 
+    def test_parse_official_accepts_null_stars_as_unknown(self):
+        d = json.loads(MINI)
+        d["bundles"][1]["stars"] = None   # bob/reddit-patches
+        cat = catalog.parse_official(json.dumps(d).encode())
+        self.assertEqual({b.repo: b.stars for b in cat.bundles}["bob/reddit-patches"], None)
+        self.assertEqual(len(cat.skipped), 2)   # the two fixture skips only, the null-stars bundle is kept
+
     def test_parse_official_rejects_bad_root(self):
         cases = {b"not json": "$: expected JSON", b"[]": "$: expected an object, got 'list'",
                  b'{"compatibilities": [], "store": {}}': "bundles: expected list, got 'NoneType'",

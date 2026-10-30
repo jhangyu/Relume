@@ -1,0 +1,12 @@
+== RED on 9f35ac0 (test only)
+KeyError: 'bob/reddit-patches'
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.001s
+
+FAILED (errors=1)
+== GREEN after fix
+----------------------------------------------------------------------
+Ran 12 tests in 0.090s
+
+OK

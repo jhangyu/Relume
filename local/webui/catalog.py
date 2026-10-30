@@ -71,7 +71,7 @@ class Bundle:
     name: str
     author: str
     description: str | None
-    stars: int
+    stars: int | None   # null in the feed = unknown, not 0
     updated_at: str | None
     apps: dict   # package -> versions newest first; () = any version
     patches: tuple[Patch, ...]
@@ -199,7 +199,7 @@ def _bundle(b, path, compat):
     _need(branch is None or (isinstance(branch, str) and server.SLUG.match(branch)), f"{path}.branch",
           "a branch name or nothing", branch)
     stars, updated = b.get("stars"), b.get("updatedAt")
-    _need(server.is_int(stars), f"{path}.stars", "an integer", stars)
+    _need(stars is None or server.is_int(stars), f"{path}.stars", "an integer or null", stars)
     _need(updated is None or server.is_int(updated), f"{path}.updatedAt", "epoch milliseconds or null", updated)
     patches = b.get("patches")
     _need(isinstance(patches, list), f"{path}.patches", "a list", type(patches).__name__)
