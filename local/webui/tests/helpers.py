@@ -32,6 +32,10 @@ class DataTestCase(unittest.TestCase):
     """Fresh RELUME_DATA dir holding a copy of the migrated schema database for every test."""
     schema_dir = None
 
+    @classmethod
+    def setUpClass(cls):
+        _template(cls.schema_dir)       # one-off migration is charged to the class, not to its first timed test
+
     def setUp(self):
         jobs.stop()                     # no worker from an earlier test may claim this test's jobs
         tmp = tempfile.TemporaryDirectory()
