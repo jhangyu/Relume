@@ -259,8 +259,12 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
   .header .menu-btn { display: inline-grid; }
   .content { padding: 16px 16px 48px; }
   .hide-m { display: none !important; }
-  .icon-btn { width: 44px; height: 44px; }
-  .header .btn:has(> .hide-m) { min-width: 0; width: 32px; padding: 0; }
+  .icon-btn { width: 44px; height: 44px; border-radius: var(--borderRadiusCircular); }
+  /* Material 3 pill buttons on phone: 44px touch height, 24px side padding (16px for small). */
+  .btn, .btn.large, .btn.small, .btn.circular { height: 44px; padding: 0 24px; min-width: 64px; border-radius: var(--borderRadiusCircular); }
+  .btn.small { padding: 0 16px; }
+  .header .btn:has(> .hide-m) { min-width: 0; width: 44px; padding: 0; }
+  .seg, .seg span { border-radius: var(--borderRadiusCircular); }
   .input.search { width: auto; flex: 1; }
 }
 

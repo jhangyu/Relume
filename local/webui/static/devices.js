@@ -73,7 +73,7 @@ async function loadHistory() {
     const ok = installs.filter(i => i.result !== 'failed').length;
     const name = (D.devices.find(x => x.id === j.target.device_id) || {}).name || `device ${j.target.device_id}`;
     const outcome = d.outcome === 'skipped_offline' ? 'Skipped · offline' : d.outcome || j.status;
-    return html`<tr><td>${fmt.abs(j.created_at)}</td><td>${name}</td><td class="sm muted hide-m">${j.trigger}${d.mode && d.mode !== 'normal' ? ` · ${d.mode}` : ''}</td><td class="sm">${installs.map(i => html`<div>${i.package} ${i.version_name || i.upstream_tag || ''} ${i.result === 'installed' ? '✓' : i.result === 'up_to_date' ? '· already current, skipped' : html`<span style="color:var(--colorStatusDangerForeground1)">✗ ${i.error_code}</span>`}${i.error_code === 'SIGNATURE_MISMATCH' ? html` <button class="btn subtle small danger" type="button" data-force="${j.id}" data-install="${i.id}" data-pkg="${i.package}">Uninstall &amp; retry</button>` : ''}${i.error_code === 'VERSION_DOWNGRADE' ? html` <button class="btn subtle small" type="button" data-down="${j.id}" data-install="${i.id}">Install with downgrade</button>` : ''}</div>`)}</td><td class="mono">${ok} / ${installs.length}</td><td><span class="badge ${j.status === 'success' ? 'ok' : j.status === 'failed' ? 'err' : ''}">${outcome}</span></td></tr>`;
+    return html`<tr><td>${fmt.abs(j.created_at)}</td><td>${name}</td><td class="sm muted hide-m">${j.trigger}${d.mode && d.mode !== 'normal' ? ` · ${d.mode}` : ''}</td><td class="sm">${installs.map(i => html`<div>${i.package} ${i.version_name || i.upstream_tag || ''} ${i.result === 'installed' ? '✓' : i.result === 'up_to_date' ? '· already current, skipped' : html`<span style="color:var(--colorStatusDangerForeground1)">✗ ${i.error_code}</span>`}${i.error_code === 'SIGNATURE_MISMATCH' ? html` <button class="btn subtle small danger" type="button" data-force="${j.id}" data-install="${i.id}" data-pkg="${i.package}">Uninstall &amp; retry</button>` : ''}${i.error_code === 'VERSION_DOWNGRADE' ? html` <button class="btn subtle small" type="button" data-down="${j.id}" data-install="${i.id}" data-pkg="${i.package}">Install with downgrade</button>` : ''}</div>`)}</td><td class="mono">${ok} / ${installs.length}</td><td><span class="badge ${j.status === 'success' ? 'ok' : j.status === 'failed' ? 'err' : ''}">${outcome}</span></td></tr>`;
   })}`;
 }
 
@@ -116,7 +116,8 @@ async function askPort(d) {
   try { return await ask(dlg) === 'ok' ? port : 0; } finally { dlg.removeEventListener('click', onClick); inp.removeEventListener('input', clear); inp.removeEventListener('keydown', onKey); }
 }
 
-async function reconnect(d) {
+async function reconnect(d, btn) {
+  btn.disabled = true;
   try {
     await api('POST', `/api/devices/${d.id}/connect`, {});
     toast(`${d.name} connected`);
@@ -127,6 +128,8 @@ async function reconnect(d) {
     } else {
       toast(e.message, 'error');
     }
+  } finally {
+    btn.disabled = false;
   }
   await loadDevices();
 }
@@ -157,7 +160,7 @@ document.addEventListener('click', async e => {
   const d = sec && D.devices.find(x => x.id === Number(sec.dataset.dev));
   try {
     if (t('[data-pair]')) return pairDialog(t('[data-pair]'));
-    if (d && t('[data-reconnect]')) return reconnect(d);
+    if (d && t('[data-reconnect]')) return reconnect(d, t('[data-reconnect]'));
     if (d && t('[data-assign]')) {
       D.projects = (await act('GET', '/api/projects')).projects;
       return editAssignments(d);
@@ -172,6 +175,7 @@ document.addEventListener('click', async e => {
       await act('POST', `/api/ota/${f.dataset.force}/force-reinstall`, { install_id: Number(f.dataset.install) }, 'Reinstall queued');
     } else if (t('[data-down]')) {
       const dn = t('[data-down]');
+      if (!await confirmDialog({ title: 'Install older version?', body: html`The older patched build of <strong class="mono">${dn.dataset.pkg}</strong> replaces the newer one on the phone.`, action: 'Downgrade', destructive: false })) return;
       await act('POST', `/api/ota/${dn.dataset.down}/downgrade`, { install_id: Number(dn.dataset.install) }, 'Downgrade install queued');
     } else return;
     await loadDevices();
