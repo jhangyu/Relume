@@ -213,7 +213,7 @@ class HandlerFailTest(BuildCase):
         settings.write_secret(settings.google_play_path(), json.dumps({"email": "a@b.c", "aas_token": "aas_et/SECRET9"}))
         job, calls, err = self.googleplay_run()
         (keep_argv, keep_env, _), (run_argv, run_env, job_json) = calls
-        self.assertEqual(keep_argv[keep_argv.index("-o") + 1], "device=mi_a1,split_apk=true")  # universal + arm64 share the spec
+        self.assertEqual(keep_argv[keep_argv.index("-o") + 1], "device=nothing_p1,split_apk=true")  # universal + arm64 share the spec
         self.assertNotIn("SECRET9", " ".join(keep_argv))
         self.assertNotIn("SECRET9", job_json)
         self.assertNotIn("SECRET9", json.dumps(run_env))

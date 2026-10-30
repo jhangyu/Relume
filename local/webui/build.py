@@ -16,7 +16,7 @@ SOLVER_ENV = ("FLARESOLVERR_URL", "CFBYPASS_URL", "APKM_SOLVER_URL")  # passed t
 APKEEP = "apkeep"
 APKEEP_TIMEOUT = 1800  # one Google Play login + download per distinct googleplay spec
 APKEEP_DEVICE = {"arm64-v8a": "px_9a", "armeabi-v7a": "sm_a13_5g", "x86_64": "google_kiwi_x86_64"}  # single-ABI profiles
-APKEEP_MULTI_DEVICE = "mi_a1"  # arm64-v8a + armeabi-v7a: universal or several ABIs
+APKEEP_MULTI_DEVICE = "nothing_p1"  # arm64-v8a + armeabi-v7a, SDK 34: universal or several ABIs (mi_a1 is SDK 29, too old for some apps)
 FAILED_PATCH_PREFIX = "ERROR: FAILED: "  # patcher CLI line for a patch that did not apply
 _steps = {}
 _steps_lock = threading.Lock()
@@ -141,7 +141,8 @@ def _googleplay(job, item_id, inp, work, log):
             got = [p for p in (dest / f"{inp['package']}.apk", dest / inp["package"]) if p.exists()]
             if rc != 0 or not got:
                 _fail(job, item_id, "download_failed", f"apkeep exited {rc}: expected {inp['package']}.apk or "
-                      f"{inp['package']}/ in the output, found {sorted(p.name for p in dest.iterdir())}")
+                      f"{inp['package']}/ in the output, found {sorted(p.name for p in dest.iterdir())} "
+                      f"(device={device}: apkeep downloads nothing when Play does not offer the app to that device profile)")
             out.append({"download": d, "path": jobs.runner_path(got[0])})
     finally:
         ini.unlink(missing_ok=True)
