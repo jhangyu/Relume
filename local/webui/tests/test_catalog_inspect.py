@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import shutil
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -92,6 +93,9 @@ class PatchesCase(CatalogCase):
         with db.tx() as c:
             c.execute("UPDATE upstream SET downloaded_tag='v1.18.1' WHERE id=?", (self.cli,))
 
+needs_real_isolation = unittest.skipUnless(shutil.which("setpriv") and os.geteuid() == 0,
+                                           "needs real setpriv as root (Linux gate image)")
+
 
 class InspectRowTest(PatchesCase):
     def test_inspect_writes_bundle_info(self):
@@ -128,6 +132,7 @@ class InspectRowTest(PatchesCase):
         self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM bundle_info").fetchone()[0], 0)
         self.assertTrue(any(l.startswith("[!] inspect failed for") for l in log.lines), log.lines)
 
+    @needs_real_isolation
     def test_inspect_runs_isolated(self):
         """The inspector runs bundle code as RELUME_RUNNER_UID with DATA paths in the runner view.
         T_PY runs as root, so setpriv can switch uid here."""

@@ -663,7 +663,12 @@ class ReleaseTest(ProjectCase):
         self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM jobs WHERE kind='ota'").fetchone()[0], 0)
 
     def test_tools_run_isolated(self):
-        with mock.patch.dict(os.environ, {"RELUME_RUNNER_UID": "10001"}):
+        """Command line only: a fake setpriv drops its options and execs the rest, so this runs on any OS."""
+        bin_dir = pathlib.Path(self.enterContext(tempfile.TemporaryDirectory()))
+        fake = bin_dir / "setpriv"
+        fake.write_text('#!/bin/sh\nwhile case "$1" in --*) true;; *) false;; esac; do shift; done\nexec "$@"\n')
+        fake.chmod(0o755)
+        with mock.patch.dict(os.environ, {"RELUME_RUNNER_UID": "10001", "PATH": f"{bin_dir}:{os.environ['PATH']}"}):
             self.pull("v1", {"microg-1.apk": ()})
         self.assertEqual(len(self.log.runs), 2)
         for argv in self.log.runs:

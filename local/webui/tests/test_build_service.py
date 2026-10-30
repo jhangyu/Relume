@@ -279,10 +279,15 @@ class HandlerFailTest(BuildCase):
         self.assertEqual(cache.stat().st_mode & 0o777, 0o755)
 
 
+needs_real_isolation = unittest.skipUnless(shutil.which("setpriv") and os.geteuid() == 0,
+                                           "needs real setpriv as root (Linux gate image)")
+
+
 class IsolationTest(BuildCase):
     """Patch code runs as RELUME_RUNNER_UID, sees DATA through RELUME_RUNNER_DATA (compose: /data), keeps no caps.
     T_PY runs as root, so setpriv can switch uid here."""
 
+    @needs_real_isolation
     def test_runner_uid_paths_and_secret(self):
         os.chmod(self.data, 0o755)  # TemporaryDirectory is 0700; in compose the runner gets its own mounts instead
         view = self.data / "view"

@@ -83,18 +83,28 @@ def log_condition(job_id):
         return _conds.setdefault(job_id, _Signal())  # ponytail: never pruned, one small object per job
 
 
-def _kill_group(p):
+def _killpg(pid, sig):
+    """Signal the group led by pid. Gone group = done. macOS answers EPERM, not ESRCH, for a group whose only
+    member is the exited unreaped leader: also done. Any other PermissionError (live leader) is real."""
     try:
-        os.killpg(p.pid, signal.SIGTERM)
+        os.killpg(pid, sig)
     except ProcessLookupError:
-        return
+        pass
+    except PermissionError:
+        try:
+            exited = os.waitid(os.P_PID, pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is not None
+        except ChildProcessError:  # reaped: the group is gone
+            exited = True
+        if not exited:
+            raise
+
+
+def _kill_group(p):
+    _killpg(p.pid, signal.SIGTERM)
     try:
         p.wait(10)
     except subprocess.TimeoutExpired:
-        try:
-            os.killpg(p.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+        _killpg(p.pid, signal.SIGKILL)
 
 
 CHILD_ENV = ('PATH', 'LANG', 'TZ')
@@ -197,10 +207,7 @@ class Log:
                         os.waitid(os.P_PID, p.pid, os.WEXITED | os.WNOWAIT)
                     except ChildProcessError:  # the watch thread reaped it
                         pass
-                try:  # nothing of the group outlives the job, also on success
-                    os.killpg(p.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+                _killpg(p.pid, signal.SIGKILL)  # nothing of the group outlives the job, also on success
                 rc = p.wait()
             finally:  # the watch thread ends with the process, also when the cleanup above raises
                 with self.cond:
