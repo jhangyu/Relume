@@ -152,25 +152,32 @@ function applySearch() {
   $$('#hist tbody tr').forEach(tr => { tr.hidden = !!q && !tr.dataset.q.includes(q); });
 }
 
-async function renderHistory(append) {
+// mode: 'reset' (first load / filter change) replaces all rows, 'append' adds the next older page,
+// 'refresh' re-renders the newest page in place and keeps the older rows already loaded.
+async function renderHistory(mode) {
   const p = {};
   if (B.filt === 'item') p.item_id = ITEM;
   else if (B.filt) p.status = B.filt;
-  if (append && oldest) p.before_id = oldest;
+  if (mode === 'append' && oldest) p.before_id = oldest;
   const jobs = await listJobs(p, 25);
   const done = jobs.filter(j => j.status !== 'queued' && j.status !== 'running');
-  if (jobs.length) oldest = jobs[jobs.length - 1].id;
-  const rows = html`${done.map(historyRow)}`;
-  if (append) $('#hist tbody').insertAdjacentHTML('beforeend', html`${rows}`);
-  else $('#hist tbody').innerHTML = html`${rows}`;
-  $('#older').hidden = jobs.length < 25;
+  const rows = html`${done.map(historyRow)}`, tbody = $('#hist tbody');
+  if (mode === 'append') tbody.insertAdjacentHTML('beforeend', html`${rows}`);
+  else if (mode === 'refresh') {
+    const cutoff = jobs.length ? jobs[jobs.length - 1].id : 0;
+    $$('#hist tbody tr').forEach(tr => { if (Number(tr.dataset.id) >= cutoff) tr.remove(); });
+    tbody.insertAdjacentHTML('afterbegin', html`${rows}`);
+  } else tbody.innerHTML = html`${rows}`;
+  const keptOlder = mode === 'refresh' && $$('#hist tbody tr').length > done.length;
+  if (jobs.length && !keptOlder) { oldest = jobs[jobs.length - 1].id; $('#older').hidden = jobs.length < 25; }
+  else if (mode !== 'refresh') $('#older').hidden = jobs.length < 25;
   $('#hsum').textContent = `${$$('#hist tbody tr').length} builds shown`;
   applySearch();
   return done[0];
 }
 
 async function refresh() {
-  try { await renderQueue(); await renderHistory(false); } catch (_) { /* next tick retries */ }
+  try { await renderQueue(); await renderHistory('refresh'); } catch (_) { /* next tick retries */ }
 }
 
 document.addEventListener('click', async e => {
@@ -201,10 +208,10 @@ $('#pills').addEventListener('click', e => {
   if (!b) return;
   B.filt = b.dataset.filt;
   $$('#pills .pill').forEach(x => x.setAttribute('aria-pressed', x === b));
-  renderHistory(false).catch(err => toast(err.message, 'error'));
+  renderHistory('reset').catch(err => toast(err.message, 'error'));
 });
 $('#hq').addEventListener('input', applySearch);
-$('#older').addEventListener('click', () => renderHistory(true).catch(() => {}));
+$('#older').addEventListener('click', () => renderHistory('append').catch(() => {}));
 
 (async () => {
   shell();
@@ -212,7 +219,7 @@ $('#older').addEventListener('click', () => renderHistory(true).catch(() => {}))
   else $('#pill-item').remove();
   await loadRefs();
   const running = await renderQueue();
-  const newest = await renderHistory(false);
+  const newest = await renderHistory('reset');
   const first = qs.get('job') ? Number(qs.get('job')) : running ? running.id : newest ? newest.id : null;
   if (first) await select(first);
   every(5000, refresh);
