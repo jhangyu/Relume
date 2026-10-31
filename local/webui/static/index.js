@@ -107,7 +107,7 @@ async function loadList(reset) {
   const p = new URLSearchParams({ sort: S.sort, page: S.page, per_page: PER_PAGE });
   for (const k of ['origin', 'q', 'category']) if (S[k]) p.set(k, S[k]);
   const d = await api('GET', `/api/marketplace?${p}`);
-  if (mine !== seq) return;
+  if (mine !== seq) return false;   // superseded by a newer load (filter change): nothing applied
   S.apps = reset ? d.apps : [...S.apps, ...d.apps];
   S.total = d.total;
   S.categories = d.categories;
@@ -117,6 +117,7 @@ async function loadList(reset) {
   renderStats();
   renderCats();
   renderGallery();
+  return true;
 }
 
 async function loadSources() {
@@ -355,10 +356,10 @@ function loadMore() {
   if (S.apps.length >= S.total) return Promise.resolve(false);
   const want = S.page + 1;
   S.page = want;
-  paging = loadList(false).then(() => {
+  paging = loadList(false).then(applied => {
     paging = null;
     pager.unobserve($('#more')); pager.observe($('#more'));   // observe() re-reports: loads again if the sentinel is still in view
-    return true;
+    return applied;
   }, err => {
     paging = null;
     if (S.page === want) S.page = want - 1;   // a filter reset in between owns S.page: otherwise retry the same page
