@@ -130,6 +130,7 @@ async function select(id) {
   });
 }
 
+const HISTORY_PAGE = 25, MAX_GAP_PAGES = 8;
 let oldest = null;
 const warnPatches = j => (j.detail && j.detail.failed_patches || []).length ? html`<span class="caption">Patch failed: ${j.detail.failed_patches.join(', ')}</span>` : '';
 
@@ -161,23 +162,35 @@ async function renderHistory(mode) {
   else if (B.filt) p.status = B.filt;
   if (mode === 'append' && oldest) p.before_id = oldest;
   const filt = B.filt;
-  const jobs = await listJobs(p, 25);
+  let jobs = await listJobs(p, HISTORY_PAGE), lastLen = jobs.length;
   if (B.filt !== filt) return undefined; // filter changed mid-flight: its own 'reset' owns the rows
+  const refreshing = mode === 'refresh';
+  if (refreshing) {
+    const topId = Math.max(0, ...$$('#hist tbody tr').map(tr => Number(tr.dataset.id)));
+    if (!topId) mode = 'reset';
+    else {
+      // fetch the gap between the newest page and the shown rows (more than a page of jobs since the last tick)
+      for (let n = 0; n < MAX_GAP_PAGES && lastLen >= HISTORY_PAGE && jobs[jobs.length - 1].id > topId; n++) {
+        const more = await listJobs({ ...p, before_id: jobs[jobs.length - 1].id }, HISTORY_PAGE);
+        if (B.filt !== filt) return undefined;
+        jobs = jobs.concat(more);
+        lastLen = more.length;
+      }
+      if (lastLen >= HISTORY_PAGE && jobs[jobs.length - 1].id > topId) mode = 'reset'; // gap bigger than the bound
+    }
+  }
   const done = jobs.filter(j => j.status !== 'queued' && j.status !== 'running');
+  if (refreshing && !done.length) return undefined; // only queued/running fetched: nothing to change
   const rows = html`${done.map(historyRow)}`, tbody = $('#hist tbody');
-  if (mode === 'refresh' && !done.length) return undefined; // only queued/running in the page: nothing to change
-  const cutoff = done.length ? done[done.length - 1].id : 0; // oldest done row of the page; pending jobs render no row
-  const topId = Math.max(0, ...$$('#hist tbody tr').map(tr => Number(tr.dataset.id)));
-  // ponytail: a full page entirely newer than the shown rows (25+ newer jobs since last tick) may hide a gap, so reset (rare jump)
-  if (mode === 'refresh' && jobs.length >= 25 && cutoff > topId) mode = 'reset';
+  const cutoff = done.length ? done[done.length - 1].id : 0; // oldest done row fetched; pending jobs render no row
   if (mode === 'append') tbody.insertAdjacentHTML('beforeend', html`${rows}`);
   else if (mode === 'refresh') {
     $$('#hist tbody tr').forEach(tr => { if (Number(tr.dataset.id) >= cutoff) tr.remove(); });
     tbody.insertAdjacentHTML('afterbegin', html`${rows}`);
   } else tbody.innerHTML = html`${rows}`;
   const keptOlder = mode === 'refresh' && $$('#hist tbody tr').length > done.length;
-  if (jobs.length && !keptOlder) { oldest = jobs[jobs.length - 1].id; $('#older').hidden = jobs.length < 25; }
-  else if (mode !== 'refresh') $('#older').hidden = jobs.length < 25;
+  if (jobs.length && !keptOlder) { oldest = jobs[jobs.length - 1].id; $('#older').hidden = lastLen < HISTORY_PAGE; }
+  else if (mode !== 'refresh') $('#older').hidden = lastLen < HISTORY_PAGE;
   $('#hsum').textContent = `${$$('#hist tbody tr').length} builds shown`;
   applySearch();
   return done[0];
