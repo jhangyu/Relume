@@ -82,6 +82,9 @@ class MarketModel(private val host: AppModel) {
     /** Origin filter of the list: null (all), official, builtin or custom. */
     var origin by mutableStateOf<String?>(null)
         private set
+
+    /** Filters the list was last scrolled for; the screen resets to the top only when they change, not on re-entry. */
+    var scrolledFor: List<Any?>? = null
     var listLoad by mutableStateOf(ListState())
         private set
     val list get() = listLoad.list

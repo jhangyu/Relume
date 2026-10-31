@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LinearProgressIndicator
@@ -54,7 +55,7 @@ private class ReinstallAsk(val kind: StepKind, val id: Int, val name: String, va
 
 /** Apps tab: filter chips, one card per enabled app, pull-to-refresh. Builds reach the phone only through the card action. */
 @Composable
-fun AppsScreen(model: AppModel, onOpenSettings: (Int) -> Unit, onOpenLog: (Int, Int?) -> Unit) {
+fun AppsScreen(model: AppModel, listState: LazyListState, onOpenSettings: (Int) -> Unit, onOpenLog: (Int, Int?) -> Unit) {
     var filter by rememberSaveable { mutableIntStateOf(0) }
     var fixing by remember { mutableStateOf<Pair<AppObject, Lookup>?>(null) }
     var reinstall by remember { mutableStateOf<ReinstallAsk?>(null) }
@@ -78,6 +79,7 @@ fun AppsScreen(model: AppModel, onOpenSettings: (Int) -> Unit, onOpenLog: (Int, 
         PullToRefreshBox(isRefreshing = model.refreshing, onRefresh = model::refresh, modifier = Modifier.weight(1f)) {
             LazyColumn(
                 Modifier.fillMaxSize(),
+                state = listState,
                 contentPadding = PaddingValues(horizontal = ScreenPadding, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.MaterialTheme
@@ -76,6 +77,9 @@ private fun ColumnScope.RootContent() {
     var stack by rememberSaveable(stateSaver = StackSaver) { mutableStateOf<List<Screen>>(listOf(Screen.Apps)) }
     var notificationsOn by remember { mutableStateOf(NotificationManagerCompat.from(ctx).areNotificationsEnabled()) }
     val run by InstallRunner.state.collectAsState()
+    // List scroll positions live above the screen switch so leaving to a detail or settings page and back keeps them.
+    val marketList = rememberLazyListState()
+    val appsList = rememberLazyListState()
 
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         notificationsOn = NotificationManagerCompat.from(ctx).areNotificationsEnabled()
@@ -114,7 +118,7 @@ private fun ColumnScope.RootContent() {
         Column(Modifier.weight(1f)) {
             when (current) {
                 Screen.Marketplace -> MarketplaceScreen(
-                    model.market,
+                    model.market, marketList,
                     onOpen = { stack = stack + Screen.MarketApp(it) },
                     onAddSource = model.market::openAddSource,
                 )
@@ -122,7 +126,7 @@ private fun ColumnScope.RootContent() {
                     model.market, current.pkg, onBack = back,
                     onEnabled = { stack = listOf(Screen.Apps, Screen.AppSettings(it)) },
                 )
-                Screen.Apps -> AppsScreen(model, onOpenSettings = { stack = stack + Screen.AppSettings(it) }, onOpenLog = openLog)
+                Screen.Apps -> AppsScreen(model, appsList, onOpenSettings = { stack = stack + Screen.AppSettings(it) }, onOpenLog = openLog)
                 is Screen.AppSettings -> AppSettingsScreen(model, current.appId, onBack = back, onOpenLog = openLog)
                 Screen.Schedules -> SchedulesScreen(model, onOpenLog = openLog)
                 Screen.Settings -> SettingsScreen(model, notificationsOn, askNotifications, onBack = back)

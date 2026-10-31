@@ -18,7 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -64,13 +64,17 @@ private val ORIGINS = listOf(null to "All origins", "official" to "Official cata
 
 /** Marketplace tab: search bar, category chips, featured carousel, "All apps" with sort, two-line app list. Pull down refreshes the catalog. */
 @Composable
-fun MarketplaceScreen(model: MarketModel, onOpen: (String) -> Unit, onAddSource: () -> Unit) {
+fun MarketplaceScreen(model: MarketModel, listState: LazyListState, onOpen: (String) -> Unit, onAddSource: () -> Unit) {
     LaunchedEffect(Unit) { if (model.list == null) model.loadAll() }
     val list = model.list
     val unfiltered = model.query.isEmpty() && model.category == null && model.origin == null
-    val listState = rememberLazyListState()
     // New results start at the top, so the featured row (first item) is in view again when the filters are cleared.
-    LaunchedEffect(model.query, model.category, model.origin, model.sort) { listState.scrollToItem(0) }
+    // Re-entering the screen with unchanged filters keeps the scroll position (the state is hoisted in RelumeRoot).
+    LaunchedEffect(model.query, model.category, model.origin, model.sort) {
+        val key = listOf(model.query, model.category, model.origin, model.sort)
+        if (model.scrolledFor != null && model.scrolledFor != key) listState.scrollToItem(0)
+        model.scrolledFor = key
+    }
 
     Column(Modifier.fillMaxSize()) {
         AppBar("Marketplace", actions = {
