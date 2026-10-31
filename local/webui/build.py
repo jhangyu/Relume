@@ -6,7 +6,7 @@ import shutil
 import threading
 from pathlib import Path
 
-from . import apps, catalog, db, events, jobs, server, settings
+from . import apps, catalog, db, events, jobs, playversion, server, settings
 
 ARTIFACT_RETENTION_DEFAULT = 1  # successful builds kept per item
 RUNNER = str(db.REPO_ROOT / "src" / "build" / "build-item.sh")
@@ -114,7 +114,8 @@ def _register(job, item_id, inp, work, result, failed_patches, sha):
 def _googleplay(job, item_id, inp, work, log):
     """apkeep download of each distinct googleplay download spec, run by the server outside run_isolated so the
     Google credentials never reach the isolated runner (only an ini file in the 0700 key dir names them, not argv
-    or env). Returns [{download, path}] for job.json: path = <pkg>.apk or the split dir <pkg>/."""
+    or env). A concrete version is resolved to its versionCode per device first and downloaded as <pkg>@<versionCode>.
+    Returns [{download, path, version_code, device}] for job.json: path = <pkg>.apk or the split dir <pkg>/."""
     variants = inp["recipe"]["variants"]
     specs = []
     for v in variants:
@@ -127,23 +128,40 @@ def _googleplay(job, item_id, inp, work, log):
         _fail(job, item_id, "download_failed", "Google Play credentials not set in Settings")
     ini = db.KEY / f"apkeep-{job.id}.ini"
     settings.write_secret(ini, f"[google]\nemail = {gp['email']}\naas_token = {gp['aas_token']}\n")
+    want = inp["version"]["value"]
+    devices = []
+    for d in specs:
+        abis = sorted({v["abi"] for v in variants if v["download"] == d})  # universal among them -> multi-ABI
+        devices.append(APKEEP_DEVICE[abis[0]] if len(abis) == 1 and abis[0] in APKEEP_DEVICE else APKEEP_MULTI_DEVICE)
     out = []
     try:
-        for n, d in enumerate(specs):
-            abis = sorted({v["abi"] for v in variants if v["download"] == d})  # universal among them -> multi-ABI
-            device = APKEEP_DEVICE[abis[0]] if len(abis) == 1 and abis[0] in APKEEP_DEVICE else APKEEP_MULTI_DEVICE
+        codes = {}
+        if want is not None:  # resolve every device before the first download: a lookup failure costs no download
+            for device in dict.fromkeys(devices):
+                play = playversion.PlayClient(apkeep=APKEEP, ini=ini, device=device, log=log)
+                try:
+                    codes[device] = playversion.resolve(inp["package"], want, log, play)
+                except playversion.VersionCodeError as e:
+                    _fail(job, item_id, "download_failed", str(e))
+                finally:
+                    play.close()
+                log.line(f"[*] Google Play versionCode {codes[device]} for {inp['package']} {want} (device={device})")
+        for n, (d, device) in enumerate(zip(specs, devices)):
+            vc = codes.get(device)
+            app = inp["package"] if vc is None else f"{inp['package']}@{vc}"
             dest = work / "googleplay" / str(n)
             dest.mkdir(parents=True)
-            log.line(f"[*] Google Play download of {inp['package']} (device={device})")
-            rc = log.run([APKEEP, "-a", inp["package"], "-d", "google-play", "-i", str(ini),
+            log.line(f"[*] Google Play download of {app} (device={device})")
+            rc = log.run([APKEEP, "-a", app, "-d", "google-play", "-i", str(ini),
                           "-o", f"device={device},split_apk=true", str(dest)], cwd=str(dest), env=None,
                          timeout=APKEEP_TIMEOUT)
             got = [p for p in (dest / f"{inp['package']}.apk", dest / inp["package"]) if p.exists()]
             if rc != 0 or not got:
                 _fail(job, item_id, "download_failed", f"apkeep exited {rc}: expected {inp['package']}.apk or "
                       f"{inp['package']}/ in the output, found {sorted(p.name for p in dest.iterdir())} "
-                      f"(device={device}: apkeep downloads nothing when Play does not offer the app to that device profile)")
-            out.append({"download": d, "path": jobs.runner_path(got[0])})
+                      f"(requested {app}" + (f" (versionName {want})" if vc is not None else "") + f", device={device}: "
+                      "apkeep downloads nothing when Play does not offer the app or that version to that device profile)")
+            out.append({"download": d, "path": jobs.runner_path(got[0]), "version_code": vc, "device": device})
     finally:
         ini.unlink(missing_ok=True)
     return out
@@ -191,6 +209,8 @@ def handler(job, log):
             if m.fail_code:
                 _fail(job, item_id, m.fail_code, m.fail_detail or "")
             _fail(job, item_id, "internal", m.last_err or f"runner exited {rc} without result.json")
+        for device, vc in sorted({(g["device"], g["version_code"]) for g in googleplay if g["version_code"] is not None}):
+            playversion.remember(inp["package"], inp["version"]["value"], device, vc)  # the runner verified name and code
         if inp["version"]["value"] is None:  # latest, or auto with no compatible list: the runner refreshed the APKMirror list
             sha = apps.inputs_sha(item_id)
         try:

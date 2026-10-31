@@ -10,7 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from webui import apps, build, catalog, db, events, jobs, server, settings
+from webui import apps, build, catalog, db, events, jobs, playversion, server, settings
 from webui.tests import helpers
 from webui.tests.catalog_rows import add_item as add_item_row, builtin_id
 
@@ -189,15 +189,28 @@ class HandlerFailTest(BuildCase):
         self.assertIn("FLARESOLVERR_URL", keys)
         self.assertNotIn("GITHUB_TOKEN", log.env)
 
-    def googleplay_run(self):
+    def googleplay_run(self, value=None, codes=None, abis=None, runner="runner-noresult.sh"):
+        """value = the wanted versionName (None = latest). codes: device -> versionCode, or an Exception to raise.
+        abis: one abi per variant (distinct abis -> distinct download specs). resolve and remember are recorded."""
         self.enterContext(mock.patch.object(build, "APKEEP", str(FIX / "apkeep-fake.sh")))
         real_input, calls, real = self.cat.job_input, [], StreamLog.run
+        self.resolved, self.remembered = [], []
 
         def job_input(item_id):
             j = json.loads(json.dumps(real_input(item_id)))   # the fixture's nested dicts are shared
-            for v in j["recipe"]["variants"]:
+            j["version"]["value"] = value
+            for v, abi in zip(j["recipe"]["variants"], abis or [None, None]):
                 v["download"] = dict(v["download"], kind="googleplay", url=None)
+                if abi:
+                    v["abi"], v["download"]["arch"] = abi, abi
             return j
+
+        def resolve(package, version_name, log, play):
+            self.resolved.append((package, version_name, play.device, list(db.KEY.glob("apkeep-*"))[0] == Path(play.ini)))
+            code = (codes or {})[play.device]
+            if isinstance(code, Exception):
+                raise code
+            return code
 
         def spy(log, argv, cwd, env, timeout=None, on_line=None):
             job_json = Path(argv[2]).read_text() if argv[0] == "bash" else None
@@ -205,13 +218,18 @@ class HandlerFailTest(BuildCase):
             return real(log, argv, cwd, env, timeout, on_line)
 
         self.enterContext(mock.patch.object(apps, "job_input", job_input))
+        self.enterContext(mock.patch.object(playversion, "resolve", resolve))
+        self.enterContext(mock.patch.object(playversion, "remember", lambda *a: self.remembered.append(a)))
         with mock.patch.object(StreamLog, "run", spy):
-            job, log, err = self.run_handler("runner-noresult.sh")
+            job, log, err = self.run_handler(runner)
         return job, calls, err
+
+    def save_google_credentials(self):
+        settings.write_secret(settings.google_play_path(), json.dumps({"email": "a@b.c", "aas_token": "t"}))
 
     def test_googleplay_token_stays_with_the_server(self):
         settings.write_secret(settings.google_play_path(), json.dumps({"email": "a@b.c", "aas_token": "aas_et/SECRET9"}))
-        job, calls, err = self.googleplay_run()
+        job, calls, err = self.googleplay_run("1.0.0", {"nothing_p1": 4242})
         (keep_argv, keep_env, _), (run_argv, run_env, job_json) = calls
         self.assertEqual(keep_argv[keep_argv.index("-o") + 1], "device=nothing_p1,split_apk=true")  # universal + arm64 share the spec
         self.assertNotIn("SECRET9", " ".join(keep_argv))
@@ -222,14 +240,64 @@ class HandlerFailTest(BuildCase):
         self.assertEqual(list(db.KEY.glob("apkeep-*")), [])   # the credentials ini is gone after the download
 
     def test_googleplay_failures(self):
-        job, calls, err = self.googleplay_run()
+        job, calls, err = self.googleplay_run("1.0.0", {})
         self.assertEqual((self.bj(job)["fail_code"], self.bj(job)["fail_detail"]),
                          ("download_failed", "Google Play credentials not set in Settings"))
-        settings.write_secret(settings.google_play_path(), json.dumps({"email": "a@b.c", "aas_token": "t"}))
+        self.assertEqual(self.resolved, [])
+        self.save_google_credentials()
         with mock.patch.dict(os.environ, {"SHIM_APKEEP_FAIL": "1"}):
             job, calls, err = self.googleplay_run()
         self.assertEqual(len(calls), 1)
         self.assertTrue(self.bj(job)["fail_detail"].startswith(f"apkeep exited 1: expected {YT}.apk or {YT}/"))
+
+    def test_googleplay_pins_version_code(self):
+        self.save_google_credentials()
+        job, calls, err = self.googleplay_run("1.0.0", {"nothing_p1": 4242})
+        self.assertEqual(self.resolved, [(YT, "1.0.0", "nothing_p1", True)])   # the ini existed during the lookup
+        (argv, _, _), (_, _, job_json) = calls
+        self.assertEqual(argv[argv.index("-a") + 1], f"{YT}@4242")
+        gp = json.loads(job_json)["googleplay"]
+        self.assertEqual([(g["version_code"], g["device"]) for g in gp], [(4242, "nothing_p1")])
+        self.assertEqual(list(db.KEY.glob("apkeep-*")), [])
+
+    def test_googleplay_code_per_device(self):
+        self.save_google_credentials()
+        job, calls, err = self.googleplay_run("1.0.0", {"px_9a": 11, "sm_a13_5g": 12}, abis=["arm64-v8a", "armeabi-v7a"])
+        self.assertEqual([r[2] for r in self.resolved], ["px_9a", "sm_a13_5g"])
+        self.assertEqual([c[0][c[0].index("-a") + 1] for c in calls[:2]], [f"{YT}@11", f"{YT}@12"])
+
+    def test_googleplay_latest_has_no_at(self):
+        self.save_google_credentials()
+        job, calls, err = self.googleplay_run()
+        argv = calls[0][0]
+        self.assertEqual(argv[argv.index("-a") + 1], YT)
+        self.assertEqual(self.resolved, [])
+        self.assertEqual([g["version_code"] for g in json.loads(calls[1][2])["googleplay"]], [None])
+
+    def test_googleplay_resolver_failure_downloads_nothing(self):
+        self.save_google_credentials()
+        job, calls, err = self.googleplay_run("1.0.0", {"nothing_p1": playversion.VersionCodeError("no code for 1.0.0")})
+        self.assertEqual((self.bj(job)["fail_code"], self.bj(job)["fail_detail"]), ("download_failed", "no code for 1.0.0"))
+        self.assertEqual(calls, [])
+        self.assertEqual(list(db.KEY.glob("apkeep-*")), [])
+        self.assertEqual(self.remembered, [])
+
+    def test_googleplay_empty_output_names_expected_and_requested(self):
+        self.save_google_credentials()
+        with mock.patch.dict(os.environ, {"SHIM_APKEEP_EMPTY": "1"}):
+            job, calls, err = self.googleplay_run("1.0.0", {"nothing_p1": 4242}, runner="runner-ok.sh")
+        self.assertTrue(self.bj(job)["fail_detail"].startswith(f"apkeep exited 0: expected {YT}.apk or {YT}/"))
+        self.assertIn(f"{YT}@4242 (versionName 1.0.0)", self.bj(job)["fail_detail"])
+        self.assertEqual((self.remembered, list(db.KEY.glob("apkeep-*"))), ([], []))
+
+    def test_googleplay_remembers_verified_pair_only_on_a_valid_result(self):
+        self.save_google_credentials()
+        self.googleplay_run("1.0.0", {"nothing_p1": 4242})
+        self.assertEqual(self.remembered, [])
+        self.googleplay_run("1.0.0", {"nothing_p1": 4242}, runner="runner-ok.sh")
+        self.assertEqual(self.remembered, [(YT, "1.0.0", "nothing_p1", 4242)])
+        self.googleplay_run(runner="runner-ok.sh")
+        self.assertEqual(self.remembered, [])
 
     def test_markers(self):
         job = self.job()
