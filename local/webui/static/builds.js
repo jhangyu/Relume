@@ -112,6 +112,7 @@ async function select(id) {
   const j = await api('GET', `/api/jobs/${id}`);
   B.sel = id;
   B.last = j;
+  $$('#hist tbody tr').forEach(tr => { if (Number(tr.dataset.id) === id) tr.setAttribute('aria-current', 'true'); else tr.removeAttribute('aria-current'); });
   const it = itemOf(j);
   $('#bt').textContent = `${it.label} #${j.id} · ${j.status === 'running' ? 'live log' : 'log'}`;
   const live = j.status === 'running' || j.status === 'queued';
@@ -159,12 +160,17 @@ async function renderHistory(mode) {
   if (B.filt === 'item') p.item_id = ITEM;
   else if (B.filt) p.status = B.filt;
   if (mode === 'append' && oldest) p.before_id = oldest;
+  const filt = B.filt;
   const jobs = await listJobs(p, 25);
+  if (B.filt !== filt) return undefined; // filter changed mid-flight: its own 'reset' owns the rows
   const done = jobs.filter(j => j.status !== 'queued' && j.status !== 'running');
   const rows = html`${done.map(historyRow)}`, tbody = $('#hist tbody');
+  const cutoff = jobs.length ? jobs[jobs.length - 1].id : 0;
+  const topId = Math.max(0, ...$$('#hist tbody tr').map(tr => Number(tr.dataset.id)));
+  // ponytail: no overlap with the shown rows (25+ newer jobs since last tick) would leave a gap, so reset (rare jump)
+  if (mode === 'refresh' && cutoff > topId) mode = 'reset';
   if (mode === 'append') tbody.insertAdjacentHTML('beforeend', html`${rows}`);
   else if (mode === 'refresh') {
-    const cutoff = jobs.length ? jobs[jobs.length - 1].id : 0;
     $$('#hist tbody tr').forEach(tr => { if (Number(tr.dataset.id) >= cutoff) tr.remove(); });
     tbody.insertAdjacentHTML('afterbegin', html`${rows}`);
   } else tbody.innerHTML = html`${rows}`;
