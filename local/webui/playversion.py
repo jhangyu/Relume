@@ -157,8 +157,8 @@ class PlayClient:
         try:
             try:
                 self._proc.stdin.close()
-            except BrokenPipeError:
-                pass  # the probe already died: _ask/_fail reported its exit code and stderr, the exit is logged below
+            except BrokenPipeError:  # the probe already died: _ask/_fail reported the lookup error, so only log this
+                self.log.line("Play probe stdin already closed: the probe exited before reading all requests")
             try:
                 rc = self._proc.wait(CLOSE_TIMEOUT)
             except subprocess.TimeoutExpired:
