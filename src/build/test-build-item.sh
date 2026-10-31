@@ -109,27 +109,34 @@ if [ "$rc" != 0 ] && grep -q '^::fail::apk_not_listed::' "$T/out.txt"; then pass
 
 # googleplay: the server's apkeep output (one <pkg>.apk, or a split dir <pkg>/) is named in job.json
 GP='.recipe.variants[].download={"kind":"googleplay","type":"apk","arch":null,"dpi":null,"minver":null,"url":null}'
-gp_job() { make_job "$GP | .version.value=$1 | .googleplay=[{download:.recipe.variants[0].download, path:\"$2\"}]"; }
-new_env; mkdir -p "$T/gp"; cp "$SHIM_SERVE/input.apk" "$T/gp/$YT.apk"; gp_job null "$T/gp/$YT.apk"
+gp_job() { make_job "$GP | .version.value=$1 | .googleplay=[{download:.recipe.variants[0].download, path:\"$2\", version_code:$3}]"; }
+new_env; mkdir -p "$T/gp"; cp "$SHIM_SERVE/input.apk" "$T/gp/$YT.apk"; gp_job null "$T/gp/$YT.apk" null
 rc=$(run_runner)
 if [ "$rc" = 0 ] && [ -s "$T/work/download/in-0.apk" ] && [ "$(jq -r .app_version "$T/work/result.json")" = 21.20.405 ]; then
 	pass googleplay_single_apk
 else fail googleplay_single_apk "rc=$rc $(tail -3 "$T/out.txt")"; fi
 
 new_env; mkdir -p "$T/gp/$YT"; cp "$SHIM_SERVE/input.apk" "$T/gp/$YT/$YT.apk"; cp "$SHIM_SERVE/input.apk" "$T/gp/$YT/$YT.config.arm64_v8a.apk"
-gp_job '"21.20.405"' "$T/gp/$YT"
+gp_job '"21.20.405"' "$T/gp/$YT" 1561173354
 rc=$(run_runner)
 if [ "$rc" = 0 ] && [ -s "$T/work/download/in-0.apk" ] && grep -q "java -jar $T/APKEditor.jar m -i ./download/in-0.xapk" "$SHIM_LOG" &&
 	unzip -Z1 "$T/work/download/in-0.apk" | grep -qxF "$YT.config.arm64_v8a.apk"; then
 	pass googleplay_split_dir
 else fail googleplay_split_dir "rc=$rc $(tail -3 "$T/out.txt")"; fi
 
-new_env; mkdir -p "$T/gp"; cp "$SHIM_SERVE/input.apk" "$T/gp/$YT.apk"; gp_job '"1.0.0"' "$T/gp/$YT.apk"
+new_env; mkdir -p "$T/gp"; cp "$SHIM_SERVE/input.apk" "$T/gp/$YT.apk"; gp_job '"1.0.0"' "$T/gp/$YT.apk" 7
 rc=$(run_runner)
 if [ "$rc" != 0 ] && [ "$(fail_lines)" = 1 ] &&
-	grep -qxF '::fail::download_failed::Google Play serves only the latest version: expected 1.0.0, downloaded 21.20.405' "$T/out.txt"; then
+	grep -qxF '::fail::download_failed::Google Play download does not match the request: expected versionName 1.0.0 versionCode 7, downloaded versionName 21.20.405 versionCode 1561173354' "$T/out.txt"; then
 	pass googleplay_version_mismatch
 else fail googleplay_version_mismatch "rc=$rc $(grep '^::fail::' "$T/out.txt")"; fi
+
+new_env; mkdir -p "$T/gp"; cp "$SHIM_SERVE/input.apk" "$T/gp/$YT.apk"; gp_job '"21.20.405"' "$T/gp/$YT.apk" 7
+rc=$(run_runner)
+if [ "$rc" != 0 ] && [ "$(fail_lines)" = 1 ] &&
+	grep -qxF '::fail::download_failed::Google Play download does not match the request: expected versionName 21.20.405 versionCode 7, downloaded versionName 21.20.405 versionCode 1561173354' "$T/out.txt"; then
+	pass googleplay_code_mismatch
+else fail googleplay_code_mismatch "rc=$rc $(grep '^::fail::' "$T/out.txt")"; fi
 
 # ---- Xposed engine cases (P8, spec xposed 5.3 / 11) ----
 XP_LS='.engine="lspatch" | .engine_options={"sigbypass":3,"injectdex":true} | .keystore="lspatch-signing.p12" | .recipe.variants=[.recipe.variants[0] | .name="arm64-v8a" | .abi="arm64-v8a" | .strip_libs=null]'

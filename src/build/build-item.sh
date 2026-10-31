@@ -108,16 +108,20 @@ fetch_input() {
 		get_apkpure "$package" "$name" "$type" "$apkpure_url" || fail download_failed "${LAST_ERR:-download failed}"
 		;;
 	googleplay)
-		local gp base gpver
+		local gp base gpver gpcode wantcode info
 		gp=$(jq -r --argjson d "$d" 'first(.googleplay[] | select(.download == $d) | .path) // empty' "$job")
+		wantcode=$(jq -r --argjson d "$d" 'first(.googleplay[] | select(.download == $d) | .version_code) // empty' "$job")
 		[[ -n "$gp" && -e "$gp" ]] || fail internal "no Google Play download for $d"
 		base=$gp
 		[[ -d "$gp" ]] && base=$gp/$package.apk
-		gpver=$(apk_info "$base" | sed -n 's/^version_name=//p')
-		[[ -n "$gpver" ]] || fail download_failed "cannot read versionName of $base"
-		# Google Play serves only the latest version (apkeep cannot pin one)
-		[[ -z "$version" || "$version" == "$gpver" ]] ||
-			fail download_failed "Google Play serves only the latest version: expected $version, downloaded $gpver"
+		info=$(apk_info "$base")
+		gpver=$(sed -n 's/^version_name=//p' <<<"$info")
+		gpcode=$(sed -n 's/^version_code=//p' <<<"$info")
+		[[ -n "$gpver" && -n "$gpcode" ]] || fail download_failed "cannot read versionName/versionCode of $base"
+		# a concrete version is downloaded as <pkg>@<versionCode>: both must match the request
+		if [[ -n "$version" && "$version" != "$gpver" ]] || [[ -n "$wantcode" && "$wantcode" != "$gpcode" ]]; then
+			fail download_failed "Google Play download does not match the request: expected versionName ${version:-any} versionCode ${wantcode:-any}, downloaded versionName $gpver versionCode $gpcode"
+		fi
 		version=$gpver
 		get_googleplay "$gp" "$name" "$type" || fail download_failed "${LAST_ERR:-Google Play input failed}"
 		;;
