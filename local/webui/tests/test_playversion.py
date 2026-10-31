@@ -24,6 +24,9 @@ def fixture(name):
     return (FIX / name).read_bytes()
 
 
+MANIFEST_APK = FIX.parent / "apkmanifest" / "manifest-only.apk"
+
+
 class FakePlay:
     """PlayClient interface over a {code: versionName} oracle; latest = (name, code)."""
     device = "px_9a"
@@ -150,14 +153,14 @@ def range_get(blob, calls):
 class ManifestCase(unittest.TestCase):
     def test_manifest_through_range_reads(self):
         calls = []
-        with mock.patch.object(upstream, "http_get", range_get(fixture("manifest-only.apk"), calls)):
+        with mock.patch.object(upstream, "http_get", range_get(MANIFEST_APK.read_bytes(), calls)):
             m = PlayClient._read_manifest("https://play.example/dl?token=secret")
         self.assertEqual(m, apkmanifest.Manifest("com.rawcam.app", 57, "1.4.5"))
         self.assertEqual(calls[0], "https://play.example/dl?token=secret")
         self.assertEqual(set(calls[1:]), {"https://cdn.example/apk"})
 
     def test_truncated_apk_is_an_error(self):
-        blob = fixture("manifest-only.apk")
+        blob = MANIFEST_APK.read_bytes()
         with mock.patch.object(upstream, "http_get", range_get(blob[:-40], [])):
             with self.assertRaises(VersionCodeError):
                 PlayClient._read_manifest("https://play.example/dl")
