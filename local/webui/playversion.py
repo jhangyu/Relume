@@ -132,8 +132,12 @@ class PlayClient:
     def _read_manifest(url):
         """Manifest of the APK at url through range reads (4 requests); the first answer's final URL is reused."""
         def get(u, a, b, n):
-            status, headers, body, final = upstream.http_get(
-                u, {"Range": f"bytes={a}-{b}"}, timeout=FETCH_TIMEOUT, max_bytes=n)
+            try:
+                status, headers, body, final = upstream.http_get(
+                    u, {"Range": f"bytes={a}-{b}"}, timeout=FETCH_TIMEOUT, max_bytes=n)
+            except ValueError:  # http_get's text carries the signed URL: name host and sizes only
+                raise VersionCodeError(f"APK range {a}-{b} from {urllib.parse.urlsplit(u).hostname}: expected at "
+                                       f"most {n} bytes, got more") from None
             if status != 206:
                 raise VersionCodeError(f"APK range {a}-{b}: expected status 206, got {status}")
             return headers, body, final
@@ -151,7 +155,10 @@ class PlayClient:
         if self._proc is None:
             return
         try:
-            self._proc.stdin.close()
+            try:
+                self._proc.stdin.close()
+            except BrokenPipeError:
+                pass  # the probe already died: _ask/_fail reported its exit code and stderr, the exit is logged below
             try:
                 rc = self._proc.wait(CLOSE_TIMEOUT)
             except subprocess.TimeoutExpired:

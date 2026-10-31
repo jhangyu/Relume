@@ -2,6 +2,7 @@ import pathlib
 import stat
 import sys
 import tempfile
+import traceback
 import unittest
 from unittest import mock
 
@@ -170,6 +171,17 @@ class ManifestCase(unittest.TestCase):
             with self.assertRaisesRegex(VersionCodeError, "expected status 206, got 200"):
                 PlayClient._read_manifest("https://play.example/dl")
 
+    def test_oversize_body_error_hides_signed_url(self):
+        def over(url, headers=None, timeout=30, max_bytes=None):
+            raise ValueError(f"{url}: body over {max_bytes} bytes")
+        with mock.patch.object(upstream, "http_get", over):
+            with self.assertRaises(VersionCodeError) as cm:
+                PlayClient._read_manifest("https://play.example/dl?token=SECRET")
+        text = "".join(traceback.format_exception(cm.exception))
+        self.assertNotIn("SECRET", text)
+        self.assertIn("play.example", str(cm.exception))
+        self.assertIn("at most 1 bytes", str(cm.exception))
+
 
 class SessionCase(helpers.DataTestCase):
     """PlayClient against a python3 script that stands in for apkeep (canned answers, one per stdin line)."""
@@ -219,6 +231,14 @@ class SessionCase(helpers.DataTestCase):
         c = self.client(exit_code=3)
         with self.assertRaisesRegex(VersionCodeError, "exit 3.*bad token"):
             c.details()
+
+    def test_probe_dead_before_first_request_raises_version_code_error(self):
+        c = self.client(exit_code=3)
+        c._start()
+        c._proc.wait()  # the pipe is already broken when the request is written
+        with self.assertRaisesRegex(VersionCodeError, "exit 3.*bad token"):
+            c.details()
+        c.close()  # must not raise BrokenPipeError over the lookup error
 
 
 if __name__ == "__main__":
