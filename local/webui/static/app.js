@@ -99,7 +99,7 @@ export function scrollKeeper() {
   const nav = performance.getEntriesByType('navigation')[0];
   let saved = nav && ['back_forward', 'reload'].includes(nav.type) ? sessionStorage.getItem(key) : null;
   let y = null;
-  addEventListener('pagehide', () => sessionStorage.setItem(key, String(window.scrollY)));
+  addEventListener('pagehide', () => sessionStorage.setItem(key, String(y ?? window.scrollY)));
   return {
     mark() { y = window.scrollY; },
     back() { if (y !== null) window.scrollTo(0, y); y = null; },

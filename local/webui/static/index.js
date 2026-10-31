@@ -130,7 +130,7 @@ async function loadSources() {
 async function loadAll() {
   await Promise.all([renderHero(), loadList(true), loadSources()]);
   await scroll.first(async top => {   // Back/reload: load the pages the saved position sits on
-    while (S.apps.length < S.total && document.documentElement.scrollHeight < top + innerHeight) { S.page += 1; await loadList(false); }
+    while (S.apps.length < S.total && document.documentElement.scrollHeight < top + innerHeight) { if (!await loadMore()) break; }
   });
 }
 
@@ -346,22 +346,27 @@ $('#q').addEventListener('input', onFilter(v => { S.q = v.trim(); }));
 $('#origin').addEventListener('change', onFilter(v => { S.origin = v; }));
 $('#sort').addEventListener('change', onFilter(v => { S.sort = v; }));
 // Next page when the sentinel after the gallery comes near the viewport.
-let paging = false;
+// loadMore() is the only paging path (pager and the scroll-restore fill): resolves true when a page was
+// loaded, false when nothing was loaded. A call while a page is in flight joins that page.
+let paging = null;
 const pager = new IntersectionObserver(([e]) => { if (e.isIntersecting) loadMore(); }, { rootMargin: '400px' });
 function loadMore() {
-  if (paging || S.apps.length >= S.total) return;
-  paging = true;
+  if (paging) return paging;
+  if (S.apps.length >= S.total) return Promise.resolve(false);
   const want = S.page + 1;
   S.page = want;
-  loadList(false).then(() => {
-    paging = false;
+  paging = loadList(false).then(() => {
+    paging = null;
     pager.unobserve($('#more')); pager.observe($('#more'));   // observe() re-reports: loads again if the sentinel is still in view
+    return true;
   }, err => {
-    paging = false;
+    paging = null;
     if (S.page === want) S.page = want - 1;   // a filter reset in between owns S.page: otherwise retry the same page
     console.error('load more:', err);
     toast(err.message, 'error');
+    return false;
   });
+  return paging;
 }
 pager.observe($('#more'));
 addEventListener('resize', placeDetail);
