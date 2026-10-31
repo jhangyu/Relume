@@ -584,13 +584,13 @@ async function save(rebuild) {
     }
     let chained = false;   // the server already queued the download-then-build job
     if (c.enabled && !D.orig.enabled) {
-      chained = (await act('POST', '/api/apps', { package: D.app.package, bundle_id: c.bundleId }, `${D.app.name} enabled`)).update_queued;
+      chained = (await act('POST', '/api/apps', { package: D.app.package, bundle_id: c.bundleId, ...(rebuild && { rebuild: true }) }, `${D.app.name} enabled`)).update_queued;
       D.orig.enabled = true;
       D.orig.bundleId = c.bundleId;
     }
     const body = settingsBody();
     if (Object.keys(body).length) {
-      chained = (await api('PUT', `/api/apps/${id}`, body)).update_queued || chained;
+      chained = (await api('PUT', `/api/apps/${id}`, rebuild ? { ...body, rebuild: true } : body)).update_queued || chained;
       D.orig = clone(c);
     }
     if (patchesEditable() && !same(D.edit, D.saved)) {

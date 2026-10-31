@@ -284,6 +284,13 @@ class UpdateRunTest(AppsCase):
         self.set_item(1, enabled=0)
         self.assertEqual(self.run_job({"item_id": 1})[1].reason, "app 1 is disabled")
 
+    def test_forced_run_builds_when_nothing_changed(self):
+        self.enterContext(mock.patch.object(build, "needs_build", return_value=False))
+        self.run_job({"item_id": 1})
+        self.assertEqual(self.jobs_of("build"), [])
+        self.run_job({"item_id": 1, "force": True})
+        self.assertEqual(self.jobs_of("build"), [({"item_id": 1}, "schedule")])
+
 
 class EnableTest(AppsCase):
     def test_enable_new_and_reenable_keep_overrides(self):
@@ -377,6 +384,11 @@ class EnableTest(AppsCase):
         self.assertEqual(len(pull), 1)
         self.assertFalse(o["update_queued"])
         self.assertEqual(self.jobs_of("build"), [])
+
+    def test_source_channel_rebuild_chains_a_forced_job(self):
+        o = apps.update_settings(1, {"channel": "prerelease"}, rebuild=True)
+        self.assertEqual(self.jobs_of("upstream"), [({"item_id": 1, "force": True}, "manual")])
+        self.assertTrue(o["update_queued"])
 
 
 class PatchesTest(AppsCase):

@@ -7,7 +7,7 @@ SORTS = ("name", "bundles", "stars", "updated")
 ORIGINS = ("official", "builtin", "custom")
 BOOLS = {"true": True, "false": False}
 PER_PAGE_MAX, PER_PAGE_DEFAULT = 100, 50
-ENABLE_KEYS = ("package", "bundle_id", "patches", "download")
+ENABLE_KEYS = ("package", "bundle_id", "patches", "download", "rebuild")
 SOURCE_KEYS = ("url", "engine", "asset_regex", "packages")
 
 
@@ -51,6 +51,13 @@ def _keys(body, allowed, what):
     unknown = sorted(set(body) - set(allowed))
     if unknown:
         raise HttpError(400, f"{what}: expected keys {', '.join(allowed)}, got {', '.join(unknown)}")
+
+
+def _rebuild(b):
+    r = b.get("rebuild", False)
+    if not isinstance(r, bool):
+        raise HttpError(400, f"rebuild expected true or false, got {r!r}")
+    return r
 
 
 def list_marketplace(req):
@@ -126,7 +133,7 @@ def enable_app(req):
         raise HttpError(400, f"app enable {pkg}: patches expected an object of name: true|false, got {patches!r}")
     if b.get("download") is not None:
         apklocate.put_download(pkg, b["download"])
-    return 201, _with_download(apps.enable(pkg, bundle_id, patches))
+    return 201, _with_download(apps.enable(pkg, bundle_id, patches, rebuild=_rebuild(b)))
 
 
 def get_app(req):
@@ -140,10 +147,10 @@ def put_app(req):
     had_url = bool(before and (before["apkmirror_list_url"] or before["apkpure_url"]))
     if "download" in b:
         apklocate.validate_download(pkg, b["download"])  # both parts are validated before either writes
-    settings = {k: v for k, v in b.items() if k != "download"}
+    settings = {k: v for k, v in b.items() if k not in ("download", "rebuild")}
     queued = False
     if settings:
-        queued = apps.update_settings(app_id, settings)["update_queued"]
+        queued = apps.update_settings(app_id, settings, rebuild=_rebuild(b))["update_queued"]
     if "download" in b:
         apklocate.put_download(pkg, b["download"])
         after = apklocate.download_state(pkg)

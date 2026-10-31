@@ -180,7 +180,7 @@ def _switch_engine(old_engine, new_engine, variants, engine_options):
     return variants, None
 
 
-def enable(package, bundle_id, overrides=None):
+def enable(package, bundle_id, overrides=None, rebuild=False):
     b = _choose_bundle(package, bundle_id)
     ov = _overrides(b, overrides) if overrides is not None else {}
     cur = db.conn().execute('SELECT i.*, x.engine FROM item i JOIN bundle x ON x.id = i.bundle_id WHERE i.package = ?',
@@ -203,7 +203,7 @@ def enable(package, bundle_id, overrides=None):
             c.execute('UPDATE item SET bundle_id = ?, enabled = 1, variants = ?, patch_overrides = ?, engine_options = ? '
                       'WHERE id = ?', (bundle_id, json.dumps(variants), json.dumps(merged, sort_keys=True),
                                        None if eo is None else json.dumps(eo), iid))
-    jobs.enqueue('upstream', {'item_id': iid}, 'manual')
+    jobs.enqueue('upstream', _chain_target(iid, rebuild), 'manual')
     return {**get(iid), 'update_queued': True}
 
 
@@ -226,7 +226,12 @@ def _version(v):
     return {'version_mode': mode, 'version_pin': pin, 'allow_nearest': int(near)}
 
 
-def update_settings(app_id, fields):
+def _chain_target(item_id, rebuild):
+    """The chained pull-then-build job; force makes run_update build even when needs_build is false."""
+    return {'item_id': item_id, 'force': True} if rebuild else {'item_id': item_id}
+
+
+def update_settings(app_id, fields, rebuild=False):
     r = _row(app_id)
     if not isinstance(fields, dict):
         raise server.HttpError(400, f'app {app_id}: settings expected an object, got {fields!r}')
@@ -283,7 +288,7 @@ def update_settings(app_id, fields):
     if 'variants' in fields:
         build.drop_variants(app_id, [v['name'] for v in variants])
     if chained:
-        jobs.enqueue('upstream', {'item_id': app_id}, 'manual')   # same first fetch + build as enable (apps part §4.6)
+        jobs.enqueue('upstream', _chain_target(app_id, rebuild), 'manual')   # same first fetch + build as enable (apps part §4.6)
     return {**get(app_id), 'update_queued': chained}
 
 
@@ -542,7 +547,7 @@ def run_update(job, log):
     if job.cancel_event.is_set():
         return
     notify = (job.options or {}).get('notify', True)
-    queued = [i for i in buildable if build.needs_build(i)]
+    queued = [i for i in buildable if t.get('force') or build.needs_build(i)]
     for i in queued:
         jobs.enqueue('build', {'item_id': i}, job.trigger, job.schedule_id, {'notify': notify})
     log.line(f'[+] build enqueued for {len(queued)} app(s)')

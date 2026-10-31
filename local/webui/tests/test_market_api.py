@@ -93,7 +93,7 @@ class AppsTest(MarketCase):
             self.basic = catalog_rows.add_basic(c)
         self.enabled = []
 
-        def enable(package, bundle_id, overrides=None):
+        def enable(package, bundle_id, overrides=None, rebuild=False):
             if bundle_id == 99:
                 raise server.HttpError(409, f'bundle 99 (github o/r): does not support package {package}',
                                        'bundle_unsupported')
