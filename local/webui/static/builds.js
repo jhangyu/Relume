@@ -165,10 +165,11 @@ async function renderHistory(mode) {
   if (B.filt !== filt) return undefined; // filter changed mid-flight: its own 'reset' owns the rows
   const done = jobs.filter(j => j.status !== 'queued' && j.status !== 'running');
   const rows = html`${done.map(historyRow)}`, tbody = $('#hist tbody');
-  const cutoff = jobs.length ? jobs[jobs.length - 1].id : 0;
+  if (mode === 'refresh' && !done.length) return undefined; // only queued/running in the page: nothing to change
+  const cutoff = done.length ? done[done.length - 1].id : 0; // oldest done row of the page; pending jobs render no row
   const topId = Math.max(0, ...$$('#hist tbody tr').map(tr => Number(tr.dataset.id)));
-  // ponytail: no overlap with the shown rows (25+ newer jobs since last tick) would leave a gap, so reset (rare jump)
-  if (mode === 'refresh' && cutoff > topId) mode = 'reset';
+  // ponytail: a full page entirely newer than the shown rows (25+ newer jobs since last tick) may hide a gap, so reset (rare jump)
+  if (mode === 'refresh' && jobs.length >= 25 && cutoff > topId) mode = 'reset';
   if (mode === 'append') tbody.insertAdjacentHTML('beforeend', html`${rows}`);
   else if (mode === 'refresh') {
     $$('#hist tbody tr').forEach(tr => { if (Number(tr.dataset.id) >= cutoff) tr.remove(); });
