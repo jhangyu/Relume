@@ -1,6 +1,7 @@
 *
 !local/webui
 !local/solver
+!local/apkeep
 !src/build
 # tests and caches are not needed at run time
 local/webui/tests

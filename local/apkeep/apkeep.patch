@@ -1,0 +1,122 @@
+diff -ruN a/src/cli.rs b/src/cli.rs
+--- a/src/cli.rs
++++ b/src/cli.rs
+@@ -31,7 +31,7 @@
+ 
+ pub fn app() -> Command {
+     Command::new("apkeep")
+-        .version(env!("CARGO_PKG_VERSION"))
++        .version(concat!(env!("CARGO_PKG_VERSION"), "+relume.1"))
+         .author("William Budington <bill@eff.org>")
+         .about("Downloads APKs from various sources")
+         .override_usage("apkeep <-a app_id[@version] | -c csv [-f field] [-v version_field]> [-d download_source] [-r parallel] OUTPATH")
+diff -ruN a/src/download_sources/google_play.rs b/src/download_sources/google_play.rs
+--- a/src/download_sources/google_play.rs
++++ b/src/download_sources/google_play.rs
+@@ -79,6 +79,24 @@
+         }
+     }
+ 
++    // fork: `-a pkg -o probe=session`: after this one login, each stdin line `details` or `<versionCode>` gets one
++    // JSON line on stdout (flushed); nothing is downloaded; exit 0 at stdin EOF
++    if let Some(mode) = options.remove("probe") {
++        let app_id = match (mode, apps.as_slice()) {
++            ("session", [(app_id, None)]) => app_id,
++            _ => {
++                eprintln!("probe: expected -o probe=session with exactly one -a <pkg> (no @version), got probe={} and {} app(s)", mode, apps.len());
++                std::process::exit(1);
++            }
++        };
++        for request in std::io::stdin().lines() {
++            let request = request.unwrap_or_else(|e| { eprintln!("probe: stdin read failed: {}", e); std::process::exit(1) });
++            println!("{}", probe(&gpa, app_id, request.trim()).await);
++            std::io::Write::flush(&mut std::io::stdout()).unwrap();
++        }
++        return;
++    }
++
+     let mp = Rc::new(MultiProgress::new());
+     let gpa = Rc::new(gpa);
+     futures_util::stream::iter(
+@@ -91,12 +109,21 @@
+             let mp_log = Rc::clone(&mp);
+ 
+             async move {
+-                if app_version.is_none() {
++                // fork: `-a pkg@<versionCode>` pins a Google Play version code; no suffix = latest
++                let version_code: Option<i64> = match app_version.as_deref().map(str::parse::<i64>) {
++                    None => None,
++                    Some(Ok(vc)) => Some(vc),
++                    Some(Err(e)) => {
++                        mp_log.println(format!("Google Play needs a numeric versionCode after @, got {}@{}: {}. Skipping...", app_id, app_version.unwrap(), e)).unwrap();
++                        return;
++                    }
++                };
++                {
+                     mp_log.suspend(|| println!("Downloading {} from Google Play...", app_id));
+                     if sleep_duration > 0 {
+                         sleep(TokioDuration::from_millis(sleep_duration)).await;
+                     }
+-                    match gpa.download(&app_id, None, split_apk, include_dex_metadata, include_additional_files, Path::new(outpath), Some(&progress_wrapper(mp_dl1))).await {
++                    match gpa.download(&app_id, version_code, split_apk, include_dex_metadata, include_additional_files, Path::new(outpath), Some(&progress_wrapper(mp_dl1))).await {
+                         Ok(_) => mp_log.suspend(|| println!("{} downloaded successfully!", app_id)),
+                         Err(err) if matches!(err.kind(), GpapiErrorKind::FileExists) => {
+                             mp_log.println(format!("File already exists for {}. Skipping...", app_id)).unwrap();
+@@ -112,11 +139,11 @@
+                         }
+                         Err(_) => {
+                             mp_log.println(format!("An error has occurred attempting to download {}.  Retry #1...", app_id)).unwrap();
+-                            match gpa.download(&app_id, None, split_apk, include_dex_metadata, include_additional_files, Path::new(outpath), Some(&progress_wrapper(mp_dl2))).await {
++                            match gpa.download(&app_id, version_code, split_apk, include_dex_metadata, include_additional_files, Path::new(outpath), Some(&progress_wrapper(mp_dl2))).await {
+                                 Ok(_) => mp_log.suspend(|| println!("{} downloaded successfully!", app_id)),
+                                 Err(_) => {
+                                     mp_log.println(format!("An error has occurred attempting to download {}.  Retry #2...", app_id)).unwrap();
+-                                    match gpa.download(&app_id, None, split_apk, include_dex_metadata, include_additional_files, Path::new(outpath), Some(&progress_wrapper(mp_dl3))).await {
++                                    match gpa.download(&app_id, version_code, split_apk, include_dex_metadata, include_additional_files, Path::new(outpath), Some(&progress_wrapper(mp_dl3))).await {
+                                         Ok(_) => mp_log.suspend(|| println!("{} downloaded successfully!", app_id)),
+                                         Err(_) => {
+                                             mp_log.println(format!("An error has occurred attempting to download {}. Skipping...", app_id)).unwrap();
+@@ -126,8 +153,6 @@
+                             }
+                         }
+                     }
+-                } else {
+-                    mp_log.println(format!("Specific versions can not be downloaded from Google Play ({}@{}). Skipping...", app_id, app_version.unwrap())).unwrap();
+                 }
+             }
+         })
+@@ -162,4 +187,34 @@
+         println!("Versions available for {} on Google Play:", app_id);
+         println!("| Google Play does not make old versions of apps available.");
+     }
++}
++
++// fork: one probe session request. `details` -> latest versionCode/versionString; `<versionCode>` -> purchase + delivery
++// URLs, no download. notFound = gpapi InvalidApp (purchase gave no delivery token, or delivery has no appDeliveryData).
++async fn probe(gpa: &Gpapi, app_id: &str, request: &str) -> serde_json::Value {
++    let mode = if request == "details" { "details" } else { "delivery" };
++    let fail = |not_found: bool, text: String| serde_json::json!({"pkg": app_id, "mode": mode, "ok": false, "notFound": not_found, "error": text});
++    if mode == "details" {
++        return match gpa.details(app_id).await {
++            Err(e) => fail(false, format!("details: {}", e)),
++            Ok(d) => match d.and_then(|d| d.item).and_then(|i| i.details).and_then(|d| d.app_details) {
++                Some(a) if a.version_code.is_some() => serde_json::json!({"pkg": app_id, "mode": mode, "ok": true,
++                    "versionCode": a.version_code, "versionString": a.version_string.unwrap_or_default()}),
++                _ => fail(true, String::from("details: no appDetails versionCode")),
++            },
++        };
++    }
++    let vc = match request.parse::<i64>() {
++        Ok(vc) => vc,
++        Err(e) => return fail(false, format!("expected a line `details` or a decimal versionCode, got {:?}: {}", request, e)),
++    };
++    let mut v = match gpa.get_download_info(app_id, Some(vc)).await {
++        Ok((Some(url), splits, _, _)) => serde_json::json!({"pkg": app_id, "mode": mode, "ok": true, "url": url,
++            "splits": splits.into_iter().map(|(name, url)| serde_json::json!({"name": name, "url": url})).collect::<Vec<_>>()}),
++        Ok((None, _, _, _)) => fail(false, String::from("delivery: ok but no base download URL")),
++        Err(e) if matches!(e.kind(), GpapiErrorKind::InvalidApp) => fail(true, format!("delivery: {}", e)),
++        Err(e) => fail(false, format!("delivery: {}", e)),
++    };
++    v["vc"] = vc.into();
++    v
+ }
