@@ -190,6 +190,7 @@ function fieldsOf(app) {
   return {
     enabled: app.enabled,
     bundleId: app.bundle.bundle_id,
+    channel: app.bundle.channel,
     version: { mode: s.version.mode, pin: s.version.pin, allow_nearest: s.version.allow_nearest },
     variants: clone(s.variants),
     eo: clone(s.engine_options),
@@ -236,6 +237,8 @@ const dirty = () => !!D && (!same(D.cur, D.orig) || (patchesEditable() && !same(
 
 // ---------- drawer: sections ----------
 
+const CHANNELS = [['stable', 'Stable (latest release)'], ['prerelease', 'Prerelease']];
+
 function renderBundle() {
   const bs = D.market ? D.market.bundles : [D.app.bundle];
   const sec = $('#sec-bundle');
@@ -244,7 +247,8 @@ function renderBundle() {
     const id = b.bundle_id, ok = b.selectable !== false || id === D.cur.bundleId;
     return html`<label class="bopt"><input type="radio" name="bd" data-f="bundle" value="${id}" ${id === D.cur.bundleId ? html`checked` : ''} ${ok ? '' : html`disabled`}><div class="grow"><div class="strong">${b.name}</div><div class="mono subtle-text">${[b.repo, b.tag || b.list_tag, ENGINE_LABEL[b.engine]].filter(Boolean).join(' · ')}</div>${ok ? '' : html`<div class="caption">${b.not_selectable_reason}</div>`}</div><span class="origin ${b.origin}">${ORIGIN[b.origin] || b.origin}</span></label>`;
   })}</div>
-<p class="hint">Switching bundle keeps the patch choices whose names match in the new bundle.</p>`;
+<p class="hint">Switching bundle keeps the patch choices whose names match in the new bundle.</p>
+<div class="field"><label for="b-chan">Release channel</label><span class="select"><select class="dropdown" id="b-chan" data-f="channel" ${D.bundleId === D.orig.bundleId ? '' : html`disabled`}>${CHANNELS.map(([k, n]) => html`<option value="${k}" ${k === D.cur.channel ? html`selected` : ''}>${n}</option>`)}</select></span><span class="hint">Applies to the patch source, so every app that uses it follows this channel. Save the bundle change first to change the channel.</span></div>`;
 }
 
 function stale() {
@@ -467,7 +471,10 @@ function onEdit(e) {
   const c = D.cur;
   if (f === 'bundle') {
     c.bundleId = Number(t.value);
+    $('#b-chan').disabled = c.bundleId !== D.orig.bundleId;
     renderPatches(); renderModule(); renderVersion(); renderVariants();
+  } else if (f === 'channel') {
+    c.channel = t.value;
   } else if (f === 'patch') {
     setEnabled(D.patches.patches[Number(t.dataset.i)], t.checked);
     patchMeta();
@@ -553,6 +560,7 @@ window.addEventListener('beforeunload', e => { if (dirty()) e.preventDefault(); 
 function settingsBody() {
   const c = D.cur, o = D.orig, body = {};
   if (c.bundleId !== o.bundleId) body.bundle_id = c.bundleId;
+  if (c.channel !== o.channel && c.bundleId === o.bundleId) body.channel = c.channel;
   if (!same(c.version, o.version)) body.version = { ...c.version, pin: c.version.mode === 'pinned' ? c.version.pin : null };
   if (!same(c.variants, o.variants)) body.variants = c.variants;
   if (!same(c.eo, o.eo)) body.engine_options = c.eo;

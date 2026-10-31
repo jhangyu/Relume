@@ -609,6 +609,25 @@ def ensure_upstream(bundle_id):
     return uid
 
 
+def set_channel(bundle_id, channel):
+    """Repoint the bundle to the upstream row of (repo, channel). Returns the new upstream id, or None when the
+    bundle is on that channel already. The old row goes when nothing else uses it (same rule as delete_custom)."""
+    old_id = ensure_upstream(bundle_id)
+    with db.tx() as c:
+        old = c.execute("SELECT repo, kind, channel, asset_regex FROM upstream WHERE id = ?", (old_id,)).fetchone()
+        if old["channel"] == channel:
+            return None
+        new_id = upstream_row(c, old["kind"], old["repo"], channel, None, old["asset_regex"])
+        c.execute("UPDATE bundle SET upstream_id = ? WHERE id = ?", (new_id, bundle_id))
+        orphan = not c.execute("""SELECT EXISTS(SELECT 1 FROM bundle WHERE upstream_id = ?)
+            OR EXISTS(SELECT 1 FROM project WHERE upstream_id = ?)""", (old_id, old_id)).fetchone()[0]
+        if orphan:
+            c.execute("DELETE FROM upstream WHERE id = ?", (old_id,))
+    if orphan:
+        shutil.rmtree(db.DATA / "upstream" / str(old_id), ignore_errors=True)
+    return new_id
+
+
 def patch_list(bundle_id, package):
     """(downloaded tag, file names, bundle_info patches or None) of the bundle's release for one package."""
     uid = _bundle_row(bundle_id)["upstream_id"]

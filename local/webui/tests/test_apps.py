@@ -337,6 +337,34 @@ class EnableTest(AppsCase):
         self.assertEqual(self.http_status(apps.update_settings, 1, {"bundle_id": third}), (409, "bundle_unsupported"))
         self.assertEqual(self.http_status(apps.update_settings, 1, {"bundle_id": 999}), (404, None))
 
+    def test_source_channel_repoints_and_drops_only_orphans(self):
+        def row(uid):
+            return db.conn().execute("SELECT repo, channel FROM upstream WHERE id = ?", (uid,)).fetchone()
+
+        def up_of(bid):
+            return db.conn().execute("SELECT upstream_id FROM bundle WHERE id = ?", (bid,)).fetchone()[0]
+
+        self.assertEqual(apps.get(1)["bundle"]["channel"], "stable")
+        self.assertEqual(self.http_status(apps.update_settings, 1, {"channel": "tag"}), (400, None))
+        self.assertEqual(self.jobs_of("upstream"), [])
+        repo = row(self.up)["repo"]
+        o = apps.update_settings(1, {"channel": "prerelease"})
+        pre = up_of(self.builtin)
+        self.assertEqual((o["bundle"]["channel"], row(pre)["repo"]), ("prerelease", repo))
+        self.assertIsNone(row(self.up))   # stable row was unreferenced: removed
+        self.assertEqual(self.jobs_of("upstream"), [({"upstream_id": pre}, "manual")])
+        # a stable row still used by another bundle is kept
+        other = add_bundle(db.conn(), "o/other")
+        with db.tx() as c:
+            keep = c.execute("INSERT INTO upstream(kind, repo, channel) VALUES ('patches', ?, 'stable')",
+                             (row(pre)["repo"],)).lastrowid
+            c.execute("UPDATE bundle SET upstream_id = ? WHERE id = ?", (keep, other))
+        apps.update_settings(1, {"channel": "stable"})
+        self.assertEqual(up_of(self.builtin), keep)
+        self.assertIsNone(row(pre))
+        apps.update_settings(1, {"channel": "prerelease"})
+        self.assertIsNotNone(row(keep))   # still referenced by `other`
+
 
 class PatchesTest(AppsCase):
     def test_put_patches_validates_types(self):

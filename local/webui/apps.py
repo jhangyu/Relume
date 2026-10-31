@@ -10,8 +10,9 @@ from pathlib import Path
 from . import apklocate, build, catalog, db, jobs, projects, scheduler, server, settings, upstream
 
 KEYSTORE = {'morphe': 'morphe.keystore', 'lspatch': 'lspatch-signing.p12', 'npatch': 'fiorenmas.ks'}
-SETTING_KEYS = ('bundle_id', 'version', 'project_ids', 'variants', 'engine_options', 'display_name')
+SETTING_KEYS = ('bundle_id', 'channel', 'version', 'project_ids', 'variants', 'engine_options', 'display_name')
 VERSION_MODES = ('auto', 'pinned', 'latest')
+SOURCE_CHANNELS = ('stable', 'prerelease')
 MODULE_ENGINE_OPTIONS = {'sigbypass': 0, 'injectdex': False}   # engine default of a module bundle
 CHECK_VERSIONS = str(db.REPO_ROOT / 'src' / 'build' / 'check-versions.sh')
 CHECK_TIMEOUT = 300           # one list-page request with solver retries
@@ -19,7 +20,7 @@ VERSIONS_MAX_AGE = timedelta(hours=24)   # the build refreshes the APKMirror ver
 URL_COLUMN = {'apkmirror': 'apkmirror_list_url', 'apkpure': 'apkpure_url'}   # download kind -> app column it needs
 
 ROW_SQL = """SELECT i.*, b.origin, b.repo, b.engine, b.name AS bundle_name, b.upstream_id AS bundle_upstream_id,
-  u.downloaded_tag AS bundle_tag, s.name AS store_name, s.category AS store_category, a.apkmirror_list_url, a.apkmirror_example_url,
+  u.downloaded_tag AS bundle_tag, u.channel AS bundle_channel, s.name AS store_name, s.category AS store_category, a.apkmirror_list_url, a.apkmirror_example_url,
   a.apkmirror_example_url2, a.apkpure_url, a.apkmirror_versions, a.apkmirror_checked_at, a.apkm_state
   FROM item i JOIN bundle b ON b.id = i.bundle_id JOIN app a ON a.package = i.package
   LEFT JOIN upstream u ON u.id = b.upstream_id LEFT JOIN store_app s ON s.package = i.package"""
@@ -91,7 +92,7 @@ def _app_obj(r, st):
     return {'id': r['id'], 'package': r['package'], 'name': _label(r), 'enabled': bool(r['enabled']),
             'icon_url': f"/api/apps/{r['package']}/icon", 'category': r['store_category'], 'version_mode': r['version_mode'],
             'bundle': {'bundle_id': r['bundle_id'], 'name': r['bundle_name'], 'origin': r['origin'],
-                       'engine': r['engine'], 'tag': r['bundle_tag']},
+                       'engine': r['engine'], 'tag': r['bundle_tag'], 'channel': r['bundle_channel']},
             'app_version': ls['app_version'] if ls else None, 'status': _status(r, st)}
 
 
@@ -242,6 +243,9 @@ def update_settings(app_id, fields):
         variants, eo = _switch_engine(r['engine'], engine, variants, eo)
         sets.update(bundle_id=fields['bundle_id'], variants=json.dumps(variants),
                     engine_options=None if eo is None else json.dumps(eo))
+    channel = fields.get('channel')
+    if 'channel' in fields and channel not in SOURCE_CHANNELS:
+        raise server.HttpError(400, f"channel expected one of {', '.join(SOURCE_CHANNELS)}, got {channel!r}")
     if 'version' in fields:
         sets.update(_version(fields['version']))
     if 'variants' in fields:
@@ -268,6 +272,10 @@ def update_settings(app_id, fields):
         if deps is not None:
             c.execute('DELETE FROM item_dependency WHERE item_id = ?', (app_id,))
             c.executemany('INSERT INTO item_dependency(item_id, project_id) VALUES (?, ?)', [(app_id, d) for d in deps])
+    if channel is not None:   # after the item update: a bundle change in the same body switches the new bundle's source
+        new_up = catalog.set_channel(sets.get('bundle_id', r['bundle_id']), channel)
+        if new_up is not None:
+            projects._enqueue_pull(new_up)
     if 'variants' in fields:
         build.drop_variants(app_id, [v['name'] for v in variants])
     if new_bundle and r['enabled']:
