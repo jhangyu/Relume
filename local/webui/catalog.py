@@ -743,10 +743,8 @@ def _opt(v, rx, field):
 
 
 def default_variants():
-    return [
-        {"name": "universal", "abi": "universal", "download": dict(DOWNLOAD_DEFAULT), "exclude_splits": None, "strip_libs": None},
-        {"name": "arm64-v8a", "abi": "arm64-v8a", "download": dict(DOWNLOAD_DEFAULT), "exclude_splits": None, "strip_libs": "arm64-v8a"},
-    ]
+    return [{"name": "arm64-v8a", "abi": "arm64-v8a", "download": dict(DOWNLOAD_DEFAULT), "exclude_splits": None,
+             "strip_libs": "arm64-v8a"}]
 
 
 def validate_variants(variants):
