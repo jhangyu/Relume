@@ -1,7 +1,8 @@
-import { $, $$, act, api, ask, catSlug, fmt, html, icon, iconTile, shell, toast } from '/static/app.js';
+import { $, $$, act, api, ask, catSlug, fmt, html, icon, iconTile, scrollKeeper, shell, toast } from '/static/app.js';
 
 // Marketplace (spec §7.3): catalog gallery, expand-in-place enable panel, custom sources.
 const PER_PAGE = 48;
+const scroll = scrollKeeper();
 const ORIGIN = { official: 'Official catalog', builtin: 'Built-in', custom: 'Custom' };
 const ENGINE = { morphe: 'Morphe', lspatch: 'Xposed · LSPatch', npatch: 'Xposed · NPatch' };
 const AUTHOR_COLORS = ['#0f6cbd', '#c239b3', '#8764b8', '#03787c', '#5c2e91', '#ca5010'];
@@ -128,6 +129,9 @@ async function loadSources() {
 
 async function loadAll() {
   await Promise.all([renderHero(), loadList(true), loadSources()]);
+  await scroll.first(async top => {   // Back/reload: load the pages the saved position sits on
+    while (S.apps.length < S.total && document.documentElement.scrollHeight < top + innerHeight) { S.page += 1; await loadList(false); }
+  });
 }
 
 // ---------- expand-in-place panel ----------
@@ -225,13 +229,14 @@ ${m.description ? html`<p class="subtle-text">${m.description}</p>` : ''}<div da
 }
 
 async function openApp(pkg) {
-  if (S.open === pkg) { closeApp(); return; }
+  if (S.open === pkg) { closeApp(); scroll.back(); return; }
   const meta = await act('GET', `/api/marketplace/${encodeURIComponent(pkg)}`);
   const sel = meta.bundles.find(b => b.selectable);
   const dl = meta.download || {};
   D = { pkg, meta, bundleId: sel ? sel.bundle_id : null, flips: {}, filter: '', am: dl.apkmirror_list_url || '', ap: dl.apkpure_url || '' };
   D.am0 = D.am;
   D.ap0 = D.ap;
+  scroll.mark();
   S.open = pkg;
   $$('.app', gallery).forEach(c => c.setAttribute('aria-expanded', c.dataset.pkg === pkg ? 'true' : 'false'));
   renderDetail();
@@ -284,7 +289,7 @@ detail.addEventListener('click', e => {
     navigator.clipboard.readText().then(t => { const i = $('[data-r=am]', detail); i.value = t.trim(); D.am = i.value; }).catch(err => toast(`Cannot read the clipboard: ${err.message}`, 'error'));
     return;
   }
-  if (a.dataset.act === 'close') closeApp();
+  if (a.dataset.act === 'close') { closeApp(); scroll.back(); }
   else if (a.dataset.act === 'enable') enable();
   else if (a.dataset.act === 'allon' || a.dataset.act === 'reset') {
     b.patches.forEach(p => setFlip(p.name, a.dataset.act === 'allon' ? true : p.default_enabled === true));

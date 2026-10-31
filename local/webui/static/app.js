@@ -91,6 +91,28 @@ export function every(ms, fn) {
   return () => { clearInterval(h); document.removeEventListener('visibilitychange', tick); };
 }
 
+// List-page scroll memory. mark()/back(): an in-page panel opens and closes, so the page returns to where it was.
+// first(fill): after the first render, Back/reload restores the position saved on pagehide (fill may load more rows first).
+export function scrollKeeper() {
+  history.scrollRestoration = 'manual'; // otherwise the browser jumps to the top against a still-empty list
+  const key = `scroll:${location.pathname}`;
+  const nav = performance.getEntriesByType('navigation')[0];
+  let saved = nav && ['back_forward', 'reload'].includes(nav.type) ? sessionStorage.getItem(key) : null;
+  let y = null;
+  addEventListener('pagehide', () => sessionStorage.setItem(key, String(window.scrollY)));
+  return {
+    mark() { y = window.scrollY; },
+    back() { if (y !== null) window.scrollTo(0, y); y = null; },
+    async first(fill) {
+      if (saved === null) return;
+      const top = Number(saved);
+      saved = null;
+      if (fill) await fill(top);
+      window.scrollTo(0, top);
+    },
+  };
+}
+
 export function ask(dlg) {
   return new Promise(resolve => {
     dlg.returnValue = '';

@@ -1,6 +1,7 @@
-import { $, $$, act, api, confirmDialog, every, fillDownloads, fmt, html, icon, iconTile, shell, STATUS, toast } from '/static/app.js';
+import { $, $$, act, api, confirmDialog, every, fillDownloads, fmt, html, icon, iconTile, scrollKeeper, shell, STATUS, toast } from '/static/app.js';
 
 const REFRESH_MS = 5000;
+const scroll = scrollKeeper();
 const COLOR = /^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/;
 const ABIS = ['universal', 'arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'];
 const ENGINE_LABEL = { lspatch: 'Xposed, LSPatch', npatch: 'Xposed, NPatch' };
@@ -414,6 +415,7 @@ async function openDrawer(id, scrollTo) {
     isModule(app.bundle.engine) ? null : api('GET', `/api/apps/${id}/patches`).catch(() => null),
   ]).catch(e => { toast(e.message, 'error'); return []; });
   if (!projects) return;
+  scroll.mark();
   const f = fieldsOf(app);
   D = { app, market, projects, patches, orig: f, cur: clone(f), get bundleId() { return this.cur.bundleId; } };
   D.saved = patches ? overridesFrom(patches) : {};
@@ -436,6 +438,7 @@ async function closeDrawer() {
   $('#drawer').hidden = $('#scrim').hidden = true;
   history.replaceState(null, '', location.pathname);
   renderList();
+  scroll.back();
   return true;
 }
 
@@ -597,7 +600,7 @@ async function save(rebuild) {
 
 shell();
 const refresh = () => Promise.all([loadList(), loadNextRun()]).catch(e => toast(e.message, 'error'));
-refresh().then(() => {
+refresh().then(() => scroll.first()).then(() => {
   const want = Number(new URLSearchParams(location.search).get('app'));
   if (want) return openDrawer(want);
 });
