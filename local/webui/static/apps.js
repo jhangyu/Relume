@@ -341,7 +341,7 @@ function renderVersion() {
   const modes = [
     ['auto', 'Auto', sup.length ? `Newest the bundle supports · ${sup[0]}` : 'No supported version listed'],
     ['pinned', 'Pinned', 'Stay on one version'],
-    ['latest', 'Latest', 'Newest on APKMirror, ignores compatibility'],
+    ['latest', 'Latest', 'Newest from the download source, ignores compatibility'],
   ].filter(m => !(xposed && m[0] === 'auto'));
   $('#sec-version').innerHTML = html`<h3 class="subtitle2" id="s-v">${icon('pin')}Version</h3>
 <div class="modes" role="radiogroup" aria-labelledby="s-v">${modes.map(([k, t, c]) => html`<label class="mode"><input type="radio" name="vm" data-f="vmode" value="${k}" ${v.mode === k ? html`checked` : ''}><span class="strong">${t}</span><span class="caption">${c}</span></label>`)}</div>
@@ -381,7 +381,7 @@ function renderUrls() {
   const urlKind = D.orig.variants.some(v => v.download.kind === 'url');
   const opts = SOURCES.filter(([k]) => k !== 'url' || urlKind || kind === 'url');
   $('#sec-url').innerHTML = html`<h3 class="subtitle2" id="s-u">${icon('download')}Download source</h3>
-<div class="field"><label for="u-src">Source</label><span class="select"><select class="dropdown" id="u-src" data-f="src">${opts.map(([k, n]) => html`<option value="${k}" ${k === kind ? html`selected` : ''}>${n}</option>`)}</select></span>${kind === 'googleplay' ? html`<span class="hint">Google Play downloads only the latest version, so a build fails if the bundle needs another version. Set the Google account email and token in <a href="/settings.html">Settings</a>.</span>` : ''}</div>
+<div class="field"><label for="u-src">Source</label><span class="select"><select class="dropdown" id="u-src" data-f="src">${opts.map(([k, n]) => html`<option value="${k}" ${k === kind ? html`selected` : ''}>${n}</option>`)}</select></span>${kind === 'googleplay' ? html`<span class="hint">Pinned and Auto versions are looked up on Google Play by version code. Set the Google account email and token in <a href="/settings.html">Settings</a>.</span>` : ''}</div>
 ${kind === 'apkmirror' ? html`<div class="field"><label for="u-am">APKMirror listing <span class="badge ${cls}" style="height:18px;margin-left:4px">${text}${retry}</span></label><div class="row"><span class="input grow">${icon('link')}<input id="u-am" data-f="dl" data-k="apkmirror_list_url" value="${D.cur.dl.apkmirror_list_url}" placeholder="https://www.apkmirror.com/uploads/?appcategory=…"></span>${LOCATABLE.has(dl.state) ? html`<button class="icon-btn outline" type="button" data-f="locate" aria-label="Locate the APKMirror page again" title="Locate again" data-tip="Locate again">${icon('search')}</button>` : ''}</div>${dl.error ? html`<span class="hint">${dl.error}</span>` : ''}</div>
 ${dl.state === 'ambiguous' ? html`<div class="field"><span class="strong">Pick the right APKMirror app</span>${dl.candidates.map((c, k) => html`<div class="dep"><span class="grow"><span class="strong">${c.title}</span><br><span class="mono subtle-text">${c.url}</span></span><button class="btn small" type="button" data-f="pick" data-k="${k}">Use this</button></div>`)}</div>` : ''}` : ''}
 ${kind === 'apkmirror' || kind === 'apkpure' ? html`<div class="field"><label for="u-ap">APKPure ${kind === 'apkmirror' ? html`<span class="subtle-text" style="font-weight:400">(optional)</span>` : ''}</label><span class="input">${icon('link')}<input id="u-ap" data-f="dl" data-k="apkpure_url" value="${D.cur.dl.apkpure_url}" placeholder="https://apkpure.com/…"></span></div>` : ''}`;

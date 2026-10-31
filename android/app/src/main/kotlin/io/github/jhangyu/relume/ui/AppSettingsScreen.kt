@@ -242,7 +242,7 @@ fun AppSettingsScreen(model: AppModel, appId: Int, onBack: () -> Unit, onOpenLog
             Txt(
                 when (mode) {
                     "auto" -> "Auto: newest version the bundle supports" + (supported.firstOrNull()?.let { " · $it" } ?: " · any")
-                    "latest" -> "Latest: newest version on APKMirror" + (s.version.apkmirror.firstOrNull()?.let { " · $it" }.orEmpty())
+                    "latest" -> "Latest: newest version from the download source" + (if (kind == KIND_APKMIRROR) s.version.apkmirror.firstOrNull()?.let { " · $it" }.orEmpty() else "")
                     else -> "Pinned: always this version" + if (supported.isEmpty()) "" else " · supported: ${supported.take(SUPPORTED_SHOWN).joinToString()}"
                 },
                 style = MaterialTheme.typography.bodySmall, color = muted(),
@@ -280,7 +280,7 @@ fun AppSettingsScreen(model: AppModel, appId: Int, onBack: () -> Unit, onOpenLog
             val sources = if (kindNow == KIND_URL) SOURCES + (KIND_URL to "URL") else SOURCES
             ChipRow(sources.map { it.second }, sources.indexOfFirst { it.first == kind }.coerceAtLeast(0)) { kind = sources[it].first }
             if (kind == KIND_GOOGLEPLAY) {
-                Txt("Google Play serves only the latest version. Set the Google account in the web Settings.", style = MaterialTheme.typography.bodySmall, color = muted())
+                Txt("Pinned and Auto versions are looked up on Google Play by version code. Set the Google account in the web Settings.", style = MaterialTheme.typography.bodySmall, color = muted())
             }
             if (kind == KIND_APKMIRROR) {
             Field("APKMirror listing", listUrl, { listUrl = it }, leadingIcon = R.drawable.ms_link, mono = true, trailing = {
