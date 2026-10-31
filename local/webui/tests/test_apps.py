@@ -352,7 +352,7 @@ class EnableTest(AppsCase):
         pre = up_of(self.builtin)
         self.assertEqual((o["bundle"]["channel"], row(pre)["repo"]), ("prerelease", repo))
         self.assertIsNone(row(self.up))   # stable row was unreferenced: removed
-        self.assertEqual(self.jobs_of("upstream"), [({"upstream_id": pre}, "manual")])
+        self.assertEqual(self.jobs_of("upstream"), [({"item_id": 1}, "manual")])
         # a stable row still used by another bundle is kept
         other = add_bundle(db.conn(), "o/other")
         with db.tx() as c:
@@ -364,6 +364,19 @@ class EnableTest(AppsCase):
         self.assertIsNone(row(pre))
         apps.update_settings(1, {"channel": "prerelease"})
         self.assertIsNotNone(row(keep))   # still referenced by `other`
+
+    def test_source_channel_enabled_app_chains_download_and_build(self):
+        # one upstream {item_id} job pulls then builds: a separate build POST raced the pull (upstream_missing)
+        o = apps.update_settings(1, {"channel": "prerelease"})
+        self.assertEqual(self.jobs_of("upstream"), [({"item_id": 1}, "manual")])
+        self.assertTrue(o["update_queued"])
+        with db.tx() as c:
+            c.execute("UPDATE item SET enabled = 0 WHERE id = 1")
+        o = apps.update_settings(1, {"channel": "stable"})
+        pull = [t for t, _ in self.jobs_of("upstream") if "upstream_id" in t]
+        self.assertEqual(len(pull), 1)
+        self.assertFalse(o["update_queued"])
+        self.assertEqual(self.jobs_of("build"), [])
 
 
 class PatchesTest(AppsCase):

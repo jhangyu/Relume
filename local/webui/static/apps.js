@@ -582,22 +582,23 @@ async function save(rebuild) {
       await closeDrawer();
       return await loadList();
     }
+    let chained = false;   // the server already queued the download-then-build job
     if (c.enabled && !D.orig.enabled) {
-      await act('POST', '/api/apps', { package: D.app.package, bundle_id: c.bundleId }, `${D.app.name} enabled`);
+      chained = (await act('POST', '/api/apps', { package: D.app.package, bundle_id: c.bundleId }, `${D.app.name} enabled`)).update_queued;
       D.orig.enabled = true;
       D.orig.bundleId = c.bundleId;
     }
     const body = settingsBody();
     if (Object.keys(body).length) {
-      await api('PUT', `/api/apps/${id}`, body);
+      chained = (await api('PUT', `/api/apps/${id}`, body)).update_queued || chained;
       D.orig = clone(c);
     }
     if (patchesEditable() && !same(D.edit, D.saved)) {
       await api('PUT', `/api/apps/${id}/patches`, { overrides: D.edit });
       D.saved = clone(D.edit);
     }
-    if (rebuild) await api('POST', `/api/apps/${id}/build`);
-    toast(rebuild ? 'Saved · build queued' : 'Saved');
+    if (rebuild && !chained) await api('POST', `/api/apps/${id}/build`);
+    toast(rebuild ? (chained ? 'Saved · download and build queued' : 'Saved · build queued') : 'Saved');
     D = null;
     await closeDrawer();
     await loadList();

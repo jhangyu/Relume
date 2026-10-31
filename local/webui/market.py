@@ -141,14 +141,15 @@ def put_app(req):
     if "download" in b:
         apklocate.validate_download(pkg, b["download"])  # both parts are validated before either writes
     settings = {k: v for k, v in b.items() if k != "download"}
+    queued = False
     if settings:
-        apps.update_settings(app_id, settings)
+        queued = apps.update_settings(app_id, settings)["update_queued"]
     if "download" in b:
         apklocate.put_download(pkg, b["download"])
         after = apklocate.download_state(pkg)
         if not had_url and (after["apkmirror_list_url"] or after["apkpure_url"]):
             apps.check_update(app_id)
-    return 200, _with_download(apps.get(app_id))
+    return 200, {**_with_download(apps.get(app_id)), "update_queued": queued}
 
 
 def delete_app(req):

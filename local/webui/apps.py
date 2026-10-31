@@ -204,7 +204,7 @@ def enable(package, bundle_id, overrides=None):
                       'WHERE id = ?', (bundle_id, json.dumps(variants), json.dumps(merged, sort_keys=True),
                                        None if eo is None else json.dumps(eo), iid))
     jobs.enqueue('upstream', {'item_id': iid}, 'manual')
-    return get(iid)
+    return {**get(iid), 'update_queued': True}
 
 
 def disable(app_id):
@@ -272,15 +272,19 @@ def update_settings(app_id, fields):
         if deps is not None:
             c.execute('DELETE FROM item_dependency WHERE item_id = ?', (app_id,))
             c.executemany('INSERT INTO item_dependency(item_id, project_id) VALUES (?, ?)', [(app_id, d) for d in deps])
+    chained = new_bundle and r['enabled']   # one upstream {item_id} job pulls, then builds: no separate build races the pull
     if channel is not None:   # after the item update: a bundle change in the same body switches the new bundle's source
         new_up = catalog.set_channel(sets.get('bundle_id', r['bundle_id']), channel)
         if new_up is not None:
-            projects._enqueue_pull(new_up)
+            if r['enabled']:
+                chained = True
+            else:
+                projects._enqueue_pull(new_up)
     if 'variants' in fields:
         build.drop_variants(app_id, [v['name'] for v in variants])
-    if new_bundle and r['enabled']:
+    if chained:
         jobs.enqueue('upstream', {'item_id': app_id}, 'manual')   # same first fetch + build as enable (apps part §4.6)
-    return get(app_id)
+    return {**get(app_id), 'update_queued': chained}
 
 
 # ---- patches (moved from catalog.py, logic unchanged) ----
