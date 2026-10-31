@@ -350,9 +350,13 @@ class AppModel(application: Application) : AndroidViewModel(application) {
      */
     fun saveApp(appId: Int, body: JsonObject?, overrides: JsonObject?, rebuildAfter: Boolean, done: (Int?) -> Unit) {
         viewModelScope.launch {
-            if (body != null) call { it.putApp(appId, body) } ?: return@launch
+            // update_queued: the server's chained download-then-build job already builds, a second POST would race the download
+            val chained = if (body == null) false else {
+                val sent = if (rebuildAfter) buildJsonObject { body.forEach { (k, v) -> put(k, v) }; put("rebuild", true) } else body
+                (call { it.putApp(appId, sent) } ?: return@launch).updateQueued
+            }
             if (overrides != null) call { it.putPatches(appId, buildJsonObject { put("overrides", overrides) }); true } ?: return@launch
-            val job = if (rebuildAfter) call { it.build(appId) } ?: return@launch else null
+            val job = if (rebuildAfter && !chained) call { it.build(appId) } ?: return@launch else null
             done(job)
             refresh()
         }

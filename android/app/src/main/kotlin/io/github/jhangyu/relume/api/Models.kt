@@ -343,6 +343,8 @@ data class AppObject(
     val category: String? = null,
     /** The built APK this phone would install (server picks its ABI); null while nothing is built. */
     val build: AppBuild? = null,
+    /** Only in PUT/POST `/api/apps` responses: the server queued the chained download-then-build job. */
+    @SerialName("update_queued") val updateQueued: Boolean = false,
 )
 
 /** Facts of the built APK in `GET /api/apps` `build` (spec install-states 1); its package can differ from [AppObject.packageName]. */

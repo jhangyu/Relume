@@ -99,6 +99,7 @@ class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
             put("bundle_id", bundleId)
             patches?.let { p -> put("patches", buildJsonObject { p.forEach { (k, v) -> put(k, v) } }) }
             download?.let { put("download", it) }
+            put("rebuild", true)
         })
 
     suspend fun putApp(id: Int, body: JsonObject): AppObject = send("PUT", "/api/apps/$id", body)
@@ -256,7 +257,6 @@ class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
             try {
                 if (body != null) {
                     conn.doOutput = true
-                    conn.setRequestProperty("Content-Type", JSON_TYPE)
                     conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
                 }
                 val status = conn.responseCode
@@ -274,6 +274,7 @@ class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
         conn.connectTimeout = CONNECT_TIMEOUT_MS
         conn.readTimeout = READ_TIMEOUT_MS
         conn.setRequestProperty("Accept", JSON_TYPE)
+        conn.setRequestProperty("Content-Type", JSON_TYPE) // the server answers 415 to a bodyless DELETE without it
         token()?.let { conn.setRequestProperty("Authorization", "Bearer $it") }
         return conn
     }
