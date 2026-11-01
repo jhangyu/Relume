@@ -602,36 +602,51 @@ function settingsBody() {
 
 async function save(rebuild) {
   const id = D.app.id, c = D.cur;
+  const done = [];       // finished steps, named when a later one fails
+  let step = 'disable';  // the call in progress
   try {
     if (!c.enabled && D.orig.enabled) {
       if (!(await confirmDialog({ title: 'Disable app?', body: html`<strong>${D.app.name}</strong> stops updating and building. Its settings and builds are kept.`, action: 'Disable' }))) return;
       await act('DELETE', `/api/apps/${id}`, {}, `${D.app.name} disabled`);
       D = null;
+      step = 'list reload';
       await closeDrawer();
       return await loadList();
     }
     let chained = false;   // the server already queued the download-then-build job
     if (c.enabled && !D.orig.enabled) {
+      step = 'enable';
       chained = (await act('POST', '/api/apps', { package: D.app.package, bundle_id: c.bundleId, ...(rebuild && { rebuild: true }) }, `${D.app.name} enabled`)).update_queued;
       D.orig.enabled = true;
       D.orig.bundleId = c.bundleId;
+      done.push('app enabled');
     }
     const body = settingsBody();
     if (Object.keys(body).length) {
+      step = 'settings';
       chained = (await api('PUT', `/api/apps/${id}`, rebuild ? { ...body, rebuild: true } : body)).update_queued || chained;
       D.orig = clone(c);
+      done.push('settings saved');
     }
     if (patchesEditable() && !same(D.edit, D.saved)) {
+      step = 'patches';
       await api('PUT', `/api/apps/${id}/patches`, { overrides: D.edit });
       D.saved = clone(D.edit);
+      done.push('patches saved');
     }
-    if (rebuild && !chained) await api('POST', `/api/apps/${id}/build`);
+    if (rebuild && !chained) {
+      step = 'build';
+      await api('POST', `/api/apps/${id}/build`);
+      done.push('build queued');
+    }
     toast(rebuild ? (chained ? 'Saved · download and build queued' : 'Saved · build queued') : 'Saved');
     D = null;
+    step = 'list reload';
     await closeDrawer();
     await loadList();
   } catch (e) {
-    toast(e.message, 'error');
+    const msg = [...done, `${step} failed: ${e.message}`].join(', ');
+    toast(msg[0].toUpperCase() + msg.slice(1), 'error');
   }
 }
 
