@@ -1,6 +1,7 @@
 package io.github.jhangyu.relume.ui
 
 import android.app.Application
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -49,44 +50,54 @@ private const val KIND_UPSTREAM = "upstream"
 private const val LAST_RUN_SCAN = 20
 internal const val SIGNED_OUT_NOTICE = "This device was signed out by the server"
 
+/** Compose state owned by the signed-in account: [reset] puts every state made by [state] back to its initial value. */
+internal class AccountScope {
+    private val resets = mutableListOf<() -> Unit>()
+
+    fun <T> state(initial: T): MutableState<T> = mutableStateOf(initial).also { s -> resets += { s.value = initial } }
+
+    fun reset() = resets.forEach { it() }
+}
+
 /** Everything the screens show, with the server calls of spec 10. State is Compose state: the UI reads it directly. */
 class AppModel(application: Application) : AndroidViewModel(application) {
     val relume = application as RelumeApp
+    private val account = AccountScope()
 
     var api by mutableStateOf(relume.api)
         private set
     var notice by mutableStateOf<String?>(null)
         private set
-    var health by mutableStateOf<Health?>(null)
+    var health by account.state<Health?>(null)
         private set
-    var apps by mutableStateOf<List<AppObject>>(emptyList())
+    var apps by account.state<List<AppObject>>(emptyList())
         private set
-    var followed by mutableStateOf<List<FollowedApp>>(emptyList())
+    var followed by account.state<List<FollowedApp>>(emptyList())
         private set
-    var schedule by mutableStateOf<Schedule?>(null)
+    var schedule by account.state<Schedule?>(null)
         private set
-    var otaSchedules by mutableStateOf<List<OtaSchedule>>(emptyList())
+    var otaSchedules by account.state<List<OtaSchedule>>(emptyList())
         private set
     /** Newest update-run job of the update schedule (web schedules.js "Last update run"); null when it never ran. */
-    var lastRun by mutableStateOf<JobView?>(null)
+    var lastRun by account.state<JobView?>(null)
         private set
-    var device by mutableStateOf<DeviceView?>(null)
+    var device by account.state<DeviceView?>(null)
         private set
-    var installed by mutableStateOf<Map<String, InstalledPackage>>(emptyMap())
+    var installed by account.state<Map<String, InstalledPackage>>(emptyMap())
         private set
-    var plan by mutableStateOf<InstallPlan?>(null)
+    var plan by account.state<InstallPlan?>(null)
         private set
     var refreshing by mutableStateOf(false)
         private set
-    var error by mutableStateOf<String?>(null)
+    var error by account.state<String?>(null)
         private set
 
     /** True once the app list arrived from the server; before that an empty list means "not loaded", not "no apps". */
-    var loaded by mutableStateOf(false)
+    var loaded by account.state(false)
         private set
 
     /** Failure of the last [refresh]; kept to the next successful refresh, so other calls clearing [error] cannot hide it. */
-    var loadError by mutableStateOf<String?>(null)
+    var loadError by account.state<String?>(null)
         private set
 
     /** Job ids with an open event stream; a stream ends on `event: end` or on its first error. */
@@ -122,19 +133,8 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         relume.signOut()
         api = null
         notice = reason
-        apps = emptyList()
-        followed = emptyList()
-        loaded = false
-        loadError = null
-        schedule = null
-        lastRun = null
-        otaSchedules = emptyList()
+        account.reset()
         market.reset()
-        device = null
-        plan = null
-        installed = emptyMap()
-        health = null
-        closeSheet()
         CheckScheduler.apply(relume, CheckInterval.OFF)
         watching.values.forEach { it.cancel() }
         watching.clear()
@@ -220,19 +220,19 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         class Dependencies(val plan: InstallPlan) : InstallPrompt
     }
 
-    var prompt by mutableStateOf<InstallPrompt?>(null)
+    var prompt by account.state<InstallPrompt?>(null)
         private set
 
     /** The install lightbox is open (spec install-states 2): set when a run starts, cleared by [closeSheet]. */
-    var sheetOpen by mutableStateOf(false)
+    var sheetOpen by account.state(false)
         private set
 
     /** Built APK package whose `needs_uninstall` step the user already confirmed; the lightbox then opens the system uninstall. */
-    var reinstallPackage by mutableStateOf<String?>(null)
+    var reinstallPackage by account.state<String?>(null)
         private set
 
     /** Card of the last install start, for the lightbox Retry. */
-    private var lastInstall: Pair<StepKind, Int>? = null
+    private var lastInstall by account.state<Pair<StepKind, Int>?>(null)
 
     fun closeSheet() {
         sheetOpen = false
@@ -381,7 +381,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
 
     // ---- OTA schedules (kind ota; phones are ADB devices, the server refuses app devices as targets) ----
 
-    var devices by mutableStateOf<List<DeviceView>>(emptyList())
+    var devices by account.state<List<DeviceView>>(emptyList())
         private set
 
     fun loadDevices() {
@@ -418,7 +418,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Settings "Catalog": the last refresh's errors and skipped entries, null until loaded. */
-    var catalogStatus by mutableStateOf<FeedStatus?>(null)
+    var catalogStatus by account.state<FeedStatus?>(null)
         private set
 
     fun loadCatalogStatus() {
@@ -426,9 +426,9 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Settings "Clean up": [cleanupPreview] is the pending confirmation, [cleanupFreed] the result of the last run. */
-    var cleanupPreview by mutableStateOf<CleanupReport?>(null)
+    var cleanupPreview by account.state<CleanupReport?>(null)
         private set
-    var cleanupFreed by mutableStateOf<CleanupReport?>(null)
+    var cleanupFreed by account.state<CleanupReport?>(null)
         private set
 
     fun previewCleanup() {
