@@ -793,12 +793,8 @@ def on_build_succeeded(payload):
         jobs.enqueue('ota', {'device_id': r['id'], 'item_ids': [item_id]}, 'after_build')
 
 
-def _int_list(v):
-    return isinstance(v, list) and all(map(server.is_int, v))
-
-
 def ota_now(req):
-    dev = devices._dev_or_404(req.params['id'])
+    dev = devices.dev_or_404(req.params['id'])
     if devices.is_app(dev):
         raise HttpError(409, devices.APP_ONLY)
     body, target = req.json or {}, {'device_id': dev['id']}
@@ -807,8 +803,9 @@ def ota_now(req):
         ids = body.get(key)
         if ids is None:
             continue
-        if not ids or not _int_list(ids):
-            raise HttpError(400, f'{key} must be a non-empty list of integers')
+        if not ids:
+            raise HttpError(400, f'{key} must be a non-empty list of integers, got {ids!r}')
+        ids = list(dict.fromkeys(server.ints(ids, key)))
         if not set(ids) <= have():
             raise HttpError(400, f'{what} not assigned to this device')
         target[key] = ids
@@ -829,9 +826,9 @@ def install_project(req):
         if not assigned:
             raise HttpError(400, 'project not assigned to any phone')
         ids = assigned
-    elif not ids or not _int_list(ids):
-        raise HttpError(400, 'device_ids must be a non-empty list of integers')
-    elif any(d is not None and devices.is_app(d) for d in map(devices.get, ids)):
+    elif not ids:
+        raise HttpError(400, f'device_ids must be a non-empty list of integers, got {ids!r}')
+    elif any(d is not None and devices.is_app(d) for d in map(devices.get, server.ints(ids, 'device_ids'))):
         raise HttpError(409, devices.APP_ONLY)
     elif not set(ids) <= set(assigned):
         raise HttpError(400, 'device not assigned')

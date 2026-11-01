@@ -247,7 +247,7 @@ def get(device_id):
     return dict(r) if r else None
 
 
-def _dev_or_404(device_id):
+def dev_or_404(device_id):
     dev = get(device_id)
     if dev is None or dev['legacy']:   # a legacy row (companion up to v1.2.0) is not a device the server manages
         raise HttpError(404, 'device not found')
@@ -373,7 +373,7 @@ def pair(req):
 
 
 def connect(req):
-    dev = _dev_or_404(req.params['id'])
+    dev = dev_or_404(req.params['id'])
     if is_app(dev):
         raise HttpError(409, f"device {dev['id']} is kind 'app': it reports through the Relume app and has no adb connection")
     b = req.json or {}
@@ -388,9 +388,9 @@ def connect(req):
 
 
 def patch_device(req):
-    dev = _dev_or_404(req.params['id'])
+    dev = dev_or_404(req.params['id'])
     b = req.json
-    if not isinstance(b, dict) or not b or set(b) - {'name', 'ota_after_build'}:
+    if not b or set(b) - {'name', 'ota_after_build'}:
         raise HttpError(400, 'only name and ota_after_build can change')
     sets = {}
     if 'name' in b:
@@ -410,7 +410,7 @@ def patch_device(req):
 
 
 def delete_device(req):
-    dev = _dev_or_404(req.params['id'])
+    dev = dev_or_404(req.params['id'])
     if not is_app(dev):
         try:
             adb(['disconnect', address(dev)], timeout=10)
@@ -431,12 +431,11 @@ def put_assignments(req):
         if req.params['id'] != me['id']:
             raise HttpError(403, 'a legacy token can only name its own device')
         return 200, {'device': device_json(me, {})}
-    dev = _dev_or_404(req.params['id'])
+    dev = dev_or_404(req.params['id'])
     body = req.json or {}
     ids, pids = body.get('item_ids'), body.get('project_ids')
     for key, v in (('item_ids', ids), ('project_ids', [] if pids is None else pids)):
-        if not isinstance(v, list) or not all(map(server.is_int, v)):
-            raise HttpError(400, f'{key} must be a list of integers')
+        server.ints(v, key)
     ids = list(dict.fromkeys(ids))
     keep = pids is None
     pids = projects.assigned_projects(dev['id']) if keep else list(dict.fromkeys(pids))

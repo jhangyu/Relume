@@ -329,8 +329,8 @@ class OtaJobTest(helpers.DataTestCase):
         self.assertEqual(jobs.get(body['job_id'])['target'], {'device_id': self.d, 'project_ids': [1]})
         st, body = ota.ota_now(req(params={'id': self.d}, body={'item_ids': [2], 'project_ids': [1]}))
         self.assertEqual(jobs.get(body['job_id'])['target'], {'device_id': self.d, 'item_ids': [2], 'project_ids': [1]})
-        for bad, msg in (([5], 'project not assigned to this device'), ([], 'project_ids must be a non-empty list of integers'),
-                         ([True], 'project_ids must be a non-empty list of integers')):
+        for bad, msg in (([5], 'project not assigned to this device'), ([], 'project_ids must be a non-empty list of integers, got []'),
+                         ([True], 'project_ids must be a list of integers, got [True]')):
             with self.assertRaises(HttpError) as cm:
                 ota.ota_now(req(params={'id': self.d}, body={'project_ids': bad}))
             self.assertEqual((cm.exception.status, cm.exception.message), (400, msg))

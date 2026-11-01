@@ -183,7 +183,8 @@ class DeviceRoutesTest(helpers.DataTestCase):
         for bad in ('x', [1, None], [True]):
             with self.assertRaises(HttpError) as cm:
                 devices.put_assignments(req(params={'id': d}, body={'item_ids': [], 'project_ids': bad}))
-            self.assertEqual((cm.exception.status, cm.exception.message), (400, 'project_ids must be a list of integers'))
+            self.assertEqual(cm.exception.status, 400)
+            self.assertTrue(cm.exception.message.startswith('project_ids must be a list of integers, got '), cm.exception.message)
         self.assertEqual(self.rows('device_projects', d), [2])
 
     def test_assignments_unknown_project_400(self):

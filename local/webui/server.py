@@ -73,9 +73,17 @@ def is_int(v):
     return isinstance(v, int) and not isinstance(v, bool)
 
 
+def ints(v, field):
+    """A JSON list of integers; repeats allowed: the caller dedups or rejects them as its own visible step."""
+    if not (isinstance(v, list) and all(map(is_int, v))):
+        raise HttpError(400, f'{field} must be a list of integers, got {v!r}')
+    return v
+
+
 def int_list(v, field):
-    if not (isinstance(v, list) and all(is_int(x) for x in v) and len(set(map(str, v))) == len(v)):
-        raise HttpError(400, f'invalid {field}')
+    """A JSON list of distinct integers."""
+    if len(set(ints(v, field))) != len(v):
+        raise HttpError(400, f'{field} must not repeat an id, got {v!r}')
     return v
 
 
