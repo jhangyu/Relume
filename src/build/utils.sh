@@ -558,7 +558,8 @@ check_abis() {
 
 #################################################
 
-# patch_variant <input_apk> <out_apk> <strip_abi or "">; globals: engine cli_jar patches_files keystore RELUME_REPO
+# patch_variant <input_apk> <out_apk> <strip_abi or "">; globals: engine cli_jar patches_files keystore keystore_password
+# keystore_alias keystore_alias_password RELUME_REPO
 patch_variant() {
 	local in=$1 out=$2 strip=${3:-}
 	case "$engine" in
@@ -572,25 +573,19 @@ patch_variant() {
 		;;
 	lspatch | npatch)
 		# spec xposed 5.3: module(s) embedded by the engine; output = the only APK in an empty dir
-		local creds odir a rc
-		local -a ks cmd apks
+		local odir a rc
+		local -a cmd apks
 		: "${engine_sigbypass:=}" "${engine_injectdex:=false}" # set by build-item.sh from job.json engine_options
-		if ! creds=$(keystore_creds "$keystore"); then
-			FAIL_CODE=internal
-			LAST_ERR="unknown keystore"
-			return 1
-		fi
 		if [[ ! "$engine_sigbypass" =~ ^[0-4]$ ]]; then
 			FAIL_CODE=internal
 			LAST_ERR="bad engine_options"
 			return 1
 		fi
-		read -r -a ks <<<"$creds"
 		odir="${out%.apk}.d"
 		rm -rf "$odir"
 		mkdir -p "$odir"
-		cmd=(java -jar "$cli_jar" "$in" -k "$RELUME_REPO/src/keystore/$keystore" "${ks[0]}" "${ks[1]}" "${ks[2]}"
-			-l "$engine_sigbypass")
+		cmd=(java -jar "$cli_jar" "$in" -k "$RELUME_REPO/src/keystore/$keystore" "$keystore_password" "$keystore_alias"
+			"$keystore_alias_password" -l "$engine_sigbypass")
 		[ "$engine_injectdex" = "true" ] && cmd+=(--injectdex)
 		for a in "${patches_files[@]}"; do
 			cmd+=(-m "$a")

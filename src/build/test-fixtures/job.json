@@ -15,7 +15,7 @@
   "apkpure_url": null,
   "googleplay": [],
   "apkmirror_picks": [],
-  "keystore": "morphe.keystore",
+  "keystore": {"file": "morphe.keystore", "password": null, "alias": null, "alias_password": null},
   "recipe": {"variants": [
     {"name": "universal", "abi": "universal",
      "download": {"kind": "url", "type": "apk", "arch": null, "dpi": null, "minver": null, "url": "https://fixture.invalid/input.apk"},

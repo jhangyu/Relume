@@ -7,7 +7,13 @@ from typing import NamedTuple
 
 from . import apklocate, build, catalog, db, jobs, projects, scheduler, server, settings, upstream
 
-KEYSTORE = {'morphe': 'morphe.keystore', 'lspatch': 'lspatch-signing.p12', 'npatch': 'fiorenmas.ks'}
+# Signing keystore per engine: the public credentials of the committed src/keystore files (the Xposed engine CLIs take
+# password, alias and alias password; morphe uses its keystore's defaults). Sent to the runner in job.json.
+KEYSTORE = {
+    'morphe': {'file': 'morphe.keystore', 'password': None, 'alias': None, 'alias_password': None},
+    'lspatch': {'file': 'lspatch-signing.p12', 'password': 'morphe', 'alias': 'fiorenmas', 'alias_password': 'morphe'},
+    'npatch': {'file': 'fiorenmas.ks', 'password': 'fiorenmas', 'alias': 'morphe', 'alias_password': 'fiorenmas'},
+}
 SETTING_KEYS = ('bundle_id', 'channel', 'patch_tag', 'version', 'project_ids', 'variants', 'engine_options', 'display_name')
 VERSION_MODES = ('auto', 'pinned', 'latest')
 SOURCE_CHANNELS = ('stable', 'prerelease')
@@ -636,7 +642,7 @@ def job_input(item_id):
         'apkmirror': {'list_url': r['apkmirror_list_url'], 'example_url': r['apkmirror_example_url'],
                       'example_url2': r['apkmirror_example_url2'],
                       'versions_due': _versions_due(r['apkmirror_checked_at'])},
-        'apkpure_url': r['apkpure_url'], 'keystore': KEYSTORE[r['engine']],
+        'apkpure_url': r['apkpure_url'], 'keystore': dict(KEYSTORE[r['engine']]),
         'recipe': {'variants': _variants(r)},
     }
 

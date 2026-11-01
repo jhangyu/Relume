@@ -133,7 +133,8 @@ class VersionTest(AppsCase):
         self.assertEqual(set(j["version"]), {"value", "near"})
         self.assertEqual(set(j["apkmirror"]), set(JOB_FIXTURE["apkmirror"]))
         self.assertEqual(j["options_file_json"], [{"patches": {"Hide ads": {"enabled": False}}}])
-        self.assertEqual((j["keystore"], j["upstream_tag"], j["cli_tag"]), ("morphe.keystore", "v1", "v1.18.1"))
+        self.assertEqual((j["keystore"], j["upstream_tag"], j["cli_tag"]),
+                         ({"file": "morphe.keystore", "password": None, "alias": None, "alias_password": None}, "v1", "v1.18.1"))
         self.assertTrue(j["cli_jar"].endswith("morphe-desktop-1.18.1-all.jar"))
         self.assertEqual(apps.stale_overrides(1), ["Gone"])
         self.assertTrue(j["apkmirror"]["versions_due"])
@@ -513,7 +514,8 @@ class ModuleTest(AppsCase):
         self.download(lsp, "v1.2", None, "lspatch-v1.2-487-release.jar")
         j = apps.job_input(iid)
         self.assertEqual((j["engine"], j["engine_options"], j["keystore"], j["options_file_json"]),
-                         ("lspatch", {"sigbypass": 2, "injectdex": False}, "lspatch-signing.p12", None))
+                         ("lspatch", {"sigbypass": 2, "injectdex": False},
+                          {"file": "lspatch-signing.p12", "password": "morphe", "alias": "fiorenmas", "alias_password": "morphe"}, None))
         self.assertEqual([Path(p).name for p in j["patches_files"]], ["NexAlloy-release-v1.1.apk"])
         # switching a patches app onto a module bundle resets engine options and clears lib stripping
         self.bundles({"bundle_id": ls, "engine": "lspatch"}, {"bundle_id": npatch, "engine": "npatch"})

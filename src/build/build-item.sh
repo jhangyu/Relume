@@ -19,22 +19,16 @@ source "$RELUME_REPO/src/build/utils.sh"
 
 j() { jq -r "$1 // empty" "$job"; }
 
-# Keystore credentials for Xposed engines (spec xposed 5.3; public credentials of the committed src/keystore files).
-keystore_creds() {
-	case "$1" in
-	lspatch-signing.p12) echo "morphe fiorenmas morphe" ;;
-	fiorenmas.ks) echo "fiorenmas morphe fiorenmas" ;;
-	*) return 1 ;;
-	esac
-}
-
 work=$(j .work_dir)
 package=$(j .package)
 engine=$(j .engine)
 engine_sigbypass=$(j .engine_options.sigbypass)
 engine_injectdex=$(j .engine_options.injectdex)
 cli_jar=$(j .cli_jar)
-keystore=$(j .keystore)
+keystore=$(j .keystore.file) # credentials: the server's table (webui/apps.py KEYSTORE), empty for morphe
+keystore_password=$(j .keystore.password)
+keystore_alias=$(j .keystore.alias)
+keystore_alias_password=$(j .keystore.alias_password)
 upstream_tag=$(j .upstream_tag)
 cli_tag=$(j .cli_tag)
 [[ -n "$work" && -d "$work" && -n "$package" && -n "$engine" && -n "$cli_jar" && -n "$keystore" ]] ||

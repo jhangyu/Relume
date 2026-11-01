@@ -150,8 +150,8 @@ if [ "$rc" != 0 ] && [ "$(fail_lines)" = 1 ] &&
 else fail googleplay_code_mismatch "rc=$rc $(grep '^::fail::' "$T/out.txt")"; fi
 
 # ---- Xposed engine cases (P8, spec xposed 5.3 / 11) ----
-XP_LS='.engine="lspatch" | .engine_options={"sigbypass":3,"injectdex":true} | .keystore="lspatch-signing.p12" | .recipe.variants=[.recipe.variants[0] | .name="arm64-v8a" | .abi="arm64-v8a" | .strip_libs=null]'
-XP_NP='.engine="npatch" | .engine_options={"sigbypass":3,"injectdex":false} | .keystore="fiorenmas.ks" | .recipe.variants=[.recipe.variants[0] | .strip_libs=null]'
+XP_LS='.engine="lspatch" | .engine_options={"sigbypass":3,"injectdex":true} | .keystore={"file":"lspatch-signing.p12","password":"morphe","alias":"fiorenmas","alias_password":"morphe"} | .recipe.variants=[.recipe.variants[0] | .name="arm64-v8a" | .abi="arm64-v8a" | .strip_libs=null]'
+XP_NP='.engine="npatch" | .engine_options={"sigbypass":3,"injectdex":false} | .keystore={"file":"fiorenmas.ks","password":"fiorenmas","alias":"morphe","alias_password":"fiorenmas"} | .recipe.variants=[.recipe.variants[0] | .strip_libs=null]'
 
 new_env; make_job "$XP_LS"
 rc=$(run_runner)
@@ -176,12 +176,6 @@ for n in 0 2; do
 		pass "xposed_${n}_apks"
 	else fail "xposed_${n}_apks" "rc=$rc $(grep '^::fail::' "$T/out.txt")"; fi
 done
-
-new_env; make_job "$XP_LS | .keystore=\"other.ks\""
-rc=$(run_runner)
-if [ "$rc" != 0 ] && [ "$(fail_lines)" = 1 ] && grep -q '^::fail::internal::unknown keystore$' "$T/out.txt"; then
-	pass xposed_unknown_keystore
-else fail xposed_unknown_keystore "rc=$rc"; fi
 
 new_env; make_job "$XP_LS | .engine_options.sigbypass=9"
 rc=$(run_runner)
