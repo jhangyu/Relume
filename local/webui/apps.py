@@ -203,6 +203,11 @@ def enable(package, bundle_id, overrides=None, rebuild=False):
             c.execute('UPDATE item SET bundle_id = ?, enabled = 1, variants = ?, patch_overrides = ?, engine_options = ? '
                       'WHERE id = ?', (bundle_id, json.dumps(variants), json.dumps(merged, sort_keys=True),
                                        None if eo is None else json.dumps(eo), iid))
+            # the user assigned a same-package project while the app was removed: the project wins, else the
+            # phone's assignment lists clash and every later PUT (incl. the background check) 400s
+            c.execute('DELETE FROM device_assignments WHERE item_id = ? AND device_id IN '
+                      '(SELECT dp.device_id FROM device_projects dp JOIN project p ON p.id = dp.project_id '
+                      'WHERE p.package = ?)', (iid, package))
     jobs.enqueue('upstream', _chain_target(iid, rebuild), 'manual')
     return {**get(iid), 'update_queued': True}
 
