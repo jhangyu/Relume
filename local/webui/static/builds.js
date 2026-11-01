@@ -1,4 +1,4 @@
-import { $, $$, act, api, every, html, icon, iconTile, JOB_BADGE, logStream, shell, toast } from '/static/app.js';
+import { $, $$, act, api, every, fmt, html, icon, iconTile, JOB_BADGE, logStream, shell, toast } from '/static/app.js';
 
 const qs = new URLSearchParams(location.search);
 const ITEM = qs.get('item') ? Number(qs.get('item')) : null;
@@ -17,11 +17,7 @@ function when(iso) {
   if (days > 1 && days < 7) return `${d.toLocaleDateString('en', { weekday: 'short' })} ${hm}`;
   return `${d.toLocaleDateString('en', { month: 'short', day: 'numeric' })} ${hm}`;
 }
-function dur(a, b) {
-  if (!a || !b) return '—';
-  const s = Math.max(0, Math.round((Date.parse(b) - Date.parse(a)) / 1000));
-  return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s`;
-}
+const dur = (a, b) => (a && b ? fmt.duration(Math.max(0, Math.round((Date.parse(b) - Date.parse(a)) / 1000))) : '—');
 
 const triggerText = j => (j.trigger === 'schedule' ? `schedule "${B.schedules.get(j.schedule_id) || j.schedule_id}"`
   : j.trigger === 'upstream' ? 'patch update' : j.trigger === 'after_build' ? 'after build' : 'manual');

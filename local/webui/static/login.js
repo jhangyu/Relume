@@ -17,7 +17,6 @@ function showError(text) {
   err.hidden = false;
 }
 
-const minSec = s => `${Math.floor(s / 60)} min ${s % 60} s`;
 
 function setMode(setup) {
   setupMode = setup;
@@ -75,7 +74,7 @@ form.addEventListener('submit', async e => {
       showError(setupMode ? 'No account exists yet. Create it below.' : 'An account already exists. Sign in instead.');
     } else if (ex.status === 429) {
       const s = ex.data.retry_after;
-      showError(`Too many attempts. Try again in ${minSec(s)}.`);
+      showError(`Too many attempts. Try again in ${fmt.duration(s)}.`);
       lockButton(go, s);
     } else {
       showError('Server unreachable');

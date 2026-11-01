@@ -75,13 +75,8 @@ export const fmt = {
     return `${i ? n.toFixed(1) : n} ${u[i]}`;
   },
   gb: n => (n == null ? '—' : (n / 1e9).toFixed(1)),
-  duration: (a, b) => {
-    if (!a) return '—';
-    const s = Math.max(0, Math.round(((b ? Date.parse(b) : Date.now()) - Date.parse(a)) / 1000));
-    if (s < 60) return `${s}s`;
-    if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
-    return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
-  },
+  // Seconds as "42 s" or "3 min 05 s" (builds history, login lockout).
+  duration: s => (s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s`),
 };
 
 export function every(ms, fn) {
