@@ -38,12 +38,12 @@ import kotlinx.coroutines.launch
 /** What each `download.state` means for the user (spec 5.4). */
 private fun DownloadState?.message(): String = when (this?.state) {
     null -> "No APK source yet. It is looked up on APKMirror when the first build runs."
-    "pending" -> "Waiting for the APKMirror lookup."
+    LOOKUP_PENDING -> "Waiting for the APKMirror lookup."
     "found" -> "APKMirror listing found."
     "manual" -> "Using the APKMirror listing you set."
-    "not_found" -> "APKMirror has no listing. Paste a URL below or pick another source."
-    "ambiguous" -> "Several APKMirror listings match. Pick one in the app settings."
-    "blocked" -> "APKMirror is rate limiting this server" + (this.retryAt?.let { ", retry at $it." } ?: ".")
+    LOOKUP_NOT_FOUND -> "APKMirror has no listing. Paste a URL below or pick another source."
+    LOOKUP_AMBIGUOUS -> "Several APKMirror listings match. Pick one in the app settings."
+    LOOKUP_BLOCKED -> "APKMirror is rate limiting this server" + (this.retryAt?.let { ", retry at $it." } ?: ".")
     "failed" -> "APKMirror lookup failed" + (this.error?.let { ": $it" } ?: ".")
     else -> throw IllegalArgumentException("download.state: expected pending, found, manual, not_found, ambiguous, blocked or failed, got '${this?.state}'")
 }
@@ -192,7 +192,7 @@ private fun DownloadStep(
         leading = { AppTile(detail.name, detail.iconUrl, model.api, category = detail.category) },
     )
     Column(Modifier.padding(horizontal = ScreenPadding), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        if (detail.download?.state == "not_found") {
+        if (detail.download?.state == LOOKUP_NOT_FOUND) {
             Banner("APKMirror page not found", Tone.Warn, detail = detail.download.message())
         } else {
             Txt(detail.download.message(), style = MaterialTheme.typography.bodyMedium, color = muted())

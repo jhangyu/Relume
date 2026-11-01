@@ -16,7 +16,11 @@ import kotlinx.serialization.json.put
 
 private const val FEATURED_TOP = 3
 private const val FEATURED_RECENT = 3
-private const val DEFAULT_SORT = "bundles"
+/** Server marketplace sort and origin keys (`/api/marketplace?sort=&origin=`). */
+internal const val SORT_BUNDLES = "bundles"
+internal const val SORT_UPDATED = "updated"
+internal const val ORIGIN_BUILTIN = "builtin"
+private const val DEFAULT_SORT = SORT_BUNDLES
 
 /** One marketplace request (origin, sort, page size); null when it failed and the error is already shown. */
 typealias FeaturedFetch = suspend (origin: String?, sort: String, perPage: Int) -> MarketList?
@@ -27,9 +31,9 @@ typealias FeaturedFetch = suspend (origin: String?, sort: String, perPage: Int) 
  */
 // ponytail: built-in apps capped at one page (RelumeApi.MARKET_PAGE_SIZE), page them if a built-in list ever grows past it
 suspend fun featuredApps(fetch: FeaturedFetch): List<MarketApp>? {
-    val top = fetch(null, "bundles", FEATURED_TOP) ?: return null
-    val builtin = fetch("builtin", "bundles", RelumeApi.MARKET_PAGE_SIZE) ?: return null
-    val recent = fetch(null, "updated", FEATURED_RECENT) ?: return null
+    val top = fetch(null, SORT_BUNDLES, FEATURED_TOP) ?: return null
+    val builtin = fetch(ORIGIN_BUILTIN, SORT_BUNDLES, RelumeApi.MARKET_PAGE_SIZE) ?: return null
+    val recent = fetch(null, SORT_UPDATED, FEATURED_RECENT) ?: return null
     return (top.apps + builtin.apps + recent.apps.filter { it.updatedAt != null }).distinctBy { it.packageName }
 }
 

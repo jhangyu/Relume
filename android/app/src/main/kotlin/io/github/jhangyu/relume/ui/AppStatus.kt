@@ -11,6 +11,9 @@ internal const val STATE_FAILED = "failed"
 internal const val STATE_NEEDS_URL = "needs_download_url"
 
 internal const val LOOKUP_AMBIGUOUS = "ambiguous"
+internal const val LOOKUP_BLOCKED = "blocked"
+internal const val LOOKUP_NOT_FOUND = "not_found"
+internal const val LOOKUP_PENDING = "pending"
 
 /** Apps card fix for a missing download URL: paste one, or pick one of the APKMirror candidates. */
 enum class Lookup { NeedsUrl, PickOne }
@@ -43,9 +46,9 @@ class AppFacts(val app: AppObject, val target: InstallTarget?, val installed: In
                 STATE_FAILED -> s.failDetail ?: s.failCode ?: "Build failed"
                 STATE_NEEDS_URL -> d.error ?: when (d.state) {
                     LOOKUP_AMBIGUOUS -> "${d.candidates.size} APKMirror pages match"
-                    "blocked" -> "APKMirror blocked the lookup${d.retryAt?.let { ", retry after ${formatTime(it)}" }.orEmpty()}"
-                    "not_found" -> "No APKMirror page found"
-                    "pending" -> "APKMirror lookup on the next update run"
+                    LOOKUP_BLOCKED -> "APKMirror blocked the lookup${d.retryAt?.let { ", retry after ${formatTime(it)}" }.orEmpty()}"
+                    LOOKUP_NOT_FOUND -> "No APKMirror page found"
+                    LOOKUP_PENDING -> "APKMirror lookup on the next update run"
                     else -> "Needs a download URL"
                 }
                 else -> null

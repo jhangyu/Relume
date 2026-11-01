@@ -59,8 +59,8 @@ private val FEATURED_TILE_SMALL = 40.dp
 
 
 /** Server sort keys in menu order, with their labels (spec 7.3). */
-private val SORTS = listOf("bundles" to "Most bundles", "stars" to "Most stars", "updated" to "Recently updated", "name" to "Name A–Z")
-private val ORIGINS = listOf(null to "All origins", "official" to "Official catalog", "builtin" to "Built-in", "custom" to "Custom")
+private val SORTS = listOf(SORT_BUNDLES to "Most bundles", "stars" to "Most stars", SORT_UPDATED to "Recently updated", "name" to "Name A–Z")
+private val ORIGINS = listOf(null to "All origins", "official" to "Official catalog", ORIGIN_BUILTIN to "Built-in", "custom" to "Custom")
 
 /** Marketplace tab: search bar, category chips, featured carousel, "All apps" with sort, two-line app list. Pull down refreshes the catalog. */
 @Composable

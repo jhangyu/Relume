@@ -230,7 +230,7 @@ fun OriginLabel(origin: String) {
     val r = MaterialTheme.relume
     val (text, pastel) = when (origin) {
         "official" -> "OFFICIAL" to r.blue
-        "builtin" -> "BUILT-IN" to r.teal
+        ORIGIN_BUILTIN -> "BUILT-IN" to r.teal
         "custom" -> "CUSTOM" to r.pink
         else -> throw IllegalArgumentException("origin: expected official, builtin or custom, got '$origin'")
     }

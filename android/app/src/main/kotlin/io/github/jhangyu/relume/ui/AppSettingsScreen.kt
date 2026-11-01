@@ -355,10 +355,10 @@ private fun LookupPill(state: String) {
     when (state) {
         "found" -> Pill("Found automatically", r.green.container, r.green.onContainer, R.drawable.ms_check)
         "manual" -> Pill("Set by you", r.green.container, r.green.onContainer, R.drawable.ms_check)
-        "pending" -> Pill("Lookup on the next update run", s.surfaceContainerHigh, s.onSurfaceVariant)
+        LOOKUP_PENDING -> Pill("Lookup on the next update run", s.surfaceContainerHigh, s.onSurfaceVariant)
         LOOKUP_AMBIGUOUS -> Pill("Pick one", r.amber.container, r.amber.onContainer, R.drawable.ms_link)
-        "blocked" -> Pill("APKMirror blocked the lookup", r.amber.container, r.amber.onContainer, R.drawable.ms_warning)
-        "not_found", "failed" -> Pill("Needs URL", r.amber.container, r.amber.onContainer, R.drawable.ms_warning)
+        LOOKUP_BLOCKED -> Pill("APKMirror blocked the lookup", r.amber.container, r.amber.onContainer, R.drawable.ms_warning)
+        LOOKUP_NOT_FOUND, "failed" -> Pill("Needs URL", r.amber.container, r.amber.onContainer, R.drawable.ms_warning)
         else -> throw IllegalArgumentException("download.state: expected pending, found, manual, not_found, ambiguous, blocked or failed, got '$state'")
     }
 }
