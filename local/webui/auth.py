@@ -18,7 +18,16 @@ PUBLIC = {('POST', '/api/auth/login'), ('POST', '/api/auth/setup'),
           ('POST', '/api/auth/device'), ('GET', '/api/auth/state'), ('GET', '/api/health')}
 # a device token gets 403 here: these change the account or revoke another phone
 SESSION_ONLY = {('POST', '/api/auth/password'), ('POST', '/api/auth/logout'), ('PUT', '/api/settings'),
-                ('PUT', '/api/notify'), ('DELETE', '/api/devices/{id}'), ('DELETE', '/api/devices/{id}/token')}
+                ('PUT', '/api/notify'), ('DELETE', '/api/devices/{id}'), ('DELETE', '/api/devices/{id}/token'),
+                ('GET', '/api/legacy-sign-ins'), ('DELETE', '/api/legacy-sign-ins/{id}')}
+# v1.2.0 RelumeApi.kt: me/sync/plan/receipt/logout, assignments (own row, answered as a no-op), the cards of the
+# install screens (apps, marketplace, projects, icons), signer accept and the two download routes
+LEGACY_ALLOWED = {
+    ('GET', '/api/me'), ('POST', '/api/me/sync'), ('GET', '/api/me/plan'), ('POST', '/api/me/installs'),
+    ('POST', '/api/me/logout'), ('PUT', '/api/devices/{id}/assignments'), ('GET', '/api/projects'),
+    ('POST', '/api/projects/{id}/signer/accept'), ('GET', '/api/projects/{id}/apks/{file}'),
+    ('GET', '/api/projects/{id}/icon'), ('GET', '/api/artifacts/{id}/download'), ('GET', '/api/apps'),
+    ('GET', '/api/marketplace'), ('GET', '/api/marketplace/{pkg}'), ('GET', '/api/apps/{pkg}/icon')}
 LEGACY_DENIED_MSG = 'this Relume app version cannot change device settings: update the app'
 DEVICE_NAME_MAX = 64
 MAX_FAILS, WINDOW, LOCK = 5, 300, 300
@@ -130,11 +139,12 @@ def authenticate(headers):
 
 
 def legacy_refused(device_id, method, pattern):
-    """A legacy token (companion up to v1.2.0, no device_uid) is install-only: no device-setting write."""
-    if method == 'GET' or pattern == '/api/devices/{id}/assignments' or not (
-            pattern.startswith('/api/devices') or pattern == '/api/me/adopt'):
-        return False   # assignments: a no-op answer in devices.put_assignments, the old app aborts installs on an error
-    return bool(db.conn().execute('SELECT legacy FROM devices WHERE id=?', (device_id,)).fetchone()['legacy'])
+    """A legacy token (companion up to v1.2.0, no device_uid) reaches only what that app's sign-in, background
+    check, install/upgrade, signer accept and logout flows use: LEGACY_ALLOWED. Everything else is 403."""
+    if (method, pattern) in LEGACY_ALLOWED:
+        return False
+    row = db.conn().execute('SELECT legacy FROM devices WHERE id=?', (device_id,)).fetchone()
+    return bool(row and row['legacy'])
 
 
 def auth_state(req):
@@ -247,8 +257,10 @@ def register_device(req):
 
 
 def device_logout(req):
+    """A legacy row has no uid to be found again by: signing out deletes it, a normal row only loses its token."""
     with db.tx() as c:
-        c.execute('UPDATE devices SET token_hash=NULL WHERE id=?', (req.device_id,))
+        if not c.execute('DELETE FROM devices WHERE id=? AND legacy=1', (req.device_id,)).rowcount:
+            c.execute('UPDATE devices SET token_hash=NULL WHERE id=?', (req.device_id,))
     return 200, {'ok': True}
 
 
@@ -263,6 +275,19 @@ def revoke_device_token(req):
             raise HttpError(409, 'not an app device')
         c.execute('UPDATE devices SET token_hash=NULL WHERE id=?', (did,))
     return 200, {'device': _device_view(did)}
+
+
+def list_legacy_sign_ins(req):
+    rows = db.conn().execute('SELECT id, name, model, android_release, created_at, last_seen_at FROM devices '
+                             'WHERE legacy=1 ORDER BY id').fetchall()
+    return 200, {'legacy_sign_ins': [dict(r) for r in rows]}
+
+
+def revoke_legacy_sign_in(req):
+    with db.tx() as c:
+        if not c.execute('DELETE FROM devices WHERE id=? AND legacy=1', (req.params['id'],)).rowcount:
+            raise HttpError(404, f"legacy sign-in {req.params['id']} not found")
+    return 200, {'deleted': req.params['id']}
 
 
 def logout(req):
@@ -292,4 +317,6 @@ ROUTES = [
     ('POST', '/api/auth/device', register_device),
     ('POST', '/api/me/logout', device_logout),
     ('DELETE', '/api/devices/{id}/token', revoke_device_token),
+    ('GET', '/api/legacy-sign-ins', list_legacy_sign_ins),
+    ('DELETE', '/api/legacy-sign-ins/{id}', revoke_legacy_sign_in),
 ]

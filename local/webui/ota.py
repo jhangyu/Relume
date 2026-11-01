@@ -342,10 +342,7 @@ def _me(req):
 
 
 def _me_json(dev):
-    tracked = tracked_packages()
-    if dev['legacy']:   # a legacy client reports and is offered the companion app only
-        tracked = [p for p in tracked if p == SELF_PACKAGE]
-    return {'device': _device_view(dev, {}), 'tracked_packages': tracked}
+    return {'device': _device_view(dev, {}), 'tracked_packages': tracked_packages()}
 
 
 def me(req):
@@ -427,25 +424,35 @@ def _adopt_device_uid(c, device_id, uid):
 
 def _leave_legacy(c, device_id, uid):
     """The same token syncs with a uid: the app was replaced by a current one. The legacy row becomes a normal app
-    row with that uid, or when a row with that uid exists the token moves there and the legacy row goes. -> row id."""
+    row with that uid, or when a row with that uid exists the token moves there and the legacy row goes. -> row id.
+    The row is re-read inside the transaction: a concurrent sync may have converted or merged it already."""
+    row = c.execute('SELECT legacy, token_hash FROM devices WHERE id=?', (device_id,)).fetchone()
+    if row is None:
+        raise HttpError(401, 'invalid device token')   # merged by a concurrent sync: the token now lives on the owner row
+    if not row['legacy']:
+        return device_id
     owner = c.execute('SELECT id FROM devices WHERE device_uid=?', (uid,)).fetchone()
     if owner is None:
         c.execute('UPDATE devices SET legacy=0, device_uid=? WHERE id=?', (uid, device_id))
         return device_id
-    token = c.execute('SELECT token_hash FROM devices WHERE id=?', (device_id,)).fetchone()['token_hash']
     c.execute('DELETE FROM devices WHERE id=?', (device_id,))   # token_hash is UNIQUE: free it before the move
-    c.execute('UPDATE devices SET token_hash=? WHERE id=?', (token, owner['id']))
+    c.execute('UPDATE devices SET token_hash=? WHERE id=?', (row['token_hash'], owner['id']))
     return owner['id']
 
 
 def sync(req):
     """Report + plan in one call: facts and tracked packages stored, full plan returned. A legacy row (no uid yet)
-    stores nothing but the companion app's own version, which its plan needs."""
+    stores the report and last_seen only: it gets no device facts."""
     uid, facts, packages = _parse_sync(req.json)
     did = req.device_id
-    if _me(req)['legacy']:
+    me = _me(req)
+    if me is None:   # merged into another row by a concurrent sync after authenticate
+        raise HttpError(401, 'invalid device token')
+    if me['legacy']:
         if uid is None:
-            store_reported(did, {k: v for k, v in packages.items() if k == SELF_PACKAGE})
+            with db.tx() as c:
+                c.execute('UPDATE devices SET last_seen_at=? WHERE id=?', (db.utcnow(), did))
+            store_reported(did, packages)
             dev = _me(req)
             return 200, dict(_me_json(dev), plan=app_plan(dev))
         with db.tx() as c:

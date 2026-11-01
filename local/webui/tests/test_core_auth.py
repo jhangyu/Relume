@@ -213,7 +213,8 @@ class DeviceTokenTest(DataTestCase):
     def test_session_only_routes_reject_token(self):
         self.assertEqual(auth.SESSION_ONLY, {
             ('POST', '/api/auth/password'), ('POST', '/api/auth/logout'), ('PUT', '/api/settings'),
-            ('PUT', '/api/notify'), ('DELETE', '/api/devices/{id}'), ('DELETE', '/api/devices/{id}/token')})
+            ('PUT', '/api/notify'), ('DELETE', '/api/devices/{id}'), ('DELETE', '/api/devices/{id}/token'),
+            ('GET', '/api/legacy-sign-ins'), ('DELETE', '/api/legacy-sign-ins/{id}')})
         tok = self.token()['token']
         for method, pattern in sorted(auth.SESSION_ONLY):
             st, _, body = self.bearer(method, pattern.replace('{id}', '1'), tok, {})

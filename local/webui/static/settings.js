@@ -196,9 +196,25 @@ $('#app-devs').addEventListener('click', async e => {
   await loadAppDevices();
 });
 
+async function loadLegacy() {
+  const { legacy_sign_ins: rows } = await api('GET', '/api/legacy-sign-ins');
+  Z.legacy = rows;
+  $('#legacy-devs').innerHTML = html`${rows.length ? rows.map(d => html`<li><div><div class="sm" style="font-weight:500">${d.name}</div><div class="xs muted">${d.model} · Android ${d.android_release} · created ${fmt.abs(d.created_at)} · last seen ${fmt.rel(d.last_seen_at)}</div></div><button class="btn small danger" type="button" data-revoke-legacy="${d.id}">Revoke</button></li>`) : html`<li><span class="sm muted">No old-app sign-ins.</span></li>`}`;
+}
+
+$('#legacy-devs').addEventListener('click', async e => {
+  const b = e.target.closest('[data-revoke-legacy]');
+  if (!b) return;
+  const d = Z.legacy.find(x => x.id === Number(b.dataset.revokeLegacy));
+  const body = html`<strong>${d.name}</strong> is signed out of the old app and must log in again.`;
+  if (!await confirmDialog({ title: 'Revoke this sign-in?', body, action: 'Revoke' })) return;
+  await act('DELETE', `/api/legacy-sign-ins/${d.id}`, {}, 'Sign-in revoked');
+  await loadLegacy();
+});
+
 (async () => {
   shell();
   Z.items = (await api('GET', '/api/apps')).apps;
-  await Promise.all([loadNotify(), loadSettings(false), loadAppDevices(), loadCatalog()]);
+  await Promise.all([loadNotify(), loadSettings(false), loadAppDevices(), loadLegacy(), loadCatalog()]);
   checkPw();
 })().catch(e => toast(e.message, 'error'));
