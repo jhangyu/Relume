@@ -42,7 +42,7 @@ object Notifications {
 
     fun runFinished(context: Context, run: RunState) {
         val installed = run.steps.count { it.state == StepState.INSTALLED }
-        val failed = run.steps.count { it.state != StepState.INSTALLED && it.state != StepState.UP_TO_DATE }
+        val failed = run.steps.count { it.state != StepState.INSTALLED && it.state != StepState.UP_TO_DATE && it.state != StepState.REMOVED }
         post(context, ID_RUN_FINISHED, "Relume: $installed installed, $failed not installed", null, openApp(context))
     }
 

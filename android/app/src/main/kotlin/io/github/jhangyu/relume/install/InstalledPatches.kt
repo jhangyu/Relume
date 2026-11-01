@@ -17,5 +17,11 @@ object InstalledPatches {
         check(saved) { "patch record: SharedPreferences '$PREFS' commit failed for $packageName = $patchVersion" }
     }
 
+    /** The app left the phone (removed by the user): no patch version is installed any more. */
+    internal fun forget(context: Context, packageName: String) {
+        val saved = prefs(context).edit().remove(packageName).commit()
+        check(saved) { "patch record: SharedPreferences '$PREFS' commit failed removing $packageName" }
+    }
+
     private fun prefs(context: Context) = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 }

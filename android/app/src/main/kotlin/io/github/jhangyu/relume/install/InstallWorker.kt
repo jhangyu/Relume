@@ -10,6 +10,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import io.github.jhangyu.relume.RelumeApp
 import io.github.jhangyu.relume.api.ApiError
+import io.github.jhangyu.relume.api.PlanStep
 import io.github.jhangyu.relume.api.RelumeApi
 import io.github.jhangyu.relume.inventory.Inventory
 import io.github.jhangyu.relume.sync.Notifications
@@ -52,10 +53,18 @@ class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         }
     }
 
-    /** Runs step [index] up to its commit; true = committed (stop and wait for the result broadcast). */
-    private fun runStep(ctx: Context, api: RelumeApi, run: RunState, index: Int): Boolean {
+    /**
+     * Runs step [index] up to its commit; true = committed (stop and wait for the result broadcast). First the phone's
+     * real state: an app the user removed is skipped and unassigned instead (every origin, queued or late-started plans too).
+     */
+    private suspend fun runStep(ctx: Context, api: RelumeApi, run: RunState, index: Int): Boolean {
         val s = run.steps[index]
         val d = checkNotNull(s.step.download) { "step ${s.step.displayName}: runnable without a download" }
+        val prefs = (ctx as RelumeApp).prefs
+        if (removedFromPhone(s, prefs.seenInstalled, Inventory.installed(ctx, s.step.packageName) != null)) {
+            unassign(ctx, api, index, s.step)
+            return false
+        }
         if (!InstallRunner.canInstall(ctx)) {
             finish(ctx, index, StepOutcome(StepState.FAILED, ErrorCodes.INSTALLER_ERROR, "install permission off"))
             if (run.origin == Origin.BACKGROUND) Notifications.installPermissionOff(ctx, index, s.step.displayName)
@@ -104,6 +113,26 @@ class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             check(!apk.file.exists() || apk.file.delete()) { "${apk.file}: cannot delete after the session write" }
         }
         return true
+    }
+
+    /** The user removed [step]'s app: unassign it from this phone and forget it; the step ends `removed`. */
+    private suspend fun unassign(ctx: Context, api: RelumeApi, index: Int, step: PlanStep) {
+        val error = try {
+            val d = api.me().device
+            val (items, projects) = assignmentsWithout(d, step)
+            api.putAssignments(d.id, items, projects)
+            null
+        } catch (e: ApiError) {
+            e
+        }
+        if (error != null) {
+            // Not installed either; the seen entry stays, so the next run tries the unassign again.
+            finish(ctx, index, StepOutcome(StepState.FAILED, ErrorCodes.INSTALLER_ERROR, "removed from the phone, unassign failed: $error"))
+            return
+        }
+        (ctx as RelumeApp).prefs.updateSeenInstalled { it - seenKey(step.kind, step.refId) }
+        InstalledPatches.forget(ctx, step.packageName)
+        finish(ctx, index, removedOutcome)
     }
 
     private suspend fun sendReceipts(ctx: Context, api: RelumeApi) {

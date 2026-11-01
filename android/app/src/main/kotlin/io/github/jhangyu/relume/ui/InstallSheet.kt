@@ -98,12 +98,13 @@ private fun StepState.label(): String = when (this) {
     StepState.CANCELLED -> "Cancelled"
     StepState.DEPENDENCY_FAILED -> "Dependency failed"
     StepState.SERVER_ERROR -> "Server refused"
+    StepState.REMOVED -> "Removed from this phone"
 }
 
 /** Lightbox state (spec install-states 2): open while running, closes itself on success, stays open on failure. */
 internal enum class SheetOutcome { Running, Done, Failed }
 
-private val CLOSING = setOf(StepState.INSTALLED, StepState.UP_TO_DATE, StepState.CANCELLED)
+private val CLOSING = setOf(StepState.INSTALLED, StepState.UP_TO_DATE, StepState.CANCELLED, StepState.REMOVED)
 
 /** [reinstallPending]: package whose `needs_uninstall` step the user confirmed; the system uninstall comes next. */
 internal fun sheetOutcome(run: RunState, reinstallPending: String?): SheetOutcome = when {
@@ -210,6 +211,7 @@ private fun StepBlock(s: StepRun, index: Int, ctx: Context, model: AppModel, onU
                 ActionButton("Uninstall and install…", onUninstall, Modifier.fillMaxWidth(), kind = ButtonKind.Danger)
             }
             StepState.UP_TO_DATE -> Unit
+            StepState.REMOVED -> Txt("Removed from this phone: unassigned.", style = MaterialTheme.typography.bodyMedium, color = muted())
             StepState.FAILED, StepState.SERVER_ERROR -> {
                 PhaseRail(s.state)
                 Banner(s.state.label(), Tone.Danger, detail = failureDetail(s))

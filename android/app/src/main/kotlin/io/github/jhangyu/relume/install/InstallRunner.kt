@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.util.Log
+import io.github.jhangyu.relume.RelumeApp
 import io.github.jhangyu.relume.api.InstallPlan
 import io.github.jhangyu.relume.api.PlanStep
 import io.github.jhangyu.relume.inventory.Inventory
@@ -22,26 +23,29 @@ object InstallRunner {
     /** The run file could not be read; [start] refuses until the user calls [reset]. */
     val corrupt: StateFlow<CorruptRunFile?> = InstallRunStore.corrupt
 
-    /** Confirm intents (`EXTRA_INTENT`) by step index; process-local, they cannot be persisted. */
+    /** Confirm intents (`EXTRA_INTENT`) by step index, kept until the step's result; process-local, they cannot be persisted. */
     private val confirmIntents = ConcurrentHashMap<Int, Intent>()
     private val reconciled = AtomicBoolean(false)
 
     /**
      * Starts [plan], or queues it while a step of the current run holds a PackageInstaller session still open in the
      * system or is being downloaded by a pending install worker (the run record alone never blocks, [InstallRun.admit]);
-     * a queued plan starts when that step ends and a step awaiting the user gets its confirmation shown now. Unsent receipts of the replaced run go with the new run.
+     * a queued plan starts when that step ends and a step awaiting the user gets its kept confirmation shown now (a new
+     * start never abandons a session). Unsent receipts of the replaced run go with the new run.
      */
     fun start(context: Context, plan: InstallPlan, origin: Origin): StartResult {
         InstallRunStore.load(context)
         if (InstallRunStore.corrupt.value != null) return StartResult.Corrupt
         val before = InstallRunStore.state.value
-        val live = Installer.ownSessions(context)
-        val workPending = InstallWorker.pending(context)
         var admission: Admission? = null
-        InstallRunStore.update(context) { cur -> InstallRun.admit(cur, plan, origin, live, workPending) { lostSession(context, it) }.also { admission = it }.run }
+        // System state read under the store lock: the worker cannot commit a session between the read and the decision.
+        InstallRunStore.update(context) { cur ->
+            InstallRun.admit(cur, plan, origin, Installer.ownSessions(context), InstallWorker.pending(context)) { lostSession(context, it) }
+                .also { admission = it }.run
+        }
         val a = checkNotNull(admission)
         if (!a.started) {
-            a.surface?.let { confirm(context, it) }
+            a.surface?.let { confirm(context, it, byUser = false) }
             return StartResult.Queued
         }
         before?.steps?.forEachIndexed { i, s -> if (s.state.active) Notifications.cancelStep(context, i) }
@@ -53,19 +57,21 @@ object InstallRunner {
     /**
      * Shows the system confirmation of `awaiting_user` step [stepIndex] (directly when the app is visible, else as a
      * notification). Its `EXTRA_INTENT` arrives only once, with `STATUS_PENDING_USER_ACTION`; when it is gone (process
-     * death, app update, lost notification) the committed session is abandoned and the step re-run, whose new commit
-     * brings a fresh confirmation.
+     * death, app update) only the user's Confirm ([byUser]) abandons the committed session and re-runs the step, whose
+     * new commit brings a fresh confirmation: the session may be installing already ([InstallRun.confirmAction]).
      */
-    fun confirm(context: Context, stepIndex: Int) {
+    fun confirm(context: Context, stepIndex: Int, byUser: Boolean = true) {
         val s = stepAt(stepIndex, StepState.AWAITING_USER)
-        val intent = confirmIntents.remove(stepIndex)
-        if (intent != null) {
-            prompt(context, stepIndex, s.step.displayName, intent)
-            return
+        val intent = confirmIntents[stepIndex]
+        when (InstallRun.confirmAction(kept = intent != null, byUser = byUser)) {
+            ConfirmAction.SHOW -> prompt(context, stepIndex, s.step.displayName, checkNotNull(intent))
+            ConfirmAction.RERUN -> {
+                // ponytail: a lost prompt re-runs the step (new download + session); keep the verified file if that cost matters.
+                s.sessionId?.let { if (Installer.sessionExists(context, it)) Installer.abandon(context, it) }
+                retry(context, stepIndex)
+            }
+            ConfirmAction.WAIT -> Unit // the install sheet shows Confirm
         }
-        // ponytail: a lost prompt re-runs the step (new download + session); keep the verified file if that cost matters.
-        s.sessionId?.let { if (Installer.sessionExists(context, it)) Installer.abandon(context, it) }
-        retry(context, stepIndex)
     }
 
     /** `needs_uninstall` step: system uninstall confirmation, then the step is re-run. */
@@ -95,6 +101,8 @@ object InstallRunner {
         InstallRunStore.update(context) { cur -> cur?.let(InstallRun::dequeue)?.also { next = it } ?: cur }
         val run = next ?: return false
         confirmIntents.clear()
+        // A background revision counts as handled once its run starts (BackgroundStart.recordedRevision).
+        if (run.origin == Origin.BACKGROUND) (context.applicationContext as RelumeApp).prefs.lastBackgroundRevision = run.revision
         InstallWorker.enqueue(context, run.origin, replace = true)
         return true
     }
@@ -103,23 +111,22 @@ object InstallRunner {
     fun reset(context: Context) = InstallRunStore.reset(context)
 
     /**
-     * Call at process start (MainActivity.onCreate; later calls in the same process do nothing). Loads the run file and the last check outcome, abandons
-     * sessions no step references, and resolves committed / awaiting steps whose session is gone (spec 9.4).
+     * Call at process start (MainActivity.onCreate, CheckWorker; later calls in the same process do nothing). Loads the
+     * run file and the last check outcome, abandons sessions no step references (also with no run, e.g. after cleared
+     * data) unless an install worker may hold one it has not recorded yet, and ends the steps the system no longer
+     * carries ([InstallRun.closeStale], spec 9.4).
      */
     fun reconcileOnStart(context: Context) {
         if (!reconciled.compareAndSet(false, true)) return
         InstallRunStore.load(context)
         CheckScheduler.load(context)
-        val run = InstallRunStore.state.value ?: return
-        val live = run.steps.mapNotNull { it.sessionId }.toSet()
-        Installer.abandonOwnSessionsExcept(context, live)
+        if (InstallRunStore.corrupt.value != null) return
+        val run = InstallRunStore.state.value
+        val workPending = InstallWorker.pending(context)
+        if (!workPending) Installer.abandonOwnSessionsExcept(context, run?.steps.orEmpty().mapNotNull { it.sessionId }.toSet())
+        if (run == null) return
         val after = InstallRunStore.update(context) { cur ->
-            checkNotNull(cur).steps.indices.fold(cur) { acc, i ->
-                val s = acc.steps[i]
-                val id = s.sessionId
-                val waiting = s.state == StepState.COMMITTED || s.state == StepState.AWAITING_USER
-                if (waiting && (id == null || !Installer.sessionExists(context, id))) InstallRun.finish(acc, i, lostSession(context, s)) else acc
-            }
+            InstallRun.closeStale(checkNotNull(cur), Installer.ownSessions(context), workPending) { lostSession(context, it) }
         }
         after?.steps?.forEachIndexed { i, s -> if (s.state == StepState.INSTALLED && run.steps[i].state != StepState.INSTALLED) recordPatch(context, s.step) }
         if (startQueued(context)) return
@@ -130,8 +137,6 @@ object InstallRunner {
     internal fun loadState(context: Context) = InstallRunStore.load(context)
 
     fun canInstall(context: Context): Boolean = context.packageManager.canRequestPackageInstalls()
-
-    internal val isActive get() = InstallRunStore.state.value?.isActive == true
 
     internal fun onSessionResult(context: Context, sessionId: Int, status: Int, message: String?, confirm: Intent?) {
         InstallRunStore.load(context)
@@ -166,6 +171,7 @@ object InstallRunner {
             return
         }
         val s = stepAt(stepIndex, StepState.NEEDS_UNINSTALL)
+        if (status != PackageInstaller.STATUS_PENDING_USER_ACTION) confirmIntents.remove(stepIndex)
         when (status) {
             PackageInstaller.STATUS_PENDING_USER_ACTION ->
                 prompt(context, stepIndex, s.step.displayName, checkNotNull(confirm) { "uninstall of ${s.step.packageName}: no EXTRA_INTENT" })
@@ -189,10 +195,10 @@ object InstallRunner {
     }
 
     private fun prompt(context: Context, index: Int, name: String, confirm: Intent) {
+        confirmIntents[index] = confirm
         if (AppVisibility.visible) {
             context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } else {
-            confirmIntents[index] = confirm
             Notifications.confirmInstall(context, index, name, confirm)
         }
     }
@@ -204,6 +210,7 @@ object InstallRunner {
 
     /** Re-runs step [index] after a user action (confirm, uninstall): network CONNECTED only, even for a background run. */
     private fun retry(context: Context, index: Int) {
+        confirmIntents.remove(index)
         InstallRunStore.update(context) { cur -> cur?.let { InstallRun.retry(it, index) } }
         InstallWorker.enqueue(context, Origin.UI, replace = false)
     }

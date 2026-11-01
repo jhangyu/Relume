@@ -1,6 +1,7 @@
 package io.github.jhangyu.relume.install
 
 import android.content.pm.PackageInstaller
+import io.github.jhangyu.relume.api.InstallPlan
 import io.github.jhangyu.relume.api.ReceiptResult
 import io.github.jhangyu.relume.api.StepKind
 import org.junit.Assert.assertEquals
@@ -8,6 +9,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import io.github.jhangyu.relume.sync.BackgroundStart
 import org.junit.Test
 
 /** Whether a requested run waits is decided by Relume's open PackageInstaller sessions, not by the run record. */
@@ -111,6 +113,31 @@ class InstallBusyTest {
         val ended = InstallRun.finish(oldRun(StepState.AWAITING_USER), 0, InstallResult.from(PackageInstaller.STATUS_SUCCESS, null))
         val a = InstallRun.admit(ended, requested, Origin.UI, emptySet(), workPending = false, lost)
         assertEquals(Admission(InstallRun.create(requested, Origin.UI, ended), true, null), a)
+    }
+
+    @Test
+    fun aNewStartNeverAbandonsASession() {
+        // a kept prompt (foreground or background) is shown again; without it only the user's Confirm re-runs the step
+        assertEquals(ConfirmAction.SHOW, InstallRun.confirmAction(kept = true, byUser = false))
+        assertEquals(ConfirmAction.SHOW, InstallRun.confirmAction(kept = true, byUser = true))
+        assertEquals(ConfirmAction.WAIT, InstallRun.confirmAction(kept = false, byUser = false))
+        assertEquals(ConfirmAction.RERUN, InstallRun.confirmAction(kept = false, byUser = true))
+    }
+
+    @Test
+    fun aQueuedBackgroundRevisionIsHandledOnlyWhenItsRunStarts() {
+        val background = InstallPlan("night", requested.steps)
+        assertEquals("old", BackgroundStart.recordedRevision(StartResult.Queued, background, "old"))
+        assertEquals("old", BackgroundStart.recordedRevision(StartResult.Corrupt, background, "old"))
+        assertEquals("night", BackgroundStart.recordedRevision(StartResult.Started, background, "old"))
+        val queued = InstallRun.admit(oldRun(StepState.AWAITING_USER), background, Origin.BACKGROUND, setOf(SESSION), workPending = false, lost).run
+        // a UI request replaces it: the next check plans the background revision again
+        val replaced = InstallRun.admit(queued, requested, Origin.UI, setOf(SESSION), workPending = false, lost).run
+        assertEquals(Origin.UI, replaced.queued?.origin)
+        assertTrue(BackgroundStart.shouldStart(background, BackgroundStart.recordedRevision(StartResult.Queued, background, "old")))
+        // when the queued background run starts, its revision is the one to record
+        val started = checkNotNull(InstallRun.dequeue(InstallRun.finish(queued, 0, InstallResult.from(PackageInstaller.STATUS_SUCCESS, null))))
+        assertEquals(Origin.BACKGROUND to "night", started.origin to started.revision)
     }
 
     private companion object {

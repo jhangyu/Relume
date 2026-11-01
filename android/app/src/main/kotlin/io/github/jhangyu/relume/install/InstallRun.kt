@@ -30,7 +30,9 @@ enum class StepState {
     @SerialName("failed") FAILED,
     @SerialName("cancelled") CANCELLED,
     @SerialName("dependency_failed") DEPENDENCY_FAILED,
-    @SerialName("server_error") SERVER_ERROR;
+    @SerialName("server_error") SERVER_ERROR,
+    /** The user removed the app from the phone: the step was skipped and the app unassigned from this phone. */
+    @SerialName("removed") REMOVED;
 
     /** A step in one of these states has not ended; it blocks a new run only while its session or worker is live ([InstallRun.admit]). */
     val active get() = this in ACTIVE
@@ -71,6 +73,8 @@ data class StepRun(
     val receiptError: String?,
     /** Bytes of the `.part` file, updated in [PROGRESS_STEPS] steps of the plan size (spec 9.2). */
     val downloadedBytes: Long,
+    /** The app left the phone through this run's signature reinstall (uninstall, then re-run): its absence is no removal. */
+    val uninstalled: Boolean = false,
 )
 
 @Serializable
@@ -89,7 +93,7 @@ data class RunState(
     val outbox: List<InstallReceipt>,
     /** Last refusal of an [outbox] receipt other than a stale plan (shown in the UI). */
     val outboxError: String?,
-    /** A requested run that waits for step [QueuedStart.after]'s open system session to end. */
+    /** A requested run that waits for step [QueuedStart.after] to end (its open system session or its pending worker download). */
     val queued: QueuedStart? = null,
 ) {
     val isActive get() = steps.any { it.state.active }
@@ -101,12 +105,15 @@ data class RunState(
             .takeIf { it >= 0 }
 }
 
-/** A requested [plan] that starts once step [after] of the current run has ended. */
+/** A requested [plan] that starts once step [after] of the current run has ended (session finished, or download/verify ended). */
 @Serializable
 data class QueuedStart(val plan: InstallPlan, val origin: Origin, val after: Int)
 
 /** Result of [InstallRun.admit]: the run to save, whether the requested plan started, and the step whose confirmation to show. */
 data class Admission(val run: RunState, val started: Boolean, val surface: Int?)
+
+/** What a confirmation request does: show the kept system prompt, re-run the step for a fresh one, or leave it to the user. */
+enum class ConfirmAction { SHOW, RERUN, WAIT }
 
 /** Pure run transitions (spec 9.1). Every function returns a new [RunState]. */
 object InstallRun {
@@ -147,18 +154,23 @@ object InstallRun {
             val surface = blocking.takeIf { cur.steps[it].state == StepState.AWAITING_USER }
             return Admission(cur.copy(queued = QueuedStart(plan, origin, blocking)), started = false, surface = surface)
         }
-        val closed = cur?.let { run ->
-            run.steps.indices.fold(run) { acc, i ->
-                val s = acc.steps[i]
-                when {
-                    s.state == StepState.COMMITTED || s.state == StepState.AWAITING_USER -> finish(acc, i, lost(s))
-                    s.state.active -> finish(acc, i, StepOutcome(StepState.FAILED, ErrorCodes.INSTALLER_ERROR, "install worker no longer runs"))
-                    else -> acc
-                }
+        return Admission(create(plan, origin, cur?.let { closeStale(it, live, workPending, lost) }), started = true, surface = null)
+    }
+
+    /**
+     * Ends the active steps the system no longer carries (stale records): committed / awaiting ones whose session is
+     * not in [live] with [lost] (the reconcile outcome), downloading / verifying ones without [workPending] `failed`.
+     */
+    fun closeStale(run: RunState, live: Set<Int>, workPending: Boolean, lost: (StepRun) -> StepOutcome): RunState =
+        run.steps.indices.fold(run) { acc, i ->
+            val s = acc.steps[i]
+            when {
+                !s.state.active || s.sessionId in live -> acc
+                s.state == StepState.COMMITTED || s.state == StepState.AWAITING_USER -> finish(acc, i, lost(s))
+                workPending -> acc
+                else -> finish(acc, i, StepOutcome(StepState.FAILED, ErrorCodes.INSTALLER_ERROR, "install worker no longer runs"))
             }
         }
-        return Admission(create(plan, origin, closed), started = true, surface = null)
-    }
 
     /** The queued plan as the new run once the step it waits for has ended (its session finished); else null. */
     fun dequeue(run: RunState): RunState? {
@@ -166,6 +178,14 @@ object InstallRun {
         val s = run.steps[q.after]
         if (s.state.runnable || s.state.active) return null
         return create(q.plan, q.origin, run)
+    }
+
+    /** [kept]: the step's system prompt intent is held in this process; [byUser]: the user tapped Confirm. */
+    fun confirmAction(kept: Boolean, byUser: Boolean): ConfirmAction = when {
+        kept -> ConfirmAction.SHOW
+        // Re-running abandons the session; it may be installing already (the user confirmed), so only the user decides.
+        byUser -> ConfirmAction.RERUN
+        else -> ConfirmAction.WAIT
     }
 
     /** Moves step [index] from one of [from] to [to]; null when the step is no longer in [from] (cancelled meanwhile). */
@@ -253,7 +273,10 @@ object InstallRun {
         }.toSet()
         val unsent = reopen.map { run.steps[it] }.filter { it.receiptDue }.map(::receipt)
         val steps = run.steps.mapIndexed { i, s ->
-            if (i in reopen) s.copy(state = StepState.PENDING, errorCode = null, errorText = null, sessionId = null, receiptDue = false, downloadedBytes = 0) else s
+            if (i in reopen) s.copy(
+                state = StepState.PENDING, errorCode = null, errorText = null, sessionId = null, receiptDue = false, downloadedBytes = 0,
+                uninstalled = s.uninstalled || i == index && s.state == StepState.NEEDS_UNINSTALL,
+            ) else s
         }
         return run.copy(passOrigin = Origin.UI, steps = steps, outbox = run.outbox + unsent, synced = false, syncError = null).propagate()
     }
@@ -293,6 +316,7 @@ object InstallRun {
     private val WORKER_HELD = setOf(StepState.DOWNLOADING, StepState.VERIFYING)
     private val FAILING = setOf(
         StepState.FAILED, StepState.CANCELLED, StepState.SERVER_ERROR, StepState.NEEDS_UNINSTALL, StepState.DEPENDENCY_FAILED,
+        StepState.REMOVED,
     )
     private val RECEIPTED = setOf(
         StepState.INSTALLED, StepState.FAILED, StepState.CANCELLED, StepState.NEEDS_UNINSTALL, StepState.DEPENDENCY_FAILED,

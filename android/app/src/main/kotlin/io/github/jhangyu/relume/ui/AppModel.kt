@@ -28,6 +28,7 @@ import io.github.jhangyu.relume.api.PatchesView
 import io.github.jhangyu.relume.api.Project
 import io.github.jhangyu.relume.api.StepKind
 import io.github.jhangyu.relume.install.InstallRunner
+import io.github.jhangyu.relume.install.seenKey
 import io.github.jhangyu.relume.install.InstalledPatches
 import io.github.jhangyu.relume.install.Origin
 import io.github.jhangyu.relume.install.StartResult
@@ -260,6 +261,8 @@ class AppModel(application: Application) : AndroidViewModel(application) {
 
     fun beginInstall(kind: StepKind, id: Int) {
         lastInstall = kind to id
+        // The user asks for this app: it installs even if it was removed earlier (the per-step removal check skips seen-then-absent apps).
+        relume.prefs.updateSeenInstalled { it - seenKey(kind, id) }
         viewModelScope.launch {
             if (!InstallRunner.canInstall(relume)) {
                 prompt = InstallPrompt.NeedPermission
