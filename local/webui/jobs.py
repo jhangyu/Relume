@@ -122,6 +122,7 @@ def _kill_group(p):
 
 
 CHILD_ENV = ('PATH', 'LANG', 'TZ')
+SOLVER_ENV = ('FLARESOLVERR_URL', 'CFBYPASS_URL', 'APKM_SOLVER_URL')  # Cloudflare solvers for runner downloads and fetches
 
 
 def isolate(argv):

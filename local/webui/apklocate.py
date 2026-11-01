@@ -13,7 +13,7 @@ import time
 import urllib.parse
 from dataclasses import dataclass
 
-from . import build, db, jobs
+from . import db, jobs
 from .server import HttpError
 
 MIN_INTERVAL = 10              # s between two APKMirror lookup requests (global)
@@ -202,7 +202,7 @@ def _fetch(url, log, cancel_event):
         pathlib.Path(work).chmod(0o770)  # the isolated runner uid shares the server's gid
         try:
             rc = jobs.run_isolated(log, ["bash", FETCH_PAGE, url, PAGE_FILE], jobs.runner_path(work),
-                                   env_keys=build.SOLVER_ENV, timeout=FETCH_TIMEOUT)
+                                   env_keys=jobs.SOLVER_ENV, timeout=FETCH_TIMEOUT)
         except jobs.JobTimeout as e:
             raise _block(f"solver chain {e} on {url}")
         if rc != 0:

@@ -11,7 +11,7 @@ import tempfile
 import time
 import urllib.parse
 
-from webui import apkmanifest, db, upstream
+from . import apkmanifest, db, upstream
 
 MAX_PLAY_CALLS = 16        # one call = one details request or one purchase+delivery request, shared by a lookup
 HINT_RESERVE = 2           # calls kept back for the web hints
@@ -518,7 +518,8 @@ class _Lookup:
 
 
 def resolve(package, version_name, log, play):
-    """versionCode of package at version_name for play.device, or VersionCodeError naming every step."""
+    """versionCode of package at version_name for play.device, or VersionCodeError naming every step. Closes play:
+    this function is the one owner of the probe session."""
     lookup = _Lookup(package, version_name, log, play)
     try:
         return lookup.run()

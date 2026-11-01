@@ -487,7 +487,7 @@ def check_versions(package, log, cancel_event):
         work.chmod(0o770)  # the isolated runner uid shares the server's gid
         try:
             rc = jobs.run_isolated(log, ['bash', CHECK_VERSIONS, row['apkmirror_list_url']], jobs.runner_path(work),
-                                   env_keys=build.SOLVER_ENV, timeout=CHECK_TIMEOUT, on_line=m.feed)
+                                   env_keys=jobs.SOLVER_ENV, timeout=CHECK_TIMEOUT, on_line=m.feed)
         except jobs.JobTimeout as e:
             raise failed(f'version check {e}') from None
     finally:

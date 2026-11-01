@@ -12,7 +12,6 @@ ARTIFACT_RETENTION_DEFAULT = 1  # successful builds kept per item
 RUNNER = str(db.REPO_ROOT / "src" / "build" / "build-item.sh")
 FAIL_CODES = ("upstream_missing", "apk_not_listed", "download_failed",
               "merge_failed", "patch_failed", "patch_items_failed", "timeout", "internal")
-SOLVER_ENV = ("FLARESOLVERR_URL", "CFBYPASS_URL", "APKM_SOLVER_URL")  # passed to the isolated runner
 APKEEP = "apkeep"
 APKEEP_TIMEOUT = 1800  # one Google Play login + download per distinct googleplay spec
 APKEEP_DEVICE = {"arm64-v8a": "px_9a", "armeabi-v7a": "sm_a13_5g", "x86_64": "google_kiwi_x86_64"}  # single-ABI profiles
@@ -199,11 +198,9 @@ def _googleplay(job, item_id, inp, work, log):
             for device in dict.fromkeys(devices):
                 play = playversion.PlayClient(apkeep=APKEEP, ini=ini, device=device, log=log)
                 try:
-                    codes[device] = playversion.resolve(inp["package"], want, log, play)
+                    codes[device] = playversion.resolve(inp["package"], want, log, play)  # resolve closes play
                 except playversion.VersionCodeError as e:
                     _fail(job, item_id, "download_failed", str(e))
-                finally:
-                    play.close()
                 log.line(f"[*] Google Play versionCode {codes[device]} for {inp['package']} {want} (device={device})")
         for n, (d, device) in enumerate(zip(specs, devices)):
             vc = codes.get(device)
@@ -297,7 +294,7 @@ def handler(job, log):
                 (awork / "options.json").write_text(json.dumps(inp["options_file_json"]))
             m = _Markers(job.id, inp["package"])
             try:
-                rc = jobs.run_isolated(log, ["bash", RUNNER, rp(awork / "job.json")], rp(awork), env_keys=SOLVER_ENV,
+                rc = jobs.run_isolated(log, ["bash", RUNNER, rp(awork / "job.json")], rp(awork), env_keys=jobs.SOLVER_ENV,
                                        env={"RELUME_APK_CACHE": rp(db.DATA / "apk-cache")}, timeout=3600, on_line=m.feed)
             except jobs.JobTimeout:
                 _fail(job, item_id, "timeout", "runner exceeded 3600 s")
