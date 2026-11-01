@@ -24,13 +24,6 @@ yellow_log() {
 	echo -e "\e[33m$1\e[0m"
 }
 
-# Latest Firefox Android user agent; offline -> keep the fixed one.
-init_ua() {
-	local ua
-	ua=$(wget -qO- --timeout=10 --tries=1 https://www.whatismybrowser.com/guides/the-latest-user-agent/firefox | tr '\n' ' ' | sed 's#</tr>#\n#g' | grep 'Firefox (Standard)' | sed -n 's/.*<span class="code">\([^<]*Android[^<]*\)<\/span>.*/\1/p')
-	if [[ -n "$ua" ]]; then user_agent=$ua; else yellow_log "[!] Using fixed user agent"; fi
-}
-
 #################################################
 
 req() {

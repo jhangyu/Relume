@@ -36,9 +36,6 @@ d=$(mktemp -d)
 (cd "$d" && source "$REPO/src/build/utils.sh")
 if [ -z "$(ls -A "$d")" ]; then pass utils_source_no_side_effects; else fail utils_source_no_side_effects "$(ls -A "$d")"; fi
 
-out=$(cd "$T/work" && source "$REPO/src/build/utils.sh" && init_ua && echo "UA=$user_agent")
-if grep -q '\[!\] Using fixed user agent' <<<"$out" && grep -q 'UA=Mozilla/5.0' <<<"$out"; then pass init_ua_offline; else fail init_ua_offline "$out"; fi
-
 out=$(source "$REPO/src/build/utils.sh" && apk_info "$SHIM_SERVE/input.apk")
 if grep -qE '^package=[A-Za-z][A-Za-z0-9_.]+$' <<<"$out" && grep -qE '^version_code=[0-9]+$' <<<"$out" && grep -qE '^version_name=.+' <<<"$out"; then pass apk_info_capture; else fail apk_info_capture "$out"; fi
 

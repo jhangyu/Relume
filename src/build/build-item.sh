@@ -47,7 +47,6 @@ n_var=${#variants[@]}
 
 cd "$work" || fail internal "cannot enter $work"
 mkdir -p download release
-init_ua
 
 ln -sf "$cli_jar" . || fail internal "cannot link $cli_jar"
 for f in "${patches_files[@]}"; do ln -sf "$f" . || fail internal "cannot link $f"; done
