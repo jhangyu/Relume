@@ -15,6 +15,7 @@
   "apkpure_url": null,
   "googleplay": [],
   "apkmirror_picks": [],
+  "apk_cache": [],
   "keystore": {"file": "morphe.keystore", "password": null, "alias": null, "alias_password": null},
   "recipe": {"variants": [
     {"name": "universal", "abi": "universal",

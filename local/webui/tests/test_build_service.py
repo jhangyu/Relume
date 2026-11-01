@@ -215,7 +215,7 @@ class HandlerFailTest(BuildCase):
         with mock.patch.dict(os.environ, {"GITHUB_TOKEN": "secret", "FLARESOLVERR_URL": "http://127.0.0.1:47191"}):
             job, log, err = self.run_handler("runner-env.sh")
         keys = set(next(l for l in log.lines if l.startswith("ENVKEYS ")).split()[1:])
-        allowed = {"PATH", "HOME", "TZ", "LANG", "FLARESOLVERR_URL", "CFBYPASS_URL", "APKM_SOLVER_URL", "RELUME_APK_CACHE",
+        allowed = {"PATH", "HOME", "TZ", "LANG", "FLARESOLVERR_URL", "CFBYPASS_URL", "APKM_SOLVER_URL",
                    "PWD", "SHLVL", "_", "OLDPWD"}  # the last four are set by bash itself
         self.assertLessEqual(keys, allowed)
         self.assertNotIn("GITHUB_TOKEN", keys)
@@ -393,7 +393,7 @@ class IsolationTest(BuildCase):
         secret.chmod(0o600)
         script = self.data / "runner-id.sh"
         script.write_text(f'echo "UID $(id -u)"; echo "HOME $HOME"; echo "WORK $(jq -r .work_dir "$1")"\n'
-                          f'echo "CLI $(jq -r .cli_jar "$1")"; echo "CACHE $RELUME_APK_CACHE"; grep CapEff /proc/self/status\n'
+                          f'echo "CLI $(jq -r .cli_jar "$1")"; echo "CACHE $(jq -r ".apk_cache[0].file" "$1")"; grep CapEff /proc/self/status\n'
                           f'cat {secret} 2>/dev/null && echo LEAK || echo DENIED; touch out && echo WROTE\n')
         build.RUNNER = str(script)
         with mock.patch.dict(os.environ, {"RELUME_RUNNER_UID": "10001", "RELUME_RUNNER_DATA": str(view)}):
@@ -401,7 +401,7 @@ class IsolationTest(BuildCase):
         work = f"{view}/work/{job.id}/1"
         self.assertEqual(log.argv[:2], ["setpriv", "--reuid=10001"])
         for want in ("UID 10001", f"HOME {work}", f"WORK {work}", f"CLI {view}/up/morphe-desktop-1.0.0-all.jar",
-                     f"CACHE {view}/apk-cache", "CapEff:\t0000000000000000", "DENIED", "WROTE"):
+                     f"CACHE {view}/apk-cache/{YT}/1.0.0-apk-any-any.apk","CapEff:\t0000000000000000", "DENIED", "WROTE"):
             self.assertIn(want, log.lines)
         self.assertFalse((self.data / "work" / str(job.id)).exists())
 
@@ -476,6 +476,26 @@ class PatchVerdictTest(unittest.TestCase):
         for bad in ({"appliedPatches": 3, "failedPatches": []}, {"failedPatches": []}, {"appliedPatches": [], "failedPatches": [{"name": "A"}]},
                     {"appliedPatches": [], "failedPatches": [{"name": 1, "error": "e"}]}, []):
             self.assertIsNone(build._result_shape(bad), bad)
+
+
+class CacheRuleTest(unittest.TestCase):
+    """APK cache (pipe-08): the server names the cache file per download spec and decides when the cache applies."""
+
+    def test_apk_cache_entries(self):
+        url = {"kind": "url", "type": "apk", "arch": None, "dpi": None, "minver": None, "url": "u"}
+        apkm = {"kind": "apkmirror", "type": "bundle_extract", "arch": "arm64-v8a", "dpi": "nodpi", "minver": None, "url": None}
+        coded = dict(apkm, version_codes=[7])
+        gp = dict(url, kind="googleplay", url=None)
+
+        def entries(downloads, value="1.0+beta", near=False, pick=None):
+            inp = {"package": YT, "version": {"value": value, "near": near},
+                   "recipe": {"variants": [{"name": f"v{i}", "abi": "universal", "download": d} for i, d in enumerate(downloads)]}}
+            return build._apk_cache(inp, [{"download": apkm, "abis": "", "exclude": [], "pick": pick}])
+
+        bundle = f"{YT}/1.0_beta-bundle_extract-arm64-v8a-nodpi.apkm"
+        self.assertEqual(entries([url, url, gp, apkm, coded]), [(url, f"{YT}/1.0_beta-apk-any-any.apk"), (coded, bundle)])
+        self.assertEqual(entries([apkm], pick={"version_code": 7}), [(apkm, bundle)])   # remembered variant: known code
+        self.assertEqual((entries([url], value=None), entries([url], near=True)), ([], []))
 
 
 class GuardHandlerTest(BuildCase):
@@ -794,6 +814,24 @@ class CleanupTest(BuildCase):
         out = build.cleanup(apply=True)
         self.assertEqual((out["orphan_dirs"], out["bytes"]), (2, 10))
         self.assertEqual([d.exists() for d in keep + gone], [True, True, False, False])
+
+    def test_cleanup_keeps_recorded_cache_files(self):
+        cache = self.data / "apk-cache"
+        old = cache / YT / "0.8.0-apk-any-any.apk"
+        old.parent.mkdir(parents=True, exist_ok=True)
+        old.write_bytes(b"x")
+        job, _, err = self.run_handler()   # fixture: a url download of version 1.0.0, so one cache name applies
+        self.assertIsNone(err)
+        name = f"{YT}/1.0.0-apk-any-any.apk"
+        self.assertEqual(json.loads(self.bj(job)["apk_cache"]), [name])
+        self.assertFalse(old.exists())   # a success prunes the app's cache dir to the files it recorded
+        with db.tx() as c:
+            c.execute("UPDATE jobs SET status = 'success' WHERE id = ?", (job.id,))
+        for n in (name, f"{YT}/0.9.0-apk-any-any.apk", "com.gone/1.0.0-apk-any-any.apk"):
+            (cache / n).parent.mkdir(parents=True, exist_ok=True)
+            (cache / n).write_bytes(b"x")
+        _, paths, _ = build._cleanup_plan()
+        self.assertEqual(paths, [cache / "com.gone", cache / YT / "0.9.0-apk-any-any.apk"])
 
 
 if __name__ == "__main__":

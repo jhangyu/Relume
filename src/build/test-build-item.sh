@@ -13,7 +13,7 @@ fail() { echo "FAIL $1: $2"; fails=$((fails + 1)); }
 new_env() {
 	T=$(mktemp -d)
 	export SHIM_LOG=$T/shim.log SHIM_SERVE=$T/serve SHIM_FIXTURES=$FIX
-	export PATH="$FIX/bin:$PATH" RELUME_APKEDITOR=$T/APKEditor.jar RELUME_APK_CACHE=$T/cache
+	export PATH="$FIX/bin:$PATH" RELUME_APKEDITOR=$T/APKEditor.jar
 	unset SHIM_PATCH_FAIL SHIM_EMPTY
 	mkdir -p "$SHIM_SERVE" "$T/work" "$T/up" "$T/cache" "$T/m"
 	printf '<manifest/>' > "$T/m/AndroidManifest.xml"
@@ -29,6 +29,9 @@ make_job() {
 	sed -e "s#@WORK@#$T/work#g" -e "s#@UP@#$T/up#g" "$FIX/job.json" | jq "$1" > "$T/job.json"
 	printf '[{"patches":{}}]' > "$T/work/options.json"
 }
+
+# cache_f: jq filter giving the job the server's cache entry for its (single) download spec
+cache_f() { echo ".apk_cache=[{download: .recipe.variants[0].download, file: \"$T/cache/$YT/1.0.0-apk-any-any.apk\"}]"; }
 
 # ---- utils.sh cases ----
 new_env
@@ -91,7 +94,7 @@ if [ "$rc" = 0 ] && [ "$(jq '.variants|length' "$r")" = 2 ] &&
 	jq -e '.variants[0].package|length>0' "$r" >/dev/null && jq -e '.variants[0].version_code|type=="number"' "$r" >/dev/null &&
 	jq -re '.variants[0].signer_sha256' "$r" | grep -qE '^[0-9a-f]{64}$' &&
 	grep -q '^::step::patch::2/2$' "$T/out.txt" && grep -q '^::version::1.0.0$' "$T/out.txt" &&
-	[ "$(grep -c -- '--striplibs arm64-v8a' "$SHIM_LOG")" = 1 ]; then
+	[ -z "$(ls -A "$T/cache")" ] && [ "$(grep -c -- '--striplibs arm64-v8a' "$SHIM_LOG")" = 1 ]; then
 	pass runner_ok
 else fail runner_ok "rc=$rc $(tail -5 "$T/out.txt")"; fi
 
@@ -183,29 +186,29 @@ if [ "$rc" != 0 ] && grep -q '^::fail::internal::bad engine_options$' "$T/out.tx
 	pass xposed_bad_sigbypass
 else fail xposed_bad_sigbypass "rc=$rc"; fi
 
-new_env; make_job '.'
+new_env; make_job "$(cache_f)"
 rc1=$(run_runner)
-rm -rf "${T:?}/work" && mkdir -p "$T/work" && make_job '.' && rm "$SHIM_SERVE/input.apk"
+rm -rf "${T:?}/work" && mkdir -p "$T/work" && make_job "$(cache_f)" && rm "$SHIM_SERVE/input.apk"
 rc2=$(run_runner)
 if [ "$rc1" = 0 ] && [ "$rc2" = 0 ] && grep -q 'Input from cache' "$T/out.txt"; then pass runner_cache_hit; else fail runner_cache_hit "rc1=$rc1 rc2=$rc2"; fi
 
 # APKMirror cache (no versionCode in its key): served only for an expected code, checked against the file (shim 1561173354)
 AM='.recipe.variants[].download.kind="apkmirror" | .recipe.variants[].download.url=null'
 am_cache() { mkdir -p "$T/cache/$YT"; cp "$SHIM_SERVE/input.apk" "$T/cache/$YT/1.0.0-apk-any-any.apk"; }
-new_env; am_cache; make_job "$AM | .recipe.variants[].download.version_codes=[1561173354]"
+new_env; am_cache; make_job "$AM | .recipe.variants[].download.version_codes=[1561173354] | $(cache_f)"
 rc=$(run_runner)
 if [ "$rc" = 0 ] && grep -q 'Input from cache' "$T/out.txt" && ! grep -q '^::apkm_variant::' "$T/out.txt"; then
 	pass apkm_manual_code_cache_hit
 else fail apkm_manual_code_cache_hit "rc=$rc $(tail -3 "$T/out.txt")"; fi
 
-new_env; am_cache; make_job "$AM | .recipe.variants[].download.version_codes=[7]"
+new_env; am_cache; make_job "$AM | .recipe.variants[].download.version_codes=[7] | $(cache_f)"
 rc=$(run_runner)
 if [ "$rc" != 0 ] && [ ! -e "$T/cache/$YT/1.0.0-apk-any-any.apk" ] &&
 	grep -qF '[!] Cached input is another APKMirror variant, downloading: APKMirror download does not match the request: expected versionName any versionCode 7, downloaded versionName 21.20.405 versionCode 1561173354' "$T/out.txt"; then
 	pass apkm_manual_code_cache_mismatch
 else fail apkm_manual_code_cache_mismatch "rc=$rc $(tail -3 "$T/out.txt")"; fi
 
-new_env; am_cache; make_job "$AM | .apkmirror_picks=[{download:.recipe.variants[0].download, version_code:1561173354, variant_url:\"https://www.apkmirror.com/v/\", bundle:false, exclude_codes:[]}]"
+new_env; am_cache; make_job "$AM | .apkmirror_picks=[{download:.recipe.variants[0].download, version_code:1561173354, variant_url:\"https://www.apkmirror.com/v/\", bundle:false, exclude_codes:[]}] | $(cache_f)"
 rc=$(run_runner)
 if [ "$rc" = 0 ] && [ "$(grep -c '^::apkm_variant::' "$T/out.txt")" = 1 ] &&
 	grep '^::apkm_variant::' "$T/out.txt" | cut -c17- | jq -e '.version_code == 1561173354 and .version_name == "21.20.405" and
@@ -213,9 +216,6 @@ if [ "$rc" = 0 ] && [ "$(grep -c '^::apkm_variant::' "$T/out.txt")" = 1 ] &&
 	pass apkm_remembered_cache_hit_marker
 else fail apkm_remembered_cache_hit_marker "rc=$rc $(grep '^::' "$T/out.txt" | tail -3)"; fi
 
-new_env; am_cache; make_job "$AM"
-rc=$(run_runner)
-if [ "$rc" != 0 ] && ! grep -q 'Input from cache' "$T/out.txt"; then pass apkm_automatic_skips_cache; else fail apkm_automatic_skips_cache "rc=$rc"; fi
 # ---- inspect cases (Task P3.4) ----
 new_env
 o=$T/inspect

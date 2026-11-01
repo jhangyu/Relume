@@ -129,7 +129,7 @@ class VersionTest(AppsCase):
 
     def test_job_json_has_version_value_not_mode(self):
         j = apps.job_input(1)
-        self.assertEqual(set(j), set(JOB_FIXTURE) - {"job_id", "work_dir", "googleplay", "apkmirror_picks"})  # added by build.handler
+        self.assertEqual(set(j), set(JOB_FIXTURE) - {"job_id", "work_dir", "googleplay", "apkmirror_picks", "apk_cache"})  # added by build.handler
         self.assertEqual(set(j["version"]), {"value", "near"})
         self.assertEqual(set(j["apkmirror"]), set(JOB_FIXTURE["apkmirror"]))
         self.assertEqual(j["options_file_json"], [{"patches": {"Hide ads": {"enabled": False}}}])

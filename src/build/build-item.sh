@@ -3,6 +3,7 @@
 # Usage: bash src/build/build-item.sh <job.json>
 # stdout markers: ::step::<name>[::i/n]  ::version::<v>  ::apkm_versions::<csv>  ::apkm_variant::<json>
 #   ::fail::<code>::<detail>
+# job.json apk_cache: [{download, file}] = the server's cache file per download spec (used as is, never named here)
 # shellcheck disable=SC2034  # globals are read by utils.sh
 set -o pipefail
 RELUME_REPO=$(cd "$(dirname "$0")/../.." && pwd)
@@ -94,17 +95,11 @@ fetch_input() {
 	local want_codes=${codes:-$pick_code}
 	local -a want
 	want=(); while IFS= read -r x; do want+=("$x"); done < <(jq -r --argjson d "$d" '[.recipe.variants[] | select(.download == $d and .abi != "universal") | .abi] | unique[]' "$job")
-	local label="$package $version (download $kind type=$type arch=${arch:-any})" got
-	local spec_key cache_dir="${RELUME_APK_CACHE:-}/$package" use_cache=0
-	spec_key=$(printf -- '-%s-%s-%s' "$type" "${arch:-any}" "${dpi:-any}" | tr -c 'A-Za-z0-9._-' '_')
-	local vkey cache_file
-	vkey=$(printf '%s' "$version" | tr -c 'A-Za-z0-9._-' '_')
-	cache_file="$cache_dir/$vkey$spec_key.$ext"
-	# googleplay: the server already downloaded the file, nothing to cache. apkmirror: the key has no versionCode, so
-	# the cache serves only an expected versionCode (manual or remembered) and the cached file's code is checked.
-	[[ -n "${RELUME_APK_CACHE:-}" && -n "$version" && $allow_near -eq 0 && $kind != googleplay ]] &&
-		[[ $kind != apkmirror || -n $want_codes ]] && use_cache=1
-	if [[ $use_cache -eq 1 && -s "$cache_file" ]]; then
+	local label="$package $version (download $kind type=$type arch=${arch:-any})" got cache_file
+	# the server names this spec's cache file when the cache applies (webui/build.py _apk_cache); an APKMirror file is
+	# listed only with an expected versionCode, which is checked against the cached file below
+	cache_file=$(jq -r --argjson d "$d" 'first(.apk_cache[]? | select(.download == $d) | .file) // empty' "$job")
+	if [[ -n $cache_file && -s "$cache_file" ]]; then
 		green_log "[+] Input from cache: $(basename "$cache_file")"
 		cp "$cache_file" "download/$name.$ext" || fail internal "cannot copy from cache"
 		[[ $ext == apkm ]] && unzip -q "download/$name.apkm" -d "download/$name"
@@ -156,8 +151,8 @@ fetch_input() {
 		[[ -z $codes ]] && apkm_marker "$d" "$APKM_VARIANT_URL" "$APKM_BUNDLE" "$APKM_REMAINING"
 		match_version APKMirror "" "$want_codes" || fail download_failed "$LAST_ERR"
 	fi
-	if [[ $use_cache -eq 1 && -s "download/$name.$ext" ]]; then
-		mkdir -p "$cache_dir" && rm -f "$cache_dir"/*"$spec_key".* && cp "download/$name.$ext" "$cache_file"
+	if [[ -n $cache_file && -s "download/$name.$ext" ]]; then
+		mkdir -p "$(dirname "$cache_file")" && cp "download/$name.$ext" "$cache_file"
 	fi
 	return 0
 }

@@ -159,7 +159,7 @@ def artifact_name(package, variant, app_version, upstream_tag):
     return f"{package}-{variant}-{server.safe_remote(app_version)}-{server.safe_remote(upstream_tag)}.apk"
 
 
-def _register(job, item_id, inp, work, result, failed_patches, sha):
+def _register(job, item_id, inp, work, result, failed_patches, sha, cache_names):
     dest = db.DATA / "artifacts" / str(item_id) / str(job.id)
     dest.mkdir(parents=True, exist_ok=True)
     now, ids = db.utcnow(), []
@@ -174,8 +174,12 @@ def _register(job, item_id, inp, work, result, failed_patches, sha):
                                  (job.id, item_id, v["name"], v["abi"], v.get("package"), v.get("version_name"),
                                   v.get("version_code"), inp["upstream_tag"], v.get("signer_sha256"), str(target),
                                   target.stat().st_size, v.get("sha256"), now)).lastrowid)
-        c.execute("UPDATE build_jobs SET app_version = ?, patches_version = ?, cli_version = ?, failed_patches = ?, inputs_sha = ? WHERE job_id = ?",
-                  (result["app_version"], inp["upstream_tag"], inp["cli_tag"], json.dumps(failed_patches) if failed_patches else None, sha, job.id))
+        c.execute("UPDATE build_jobs SET app_version = ?, patches_version = ?, cli_version = ?, failed_patches = ?, "
+                  "inputs_sha = ?, apk_cache = ? WHERE job_id = ?",
+                  (result["app_version"], inp["upstream_tag"], inp["cli_tag"], json.dumps(failed_patches) if failed_patches else None,
+                   sha, json.dumps(cache_names), job.id))
+    for p in _stale_cache(inp["package"], set(cache_names)):   # the runner no longer deletes older cached versions
+        _remove(p)
     run_retention(item_id)
     events.emit("build.succeeded", {"item_id": item_id, "job_id": job.id, "app_version": result["app_version"],
                                     "patches_version": inp["upstream_tag"], "artifacts": ids})
@@ -267,6 +271,53 @@ def _apkm_auto(inp):
     return out
 
 
+_CACHE_UNSAFE = re.compile(r"[^A-Za-z0-9._-]")   # replaced by "_" in a cache name part
+
+
+def _cache_key(s):
+    return _CACHE_UNSAFE.sub("_", s)
+
+
+def cache_name(package, version, download):
+    """The one APK cache naming rule (pipe-08): name under DATA/apk-cache of the input of one download spec. Same format
+    the runner used before, so files cached then still hit: <package>/<version>-<type>-<arch|any>-<dpi|any>.<apk|apkm>."""
+    kind = download.get("type") or "apk"
+    ext = "apkm" if kind == "bundle_extract" else "apk"
+    return (f"{package}/{_cache_key(version)}-{_cache_key(kind)}-{_cache_key(download.get('arch') or 'any')}"
+            f"-{_cache_key(download.get('dpi') or 'any')}.{ext}")
+
+
+def _apk_cache(inp, auto):
+    """[(download spec, cache name)] of the specs whose input the cache may serve and store: a concrete version without
+    nearest-version fallback, not Google Play (the server downloads it), and for APKMirror only with an expected
+    versionCode (manual list or remembered variant), because the name has no versionCode; the runner checks the code."""
+    want = inp["version"]["value"]
+    if want is None or inp["version"]["near"]:
+        return []
+    out = []
+    for v in inp["recipe"]["variants"]:
+        d = v["download"]
+        if d["kind"] == "googleplay" or any(d == x for x, _ in out):
+            continue
+        if d["kind"] == "apkmirror" and not d.get("version_codes") and not any(a["download"] == d and a["pick"] for a in auto):
+            continue
+        out.append((d, cache_name(inp["package"], want, d)))
+    return out
+
+
+def _stale_cache(package, keep):
+    """Entries of DATA/apk-cache/<package>/ whose cache name is not in keep."""
+    d = db.DATA / "apk-cache" / package
+    return [f for f in sorted(d.iterdir()) if f"{package}/{f.name}" not in keep] if d.is_dir() else []
+
+
+def _remove(p):
+    if p.is_dir():
+        shutil.rmtree(p, ignore_errors=True)
+    else:
+        p.unlink(missing_ok=True)
+
+
 class _Rejected(NamedTuple):
     """An attempt that produced no publishable build. variant: the variant was refused (the patcher refused it or
     applied nothing), the next one may fit; else the runner failed for another reason (code, detail)."""
@@ -276,13 +327,15 @@ class _Rejected(NamedTuple):
     used: list     # [(auto entry, ::apkm_variant:: marker)] of this attempt
 
 
-def _write_job_json(awork, job, inp, googleplay, auto):
-    """job.json (+ options.json) of one attempt; paths as the isolated runner sees them."""
+def _write_job_json(awork, job, inp, googleplay, auto, cache):
+    """job.json (+ options.json) of one attempt; paths as the isolated runner sees them. cache = _apk_cache entries."""
     rp = jobs.runner_path
     picks = [{"download": a["download"], "exclude_codes": a["exclude"], **(a["pick"] or {})} for a in auto]
     (awork / "job.json").write_text(json.dumps(dict(inp, job_id=job.id, work_dir=rp(awork), cli_jar=rp(inp["cli_jar"]),
                                                     patches_files=[rp(f) for f in inp["patches_files"]],
-                                                    googleplay=googleplay, apkmirror_picks=picks), indent=2))
+                                                    googleplay=googleplay, apkmirror_picks=picks,
+                                                    apk_cache=[{"download": d, "file": rp(db.DATA / "apk-cache" / n)}
+                                                               for d, n in cache]), indent=2))
     if inp["options_file_json"] is not None:
         (awork / "options.json").write_text(json.dumps(inp["options_file_json"]))
 
@@ -307,12 +360,12 @@ def _attempt(job, item_id, inp, awork, googleplay, auto, sha, log):
     """One isolated runner run in awork (design variant §1). None when the build was published or cancelled, else
     _Rejected. Timeout, guard rules R0/R2 and a rejected artifact end the job here through _fail."""
     want = inp["version"]["value"]
-    _write_job_json(awork, job, inp, googleplay, auto)
+    cache = _apk_cache(inp, auto)
+    _write_job_json(awork, job, inp, googleplay, auto, cache)
     m = _Markers(job.id, inp["package"])
     try:
         rc = jobs.run_isolated(log, ["bash", RUNNER, jobs.runner_path(awork / "job.json")], jobs.runner_path(awork),
-                               env_keys=jobs.SOLVER_ENV, env={"RELUME_APK_CACHE": jobs.runner_path(db.DATA / "apk-cache")},
-                               timeout=RUNNER_TIMEOUT, on_line=m.feed)
+                               env_keys=jobs.SOLVER_ENV, timeout=RUNNER_TIMEOUT, on_line=m.feed)
     except jobs.JobTimeout:
         _fail(job, item_id, "timeout", f"runner exceeded {RUNNER_TIMEOUT} s")
     if job.cancel_event.is_set():
@@ -342,7 +395,7 @@ def _attempt(job, item_id, inp, awork, googleplay, auto, sha, log):
         for a, u in used:
             _apkm_remember(inp["package"], u["version_name"], a["abis"], u["version_code"], u["variant_url"], u["bundle"])
         try:
-            _register(job, item_id, inp, awork, result, failed, sha)
+            _register(job, item_id, inp, awork, result, failed, sha, [n for _, n in cache])
         except OSError as e:
             shutil.rmtree(db.DATA / "artifacts" / str(item_id) / str(job.id), ignore_errors=True)
             _fail(job, item_id, "internal", f"artifact rejected: {e}")
@@ -488,7 +541,7 @@ def _orphan_dirs(c, name, table):
 
 def _cleanup_plan():
     """What clean-up removes (spec cleanup, apps part §6): artifacts of disabled apps, apk-cache of packages no
-    enabled app uses, cache files of other versions than the newest success build of an enabled app, artifacts/<id>
+    enabled app uses, cache files the newest success build of an enabled app did not record, artifacts/<id>
     dirs without an item row and upstream/<id> dirs without an upstream row. Active-job items are skipped."""
     c = db.conn()
     items = c.execute("SELECT id, package, enabled FROM item").fetchall()
@@ -496,22 +549,17 @@ def _cleanup_plan():
     busy = {r["package"] for r in items if status[r["id"]]["active_job"]}
     off = [r["id"] for r in items if not r["enabled"] and not status[r["id"]]["active_job"]
            and (db.DATA / "artifacts" / str(r["id"])).exists()]
-    keep = {}  # package -> cache version keys of Build-on items
+    keep = {}  # package -> cache names recorded by the newest success build of a Build-on item
     for r in items:
         if r["enabled"]:
             ls = status[r["id"]]["last_success"]
-            keep.setdefault(r["package"], set())
-            if ls and ls["app_version"]:
-                keep[r["package"]].add(re.sub(r"[^A-Za-z0-9._-]", "_", ls["app_version"]))
+            keep[r["package"]] = set(ls["apk_cache"]) if ls else set()
     paths = []
     cache = db.DATA / "apk-cache"
     for d in sorted(cache.iterdir()) if cache.is_dir() else []:
         if d.name in busy or not d.is_dir():
             continue
-        if d.name not in keep:
-            paths.append(d)
-        else:  # file name = <vkey>-<type>-<arch>-<dpi>.<ext>; a version that is a hyphen-prefix of another is kept (safe side)
-            paths += [f for f in sorted(d.iterdir()) if not any(f.name.startswith(k + "-") for k in keep[d.name])]
+        paths += [d] if d.name not in keep else _stale_cache(d.name, keep[d.name])
     return off, paths, _orphan_dirs(c, "artifacts", "item") + _orphan_dirs(c, "upstream", "upstream")
 
 
@@ -524,7 +572,7 @@ def cleanup(apply):
         with db.tx() as t:
             t.executemany("DELETE FROM artifacts WHERE item_id = ?", [(i,) for i in off])
         for p in dirs + paths + orphans:
-            shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
+            _remove(p)
     return out
 
 
@@ -547,7 +595,7 @@ def latest_artifact(item_id, abi):
 
 
 STATUS_SQL = """SELECT j.id, j.status, j.reason, j.finished_at, json_extract(j.target, '$.item_id') AS item_id,
-  b.fail_code, b.app_version, b.patches_version, b.cli_version, b.inputs_sha
+  b.fail_code, b.app_version, b.patches_version, b.cli_version, b.inputs_sha, b.apk_cache
   FROM jobs j LEFT JOIN build_jobs b ON b.job_id = j.id
   WHERE j.kind = 'build' AND json_extract(j.target, '$.item_id') IN ({q})"""
 
@@ -567,7 +615,8 @@ def item_status(item_ids):
         if r["status"] == "success":
             o["last_success"] = {"job_id": r["id"], "app_version": r["app_version"], "patches_version": r["patches_version"],
                                  "cli_version": r["cli_version"], "finished_at": r["finished_at"],
-                                 "inputs_sha": r["inputs_sha"], "variants": []}
+                                 "inputs_sha": r["inputs_sha"], "apk_cache": json.loads(r["apk_cache"] or "[]"),
+                                 "variants": []}
     ls = {o["last_success"]["job_id"]: o["last_success"] for o in out.values() if o["last_success"]}
     if ls:
         for r in c.execute(f"SELECT DISTINCT job_id, variant FROM artifacts WHERE job_id IN ({','.join('?' * len(ls))}) "
