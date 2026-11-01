@@ -338,15 +338,13 @@ def _fetch_feed(feed, url, parse, log):
     headers = {"User-Agent": "Relume"}   # public data: no GitHub token
     if row and row["etag"] and path.is_file():
         headers["If-None-Match"] = row["etag"]
-    st, hdr, body, _ = upstream.http_get(url, headers, timeout=FEED_TIMEOUT, max_bytes=FEED_MAX_BYTES)
+    st, hdr, body = upstream.get_ok(url, headers, FEED_TIMEOUT, FEED_MAX_BYTES, accept=(200, 304))
     now = db.utcnow()
     if st == 304:
         with db.tx() as c:
             c.execute("UPDATE catalog_feed SET last_attempt_at = ? WHERE feed = ?", (now, feed))
         log.line(f"[+] catalog {feed}: not modified")
         return False
-    if st != 200:
-        raise ValueError(f"{url}: expected HTTP 200 or 304, got {st}")
     cat = parse(body)
     part = path.with_name(path.name + ".part")
     part.write_bytes(body)
@@ -435,11 +433,9 @@ def _apply(log):
 def _get_list(repo, tag):
     """Raw patches-list.json of a release tag."""
     url = LIST_URL.format(repo, tag)
-    st, _, body, _ = upstream.http_get(url, {"User-Agent": "Relume"}, timeout=FEED_TIMEOUT, max_bytes=FEED_MAX_BYTES)
+    st, _, body = upstream.get_ok(url, {"User-Agent": "Relume"}, FEED_TIMEOUT, FEED_MAX_BYTES, accept=(200, 404))
     if st == 404:
         raise CatalogInvalid(f"{repo} has no patches-list.json at {tag}")
-    if st != 200:
-        raise ValueError(f"{url}: expected HTTP 200, got {st}")
     return body
 
 

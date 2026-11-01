@@ -15,8 +15,8 @@ ABI_TOKENS = ("arm64-v8a", "armeabi-v7a", "x86_64", "aarch64", "armeabi", "arm64
 APKSIGNER = ["apksigner"]
 APKEDITOR = ["java", "-jar", os.environ.get("RELUME_APKEDITOR", "/opt/APKEditor.jar")]
 _ABI_SPLIT = re.compile("(" + "|".join(map(re.escape, ABI_TOKENS)) + ")")
-_NUM = re.compile(r"\d+(?:\.\d+)*")
 _NUM_PATTERN = r"\d+(?:\.\d+)*"
+_NUM = re.compile(_NUM_PATTERN)
 _SIGNER = re.compile(r"^Signer #1 certificate SHA-256 digest: ([0-9a-fA-F]+)$")
 _APK_ICON = re.compile(r"\bres/[^\s\"]+\.(?:png|webp|jpg)\b")  # raster configs of APKEditor info -app-icon -v
 

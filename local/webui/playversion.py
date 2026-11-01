@@ -280,18 +280,11 @@ class _Report(html.parser.HTMLParser):
             self.docs[-1] += data
 
 
-def _get(url, headers, max_bytes):
-    status, _, body, _ = upstream.http_get(url, headers, timeout=FETCH_TIMEOUT, max_bytes=max_bytes)
-    if status != 200:
-        raise VersionCodeError(f"{url}: expected status 200, got {status}")
-    return body
-
-
 def exodus_code(package, version_name):
     """(code or None, outcome text). Exodus Privacy reports list the versionCode of scanned Play versions."""
     url = EXODUS_SEARCH.format(package)
     for _ in range(MAX_SEARCH_PAGES):
-        page = _get(url, {}, MAX_HTML_BYTES).decode(errors="replace")
+        page = upstream.get_ok(url, {}, FETCH_TIMEOUT, MAX_HTML_BYTES)[2].decode(errors="replace")
         if not re.search(rf"<title>Reports list for {re.escape(package)} - ", page):
             return None, "search page not recognised"
         p = _Search()
@@ -299,7 +292,8 @@ def exodus_code(package, version_name):
         for name, source, href in p.rows:
             if name == version_name and source == "google":
                 doc = _Report()
-                doc.feed(_get(urllib.parse.urljoin(url, href), {}, MAX_HTML_BYTES).decode(errors="replace"))
+                doc.feed(upstream.get_ok(urllib.parse.urljoin(url, href), {}, FETCH_TIMEOUT,
+                                         MAX_HTML_BYTES)[2].decode(errors="replace"))
                 for text in doc.docs:
                     try:
                         d = json.loads(text)
@@ -376,7 +370,8 @@ def apkpure_codes(body, package, version_name):
 
 
 def apkpure_code(package, version_name):
-    codes = apkpure_codes(_get(APKPURE_API.format(package), APKPURE_HEADERS, MAX_API_BYTES), package, version_name)
+    codes = apkpure_codes(upstream.get_ok(APKPURE_API.format(package), APKPURE_HEADERS, FETCH_TIMEOUT,
+                                          MAX_API_BYTES)[2], package, version_name)
     if not codes:
         return None, f"{version_name} not listed"
     if len(codes) > 1:

@@ -10,7 +10,7 @@ import time
 import urllib.parse
 from dataclasses import dataclass
 
-from . import db, jobs
+from . import catalog, db, jobs
 from .server import HttpError
 
 MIN_INTERVAL = 10              # s between two APKMirror lookup requests (global)
@@ -24,7 +24,6 @@ PAGE_FILE = "page.html"
 BASE = "https://www.apkmirror.com"
 HOSTS = ("www.apkmirror.com", "apkmirror.com")
 URL_FIELDS = ("apkmirror_list_url", "apkmirror_example_url", "apkmirror_example_url2", "apkpure_url")
-URL_RE = re.compile(r"^https://[^\s\"'<>]+$")
 SLUG_RE = re.compile(r"^[A-Za-z0-9%_-]+$")
 APP_PATH = re.compile(r"^/apk/([A-Za-z0-9%_-]+)/([A-Za-z0-9%_-]+)/$")
 CHALLENGE = re.compile(r"<title>\s*Just a moment|cf-chl|challenge-platform", re.I)
@@ -248,7 +247,7 @@ def locate(package, log, cancel_event):
 def validate_list_url(url):
     """Normalised https://www.apkmirror.com/uploads/?appcategory=<slug>, or HttpError 400 naming both forms."""
     bad = HttpError(400, f"download.apkmirror_list_url expected {LIST_URL_FORMS}, got {url!r}")
-    if not isinstance(url, str) or not URL_RE.match(url):
+    if not isinstance(url, str) or not catalog.URL_RE.match(url):
         raise bad
     u = urllib.parse.urlsplit(url)
     if u.hostname not in HOSTS or u.fragment:
@@ -269,7 +268,7 @@ def _url_value(package, field, v):
     try:
         if field == "apkmirror_list_url":
             return validate_list_url(v)
-        if isinstance(v, str) and URL_RE.match(v):
+        if isinstance(v, str) and catalog.URL_RE.match(v):
             return v
         raise HttpError(400, f"download.{field} expected an https:// URL, got {v!r}")
     except HttpError as e:

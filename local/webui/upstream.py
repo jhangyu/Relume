@@ -60,6 +60,15 @@ def http_get(url, headers=None, timeout=30, max_bytes=None):
         return r.status, {k.lower(): v for k, v in r.headers.items()}, body, r.geturl()
 
 
+def get_ok(url, headers, timeout, max_bytes, accept=(200,)):
+    """(status, lower-cased headers, body) of a GET answered with a status in accept. Any other status raises
+    ValueError naming the URL; network errors raise OSError, a body over max_bytes ValueError (http_get)."""
+    status, hdr, body, _ = http_get(url, headers, timeout=timeout, max_bytes=max_bytes)
+    if status not in accept:
+        raise ValueError(f"{url}: expected HTTP {' or '.join(map(str, accept))}, got {status}")
+    return status, hdr, body
+
+
 def tag_dir(upstream_id, tag):
     return db.DATA / "upstream" / str(upstream_id) / server.safe_remote(tag)
 
