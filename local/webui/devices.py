@@ -435,8 +435,11 @@ def put_assignments(req):
     pids = projects.assigned_projects(dev['id']) if keep else list(dict.fromkeys(pids))
     projects.check_assignment(ids, pids)
     with db.tx() as c:
-        c.execute('DELETE FROM device_assignments WHERE device_id=?', (dev['id'],))
-        c.executemany('INSERT INTO device_assignments(device_id,item_id) VALUES (?,?)', [(dev['id'], i) for i in ids])
+        # a removed (disabled) app is hidden from every client, so a full-list PUT cannot mean to drop it
+        c.execute('DELETE FROM device_assignments WHERE device_id=? AND item_id NOT IN (SELECT id FROM item WHERE enabled=0)',
+                  (dev['id'],))
+        c.executemany('INSERT OR IGNORE INTO device_assignments(device_id,item_id) VALUES (?,?)',
+                      [(dev['id'], i) for i in ids])
         if not keep:
             c.execute('DELETE FROM device_projects WHERE device_id=?', (dev['id'],))
             c.executemany('INSERT INTO device_projects(device_id,project_id) VALUES (?,?)',
