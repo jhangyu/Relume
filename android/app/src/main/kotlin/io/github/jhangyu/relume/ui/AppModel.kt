@@ -449,7 +449,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     /** One stream per job seen active; on its end event the item and plan are refreshed (spec 10, no polling). */
     private fun watchActiveJobs() {
         val a = api ?: return
-        apps.filter { it.status.state == STATE_BUILDING || it.status.state == STATE_QUEUED }.mapNotNull { it.status.jobId }.filter { it !in watching }.forEach { jobId ->
+        apps.filter { it.building }.mapNotNull { it.status.jobId }.filter { it !in watching }.forEach { jobId ->
             watching[jobId] = viewModelScope.launch {
                 try {
                     catchApi({ error = describe(it) }) {

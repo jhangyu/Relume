@@ -15,9 +15,12 @@ internal const val LOOKUP_AMBIGUOUS = "ambiguous"
 /** Apps card fix for a missing download URL: paste one, or pick one of the APKMirror candidates. */
 enum class Lookup { NeedsUrl, PickOne }
 
+/** The server builds this app now or has its build queued. */
+internal val AppObject.building: Boolean get() = status.state == STATE_BUILDING || status.state == STATE_QUEUED
+
 /** What the phone knows about one enabled app: the built APK it would install, that package on the phone, its recorded patch version. */
 class AppFacts(val app: AppObject, val target: InstallTarget?, val installed: InstalledPackage?, val installedPatch: String?) {
-    val building: Boolean get() = app.status.state == STATE_BUILDING || app.status.state == STATE_QUEUED
+    val building: Boolean get() = app.building
 
     /** The card's one action (spec install-states 1); null while nothing is built. */
     val action: CardAction? get() = target?.let { cardAction(it, installed, installedPatch) }
