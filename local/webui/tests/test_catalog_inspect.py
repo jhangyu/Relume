@@ -12,6 +12,7 @@ from webui.tests.catalog_rows import CatalogCase, FakeLog
 from webui.tests.test_catalog_upstream import API, fix
 
 FIX = Path(__file__).parent / "fixtures" / "catalog"
+LIST_FIXTURE = db.REPO_ROOT / "src" / "build" / "test-fixtures" / "list-patches.txt"   # also read by the shell leg
 YT = "com.google.android.youtube"
 TEXT = """Index: 0
 Name: Hide ads
@@ -53,7 +54,7 @@ class ParserTest(unittest.TestCase):
         self.assertEqual((ps[1]["name"], ps[1]["enabled"], ps[1]["options"], ps[1]["packages"]), ("Spoof", False, [], {}))
 
     def test_captured_fixture(self):
-        text = (FIX / "list-patches.txt").read_text()
+        text = LIST_FIXTURE.read_text()
         ps = upstream.parse_list_patches(text)
         self.assertEqual(len(ps), len(re.findall(r"(?m)^(?:INFO: )?\s*Index:", text)))
         self.assertTrue(all(p["name"] for p in ps))
@@ -69,7 +70,7 @@ class ParserTest(unittest.TestCase):
         self.assertEqual([o["default"] for o in m[0]["options"]], ["lite", "3"])
         self.assertEqual(m[0]["compatible_versions"], ["20.13.41", "20.12.46"])
         self.assertEqual(m[1]["default_enabled"], False)
-        m2 = upstream.merge_bundle((FIX / "list-patches.txt").read_text(), (FIX / "options.json").read_text(), YT)
+        m2 = upstream.merge_bundle(LIST_FIXTURE.read_text(), (FIX / "options.json").read_text(), YT)
         self.assertTrue(m2 and all(isinstance(p["default_enabled"], bool) for p in m2))
 
 
@@ -123,7 +124,7 @@ class InspectRowTest(PatchesCase):
         with db.tx() as c:
             c.execute("DELETE FROM bundle_info")
         secret = self.data / "secret.txt"
-        secret.write_text((FIX / "list-patches.txt").read_text())
+        secret.write_text(LIST_FIXTURE.read_text())
         script = self.data / "inspect-link.sh"
         script.write_text(f'ln -s {secret} "$3/list-patches.txt"\ncp {FIX}/options.json "$3/"\n')
         log = FakeLog()
@@ -138,7 +139,7 @@ class InspectRowTest(PatchesCase):
         with db.tx() as c:
             c.execute("DELETE FROM bundle_info")
         script = self.data / "inspect-bad-options.sh"
-        script.write_text(f'cp {FIX}/list-patches.txt "$3/"\necho "[]" > "$3/options.json"\n')
+        script.write_text(f'cp {LIST_FIXTURE} "$3/"\necho "[]" > "$3/options.json"\n')
         log = FakeLog()
         with mock.patch.object(upstream, "INSPECT", str(script)):
             upstream.inspect_row(self.pat, "v1", log)
@@ -162,7 +163,7 @@ class InspectRowTest(PatchesCase):
         script = self.data / "inspect-id.sh"
         script.write_text(f'echo "UID $(id -u)"; echo "HOME $HOME"; echo "CLI $1"; echo "FILE $4"\n'
                           f'grep CapEff /proc/self/status; cat {secret} 2>/dev/null && echo LEAK || echo DENIED\n'
-                          f'cp {FIX}/list-patches.txt {FIX}/options.json "$3/"\n')
+                          f'cp {LIST_FIXTURE} {FIX}/options.json "$3/"\n')
         log = FakeLog()
         with mock.patch.object(upstream, "INSPECT", str(script)), \
                 mock.patch.dict(os.environ, {"RELUME_RUNNER_UID": "10001", "RELUME_RUNNER_DATA": str(view)}):
