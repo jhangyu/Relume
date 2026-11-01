@@ -236,28 +236,6 @@ document.addEventListener('keydown', e => {
   $$('details.dd[open]').forEach(d => { d.open = false; });
 });
 
-export function tabs(scope = document) {
-  $$('[role=tablist]', scope).forEach(tl => {
-    const list = $$('[role=tab]', tl);
-    const sel = t => {
-      list.forEach(x => {
-        const on = x === t;
-        x.setAttribute('aria-selected', on);
-        x.tabIndex = on ? 0 : -1;
-        document.getElementById(x.getAttribute('aria-controls')).hidden = !on;
-      });
-      t.focus();
-    };
-    list.forEach((t, i) => {
-      t.addEventListener('click', () => sel(t));
-      t.addEventListener('keydown', e => {
-        const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
-        if (d) sel(list[(i + d + list.length) % list.length]);
-      });
-    });
-  });
-}
-
 export function shell() {
   $('.side').innerHTML = html`
 <div class="brand"><span class="logo" aria-hidden="true">R</span>Relume</div>
@@ -278,7 +256,6 @@ export function shell() {
     if (a.getAttribute('href') === here) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   });
-  tabs();
   $$('[data-host]').forEach(el => { el.textContent = location.hostname; });
   const box = $('[data-shell-status]'), count = $('[data-apps-count]');
   const load = async () => {
