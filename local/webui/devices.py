@@ -220,8 +220,8 @@ def browse(timeout=None):
                 except socket.timeout:
                     break
                 records += parse_packet(data)
-    except OSError:
-        pass
+    except OSError as e:
+        print(f'mdns browse failed: {e}', flush=True)
     now = time.time()
     return {k: dict(v, last_seen=now) for k, v in _merge(records).items()}
 
@@ -264,17 +264,30 @@ def device_json(dev, states=None):
     return dict(out, ota_after_build=bool(dev['ota_after_build']), has_token=dev['token_hash'] is not None, online=online)
 
 
-def _last(text):
+def last_line(text):
     lines = [x for x in text.splitlines() if x.strip()]
     return lines[-1].strip() if lines else 'no output'
 
 
+def _warn(log, text):
+    """One failure line: the job log when the caller runs in a job, else the server log."""
+    if log is None:
+        print(text, flush=True)
+    else:
+        log.line(text)
+
+
 def online_states():
+    """`adb devices` -> {address: state}. adb itself failing shows every ADB device offline and says so in the log."""
     try:
         rc, out = adb(['devices'], timeout=10)
     except AdbTimeout:
+        print('adb devices timed out: every ADB device shows offline', flush=True)
         return {}
-    return parse_devices(out) if rc == 0 else {}
+    if rc != 0:
+        print(f'adb devices failed (exit {rc}): {last_line(out)}', flush=True)
+        return {}
+    return parse_devices(out)
 
 
 def _state(addr):
@@ -282,10 +295,16 @@ def _state(addr):
 
 
 def _connect(addr, log=None):
+    """adb connect output; raises AdbTimeout."""
+    return adb(['connect', addr], timeout=20, log=log)[1]
+
+
+def _try_connect(addr, log):
+    """reconnect step: a timed-out connect is logged, the state check after it decides."""
     try:
-        return adb(['connect', addr], timeout=20, log=log)[1]
+        _connect(addr, log)
     except AdbTimeout:
-        return 'timeout'
+        _warn(log, f'adb connect {addr} timed out')
 
 
 def _save_addr(dev, host, port):
@@ -298,13 +317,13 @@ def reconnect(dev, *, cancel_event=None, log=None):
     """Spec device 4.2 steps 1-3; returns 'online' | 'offline' | 'unauthorized'."""
     st = _state(address(dev))
     if st not in ('device', 'unauthorized'):
-        _connect(address(dev), log)
+        _try_connect(address(dev), log)
         st = _state(address(dev))
     if st not in ('device', 'unauthorized') and dev.get('mdns_name') and not (cancel_event and cancel_event.is_set()):
         e = browse().get(dev['mdns_name'])
         if e and e['service'] == 'connect' and (e['host'], e['port']) != (dev['host'], dev['connect_port']):
             new = f"{e['host']}:{e['port']}"
-            _connect(new, log)
+            _try_connect(new, log)
             st = _state(new)
             if st == 'device':
                 _save_addr(dev, e['host'], e['port'])
@@ -338,9 +357,12 @@ def pair(req):
     except AdbTimeout:
         raise HttpError(400, 'PAIR_FAILED: timeout')
     if 'Successfully paired' not in out:
-        raise HttpError(400, 'PAIR_FAILED: ' + _last(out))
+        raise HttpError(400, 'PAIR_FAILED: ' + last_line(out))
     addr = f'{host}:{connect_port}'
-    out = _connect(addr)
+    try:
+        out = _connect(addr)
+    except AdbTimeout:
+        raise HttpError(409, 'DEVICE_OFFLINE')
     if 'unauthorized' in out or 'failed to authenticate' in out:
         raise HttpError(409, 'UNAUTHORIZED')
     if 'connected to' not in out:
@@ -413,7 +435,7 @@ def delete_device(req):
         try:
             adb(['disconnect', address(dev)], timeout=10)
         except AdbTimeout:
-            pass
+            print(f"adb disconnect {address(dev)} timed out: device {dev['id']} deleted anyway", flush=True)
     with db.tx() as c:
         c.execute('DELETE FROM ota_installs WHERE device_id=?', (dev['id'],))
         c.execute('DELETE FROM devices WHERE id=?', (dev['id'],))

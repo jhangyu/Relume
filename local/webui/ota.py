@@ -238,15 +238,19 @@ def list_devices(req):
     return 200, {'devices': [_device_view(dict(r), states) for r in rows]}
 
 
+class PackageListFailed(Exception):
+    """adb could not list the phone's packages: a plan cannot know what is installed."""
+
+
 def _present(dev, cancel_event=None):
-    """Installed packages read over adb and stored as the phone's report; None = unknown (adb failed)."""
+    """Installed packages read over adb and stored as the phone's report. Raises PackageListFailed."""
     try:
         rc, out = devices.adb(['shell', 'pm', 'list', 'packages', '--show-versioncode'], serial=devices.address(dev),
                               timeout=60, cancel_event=cancel_event, log=None)
     except devices.AdbTimeout:
-        return None
+        raise PackageListFailed('timeout')
     if rc != 0:
-        return None
+        raise PackageListFailed(f'exit {rc}: {devices.last_line(out)}')
     present = devices.parse_packages(out)
     store_reported(dev['id'], present)
     return present
@@ -754,7 +758,15 @@ def handle(job, log):
         if job.trigger == 'manual':
             _fail(job, dev['id'], 'failed: DEVICE_OFFLINE', extra={'reason': 'DEVICE_OFFLINE'})
         _fail(job, dev['id'], 'skipped_offline', event='device.offline', extra={}, outcome='skipped_offline')
-    steps = recovery or _plan_for(dev, item_ids, project_ids, _present(dev, job.cancel_event))['steps']
+    steps = recovery
+    if steps is None:
+        try:
+            present = _present(dev, job.cancel_event)
+        except PackageListFailed as e:
+            if job.cancel_event.is_set():
+                return
+            _fail(job, dev['id'], f'adb package list failed: {e}')
+        steps = _plan_for(dev, item_ids, project_ids, present)['steps']
     ok, failed = [], set()
     for step in steps:
         if job.cancel_event.is_set():
@@ -764,7 +776,10 @@ def handle(job, log):
             ok.append(_run_project(job, dev, step, abis, log, failed))
         else:
             ok.append(_run_item(job, dev, step, first_abi(dev), log, failed))
-    _present(dev)  # store what the phone really has now: the pre-run read is stale after any install
+    try:
+        _present(dev)  # store what the phone really has now: the pre-run read is stale after any install
+    except PackageListFailed as e:
+        log.line(f'adb package list failed after the installs: {e}, the stored report keeps the pre-run list')
     if job.cancel_event.is_set():
         return
     outcome = 'done' if all(ok) else 'partial' if any(ok) else 'failed'

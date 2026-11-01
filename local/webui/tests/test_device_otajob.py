@@ -93,6 +93,15 @@ class OtaJobTest(helpers.DataTestCase):
         self.assertEqual(self.outcome(jid), ('partial', 'partial'))
         self.assertEqual(self.ev[0][0], 'ota.done')
 
+    def test_package_list_failure_fails_job(self):
+        # bug: an unreadable package list planned every app as installed and reported success with nothing installed
+        self.fa.rule('devices', out=ONLINE)
+        self.fa.rule('pm', out='error: closed\n', rc=1)
+        jid, err = self.run_job()
+        self.assertEqual(err, 'adb package list failed: exit 1: error: closed')
+        self.assertEqual((self.installs(jid), self.adb_cmds('install')), ([], []))
+        self.assertEqual(self.outcome(jid), ('failed', 'adb package list failed: exit 1: error: closed'))
+
     def test_all_fail_outcome_failed(self):
         self.online()
         self.fa.rule('install', out='Failure [INSTALL_FAILED_OTHER]\n', rc=1)
