@@ -255,12 +255,13 @@ def is_app(dev):
     return dev['kind'] == 'app'
 
 
-def device_json(dev, states):
-    """online is None for app rows: they are never reached over adb. has_token tells an active phone from a
-    revoked one; the token hash itself never leaves the server."""
+def device_json(dev, states=None):
+    """online is None for app rows: they are never reached over adb. states = `adb devices` map the caller already
+    holds; None = read it now (ADB rows only). has_token tells an active phone from a revoked one; the token hash
+    itself never leaves the server."""
     out = {k: v for k, v in dev.items() if k != 'token_hash'}
-    return dict(out, ota_after_build=bool(dev['ota_after_build']), has_token=dev['token_hash'] is not None,
-                online=None if is_app(dev) else states.get(address(dev)) == 'device')
+    online = None if is_app(dev) else (online_states() if states is None else states).get(address(dev)) == 'device'
+    return dict(out, ota_after_build=bool(dev['ota_after_build']), has_token=dev['token_hash'] is not None, online=online)
 
 
 def _last(text):
@@ -403,7 +404,7 @@ def patch_device(req):
         sets['ota_after_build'] = int(b['ota_after_build'])
     with db.tx() as c:  # keys come from the fixed whitelist above
         c.execute(f"UPDATE devices SET {', '.join(k + '=?' for k in sets)} WHERE id=?", (*sets.values(), dev['id']))
-    return 200, {'device': device_json(get(dev['id']), online_states())}
+    return 200, {'device': device_json(get(dev['id']))}
 
 
 def delete_device(req):
@@ -427,7 +428,7 @@ def put_assignments(req):
         # answer as if done, change nothing (the explicit-id plan that follows needs no assignment).
         if req.params['id'] != me['id']:
             raise HttpError(403, 'a legacy token can only name its own device')
-        return 200, {'device': device_json(me, {})}
+        return 200, {'device': device_json(me)}
     dev = dev_or_404(req.params['id'])
     body = req.json or {}
     ids, pids = body.get('item_ids'), body.get('project_ids')
@@ -447,7 +448,7 @@ def put_assignments(req):
             c.execute('DELETE FROM device_projects WHERE device_id=?', (dev['id'],))
             c.executemany('INSERT INTO device_projects(device_id,project_id) VALUES (?,?)',
                           [(dev['id'], p) for p in pids])
-    return 200, {'device': device_json(get(dev['id']), online_states())}
+    return 200, {'device': device_json(get(dev['id']))}
 
 
 def resolve_devices(target):
