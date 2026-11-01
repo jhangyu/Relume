@@ -55,14 +55,21 @@ class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorke
 
     /**
      * Runs step [index] up to its commit; true = committed (stop and wait for the result broadcast). First the phone's
-     * real state: an app the user removed is skipped and unassigned instead (every origin, queued or late-started plans too).
+     * real state (every origin, queued or late-started plans too): an app the user removed is skipped and unassigned, an
+     * app already at its target ends `up_to_date`.
      */
     private suspend fun runStep(ctx: Context, api: RelumeApi, run: RunState, index: Int): Boolean {
         val s = run.steps[index]
         val d = checkNotNull(s.step.download) { "step ${s.step.displayName}: runnable without a download" }
         val prefs = (ctx as RelumeApp).prefs
-        if (removedFromPhone(s, prefs.seenInstalled, Inventory.installed(ctx, s.step.packageName) != null)) {
+        val installed = Inventory.installed(ctx, s.step.packageName)
+        if (removedFromPhone(s, prefs.seenInstalled, installed != null)) {
             unassign(ctx, api, index, s.step)
+            return false
+        }
+        // Per app: already at its target (e.g. a queued or replaced plan that is older than the phone) -> nothing to do.
+        if (VerifyRules.atTarget(d, installed, InstalledPatches.get(ctx, s.step.packageName))) {
+            finish(ctx, index, StepOutcome(StepState.UP_TO_DATE, null, null))
             return false
         }
         if (!InstallRunner.canInstall(ctx)) {
@@ -70,7 +77,7 @@ class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             if (run.origin == Origin.BACKGROUND) Notifications.installPermissionOff(ctx, index, s.step.displayName)
             return false
         }
-        VerifyRules.checkInstalled(d, Inventory.installed(ctx, s.step.packageName))?.let {
+        VerifyRules.checkInstalled(d, installed)?.let {
             finish(ctx, index, StepOutcome(StepState.NEEDS_UNINSTALL, it.code, it.message))
             if (run.origin == Origin.BACKGROUND) Notifications.needsReinstall(ctx, index, s.step.displayName)
             return false

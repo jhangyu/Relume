@@ -25,11 +25,6 @@ class Prefs(context: Context) {
             save { putInt(KEY_DAILY_CHECK_MINUTE, value) }
         }
 
-    /** `plan.revision` of the last background install run (spec 9.5). */
-    var lastBackgroundRevision: String?
-        get() = prefs.getString(KEY_LAST_BACKGROUND_REVISION, null)
-        set(value) = save { putString(KEY_LAST_BACKGROUND_REVISION, value) }
-
     /** Keys (`install.seenKey`) of assigned apps this phone reported installed; see `install.seenInstalled`. */
     val seenInstalled: Set<String>
         get() = prefs.getStringSet(KEY_SEEN_INSTALLED, null)?.toSet() ?: emptySet()
@@ -48,7 +43,6 @@ class Prefs(context: Context) {
         const val PREFS = "relume"
         const val KEY_SERVER_URL = "server_url"
         const val KEY_CHECK_INTERVAL = "check_interval"
-        const val KEY_LAST_BACKGROUND_REVISION = "last_background_revision"
         const val KEY_DAILY_CHECK_MINUTE = "daily_check_minute"
         const val KEY_SEEN_INSTALLED = "seen_installed"
         const val MINUTES_PER_DAY = 24 * 60

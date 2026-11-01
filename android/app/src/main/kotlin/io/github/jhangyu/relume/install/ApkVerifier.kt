@@ -64,6 +64,14 @@ object VerifyRules {
         return null
     }
 
+    /**
+     * The app is installed at the planned version: same version code and signer as [d], and for a patched build the
+     * patch version Relume recorded for the package ([recordedPatch], InstalledPatches) equals the planned one.
+     */
+    fun atTarget(d: Download, installed: InstalledPackage?, recordedPatch: String?): Boolean =
+        installed != null && installed.versionCode == d.versionCode && hexEquals(installed.signerSha256, d.signerSha256) &&
+            (d.patchVersion == null || recordedPatch == d.patchVersion)
+
     fun sha256Hex(bytes: ByteArray): String = hex(MessageDigest.getInstance(SHA256).digest(bytes))
 
     fun hex(bytes: ByteArray) = bytes.joinToString("") { "%02x".format(it) }

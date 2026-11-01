@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.util.Log
-import io.github.jhangyu.relume.RelumeApp
 import io.github.jhangyu.relume.api.InstallPlan
 import io.github.jhangyu.relume.api.PlanStep
 import io.github.jhangyu.relume.inventory.Inventory
@@ -101,8 +100,6 @@ object InstallRunner {
         InstallRunStore.update(context) { cur -> cur?.let(InstallRun::dequeue)?.also { next = it } ?: cur }
         val run = next ?: return false
         confirmIntents.clear()
-        // A background revision counts as handled once its run starts (BackgroundStart.recordedRevision).
-        if (run.origin == Origin.BACKGROUND) (context.applicationContext as RelumeApp).prefs.lastBackgroundRevision = run.revision
         InstallWorker.enqueue(context, run.origin, replace = true)
         return true
     }
@@ -225,8 +222,8 @@ object InstallRunner {
     /** A committed step whose session vanished: installed if the phone now has the target, else `session lost`. */
     private fun lostSession(context: Context, s: StepRun): StepOutcome {
         val d = checkNotNull(s.step.download) { "step ${s.step.displayName}: committed without a download" }
-        val done = Inventory.installed(context, s.step.packageName)
-            ?.let { it.versionCode == d.versionCode && VerifyRules.hexEquals(it.signerSha256, d.signerSha256) } == true
+        // The patch record is written on `installed`, so only version and signer can show this session's result.
+        val done = VerifyRules.atTarget(d, Inventory.installed(context, s.step.packageName), d.patchVersion)
         return if (done) StepOutcome(StepState.INSTALLED, null, null)
         else StepOutcome(StepState.FAILED, ErrorCodes.INSTALLER_ERROR, "session lost")
     }
