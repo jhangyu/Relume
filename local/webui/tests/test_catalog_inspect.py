@@ -84,7 +84,7 @@ class PatchesCase(CatalogCase):
         with db.tx() as c:
             c.execute("UPDATE upstream SET downloaded_tag='v1' WHERE id=?", (self.pat,))
             c.execute("INSERT INTO bundle_info(upstream_id, tag, package, patches) VALUES (?,'v1',?,?)",
-                      (self.pat, YT, json.dumps(upstream.merge_bundle(TEXT, "[]", YT))))
+                      (self.pat, YT, json.dumps(upstream.merge_bundle(TEXT, json.dumps([{"patches": {}}]), YT))))
 
     def add_cli(self):
         d = self.data / "upstream" / str(self.cli) / "v1.18.1"
@@ -131,6 +131,20 @@ class InspectRowTest(PatchesCase):
             upstream.inspect_row(self.pat, "v1", log)
         self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM bundle_info").fetchone()[0], 0)
         self.assertTrue(any(l.startswith("[!] inspect failed for") for l in log.lines), log.lines)
+
+    def test_inspect_malformed_options_writes_nothing(self):
+        """An options.json without a patches object is reported, not stored as guessed defaults."""
+        self.add_cli()
+        with db.tx() as c:
+            c.execute("DELETE FROM bundle_info")
+        script = self.data / "inspect-bad-options.sh"
+        script.write_text(f'cp {FIX}/list-patches.txt "$3/"\necho "[]" > "$3/options.json"\n')
+        log = FakeLog()
+        with mock.patch.object(upstream, "INSPECT", str(script)):
+            upstream.inspect_row(self.pat, "v1", log)
+        self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM bundle_info").fetchone()[0], 0)
+        self.assertTrue(any(l.startswith("[!] inspect failed for") and "options.json: expected" in l
+                            for l in log.lines), log.lines)
 
     @needs_real_isolation
     def test_inspect_runs_isolated(self):

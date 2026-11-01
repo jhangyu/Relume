@@ -271,10 +271,12 @@ def parse_list_patches(text):
 
 
 def merge_bundle(list_text, options_text, package):
-    try:
-        defaults = json.loads(options_text)[0].get("patches", {})
-    except (ValueError, IndexError, KeyError, AttributeError, TypeError):
-        defaults = {}
+    """Patch rows of one package: list-patches text + options.json defaults. A malformed options.json raises
+    ValueError (inspect_row logs it and retries at the next pull) instead of storing defaults guessed from the list."""
+    data = json.loads(options_text)
+    if not (isinstance(data, list) and data and isinstance(data[0], dict) and isinstance(data[0].get("patches"), dict)):
+        raise ValueError(f"options.json: expected a list whose first entry has a patches object, got {options_text[:200]!r}")
+    defaults = data[0]["patches"]
     out = []
     for p in parse_list_patches(list_text):
         if not p["name"]:
@@ -315,7 +317,11 @@ def inspect_row(upstream_id, tag, log):
             except OSError as e:
                 log.line(f"[!] inspect failed for {pkg}: {e}")
                 continue
-        patches = merge_bundle(lp, oj, pkg)
+        try:
+            patches = merge_bundle(lp, oj, pkg)
+        except ValueError as e:
+            log.line(f"[!] inspect failed for {pkg}: {e}")
+            continue
         with db.tx() as c:
             c.execute("INSERT OR REPLACE INTO bundle_info(upstream_id, tag, package, patches) VALUES (?, ?, ?, ?)",
                       (upstream_id, tag, pkg, json.dumps(patches)))
