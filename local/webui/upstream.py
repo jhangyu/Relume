@@ -203,6 +203,7 @@ def check(upstream_id, job_id=None):
 
 
 INSPECT = str(db.REPO_ROOT / "src" / "build" / "inspect.sh")
+INSPECT_TIMEOUT = 120    # s per package: options-create + list-patches of the CLI
 LOG_PREFIX_RE = re.compile(r"^(?:INFO|WARNING|SEVERE): ")
 KNOWN_KEYS = {"Index", "Name", "Description", "Enabled", "Options", "Title", "Required", "Key", "Default",
               "Possible values", "Type", "Compatible packages", "Package name", "Compatible versions"}
@@ -303,7 +304,7 @@ def inspect_row(upstream_id, tag, log):
             argv = ["bash", INSPECT, jobs.runner_path(jars[0]), pkg, jobs.runner_path(out),
                     *(jobs.runner_path(f) for f in files)]
             try:
-                rc = jobs.run_isolated(log, argv, jobs.runner_path(out), timeout=120)
+                rc = jobs.run_isolated(log, argv, jobs.runner_path(out), timeout=INSPECT_TIMEOUT)
             except jobs.JobTimeout as e:
                 rc = str(e)
             if rc != 0:

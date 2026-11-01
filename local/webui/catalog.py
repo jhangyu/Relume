@@ -789,10 +789,12 @@ URL_RE = re.compile(r"^https://[^\s\"'<>]+$")
 ARCH_RE = re.compile(r"^([A-Za-z0-9_][A-Za-z0-9 ._+-]*)?$")   # no leading . or - (grep option); seed has 'arm64-v8a + armeabi-v7a' (icysymmetra.sh)
 MINVER_RE = re.compile(r"^[A-Za-z0-9 .+-]*$")
 DOWNLOAD_DEFAULT = {"kind": "apkmirror", "type": "apk", "arch": None, "dpi": None, "minver": None, "url": None}
+NAME_MAX = 80            # chars of a display name
+VARIANTS_MAX = 10        # build variants per app
 
 
 def _name(v, field="name"):
-    if not isinstance(v, str) or not v.strip() or len(v) > 80:
+    if not isinstance(v, str) or not v.strip() or len(v) > NAME_MAX:
         raise server.HttpError(400, f"invalid {field}")
     return v.strip()
 
@@ -832,7 +834,7 @@ def _version_codes(codes, kind):
 
 
 def validate_variants(variants):
-    if not isinstance(variants, list) or not 1 <= len(variants) <= 10:
+    if not isinstance(variants, list) or not 1 <= len(variants) <= VARIANTS_MAX:
         raise server.HttpError(400, "invalid variants")
     out, names = [], set()
     for v in variants:

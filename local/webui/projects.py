@@ -14,6 +14,8 @@ from . import catalog, db, events, jobs, server, upstream
 ABI_TOKENS = ("arm64-v8a", "armeabi-v7a", "x86_64", "aarch64", "armeabi", "arm64", "armv7", "x86")
 APKSIGNER = ["apksigner"]
 APKEDITOR = ["java", "-jar", os.environ.get("RELUME_APKEDITOR", "/opt/APKEditor.jar")]
+ASSET_REGEX_MAX = 300    # chars of a project's asset regex
+TOOL_TIMEOUT = 120       # s per apksigner / APKEditor run on a downloaded APK
 _ABI_SPLIT = re.compile("(" + "|".join(map(re.escape, ABI_TOKENS)) + ")")
 _NUM_PATTERN = r"\d+(?:\.\d+)*"
 _NUM = re.compile(_NUM_PATTERN)
@@ -179,7 +181,7 @@ def _tool(argv, log, parse, error):
     # parses an untrusted downloaded APK: isolated runner uid like the inspector
     with jobs.isolated_scratch("tool-") as tmp:
         try:
-            rc = jobs.run_isolated(log, argv, jobs.runner_path(tmp), timeout=120, on_line=lines.append)
+            rc = jobs.run_isolated(log, argv, jobs.runner_path(tmp), timeout=TOOL_TIMEOUT, on_line=lines.append)
         except jobs.JobTimeout as e:
             raise ValueError(str(e))
     value = parse("\n".join(lines))
@@ -333,7 +335,7 @@ def _channel(v):
 
 
 def _regex(v):
-    if not isinstance(v, str) or len(v) > 300:
+    if not isinstance(v, str) or len(v) > ASSET_REGEX_MAX:
         raise server.HttpError(400, "invalid asset_regex")
     try:
         re.compile(v)
