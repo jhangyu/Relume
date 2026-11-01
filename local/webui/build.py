@@ -22,6 +22,7 @@ ERROR_TEXT_MAX = 300  # chars of the patcher's error kept in a guard verdict
 # APKMirror variants tried per build (design variant §3): each attempt is one download.php hit plus a full download,
 # merge and patch, far below the rate limit (about 17 hits in 11 s); the ordering finds the known cases on attempt 1
 MAX_VARIANT_ATTEMPTS = 3
+RUNNER_TIMEOUT = 3600  # s, one isolated runner run: downloads, merges and patches of every variant
 _steps = {}
 _steps_lock = threading.Lock()
 
@@ -311,9 +312,9 @@ def _attempt(job, item_id, inp, awork, googleplay, auto, sha, log):
     try:
         rc = jobs.run_isolated(log, ["bash", RUNNER, jobs.runner_path(awork / "job.json")], jobs.runner_path(awork),
                                env_keys=jobs.SOLVER_ENV, env={"RELUME_APK_CACHE": jobs.runner_path(db.DATA / "apk-cache")},
-                               timeout=3600, on_line=m.feed)
+                               timeout=RUNNER_TIMEOUT, on_line=m.feed)
     except jobs.JobTimeout:
-        _fail(job, item_id, "timeout", "runner exceeded 3600 s")
+        _fail(job, item_id, "timeout", f"runner exceeded {RUNNER_TIMEOUT} s")
     if job.cancel_event.is_set():
         return None
     used = [(next(a for a in auto if a["download"] == u["download"]), u) for u in m.apkm]
