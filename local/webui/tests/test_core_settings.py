@@ -69,6 +69,13 @@ class SettingsTest(DataTestCase):
             self.assertIn('enter one on the Settings page', out.getvalue())
             self.assertEqual(settings.github_token(), '')
 
+    def test_unreadable_secret_raises_with_path(self):
+        # a secret that exists but cannot be read must not pass as "not set" (requests would go out unauthenticated)
+        settings.write_secret(settings.google_play_path(), json.dumps({'email': 'a@b.c', 'aas_token': 't'}))
+        with mock.patch.object(pathlib.Path, 'read_text', side_effect=PermissionError(13, 'Permission denied')):
+            with self.assertRaisesRegex(RuntimeError, rf"secret file {settings.google_play_path()} exists but cannot be read: Permission denied \(errno 13\)"):
+                settings.google_play()
+
     def test_disk(self):
         (self.data / 'artifacts' / '1' / '2').mkdir(parents=True)
         (self.data / 'artifacts' / '1' / '2' / 'a.apk').write_bytes(b'x' * 10)

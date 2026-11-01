@@ -44,10 +44,13 @@ def ui_token_path():
 
 
 def _read(p):
+    """Text of a secret file, '' when there is no such file. A file that exists but cannot be read raises: reading
+    it as 'not set' would hide the cause and send requests unauthenticated. RuntimeError, not OSError: callers treat
+    OSError as a network failure (upstream._get)."""
     try:
         return p.read_text().strip() if p.is_file() else ''
-    except OSError:
-        return ''
+    except OSError as e:
+        raise RuntimeError(f'secret file {p} exists but cannot be read: {e.strerror} (errno {e.errno})') from e
 
 
 def _token_source():
