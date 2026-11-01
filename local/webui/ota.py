@@ -474,9 +474,9 @@ def adopt(req):
         c.execute('UPDATE device_packages SET device_id = ? WHERE device_id = ?', (tid, me_id))
         c.execute('DELETE FROM devices WHERE id = ?', (me_id,))
         c.execute("UPDATE devices SET kind='app', serial=NULL, mdns_name=NULL, host=NULL, connect_port=NULL, "
-                  'ota_after_build=0, token_hash=?, model=?, abi_list=?, sdk=?, android_release=?, app_version_code=?, '
-                  'last_seen_at=? WHERE id=?',
-                  (*(me_row[k] for k in ('token_hash', 'model', 'abi_list', 'sdk', 'android_release',
+                  'ota_after_build=0, device_uid=?, token_hash=?, model=?, abi_list=?, sdk=?, android_release=?, '
+                  'app_version_code=?, last_seen_at=? WHERE id=?',
+                  (*(me_row[k] for k in ('device_uid', 'token_hash', 'model', 'abi_list', 'sdk', 'android_release',
                                          'app_version_code')), db.utcnow(), tid))
     return 200, {'device': _device_view(devices.get(tid), {})}
 

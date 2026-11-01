@@ -26,6 +26,7 @@ ADMIN_PASSWORD_ENV = 'RELUME_ADMIN_PASSWORD'
 SCRYPT_N = 2 ** 14
 MIN_PASSWORD = 10
 USERNAME_RE = re.compile(r'[A-Za-z0-9._-]{1,64}\Z')
+DEVICE_UID_RE = re.compile(r'[0-9A-Za-z]{1,64}\Z')   # Android ANDROID_ID is a 64-bit hex string
 _clock = time.monotonic
 _fails = []
 _state = {'locked_until': 0.0}
@@ -188,7 +189,10 @@ def _device_facts(body):
     d = body.get('device')
     if not isinstance(d, dict):
         raise HttpError(400, f'device must be an object, got {type(d).__name__}')
-    name, model, sdk, release, abis = (d.get(k) for k in ('name', 'model', 'sdk', 'android_release', 'abi_list'))
+    uid, name, model, sdk, release, abis = (
+        d.get(k) for k in ('device_uid', 'name', 'model', 'sdk', 'android_release', 'abi_list'))
+    if not isinstance(uid, str) or not DEVICE_UID_RE.match(uid):
+        raise HttpError(400, f'device.device_uid must be 1-64 letters or digits, got {uid!r}')
     if not isinstance(name, str) or not 0 < len(name.strip()) <= DEVICE_NAME_MAX:
         raise HttpError(400, f'device.name must be 1-{DEVICE_NAME_MAX} characters')
     for field, v in (('model', model), ('android_release', release)):
@@ -201,7 +205,7 @@ def _device_facts(body):
     for i, a in enumerate(abis):
         if a not in catalog.ABIS:
             raise HttpError(400, f'device.abi_list[{i}] must be one of {", ".join(catalog.ABIS)}, got {a!r}')
-    return name.strip(), model, sdk, release, ','.join(abis)
+    return uid, name.strip(), model, sdk, release, ','.join(abis)
 
 
 def _device_view(device_id):
@@ -209,16 +213,27 @@ def _device_view(device_id):
 
 
 def register_device(req):
-    """Phone login: same credential check and lockout as login, returns a device token once, sets no cookie."""
+    """Phone login: same credential check and lockout as login, returns a device token once, sets no cookie.
+    A phone that signs in again (same device_uid) keeps its row, name, assignments and history: only the token
+    and the hardware facts change."""
     facts = _device_facts(req.json)
     denied = _check_credentials(req)
     if denied:
         return denied
     token = secrets.token_urlsafe(32)
+    uid, name, *hw = facts
     with db.tx() as c:
-        did = c.execute("INSERT INTO devices(name, kind, token_hash, model, sdk, android_release, abi_list) "
-                        "VALUES (?, 'app', ?, ?, ?, ?, ?)", (facts[0], token_hash(token), *facts[1:])).lastrowid
-        adb = [dict(r) for r in c.execute("SELECT id, name, model FROM devices WHERE kind='adb' ORDER BY id")]
+        known = c.execute('SELECT id FROM devices WHERE device_uid=?', (uid,)).fetchone()
+        if known:
+            did = known['id']
+            c.execute('UPDATE devices SET token_hash=?, model=?, sdk=?, android_release=?, abi_list=? WHERE id=?',
+                      (token_hash(token), *hw, did))
+            adb = []   # a known phone is never offered an ADB takeover: adopting would delete its own row
+        else:
+            did = c.execute("INSERT INTO devices(device_uid, name, kind, token_hash, model, sdk, android_release, "
+                            "abi_list) VALUES (?, ?, 'app', ?, ?, ?, ?, ?)",
+                            (uid, name, token_hash(token), *hw)).lastrowid
+            adb = [dict(r) for r in c.execute("SELECT id, name, model FROM devices WHERE kind='adb' ORDER BY id")]
     return 200, {'token': token, 'device': _device_view(did), 'adb_devices': adb}
 
 

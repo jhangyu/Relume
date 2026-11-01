@@ -148,7 +148,7 @@ class AppsTest(MarketCase):
 class DeviceTokenTest(MarketCase):
     def test_device_token_reaches_new_routes(self):
         st, _, body = http('POST', self.base + '/api/auth/device', {'username': 'admin', 'password': 'correct-horse-42',
-                           'device': {'name': 'Pixel 8', 'model': 'Pixel 8', 'sdk': 35, 'android_release': '15',
+                           'device': {'device_uid': 'a1b2c3d4e5f60718', 'name': 'Pixel 8', 'model': 'Pixel 8', 'sdk': 35, 'android_release': '15',
                                       'abi_list': ['arm64-v8a']}})
         self.assertEqual(st, 200, body)
         bearer = {'Authorization': f"Bearer {json.loads(body)['token']}"}

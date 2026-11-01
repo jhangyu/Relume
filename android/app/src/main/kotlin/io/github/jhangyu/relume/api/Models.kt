@@ -151,9 +151,13 @@ data class InstallReceipt(
 
 // ---- devices ----
 
-/** Device facts sent once at registration (`POST /api/auth/device`). */
+/**
+ * Device facts sent once at registration (`POST /api/auth/device`). [deviceUid] is the phone's stable id: signing in
+ * again with the same id reuses the server's device row.
+ */
 @Serializable
 data class DeviceInfo(
+    @SerialName("device_uid") val deviceUid: String,
     val name: String,
     val model: String,
     val sdk: Int,

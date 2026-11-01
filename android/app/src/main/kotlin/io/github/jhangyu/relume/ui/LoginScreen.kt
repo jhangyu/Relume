@@ -1,6 +1,7 @@
 package io.github.jhangyu.relume.ui
 
 import android.os.Build
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -113,6 +114,8 @@ fun LoginScreen(app: RelumeApp, notice: String?, onSignedIn: () -> Unit) {
                     return@launch
                 }
                 val device = DeviceInfo(
+                    // stable per signing key + device + user, survives reinstall: the server keys the phone by it
+                    deviceUid = Settings.Secure.getString(app.contentResolver, Settings.Secure.ANDROID_ID),
                     name = Build.MODEL,
                     model = Build.MODEL,
                     sdk = Build.VERSION.SDK_INT,

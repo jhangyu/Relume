@@ -2,6 +2,7 @@ import concurrent.futures, contextlib, datetime, hashlib, io, json, pathlib, re,
 from unittest import mock
 from webui import auth, db, server, settings
 from webui.tests.helpers import DataTestCase, serve, http, login
+from webui.tests.device_helpers import add_catalog_item, add_device, assign
 
 
 class AuthTest(DataTestCase):
@@ -116,7 +117,7 @@ class AuthTest(DataTestCase):
         self.assertEqual(http('POST', self.base + '/api/auth/login', {'username': 'a', 'password': 'b'})[0], 409)
 
 
-DEVICE = {'name': 'Pixel 8', 'model': 'Pixel 8', 'sdk': 35, 'android_release': '15', 'abi_list': ['arm64-v8a']}
+DEVICE = {'device_uid': 'a1b2c3d4e5f60718', 'name': 'Pixel 8', 'model': 'Pixel 8', 'sdk': 35, 'android_release': '15', 'abi_list': ['arm64-v8a']}
 
 
 class DeviceTokenTest(DataTestCase):
@@ -124,7 +125,7 @@ class DeviceTokenTest(DataTestCase):
         super().setUp()
         self.addCleanup(db.close)   # the last test's main-thread connection would otherwise be finalized unclosed
         self.enterContext(mock.patch.object(auth, 'SCRYPT_N', 2 ** 4))   # fast hashing, the KDF cost is not under test
-        self.base = serve(self, ['devices', 'notify', 'projects'])
+        self.base = serve(self, ['devices', 'notify', 'projects', 'ota'])
         self.cookie = login(self.base)
 
     def register(self, password='correct-horse-42', device=DEVICE):
@@ -160,7 +161,9 @@ class DeviceTokenTest(DataTestCase):
         self.assertEqual((st, json.loads(body)), (401, {'error': 'login required'}))
         st, _, body = http('POST', self.base + '/api/me/logout', {}, cookie=self.cookie)
         self.assertEqual((st, json.loads(body)), (403, {'error': 'device token required'}))
-        for bad in ({**DEVICE, 'sdk': '35'}, {**DEVICE, 'abi_list': ['mips']}, {**DEVICE, 'name': ''}, None):
+        for bad in ({**DEVICE, 'sdk': '35'}, {**DEVICE, 'abi_list': ['mips']}, {**DEVICE, 'name': ''}, None,
+                    {k: v for k, v in DEVICE.items() if k != 'device_uid'}, {**DEVICE, 'device_uid': 'a/b'},
+                    {**DEVICE, 'device_uid': ''}, {**DEVICE, 'device_uid': 7}):
             self.assertEqual(self.register(device=bad)[0], 400, bad)
         # revoke from the web UI: row stays, token stops working
         self.assertEqual(http('DELETE', self.base + '/api/devices/1/token', cookie=self.cookie)[:3:2],
@@ -170,11 +173,42 @@ class DeviceTokenTest(DataTestCase):
         st, _, body = http('DELETE', self.base + f'/api/devices/{did}/token', cookie=self.cookie)
         self.assertEqual((st, json.loads(body)['device']['id']), (200, did))
         self.assertEqual(self.bearer('GET', '/api/jobs', tok)[0], 401)
-        # app logout
-        tok2 = self.token()['token']
+        # app logout; signing in again after the revoke lands on the same row
+        out2 = self.token()
+        tok2 = out2['token']
+        self.assertEqual(out2['device']['id'], did)
         self.assertEqual(self.bearer('POST', '/api/me/logout', tok2, {})[:3:2], (200, b'{"ok": true}'))
         self.assertEqual(self.bearer('GET', '/api/jobs', tok2)[0], 401)
+        self.assertEqual(db.conn().execute("SELECT count(*) FROM devices WHERE kind='app'").fetchone()[0], 1)
+
+    def test_same_device_uid_reuses_row(self):
+        first = self.token()
+        did = first['device']['id']
+        add_catalog_item(1, 'com.google.android.youtube')
+        assign(did, 1)
+        add_device()   # an ADB row is offered to new phones only: adopting it would delete a known phone's row
+        with db.tx() as c:
+            c.execute("UPDATE devices SET name='Kitchen' WHERE id=?", (did,))
+        again = json.loads(self.register(device={**DEVICE, 'model': 'Pixel 8a', 'sdk': 36, 'android_release': '16'})[2])
+        row = db.conn().execute('SELECT * FROM devices WHERE id=?', (did,)).fetchone()
+        self.assertEqual(again['adb_devices'], [])
+        self.assertEqual((again['device']['id'], row['name'], row['model'], row['sdk'], row['android_release']),
+                         (did, 'Kitchen', 'Pixel 8a', 36, '16'))
+        self.assertEqual([r[0] for r in db.conn().execute('SELECT item_id FROM device_assignments WHERE device_id=?', (did,))], [1])
+        self.assertEqual(self.bearer('GET', '/api/jobs', first['token'])[0], 401)
+        self.assertEqual(self.bearer('GET', '/api/jobs', again['token'])[0], 200)
+        other = json.loads(self.register(device={**DEVICE, 'device_uid': 'ffee'})[2])
+        self.assertNotEqual(other['device']['id'], did)
+        self.assertEqual(len(other['adb_devices']), 1)
         self.assertEqual(db.conn().execute("SELECT count(*) FROM devices WHERE kind='app'").fetchone()[0], 2)
+
+    def test_adopted_adb_row_found_on_next_sign_in(self):
+        adb = add_device()
+        tok = self.token()['token']
+        st, _, body = self.bearer('POST', '/api/me/adopt', tok, {'device_id': adb})
+        self.assertEqual(st, 200, body)
+        self.assertEqual(self.token()['device']['id'], adb)
+        self.assertEqual(db.conn().execute('SELECT count(*) FROM devices').fetchone()[0], 1)
 
     def test_session_only_routes_reject_token(self):
         self.assertEqual(auth.SESSION_ONLY, {
