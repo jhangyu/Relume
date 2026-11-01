@@ -31,10 +31,9 @@ function itemOf(j) {
   return j.kind === 'upstream' ? { ...it, bundle_name: 'Update check' } : it;
 }
 const tileOf = (it, cls) => (it.plain ? html`<span class="tile ${cls}" data-cat="tools" aria-hidden="true">${it.label.slice(0, 2)}</span>` : iconTile(it, cls));
-// Newest-first jobs of both kinds, trimmed to `limit`.
+// Newest-first jobs of the kinds this page shows (one request: the server takes a kind list).
 async function listJobs(params, limit) {
-  const all = await Promise.all(KINDS.map(kind => api('GET', `/api/jobs?${new URLSearchParams({ ...params, kind, limit })}`)));
-  return all.flatMap(r => r.jobs).sort((a, b) => b.id - a.id).slice(0, limit);
+  return (await api('GET', `/api/jobs?${new URLSearchParams({ ...params, kind: KINDS.join(','), limit })}`)).jobs;
 }
 // Retry of a finished job per spec §7.6: the route that starts the same work again.
 function retryRoute(j) {
@@ -125,7 +124,7 @@ async function select(id) {
   });
 }
 
-const HISTORY_PAGE = 25, MAX_GAP_PAGES = 8;
+const HISTORY_PAGE = 25;
 let oldest = null;
 const warnPatches = j => (j.detail && j.detail.failed_patches || []).length ? html`<span class="caption">Patch failed: ${j.detail.failed_patches.join(', ')}</span>` : '';
 
@@ -157,22 +156,13 @@ async function renderHistory(mode) {
   else if (B.filt) p.status = B.filt;
   if (mode === 'append' && oldest) p.before_id = oldest;
   const filt = B.filt;
-  let jobs = await listJobs(p, HISTORY_PAGE), lastLen = jobs.length;
+  const jobs = await listJobs(p, HISTORY_PAGE);
   if (B.filt !== filt) return undefined; // filter changed mid-flight: its own 'reset' owns the rows
   const refreshing = mode === 'refresh';
   if (refreshing) {
     const topId = Math.max(0, ...$$('#hist tbody tr').map(tr => Number(tr.dataset.id)));
-    if (!topId) mode = 'reset';
-    else {
-      // fetch the gap between the newest page and the shown rows (more than a page of jobs since the last tick)
-      for (let n = 0; n < MAX_GAP_PAGES && lastLen >= HISTORY_PAGE && jobs[jobs.length - 1].id > topId; n++) {
-        const more = await listJobs({ ...p, before_id: jobs[jobs.length - 1].id }, HISTORY_PAGE);
-        if (B.filt !== filt) return undefined;
-        jobs = jobs.concat(more);
-        lastLen = more.length;
-      }
-      if (lastLen >= HISTORY_PAGE && jobs[jobs.length - 1].id > topId) mode = 'reset'; // gap bigger than the bound
-    }
+    // nothing shown yet, or a full page finished since the last tick: re-render from the newest page
+    if (!topId || (jobs.length >= HISTORY_PAGE && jobs[jobs.length - 1].id > topId)) mode = 'reset';
   }
   const done = jobs.filter(j => j.status !== 'queued' && j.status !== 'running');
   if (refreshing && !done.length) return undefined; // only queued/running fetched: nothing to change
@@ -184,8 +174,8 @@ async function renderHistory(mode) {
     tbody.insertAdjacentHTML('afterbegin', html`${rows}`);
   } else tbody.innerHTML = html`${rows}`;
   const keptOlder = mode === 'refresh' && $$('#hist tbody tr').length > done.length;
-  if (jobs.length && !keptOlder) { oldest = jobs[jobs.length - 1].id; $('#older').hidden = lastLen < HISTORY_PAGE; }
-  else if (mode !== 'refresh') $('#older').hidden = lastLen < HISTORY_PAGE;
+  if (jobs.length && !keptOlder) { oldest = jobs[jobs.length - 1].id; $('#older').hidden = jobs.length < HISTORY_PAGE; }
+  else if (mode !== 'refresh') $('#older').hidden = jobs.length < HISTORY_PAGE;
   $('#hsum').textContent = `${$$('#hist tbody tr').length} builds shown`;
   applySearch();
   return done[0];

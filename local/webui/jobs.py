@@ -495,10 +495,13 @@ def _int(q, key):
 
 def list_route(req):
     q, where, args = req.query, [], []
-    for key in ('kind', 'status'):
-        if key in q:
-            where.append(f'{key}=?')
-            args.append(q[key])
+    if 'kind' in q:   # one kind or a comma list (builds page: build,upstream)
+        kinds = q['kind'].split(',')
+        where.append(f"kind IN ({','.join('?' * len(kinds))})")
+        args.extend(kinds)
+    if 'status' in q:
+        where.append('status=?')
+        args.append(q['status'])
     for key in ('item_id', 'device_id'):
         if key in q:
             where.append(f"json_extract(target,'$.{key}')=?")
