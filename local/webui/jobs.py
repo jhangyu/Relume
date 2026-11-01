@@ -428,7 +428,7 @@ def recover():
 def _cleanup(kind):
     """Keep the newest job_history_count finished jobs of the kind; a job whose artifacts are published stays
     (artifacts.job_id is ON DELETE RESTRICT, the only RESTRICT reference to jobs)."""
-    keep = int(settings.get('job_history_count', 500))
+    keep = int(settings.get('job_history_count', settings.JOB_HISTORY_DEFAULT))
     with db.tx() as c:
         gone = [r[0] for r in c.execute(
             "DELETE FROM jobs WHERE id IN (SELECT id FROM jobs WHERE kind = ? AND status NOT IN ('queued','running') "

@@ -8,13 +8,14 @@ import shutil
 import threading
 import time
 
-from . import build, db, projects, server, upstream
+from . import build, db, server, upstream
 
 TOKEN_PATH = pathlib.Path('/run/secrets/github_token')
 RATE_URL = 'https://api.github.com/rate_limit'
 _gh_cache = {}
 _gh_lock = threading.Lock()
 LIMITS = {'job_history_count': (1, 100000), 'artifact_retention': (1, 100)}
+JOB_HISTORY_DEFAULT = 500  # finished jobs kept per kind when job_history_count is unset (jobs cleanup, settings payload)
 TOKEN_RE = re.compile(r'[A-Za-z0-9_]{0,255}\Z')  # GitHub classic and fine-grained tokens; '' clears
 EMAIL_RE = re.compile(r'[^\s@]{1,64}@[^\s@]{1,190}\Z')
 AAS_TOKEN_RE = re.compile(r'[A-Za-z0-9._/+=-]{1,4096}\Z')  # aas_et/... master token
@@ -159,7 +160,7 @@ def server_info():
 
 
 def _payload(recheck=False):
-    return {'job_history_count': get('job_history_count', 500), 'base_url': get('base_url', ''),
+    return {'job_history_count': get('job_history_count', JOB_HISTORY_DEFAULT), 'base_url': get('base_url', ''),
             'artifact_retention': get('artifact_retention', build.ARTIFACT_RETENTION_DEFAULT),
             'github': github_status(recheck), 'google_play': _google_play_status(), 'server': server_info()}
 
