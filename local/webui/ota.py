@@ -87,13 +87,24 @@ def _project_step(p, action, reason):
     return dict({k: p[k] for k in _STEP_KEYS}, kind='project', ref_id=p['project_id'], action=action, reason=reason)
 
 
-def _project_action(p, prev, has):
+def _project_blocker(p):
+    """Error code that stops installing project info p, or None. One rule for plan time, run time and recovery;
+    at plan time NOT_DOWNLOADED is an install step (the ADB runner pulls first, the companion gets a pull)."""
     if p['signer_alert']:
-        return 'error', 'SIGNER_CHANGED'
+        return 'SIGNER_CHANGED'
     if p['tag'] is None:
-        return 'install', 'not downloaded'
+        return 'NOT_DOWNLOADED'
     if p['path'] is None:
-        return 'error', 'NO_MATCHING_ABI'
+        return 'NO_MATCHING_ABI'
+    return None
+
+
+def _project_action(p, prev, has):
+    code = _project_blocker(p)
+    if code == 'NOT_DOWNLOADED':
+        return 'install', 'not downloaded'
+    if code:
+        return 'error', code
     if not has(p['package']):
         return 'install', 'missing on phone'
     if prev is None or prev['upstream_tag'] != p['tag']:
@@ -663,6 +674,25 @@ def _pull_project(job, step, log):
         cond.wait_change(seen)
 
 
+REREADS = 2   # retention may delete the file between a read and the install: read once more before failing
+
+
+def _reread(read, blocker):
+    """read() right before an install, again while blocker(row) names a code. -> (row, None) or (None, last code)."""
+    for _ in range(REREADS):
+        row = read()
+        code = blocker(row)
+        if code is None:
+            return row, None
+    return None, code
+
+
+def _project_install_blocker(p):
+    if p is None:
+        return 'NOT_DOWNLOADED'
+    return _project_blocker(p) or (None if os.path.exists(p['path']) else 'NOT_DOWNLOADED')
+
+
 def _run_project(job, dev, step, abis, log, failed):
     def fail(code, text):
         failed.add(step['ref_id'])
@@ -673,20 +703,7 @@ def _run_project(job, dev, step, abis, log, failed):
         return _record(job, dev['id'], step, 'up_to_date')
     if step['path'] is None and not _pull_project(job, step, log):
         return fail('NOT_DOWNLOADED', 'cancelled')
-    # re-resolve right before install, once more if the file is gone (retention may prune it), like _run_item
-    for _ in range(2):
-        p = projects.project_info(step['ref_id'], abis)
-        if p is None or p['tag'] is None:
-            code = 'NOT_DOWNLOADED'
-        elif p['signer_alert']:
-            code = 'SIGNER_CHANGED'
-        elif p['path'] is None:
-            code = 'NO_MATCHING_ABI'
-        elif not os.path.exists(p['path']):
-            code = 'NOT_DOWNLOADED'
-        else:
-            code = None
-            break
+    p, code = _reread(lambda: projects.project_info(step['ref_id'], abis), _project_install_blocker)
     if code:
         return fail(code, 'project file missing' if code == 'NOT_DOWNLOADED' else code)
     step = _project_step(p, 'install', step['reason'])
@@ -703,16 +720,12 @@ def _run_item(job, dev, step, abi, log, failed):
         return _record(job, dev['id'], step, 'failed', step['reason'].split(':')[0], step['reason'])
     if step['action'] == 'up_to_date':
         return _record(job, dev['id'], step, 'up_to_date', a=step['artifact'])
-    # ponytail: re-resolve right before install, once more if the file is gone; no fd pinning. A file deleted
-    # by retention between this check and adb's open fails ADB_ERROR and the next OTA retries.
-    a = None
-    for _ in range(2):
-        a = build.latest_artifact(step['ref_id'], abi)
-        if a and os.path.exists(a['path']):
-            break
-        a = None
-    if a is None:
-        return _record(job, dev['id'], step, 'failed', 'NOT_DOWNLOADED', 'artifact file missing')
+    # ponytail: no fd pinning. A file deleted by retention between this read and adb's open fails ADB_ERROR and
+    # the next OTA retries.
+    a, code = _reread(lambda: build.latest_artifact(step['ref_id'], abi),
+                      lambda a: None if a and os.path.exists(a['path']) else 'NOT_DOWNLOADED')
+    if code:
+        return _record(job, dev['id'], step, 'failed', code, 'artifact file missing')
     code, out = _install(job, dev, a['path'], step['package'], log)
     if code:
         return _record(job, dev['id'], step, 'failed', code, out, a)
@@ -731,8 +744,8 @@ def _recovery_steps(dev, package, abis):
     for pid in dict.fromkeys(pids):
         p = projects.project_info(pid, abis)
         if p and p['package'] == package:
-            return [_project_step(p, 'install', 'recovery') if p['path'] else
-                    _project_step(p, 'error', 'NO_MATCHING_ABI')]
+            code = _project_blocker(p)
+            return [_project_step(p, 'error', code) if code else _project_step(p, 'install', 'recovery')]
     return None
 
 
