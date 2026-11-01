@@ -276,7 +276,7 @@ export function shell() {
   every(15000, refresh);
 }
 
-export const JOB_BADGE = { success: ['ok', 'Success'], failed: ['err', 'Failed'], running: ['brand', 'Running'], queued: ['', 'Waiting'], cancelled: ['', 'Cancelled'] };
+export const JOB_BADGE = { success: ['ok', 'Succeeded'], failed: ['err', 'Failed'], running: ['brand', 'Running'], queued: ['', 'Waiting'], cancelled: ['', 'Cancelled'] };
 
 export async function fillDownloads(menu, appId) {
   try {

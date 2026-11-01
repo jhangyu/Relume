@@ -1,4 +1,4 @@
-import { $, $$, act, api, confirmDialog, fmt, html, icon, shell, toast } from '/static/app.js';
+import { $, $$, act, api, confirmDialog, fmt, html, icon, JOB_BADGE, shell, toast } from '/static/app.js';
 
 const DAYS = ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'];
 const UI_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -56,13 +56,12 @@ function renderGlobal() {
   $('#g-sub').textContent = `${sentence(s)}. Enabling a new app builds it at once, without waiting.`;
 }
 
-// Outcome of the newest update-run job (scheduled or manual), as the job reports it.
-const RUN_BADGE = { success: ['ok', 'Succeeded'], failed: ['err', 'Failed'], running: ['brand', 'Running'], queued: ['', 'Waiting'], cancelled: ['', 'Cancelled'] };
+// Outcome of the newest update-run job (scheduled or manual), as the job reports it (statuses: schema CHECK).
 function renderLastRun() {
   const j = R.lastRun, box = $('#g-run-out');
   box.hidden = !j;
   if (!j) return;
-  const [cls, label] = RUN_BADGE[j.status] || ['', j.status];
+  const [cls, label] = JOB_BADGE[j.status];
   box.innerHTML = html`<span class="caption">Last update run</span><span class="badge ${cls}">${label}</span>${j.reason ? html`<span class="caption" style="color:var(--colorStatusDangerForeground1)">${j.reason}</span>` : ''}<a class="caption" style="color:var(--colorBrandForeground1)" href="/builds.html?job=${j.id}">View log</a>`;
 }
 

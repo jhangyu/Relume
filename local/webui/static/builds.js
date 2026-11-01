@@ -5,7 +5,6 @@ const ITEM = qs.get('item') ? Number(qs.get('item')) : null;
 const STEPS = ['version', 'download', 'patch', 'verify', 'store'];
 const STEP_RE = /^(\d\d:\d\d:\d\d) ::step::(\w+)(?:::(.*))?$/;
 const B = { items: new Map(), projects: new Map(), projectIds: new Map(), schedules: new Map(), jobs: new Map(), sel: null, es: null, text: '', marks: [], last: null, pct: 0, filt: ITEM ? 'item' : '' };
-const RESULT = { success: 'Succeeded', failed: 'Failed', cancelled: 'Cancelled' };
 const DAY_MS = 86400000;
 const dayStart = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 const HM = { hour: '2-digit', minute: '2-digit', hour12: false };
@@ -145,8 +144,8 @@ function actions(j) {
 }
 
 function historyRow(j) {
-  const it = itemOf(j), [cls] = JOB_BADGE[j.status], d = j.detail || {}, bundle = [it.bundle_name, d.patches_version].filter(Boolean).join(' ');
-  return html`<tr data-id="${j.id}" data-q="${`${it.label} ${bundle}`.toLowerCase()}" ${j.id === B.sel ? html`aria-current="true"` : ''}><td><div class="row">${tileOf(it, 's32')}<span class="strong">${it.label}</span></div></td><td>${bundle || '—'}</td><td class="mono">${d.app_version || '—'}</td><td>${when(j.started_at)}</td><td>${dur(j.started_at, j.finished_at)}</td><td><span class="badge ${cls}">${RESULT[j.status] || j.status}</span>${j.status === 'failed' && j.reason ? html` <span class="caption danger">${j.reason}</span>` : ''} ${warnPatches(j)}</td><td style="text-align:right">${actions(j)}</td></tr>`;
+  const it = itemOf(j), [cls, label] = JOB_BADGE[j.status], d = j.detail || {}, bundle = [it.bundle_name, d.patches_version].filter(Boolean).join(' ');
+  return html`<tr data-id="${j.id}" data-q="${`${it.label} ${bundle}`.toLowerCase()}" ${j.id === B.sel ? html`aria-current="true"` : ''}><td><div class="row">${tileOf(it, 's32')}<span class="strong">${it.label}</span></div></td><td>${bundle || '—'}</td><td class="mono">${d.app_version || '—'}</td><td>${when(j.started_at)}</td><td>${dur(j.started_at, j.finished_at)}</td><td><span class="badge ${cls}">${label}</span>${j.status === 'failed' && j.reason ? html` <span class="caption danger">${j.reason}</span>` : ''} ${warnPatches(j)}</td><td style="text-align:right">${actions(j)}</td></tr>`;
 }
 
 function applySearch() {
