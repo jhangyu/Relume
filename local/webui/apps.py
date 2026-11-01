@@ -27,7 +27,8 @@ def _j(text):
     return None if text is None else json.loads(text)
 
 
-def _row(app_id):
+def item_row(app_id):
+    """ROW_SQL row of one item; 404 when missing (build.py reads it for the input fingerprint)."""
     r = db.conn().execute(ROW_SQL + ' WHERE i.id = ?', (app_id,)).fetchone()
     if r is None:
         raise server.HttpError(404, f'app {app_id} not found')
@@ -77,7 +78,7 @@ def _status(r, st):
                    fail_detail=detail['fail_detail'] if detail else last['reason'])
     elif st['last_success'] is None:
         out['state'] = 'not_built'
-    elif build.needs_build(r['id']):
+    elif build.needs_build(st, r):
         out['state'] = 'update_available'
     else:
         out['state'] = 'up_to_date'
@@ -117,7 +118,7 @@ def _supported(r):
 
 
 def get(app_id):
-    r = _row(app_id)
+    r = item_row(app_id)
     o = _app_obj(r, build.item_status([r['id']])[r['id']])
     o['settings'] = {
         'version': {'mode': r['version_mode'], 'pin': r['version_pin'], 'allow_nearest': bool(r['allow_nearest']),
@@ -211,7 +212,7 @@ def enable(package, bundle_id, overrides=None, rebuild=False):
 
 
 def disable(app_id):
-    _row(app_id)
+    item_row(app_id)
     with db.tx() as c:
         c.execute('UPDATE item SET enabled = 0 WHERE id = ?', (app_id,))
 
@@ -235,7 +236,7 @@ def _chain_target(item_id, rebuild):
 
 
 def update_settings(app_id, fields, rebuild=False):
-    r = _row(app_id)
+    r = item_row(app_id)
     if not isinstance(fields, dict):
         raise server.HttpError(400, f'app {app_id}: settings expected an object, got {fields!r}')
     unknown = sorted(set(fields) - set(SETTING_KEYS))
@@ -302,7 +303,7 @@ def update_settings(app_id, fields, rebuild=False):
 
 def patch_tags(app_id):
     """Selectable patch versions of the app's bundle on its current channel, newest first."""
-    r = _row(app_id)
+    r = item_row(app_id)
     return {'tags': catalog.release_tags(r['bundle_id']), 'pinned': r['bundle_pin']}
 
 
@@ -315,7 +316,7 @@ def _reject_module(r):
 
 
 def get_patches(app_id):
-    r = _row(app_id)
+    r = item_row(app_id)
     _reject_module(r)
     tag, files, bundle = catalog.patch_list(r['bundle_id'], r['package'])
     ov = json.loads(r['patch_overrides'])
@@ -354,7 +355,7 @@ def _type_ok(t, v):
 
 
 def put_patches(app_id, body):
-    r = _row(app_id)
+    r = item_row(app_id)
     _reject_module(r)
     tag, _, bundle = catalog.patch_list(r['bundle_id'], r['package'])
     if bundle is None:
@@ -393,7 +394,7 @@ def put_patches(app_id, body):
 
 
 def stale_overrides(item_id):
-    r = _row(item_id)
+    r = item_row(item_id)
     _, _, bundle = catalog.patch_list(r['bundle_id'], r['package'])
     if bundle is None:
         return []
@@ -409,13 +410,13 @@ def _require_enabled(r):
 
 
 def check_update(app_id):
-    r = _row(app_id)
+    r = item_row(app_id)
     _require_enabled(r)
     return jobs.enqueue('upstream', {'item_id': r['id']}, 'manual')
 
 
 def rebuild(app_id):
-    r = _row(app_id)
+    r = item_row(app_id)
     _require_enabled(r)
     kind = _missing_url(r)
     if kind is not None:
@@ -517,7 +518,7 @@ def run_update(job, log):
             failed.append(f'catalog: {e}')
         items = db.conn().execute(ROW_SQL + ' WHERE i.enabled = 1 ORDER BY i.id').fetchall()
     else:
-        r = _row(t['item_id'])
+        r = item_row(t['item_id'])
         if not r['enabled']:
             raise jobs.JobFailed(f"app {r['id']} is disabled")
         items = [r]
@@ -539,7 +540,7 @@ def run_update(job, log):
             return
         if not r['apkmirror_list_url'] and any(v['download']['kind'] == 'apkmirror' for v in _variants(r)):
             apklocate.locate(r['package'], log, job.cancel_event)
-            r = _row(r['id'])
+            r = item_row(r['id'])
         if _missing_url(r):
             log.line(f"[!] app {r['id']} ({r['package']}): no download URL, lookup state {r['apkm_state']}; not built")
             continue
@@ -555,7 +556,13 @@ def run_update(job, log):
     if job.cancel_event.is_set():
         return
     notify = (job.options or {}).get('notify', True)
-    queued = [i for i in buildable if t.get('force') or build.needs_build(i)]
+    if t.get('force') or not buildable:
+        queued = buildable
+    else:   # rows read again: check_versions above refreshed app.apkmirror_versions, which the fingerprint reads
+        status = build.item_status(buildable)
+        rows = {r['id']: r for r in db.conn().execute(
+            ROW_SQL + f" WHERE i.id IN ({','.join('?' * len(buildable))})", buildable)}
+        queued = [i for i in buildable if build.needs_build(status[i], rows[i])]
     for i in queued:
         jobs.enqueue('build', {'item_id': i}, job.trigger, job.schedule_id, {'notify': notify})
     log.line(f'[+] build enqueued for {len(queued)} app(s)')
@@ -617,8 +624,8 @@ def job_input(item_id):
     }
 
 
-def inputs_sha(item_id):
-    r = _row(item_id)
+def inputs_sha(r):
+    """Fingerprint of the build inputs of one ROW_SQL row (apps part §4): base inputs + one hash per variant."""
     tag, _, patches = catalog.patch_list(r['bundle_id'], r['package'])
     cli_tag = db.conn().execute('SELECT downloaded_tag FROM upstream WHERE id = ?',
                                 (catalog.engine_cli(r['engine']),)).fetchone()[0]

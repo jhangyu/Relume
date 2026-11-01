@@ -263,7 +263,7 @@ def handler(job, log):
             inp = apps.job_input(item_id)
         except catalog.UpstreamMissing as e:
             _fail(job, item_id, "upstream_missing", str(e))
-        sha = apps.inputs_sha(item_id)
+        sha = apps.inputs_sha(apps.item_row(item_id))
         for name in apps.stale_overrides(item_id):
             log.line(f"[!] stale override dropped: {name}")
         work.mkdir(parents=True, exist_ok=True)
@@ -320,7 +320,7 @@ def handler(job, log):
                 for device, vc in sorted({(g["device"], g["version_code"]) for g in googleplay if g["version_code"] is not None}):
                     playversion.remember(inp["package"], want, device, vc)  # the runner verified name and code
                 if want is None:  # latest, or auto with no compatible list: the runner refreshed the APKMirror list
-                    sha = apps.inputs_sha(item_id)
+                    sha = apps.inputs_sha(apps.item_row(item_id))
                 failed, verdict = [], None
                 if inp["engine"] == "morphe":  # lspatch/npatch embed one module: no per-patch result (design guard §7)
                     results = {v["name"]: _read_patch_result(awork, v["name"]) for v in result["variants"]}
@@ -358,7 +358,7 @@ def handler(job, log):
         # an exhausted loop waits for an input change (needs_build), whichever way the last variant failed
         if want is None:   # fingerprint the version the runner found (as the guard path does)
             with db.tx() as c:
-                c.execute("UPDATE build_jobs SET inputs_sha = ? WHERE job_id = ?", (apps.inputs_sha(item_id), job.id))
+                c.execute("UPDATE build_jobs SET inputs_sha = ? WHERE job_id = ?", (apps.inputs_sha(apps.item_row(item_id)), job.id))
         _fail(job, item_id, "patch_items_failed",
               f"Tried APKMirror variants {', '.join(map(str, tried))} of {vname}: the patches applied "
               f"to none of them. Last: {rejected.rstrip('.')}. Set the app's APKMirror versionCode to pick one.")
@@ -489,13 +489,14 @@ def latest_artifact(item_id, abi):
 
 
 STATUS_SQL = """SELECT j.id, j.status, j.reason, j.finished_at, json_extract(j.target, '$.item_id') AS item_id,
-  b.fail_code, b.app_version, b.patches_version, b.cli_version
+  b.fail_code, b.app_version, b.patches_version, b.cli_version, b.inputs_sha
   FROM jobs j LEFT JOIN build_jobs b ON b.job_id = j.id
   WHERE j.kind = 'build' AND json_extract(j.target, '$.item_id') IN ({q})"""
 
 
 def item_status(item_ids):
-    """{item_id: {last_build, last_success, active_job}} in two queries (spec build §3.4)."""
+    """{item_id: {last_build, last_success, active_job}} in three queries (spec build §3.4); last_success.variants =
+    the variant names that still have an artifact, sorted."""
     out = {i: {"last_build": None, "last_success": None, "active_job": None} for i in item_ids}
     if not item_ids:
         return out
@@ -503,10 +504,17 @@ def item_status(item_ids):
     c = db.conn()
     for r in c.execute(sql + " AND j.status IN ('success', 'failed', 'cancelled') ORDER BY j.id", list(item_ids)):
         o = out[r["item_id"]]
-        o["last_build"] = {"job_id": r["id"], "status": r["status"], "reason": r["reason"], "fail_code": r["fail_code"]}
+        o["last_build"] = {"job_id": r["id"], "status": r["status"], "reason": r["reason"], "fail_code": r["fail_code"],
+                           "inputs_sha": r["inputs_sha"]}
         if r["status"] == "success":
             o["last_success"] = {"job_id": r["id"], "app_version": r["app_version"], "patches_version": r["patches_version"],
-                                 "cli_version": r["cli_version"], "finished_at": r["finished_at"]}
+                                 "cli_version": r["cli_version"], "finished_at": r["finished_at"],
+                                 "inputs_sha": r["inputs_sha"], "variants": []}
+    ls = {o["last_success"]["job_id"]: o["last_success"] for o in out.values() if o["last_success"]}
+    if ls:
+        for r in c.execute(f"SELECT DISTINCT job_id, variant FROM artifacts WHERE job_id IN ({','.join('?' * len(ls))}) "
+                           "ORDER BY variant", list(ls)):
+            ls[r["job_id"]]["variants"].append(r["variant"])
     # queued rows newest-first, then running: the last assignment wins = running job, else the oldest queued
     for r in c.execute(sql + " AND j.status IN ('queued', 'running') ORDER BY j.status = 'running', j.id DESC", list(item_ids)):
         with _steps_lock:
@@ -516,24 +524,19 @@ def item_status(item_ids):
     return out
 
 
-def needs_build(item_id):
+def needs_build(st, r):
     """Apps part §4.3: never built, last build failed (a patch_items_failed verdict: and the inputs changed since),
-    artifacts cleaned up, or the build inputs changed."""
-    st = item_status([item_id])[item_id]
+    artifacts cleaned up, or the build inputs changed. st = item_status entry, r = apps.ROW_SQL row of the item."""
     ls, lb = st["last_success"], st["last_build"]
     if lb is not None and lb["status"] == "failed":  # a guard verdict is retried only once its inputs change
         if lb["fail_code"] != "patch_items_failed":
             return True
-        sha = db.conn().execute("SELECT inputs_sha FROM build_jobs WHERE job_id = ?", (lb["job_id"],)).fetchone()[0]
-        return not apps.inputs_cover(sha, apps.inputs_sha(item_id))
+        return not apps.inputs_cover(lb["inputs_sha"], apps.inputs_sha(r))
     if ls is None:
         return True
-    want = {v["name"] for v in json.loads(db.conn().execute("SELECT variants FROM item WHERE id = ?", (item_id,)).fetchone()[0])}
-    have = {r[0] for r in db.conn().execute("SELECT variant FROM artifacts WHERE job_id = ?", (ls["job_id"],))}
-    if not want <= have:
+    if not {v["name"] for v in json.loads(r["variants"])} <= set(ls["variants"]):
         return True  # cleaned up, or a variant's APK is gone
-    sha = db.conn().execute("SELECT inputs_sha FROM build_jobs WHERE job_id = ?", (ls["job_id"],)).fetchone()[0]
-    return not apps.inputs_cover(sha, apps.inputs_sha(item_id))
+    return not apps.inputs_cover(ls["inputs_sha"], apps.inputs_sha(r))
 
 
 def drop_variants(item_id, keep):

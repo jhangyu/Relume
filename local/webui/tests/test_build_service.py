@@ -153,6 +153,9 @@ class BuildCase(helpers.DataTestCase):
     def bj(self, job):
         return db.conn().execute("SELECT * FROM build_jobs WHERE job_id = ?", (job.id,)).fetchone()
 
+    def needs_build(self, item_id=1):
+        return build.needs_build(build.item_status([item_id])[item_id], apps.item_row(item_id))
+
 
 class HandlerFailTest(BuildCase):
     def test_job_json_matches_runner_fixture(self):
@@ -506,13 +509,13 @@ class GuardHandlerTest(BuildCase):
         job, _, err = self.run_handler(patch_results={"universal": patch_result(0, []), "arm64-v8a": patch_result(0, [])})
         with db.tx() as c:
             c.execute("UPDATE jobs SET status = 'failed' WHERE id = ?", (job.id,))
-        self.assertFalse(build.needs_build(1))
+        self.assertFalse(self.needs_build())
         sha["v"] = sha["v"].replace("b1", "b2")   # a new bundle tag, app version or override
-        self.assertTrue(build.needs_build(1))
+        self.assertTrue(self.needs_build())
         sha["v"] = sha["v"].replace("b2", "b1")
         with db.tx() as c:
             c.execute("UPDATE build_jobs SET fail_code = 'download_failed' WHERE job_id = ?", (job.id,))
-        self.assertTrue(build.needs_build(1))   # other fail codes keep retrying
+        self.assertTrue(self.needs_build())   # other fail codes keep retrying
 
 
 class VariantLoopTest(BuildCase):
@@ -563,7 +566,7 @@ class VariantLoopTest(BuildCase):
                                                     "Last: 0 of 1 patches applied (variant universal). First error: no fit for 103."), b["fail_detail"])
         with db.tx() as c:
             c.execute("UPDATE jobs SET status = 'failed' WHERE id = ?", (job.id,))
-        self.assertFalse(build.needs_build(1))
+        self.assertFalse(self.needs_build())
         self.assertEqual(self.remembered(), [])
 
     def test_patcher_refusing_every_variant_ends_as_patch_items_failed(self):
@@ -573,7 +576,7 @@ class VariantLoopTest(BuildCase):
         self.assertIn("Last: patcher exited 1 on 102. Set the app's APKMirror versionCode", self.bj(job)["fail_detail"])
         with db.tx() as c:
             c.execute("UPDATE jobs SET status = 'failed' WHERE id = ?", (job.id,))
-        self.assertFalse(build.needs_build(1))
+        self.assertFalse(self.needs_build())
 
     def test_late_attempt_with_nothing_left_ends_without_scheduled_retry(self):
         # review finding: two rows with one code count as 2 left, the 3rd attempt finds nothing and failed download_failed,
@@ -585,7 +588,7 @@ class VariantLoopTest(BuildCase):
         self.assertIn("First error: no fit for 102. No build was published. Then download_failed: no variant left", b["fail_detail"])
         with db.tx() as c:
             c.execute("UPDATE jobs SET status = 'failed' WHERE id = ?", (job.id,))
-        self.assertFalse(build.needs_build(1))
+        self.assertFalse(self.needs_build())
 
     def test_single_candidate_runs_once(self):
         job, err, used = self.build(codes=[101], patchable=[])
@@ -749,8 +752,8 @@ class StatusTest(BuildCase):
     def test_success(self):
         jid = self.finished("success")
         st = build.item_status([1])[1]
-        self.assertEqual(st["last_build"], {"job_id": jid, "status": "success", "reason": None, "fail_code": None})
-        self.assertEqual(st["last_success"]["patches_version"], "v1.2.3")
+        self.assertEqual(st["last_build"], {"job_id": jid, "status": "success", "reason": None, "fail_code": None, "inputs_sha": None})
+        self.assertEqual((st["last_success"]["patches_version"], st["last_success"]["variants"]), ("v1.2.3", ["universal"]))
 
     def test_failed_newest(self):
         self.finished("success")

@@ -171,12 +171,15 @@ class VersionTest(AppsCase):
 
 
 class NeedsBuildTest(AppsCase):
+    def needs(self, iid=1):
+        return build.needs_build(build.item_status([iid])[iid], apps.item_row(iid))
+
     def built(self, iid=1, status="success"):
         with db.tx() as c:
             jid = c.execute("INSERT INTO jobs(kind, status, trigger, target, options, created_at) VALUES "
                             "('build', ?, 'manual', ?, '{}', 'now')", (status, json.dumps({"item_id": iid}))).lastrowid
             c.execute("INSERT INTO build_jobs(job_id, item_id, app_version, inputs_sha) VALUES (?, ?, '20.13.41', ?)",
-                      (jid, iid, apps.inputs_sha(iid)))
+                      (jid, iid, apps.inputs_sha(apps.item_row(iid))))
             if status == "success":
                 for v in apps.get(iid)["settings"]["variants"]:
                     c.execute("INSERT INTO artifacts(job_id, item_id, variant, abi, path, created_at) VALUES (?, ?, ?, ?, ?, 'now')",
@@ -184,15 +187,15 @@ class NeedsBuildTest(AppsCase):
 
     def flips(self, change, undo):
         change()
-        flipped = build.needs_build(1)
+        flipped = self.needs()
         undo()
-        self.assertFalse(build.needs_build(1))
+        self.assertFalse(self.needs())
         return flipped
 
     def test_needs_build_matrix(self):
-        self.assertTrue(build.needs_build(1))   # never built
+        self.assertTrue(self.needs())   # never built
         self.built()
-        self.assertFalse(build.needs_build(1))
+        self.assertFalse(self.needs())
         tag = lambda uid, t: lambda: db.conn().execute("UPDATE upstream SET downloaded_tag = ? WHERE id = ?", (t, uid))  # noqa: E731
         col = lambda k, v: lambda: self.set_item(1, **{k: v})  # noqa: E731
         apkm = lambda v: lambda: db.conn().execute("UPDATE app SET apkmirror_versions = ? WHERE package = ?", (v, YT))  # noqa: E731
@@ -217,10 +220,10 @@ class NeedsBuildTest(AppsCase):
         self.built()
         self.assertIs(self.flips(apkm('["21.0.0"]'), apkm(None)), True, "latest: new APKMirror version")
         self.built(status="failed")
-        self.assertTrue(build.needs_build(1))   # last finished build failed
+        self.assertTrue(self.needs())   # last finished build failed
         self.built()
         db.conn().execute("DELETE FROM artifacts")
-        self.assertTrue(build.needs_build(1))   # artifacts cleaned up
+        self.assertTrue(self.needs())   # artifacts cleaned up
 
     def test_unticking_an_abi_drops_its_apk_and_needs_no_rebuild(self):
         variants = apps.get(1)["settings"]["variants"]
@@ -230,11 +233,11 @@ class NeedsBuildTest(AppsCase):
         for f in files.values():
             f.write_bytes(b"x")
         apps.update_settings(1, {"variants": [v for v in variants if v["abi"] == "arm64-v8a"]})
-        self.assertFalse(build.needs_build(1))
+        self.assertFalse(self.needs())
         self.assertEqual([r[0] for r in db.conn().execute("SELECT abi FROM artifacts")], ["arm64-v8a"])
         self.assertEqual({a: f.exists() for a, f in files.items()}, {"universal": False, "arm64-v8a": True})
         apps.update_settings(1, {"variants": variants})
-        self.assertTrue(build.needs_build(1))   # universal is back and has no APK
+        self.assertTrue(self.needs())   # universal is back and has no APK
 
 
 class UpdateRunTest(AppsCase):
@@ -303,6 +306,30 @@ class UpdateRunTest(AppsCase):
         self.assertEqual(self.jobs_of("build"), [])
         self.run_job({"item_id": 1, "force": True})
         self.assertEqual(self.jobs_of("build"), [({"item_id": 1}, "schedule")])
+
+    def test_latest_version_found_by_the_run_builds(self):
+        # the fingerprint of a latest-mode app reads app.apkmirror_versions, which check_versions refreshes mid-run
+        self.set_item(1, version_mode="latest")
+        db.conn().execute("UPDATE app SET apkmirror_versions = '[\"20.13.41\"]' WHERE package = ?", (YT,))
+        with db.tx() as c:
+            jid = c.execute("INSERT INTO jobs(kind, status, trigger, target, options, created_at) VALUES "
+                            "('build', 'success', 'manual', ?, '{}', 'now')", (json.dumps({"item_id": 1}),)).lastrowid
+            c.execute("INSERT INTO build_jobs(job_id, item_id, app_version, inputs_sha) VALUES (?, 1, '20.13.41', ?)",
+                      (jid, apps.inputs_sha(apps.item_row(1))))
+            for v in apps.get(1)["settings"]["variants"]:
+                c.execute("INSERT INTO artifacts(job_id, item_id, variant, abi, path, created_at) VALUES (?, 1, ?, ?, '/x', 'now')",
+                          (jid, v["name"], v["abi"]))
+        found = []   # the versions the next check_versions call finds
+
+        def check(package, log, cancel_event):
+            if found:
+                db.conn().execute("UPDATE app SET apkmirror_versions = ? WHERE package = ?", (found[0], package))
+        self.enterContext(mock.patch.object(apps, "check_versions", side_effect=check))
+        self.run_job({"item_id": 1})
+        self.assertEqual(self.jobs_of("build"), [({"item_id": 1}, "manual")])   # only the seeded build: nothing changed
+        found.append('["20.14.1"]')
+        self.run_job({"item_id": 1})
+        self.assertEqual(self.jobs_of("build"), [({"item_id": 1}, "manual"), ({"item_id": 1}, "schedule")])
 
 
 class EnableTest(AppsCase):
