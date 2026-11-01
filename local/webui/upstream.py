@@ -157,7 +157,8 @@ def fetch(row):
 def affected_items(upstream_id):
     """Enabled items whose bundle uses the row, whose engine uses it as CLI, or that depend on its project."""
     r = db.conn().execute("SELECT repo, channel, tag FROM upstream WHERE id = ?", (upstream_id,)).fetchone()
-    engines = [e for e, cli in catalog.ENGINE_CLI.items() if r is not None and cli[:3] == tuple(r)]   # read only
+    engines = [e for e, cli in catalog.ENGINE_CLI.items()
+               if r is not None and (cli.repo, cli.channel, cli.tag) == (r["repo"], r["channel"], r["tag"])]
     rows = db.conn().execute(f"""SELECT i.id FROM item i JOIN bundle b ON b.id = i.bundle_id
         WHERE i.enabled = 1 AND (b.upstream_id = ? OR b.engine IN ({','.join('?' * len(engines))}))
         UNION SELECT i.id FROM item i JOIN item_dependency x ON x.item_id = i.id JOIN project p ON p.id = x.project_id
@@ -322,7 +323,7 @@ def http_download(url, dest, timeout=300):
     return n
 
 
-def _sha256(path):
+def sha256_file(path):
     h = hashlib.sha256()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
@@ -343,7 +344,7 @@ def _download(row, tag, assets, log, verify=None):
             if dest.stat().st_size != a.get("size"):
                 raise ValueError(f"size mismatch: {a['name']}")
             digest = a.get("digest") or ""
-            if digest.startswith("sha256:") and _sha256(dest) != digest[7:]:
+            if digest.startswith("sha256:") and sha256_file(dest) != digest[7:]:
                 raise ValueError(f"hash mismatch: {a['name']}")
         if verify:
             verify(part)

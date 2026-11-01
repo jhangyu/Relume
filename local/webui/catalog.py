@@ -7,6 +7,7 @@ import shutil
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import NamedTuple
 from urllib.parse import urlsplit
 
 from . import db, server, upstream
@@ -23,9 +24,21 @@ PLAY_ICON_SIZE = "=s256-rw"
 ICON_TIMEOUT = 10
 FEED_TIMEOUT = 30
 GITLAB_REASON = "GitLab releases not supported"
-ENGINE_CLI = {"morphe": ("MorpheApp/morphe-desktop", "stable", None, r"^morphe-desktop-.*-all\.jar$"),
-              "lspatch": ("JingMatrix/LSPatch", "stable", None, r"^lspatch-.*-release\.jar$"),
-              "npatch": ("7723mod/NPatch", "tag", "v1.0.5", r"^jar-.*-release\.jar$")}
+
+
+class EngineCli(NamedTuple):
+    """Release row of an engine's CLI jar (upstream kind cli)."""
+    repo: str
+    channel: str
+    tag: str | None
+    asset_regex: str
+
+
+ENGINE_CLI = {"morphe": EngineCli("MorpheApp/morphe-desktop", "stable", None, r"^morphe-desktop-.*-all\.jar$"),
+              "lspatch": EngineCli("JingMatrix/LSPatch", "stable", None, r"^lspatch-.*-release\.jar$"),
+              "npatch": EngineCli("7723mod/NPatch", "tag", "v1.0.5", r"^jar-.*-release\.jar$")}
+
+
 ENGINES = {'morphe': {'kind': 'patches'},
            'lspatch': {'kind': 'module', 'max_sigbypass': 3},
            'npatch': {'kind': 'module', 'max_sigbypass': 4}}
@@ -600,12 +613,12 @@ def _bundle_row(bundle_id):
 
 def engine_cli(engine):
     """Upstream id of the engine's CLI row; the row is created on first use (the migration keeps the live ones)."""
-    repo, channel, tag, rx = ENGINE_CLI[engine]
-    r = _find_upstream(db.conn(), repo, channel, tag)
+    cli = ENGINE_CLI[engine]
+    r = _find_upstream(db.conn(), cli.repo, cli.channel, cli.tag)
     if r is not None:
         return r["id"]
     with db.tx() as c:
-        return upstream_row(c, "cli", repo, channel, tag, rx)
+        return upstream_row(c, "cli", cli.repo, cli.channel, cli.tag, cli.asset_regex)
 
 
 def ensure_upstream(bundle_id):

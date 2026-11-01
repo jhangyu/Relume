@@ -201,7 +201,7 @@ def verify_release(upstream_id, part, log):
                      log, parse_apk_info, f"package unreadable: {apk.name}")
         facts.append({"file": apk.name, "abi": abi, "package": info["package"], "version_name": info["version_name"],
                       "version_code": info["version_code"], "signer_sha256": sig, "size": apk.stat().st_size,
-                      "sha256": upstream._sha256(apk)})
+                      "sha256": upstream.sha256_file(apk)})
     if len({f["signer_sha256"] for f in facts}) > 1:
         raise ValueError("signers differ within release")
     if len({f["package"] for f in facts}) > 1:
