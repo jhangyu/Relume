@@ -6,10 +6,13 @@ import androidx.work.WorkerParameters
 import io.github.jhangyu.relume.RelumeApp
 import io.github.jhangyu.relume.api.ApiError
 import io.github.jhangyu.relume.api.PlanAction
+import io.github.jhangyu.relume.api.RelumeApi
 import io.github.jhangyu.relume.install.InstallRunner
 import io.github.jhangyu.relume.install.Origin
 import io.github.jhangyu.relume.install.StartResult
+import io.github.jhangyu.relume.install.removedFromPhone
 import io.github.jhangyu.relume.inventory.Inventory
+import io.github.jhangyu.relume.inventory.SyncResult
 import java.io.IOException
 
 /** Periodic check (spec 9.5): sync, then start a background install run for a new plan revision. */
@@ -18,8 +21,9 @@ class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
     override suspend fun doWork(): Result {
         val app = applicationContext as RelumeApp
         val api = app.api ?: return fail(CODE_SIGNED_OUT, "not signed in to a Relume server")
+        InstallRunner.loadState(app)
         val synced = try {
-            Inventory.sync(app, api)
+            unassignRemoved(app, api, Inventory.sync(app, api))
         } catch (e: ApiError) {
             return fail("HTTP ${e.status}", e.toString())
         } catch (e: IOException) {
@@ -27,7 +31,6 @@ class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
             // The allowed IO case: WorkManager backoff.
             return Result.retry()
         }
-        InstallRunner.loadState(app)
         val plan = synced.plan
         val installs = plan.steps.count { it.action == PlanAction.INSTALL }
         val message = if (BackgroundStart.shouldStart(plan, InstallRunner.state.value?.isActive == true, app.prefs.lastBackgroundRevision)) {
@@ -44,6 +47,24 @@ class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         }
         record(true, null, message)
         return Result.success()
+    }
+
+    /**
+     * The only automatic unassign (user decision): apps the user removed from the phone leave its list before the
+     * background run is planned, so the run does not reinstall them. A run in progress may have uninstalled on purpose.
+     */
+    private suspend fun unassignRemoved(app: RelumeApp, api: RelumeApi, synced: SyncResult): SyncResult {
+        val run = InstallRunner.state.value
+        if (run?.isActive == true) return synced
+        val removed = removedFromPhone(synced.device, synced.plan, run)
+        if (!removed.any) return synced
+        val d = synced.device
+        api.putAssignments(
+            d.id,
+            d.assignments.map { it.itemId } - removed.items,
+            d.projects.filter { it.assigned }.map { it.projectId } - removed.projects,
+        )
+        return Inventory.sync(app, api)
     }
 
     private fun fail(code: String, message: String): Result {

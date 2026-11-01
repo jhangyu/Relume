@@ -202,13 +202,23 @@ data class DeviceView(
 )
 
 @Serializable
-data class Assignment(@SerialName("item_id") val itemId: Int, val pending: Boolean)
+data class Assignment(
+    @SerialName("item_id") val itemId: Int,
+    val pending: Boolean,
+    /** Server-side receipt of an earlier install on this phone (`installed`/`up_to_date`); null = never installed here. */
+    val installed: JsonObject?,
+    /** The package in the phone's last sync report; null = absent from the phone now. */
+    @SerialName("installed_reported") val installedReported: JsonObject?,
+)
 
 @Serializable
 data class DeviceProject(
     @SerialName("project_id") val projectId: Int,
     val assigned: Boolean,
     val pending: Boolean,
+    /** Tag of an earlier install receipt from this phone; null = never installed here. */
+    @SerialName("installed_tag") val installedTag: String?,
+    @SerialName("installed_reported") val installedReported: JsonObject?,
 )
 
 @Serializable
