@@ -71,20 +71,30 @@ def _fail(job, item_id, code, detail):
 
 
 def _read_result(work):
-    """result.json when valid (spec build §3.2: present, ≥1 variant, every file non-empty inside work)."""
+    """result.json of a runner that exited 0 (spec build §3.2: ≥1 variant, every file non-empty inside work).
+    Raises ValueError naming the cause."""
     try:
         with jobs.open_runner_file(work, "result.json") as f:
             r = json.load(f)
-        variants = r["variants"]
-        if not variants:
-            return None
-        for v in variants:
-            with jobs.open_runner_file(work, v["file"]) as f:
-                if os.fstat(f.fileno()).st_size == 0:
-                    return None
-        return r
-    except (OSError, ValueError, KeyError, TypeError):
-        return None
+    except OSError as e:
+        raise ValueError(f"result.json: cannot open: {e.strerror or e}") from None
+    except ValueError as e:
+        raise ValueError(f"result.json: invalid JSON: {e}") from None
+    variants = r.get("variants") if isinstance(r, dict) else None
+    if not isinstance(variants, list) or not variants:
+        raise ValueError(f"result.json: expected a non-empty variants list, got {variants!r}")
+    for v in variants:
+        name = v.get("file") if isinstance(v, dict) else None
+        if not isinstance(name, str):
+            raise ValueError(f"result.json: variant without a file name: {v!r}")
+        try:
+            with jobs.open_runner_file(work, name) as f:
+                size = os.fstat(f.fileno()).st_size
+        except OSError as e:
+            raise ValueError(f"variant file {name}: cannot open: {e.strerror or e}") from None
+        if size == 0:
+            raise ValueError(f"variant file {name}: empty")
+    return r
 
 
 def _result_shape(r):
@@ -305,16 +315,21 @@ def handler(job, log):
                 if a["pick"] and a["pick"]["version_code"] != u["version_code"]:   # the remembered page serves another build
                     _apkm_forget(inp["package"], want, a["abis"])
                     a["pick"] = None
-            result = _read_result(awork) if rc == 0 else None
+            result, bad = None, None
+            if rc == 0:
+                try:
+                    result = _read_result(awork)
+                except ValueError as e:
+                    bad = str(e)
             if result is None:
                 if not (used and m.fail_code == "patch_failed"):   # the patcher refusing an automatic variant: next one
                     if tried:   # earlier variants were rejected: end as the exhausted loop, not as a code retried every run
                         rejected = (f"{rejected.rstrip('.')}. Then {m.fail_code or 'internal'}: "
-                                    f"{m.fail_detail or m.last_err or f'runner exited {rc} without result.json'}")
+                                    f"{bad or m.fail_detail or m.last_err or f'runner exited {rc} without result.json'}")
                         break
                     if m.fail_code:
                         _fail(job, item_id, m.fail_code, m.fail_detail or "")
-                    _fail(job, item_id, "internal", m.last_err or f"runner exited {rc} without result.json")
+                    _fail(job, item_id, "internal", bad or m.last_err or f"runner exited {rc} without result.json")
                 rejected = m.fail_detail or "the patcher failed"
             else:
                 for device, vc in sorted({(g["device"], g["version_code"]) for g in googleplay if g["version_code"] is not None}):

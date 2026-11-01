@@ -197,8 +197,19 @@ class HandlerFailTest(BuildCase):
         job, log, err = self.run_handler("runner-nomarker.sh")
         self.assertEqual((self.bj(job)["fail_code"], self.bj(job)["fail_detail"]), ("internal", "[-] last error line"))
         job, log, err = self.run_handler("runner-noresult.sh")
-        self.assertEqual(self.bj(job)["fail_code"], "internal")
+        self.assertEqual((self.bj(job)["fail_code"], self.bj(job)["fail_detail"]),
+                         ("internal", "result.json: cannot open: No such file or directory"))
         self.assertFalse((self.data / "work" / str(job.id)).exists())
+
+    def test_empty_variant_file_is_named(self):
+        script = self.data / "runner-empty.sh"
+        script.write_text('mkdir -p release && printf u > release/universal.apk && : > release/arm64-v8a.apk\n'
+                          'echo \'{"app_version": "1", "variants": [{"name": "universal", "file": "release/universal.apk"},'
+                          ' {"name": "arm64-v8a", "file": "release/arm64-v8a.apk"}]}\' > result.json\n')
+        build.RUNNER = str(script)
+        job, log, err = self.run_handler()
+        self.assertEqual((self.bj(job)["fail_code"], self.bj(job)["fail_detail"]),
+                         ("internal", "variant file release/arm64-v8a.apk: empty"))
 
     def test_env_allowlist(self):
         with mock.patch.dict(os.environ, {"GITHUB_TOKEN": "secret", "FLARESOLVERR_URL": "http://127.0.0.1:47191"}):
