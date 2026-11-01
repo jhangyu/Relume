@@ -1,6 +1,7 @@
 import json, os, pathlib, select, sqlite3, subprocess, tempfile, threading, time, unittest
 from unittest import mock
 from webui import db, jobs, settings
+from webui.tests import catalog_rows
 from webui.tests.helpers import DataTestCase, run_inline
 
 
@@ -281,10 +282,12 @@ class RecoveryCleanupTest(DataTestCase):
 
     def test_cleanup_skips_restrict_and_deletes_logs(self):
         settings.put('job_history_count', 1)
-        db.conn().execute('CREATE TABLE keep (job_id INTEGER REFERENCES jobs(id) ON DELETE RESTRICT)')
         jobs.register('build', lambda job, log: log.line('x'))
         a = run_inline('build', {'item_id': 1}, 'manual')['id']
-        db.conn().execute('INSERT INTO keep VALUES (?)', (a,))
+        with db.tx() as t:  # a published build: artifacts.job_id is ON DELETE RESTRICT
+            item = catalog_rows.add_item(t, 'com.example.kept', catalog_rows.builtin_id(t))
+            t.execute("INSERT INTO artifacts(job_id, item_id, variant, abi, path, created_at) "
+                      "VALUES (?, ?, 'universal', 'universal', 'x.apk', 'x')", (a, item))
         b = run_inline('build', {'item_id': 2}, 'manual')['id']
         c = run_inline('build', {'item_id': 3}, 'manual')['id']
         ids = [r[0] for r in db.conn().execute('SELECT id FROM jobs ORDER BY id')]

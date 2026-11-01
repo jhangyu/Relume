@@ -4,7 +4,6 @@ import os
 import pathlib
 import re
 import signal
-import sqlite3
 import stat
 import subprocess
 import tempfile
@@ -407,16 +406,15 @@ def recover():
 
 
 def _cleanup(kind):
+    """Keep the newest job_history_count finished jobs of the kind; a job whose artifacts are published stays
+    (artifacts.job_id is ON DELETE RESTRICT, the only RESTRICT reference to jobs)."""
     keep = int(settings.get('job_history_count', 500))
-    old = [r[0] for r in db.conn().execute(
-        "SELECT id FROM jobs WHERE kind=? AND status NOT IN ('queued','running') "
-        'ORDER BY id DESC LIMIT -1 OFFSET ?', (kind, keep))]
-    for jid in old:
-        try:
-            with db.tx() as c:
-                c.execute('DELETE FROM jobs WHERE id=?', (jid,))
-        except sqlite3.IntegrityError:
-            continue
+    with db.tx() as c:
+        gone = [r[0] for r in c.execute(
+            "DELETE FROM jobs WHERE id IN (SELECT id FROM jobs WHERE kind = ? AND status NOT IN ('queued','running') "
+            'ORDER BY id DESC LIMIT -1 OFFSET ?) AND id NOT IN (SELECT job_id FROM artifacts) RETURNING id',
+            (kind, keep)).fetchall()]
+    for jid in gone:
         (db.DATA / 'logs' / f'{jid}.log').unlink(missing_ok=True)
 
 
