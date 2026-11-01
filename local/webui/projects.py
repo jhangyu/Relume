@@ -380,8 +380,8 @@ def _set_devices(c, project_id, device_ids):
     c.executemany("INSERT INTO device_projects(device_id, project_id) VALUES (?, ?)", [(d, project_id) for d in device_ids])
 
 
-def _enqueue_pull(upstream_id):
-    return jobs.enqueue("upstream", {"upstream_id": upstream_id}, "manual", options={"rebuild": False})
+def enqueue_pull(upstream_id):
+    return jobs.enqueue("upstream", {"upstream_id": upstream_id}, "manual")
 
 
 def list_projects(req):
@@ -432,7 +432,7 @@ def post_project(req):
         pid = c.execute("INSERT INTO project(upstream_id, display_name, auto_push) VALUES (?, ?, ?)",
                         (uid, dn, int(auto))).lastrowid
         _set_devices(c, pid, devs)
-    return 201, {"id": pid, "job_id": _enqueue_pull(uid)}
+    return 201, {"id": pid, "job_id": enqueue_pull(uid)}
 
 
 def put_project(req):
@@ -463,7 +463,7 @@ def put_project(req):
     except sqlite3.IntegrityError:
         raise server.HttpError(409, "project exists")
     if up:
-        _enqueue_pull(cur["upstream_id"])
+        enqueue_pull(cur["upstream_id"])
     return 200, _obj(pid)
 
 
@@ -501,7 +501,7 @@ def accept_signer(req):
 
 
 def post_pull(req):
-    return 200, {"job_id": _enqueue_pull(_get(req.params["id"])["upstream_id"])}
+    return 200, {"job_id": enqueue_pull(_get(req.params["id"])["upstream_id"])}
 
 
 def download_apk(req):

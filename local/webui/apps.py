@@ -292,7 +292,7 @@ def update_settings(app_id, fields, rebuild=False):
             if r['enabled']:
                 chained = True
             else:
-                projects._enqueue_pull(new_up)
+                projects.enqueue_pull(new_up)
     if 'variants' in fields:
         build.drop_variants(app_id, [v['name'] for v in variants])
     if chained:
