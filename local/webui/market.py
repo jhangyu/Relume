@@ -100,7 +100,7 @@ def list_marketplace(req):
 
 def get_marketplace_app(req):
     pkg = validate_package(req.params["pkg"])
-    meta = next((a for a in catalog.market_apps() if a["package"] == pkg), None)
+    meta = catalog.market_app(pkg)
     try:
         bundles = catalog.app_bundles(pkg)
     except KeyError:

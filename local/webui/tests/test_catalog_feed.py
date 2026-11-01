@@ -157,6 +157,8 @@ class RefreshTest(FeedCase):
         self.assertEqual((builtin["id"], builtin["origin"], builtin["stars"]), (self.basic["builtin"], "builtin", None))
         self.assertEqual(set(self.packages(builtin["id"])), {YT, MUSIC})   # from its patches-list.json, not the feed
         apps = {a["package"]: a for a in catalog.market_apps()}
+        self.assertEqual(catalog.market_app(YT), apps[YT])
+        self.assertIsNone(catalog.market_app("com.example.none"))
         self.assertEqual(apps[YT]["origins"], ["builtin", "official"])
         self.assertEqual((apps[YT]["bundle_count"], apps[YT]["newest_version"]), (2, "20.14.1"))
         alice = rows["alice/yt-patches"]["id"]

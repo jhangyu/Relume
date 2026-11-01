@@ -523,12 +523,15 @@ def _origins(seen):
     return sorted(seen, key=FEED_RANK.__getitem__)
 
 
-def market_apps():
-    """Every package a listed bundle targets, with metadata aggregated over those bundles."""
+_MARKET_SQL = """SELECT a.package, a.versions, b.origin, b.stars, b.updated_at, s.name, s.category, s.description
+    FROM bundle_app a JOIN bundle b ON b.id = a.bundle_id JOIN store_app s ON s.package = a.package
+    WHERE b.listed = 1"""
+
+
+def _aggregate(rows):
+    """One market entry per package of the _MARKET_SQL rows, metadata aggregated over the package's bundles."""
     apps = {}
-    for r in db.conn().execute("""SELECT a.package, a.versions, b.origin, b.stars, b.updated_at, s.name, s.category,
-            s.description FROM bundle_app a JOIN bundle b ON b.id = a.bundle_id
-            JOIN store_app s ON s.package = a.package WHERE b.listed = 1"""):
+    for r in rows:
         o = apps.setdefault(r["package"], {"package": r["package"], "name": r["name"], "category": r["category"],
                                            "description": r["description"], "origins": set(), "bundle_count": 0,
                                            "stars": None, "versions": set(), "updated_at": None})
@@ -544,7 +547,17 @@ def market_apps():
         vs = o.pop("versions")
         out.append(dict(o, origins=_origins(o["origins"]),
                         newest_version=max(vs, key=version_key) if vs else None))
-    return sorted(out, key=lambda o: (o["name"].lower(), o["package"]))
+    return out
+
+
+def market_apps():
+    """Every package a listed bundle targets, with metadata aggregated over those bundles."""
+    return sorted(_aggregate(db.conn().execute(_MARKET_SQL)), key=lambda o: (o["name"].lower(), o["package"]))
+
+
+def market_app(package):
+    """The market_apps() entry of one package, or None when no listed bundle targets it (detail screen)."""
+    return next(iter(_aggregate(db.conn().execute(_MARKET_SQL + " AND a.package = ?", (package,)))), None)
 
 
 def app_bundles(package):
