@@ -279,7 +279,7 @@ def handler(job, log):
         if missing:
             _fail(job, item_id, "upstream_missing", f"missing file {Path(missing[0]).name}")
         googleplay = _googleplay(job, item_id, inp, work, log)
-        auto, want, tried = _apkm_auto(inp), inp["version"]["value"], []
+        auto, want, tried, vname = _apkm_auto(inp), inp["version"]["value"], [], None
         # one isolated runner run per APKMirror variant attempt (design variant §1), each in a fresh dir: the runner uid
         # owns its files, the finally below removes them all
         for attempt in range(1, MAX_VARIANT_ATTEMPTS + 1):
@@ -313,6 +313,10 @@ def handler(job, log):
             result = _read_result(awork) if rc == 0 else None
             if result is None:
                 if not (used and m.fail_code == "patch_failed"):   # the patcher refusing an automatic variant: next one
+                    if tried:   # earlier variants were rejected: end as the exhausted loop, not as a code retried every run
+                        rejected = (f"{rejected.rstrip('.')}. Then {m.fail_code or 'internal'}: "
+                                    f"{m.fail_detail or m.last_err or f'runner exited {rc} without result.json'}")
+                        break
                     if m.fail_code:
                         _fail(job, item_id, m.fail_code, m.fail_detail or "")
                     _fail(job, item_id, "internal", m.last_err or f"runner exited {rc} without result.json")
@@ -350,6 +354,7 @@ def handler(job, log):
             for a, u in used:
                 a["exclude"].append(u["version_code"])
                 tried.append(u["version_code"])
+                vname = u["version_name"]
                 if a["pick"]:   # the remembered variant no longer applies (e.g. a pinned older bundle)
                     _apkm_forget(inp["package"], want, a["abis"])
                     a["pick"] = None
@@ -360,7 +365,7 @@ def handler(job, log):
             with db.tx() as c:
                 c.execute("UPDATE build_jobs SET inputs_sha = ? WHERE job_id = ?", (apps.inputs_sha(item_id), job.id))
         _fail(job, item_id, "patch_items_failed",
-              f"Tried APKMirror variants {', '.join(map(str, tried))} of {used[-1][1]['version_name']}: the patches applied "
+              f"Tried APKMirror variants {', '.join(map(str, tried))} of {vname}: the patches applied "
               f"to none of them. Last: {rejected.rstrip('.')}. Set the app's APKMirror versionCode to pick one.")
     finally:
         shutil.rmtree(work, ignore_errors=True)

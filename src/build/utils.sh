@@ -334,9 +334,9 @@ get_apk() {
 		if [[ -n "$cands" ]]; then
 			variant_href=$(head -1 <<<"$cands" | cut -f1)
 			matched_type=$(head -1 <<<"$cands" | cut -f3)
-			APKM_REMAINING=$(grep -c . <<<"$cands")
+			APKM_REMAINING=$(cut -f2 <<<"$cands" | sort -u | grep -c .)   # distinct codes: exclusion is by code
 			[[ "$matched_type" != "$type_badge" ]] && yellow_log "[!] Type fallback: $type_badge -> $matched_type"
-			green_log "[+] APKMirror variant versionCode $(head -1 <<<"$cands" | cut -f2) ($APKM_REMAINING candidate(s)${exclude_codes:+, excluded $exclude_codes})"
+			green_log "[+] APKMirror variant versionCode $(head -1 <<<"$cands" | cut -f2) ($APKM_REMAINING candidate versionCode(s)${exclude_codes:+, excluded $exclude_codes})"
 		else
 			local direct_apk_href
 			direct_apk_href=$(echo "$html" | "$pup" 'a.downloadButton attr{href}' | grep 'forcebaseapk' | head -1)

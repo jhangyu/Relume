@@ -575,6 +575,18 @@ class VariantLoopTest(BuildCase):
             c.execute("UPDATE jobs SET status = 'failed' WHERE id = ?", (job.id,))
         self.assertFalse(build.needs_build(1))
 
+    def test_late_attempt_with_nothing_left_ends_without_scheduled_retry(self):
+        # review finding: two rows with one code count as 2 left, the 3rd attempt finds nothing and failed download_failed,
+        # which every scheduled run retried from variant 1
+        job, err, used = self.build(codes=[101, 102, 102], patchable=[])
+        b = self.bj(job)
+        self.assertEqual((used, b["fail_code"]), (["101", "102"], "patch_items_failed"))
+        self.assertTrue(b["fail_detail"].startswith("Tried APKMirror variants 101, 102 of 1.0.0:"), b["fail_detail"])
+        self.assertIn("First error: no fit for 102. No build was published. Then download_failed: no variant left", b["fail_detail"])
+        with db.tx() as c:
+            c.execute("UPDATE jobs SET status = 'failed' WHERE id = ?", (job.id,))
+        self.assertFalse(build.needs_build(1))
+
     def test_single_candidate_runs_once(self):
         job, err, used = self.build(codes=[101], patchable=[])
         self.assertEqual((used, self.bj(job)["fail_code"]), (["101"], "patch_items_failed"))
