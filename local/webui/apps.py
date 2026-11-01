@@ -3,6 +3,7 @@ the update run and the global update schedule. No routes: market.py serves them.
 import hashlib
 import json
 from datetime import datetime, timedelta, timezone
+from typing import NamedTuple
 
 from . import apklocate, build, catalog, db, jobs, projects, scheduler, server, settings, upstream
 
@@ -235,8 +236,18 @@ def _chain_target(item_id, rebuild):
     return {'item_id': item_id, 'force': True} if rebuild else {'item_id': item_id}
 
 
-def update_settings(app_id, fields, rebuild=False):
-    r = item_row(app_id)
+class _SettingsChange(NamedTuple):
+    """An update_settings body after validation; nothing is written yet."""
+    sets: dict            # item columns to write
+    deps: list | None     # new project_ids, None = unchanged
+    new_bundle: bool
+    source: tuple | None  # (channel or None, patch tag or None) when the body sets the patch source
+    variants: list | None  # validated variants, None = unchanged
+
+
+def _parse_settings(r, fields):
+    """Validate a settings body against the item row: 400/404/409 like the API; reads only (DB, GitHub tag list)."""
+    app_id = r['id']
     if not isinstance(fields, dict):
         raise server.HttpError(400, f'app {app_id}: settings expected an object, got {fields!r}')
     unknown = sorted(set(fields) - set(SETTING_KEYS))
@@ -262,11 +273,12 @@ def update_settings(app_id, fields, rebuild=False):
         catalog.check_patch_tag(sets.get('bundle_id', r['bundle_id']), channel, pin)
     if 'version' in fields:
         sets.update(_version(fields['version']))
+    new_variants = None
     if 'variants' in fields:
         if catalog.is_module(engine):
             catalog.check_xposed_variants(fields['variants'])
-        variants = catalog.validate_variants(fields['variants'])
-        sets['variants'] = json.dumps(variants)
+        new_variants = catalog.validate_variants(fields['variants'])
+        sets['variants'] = json.dumps(new_variants)
     if 'engine_options' in fields:
         eo = catalog.validate_engine_options(engine, fields['engine_options'])
         sets['engine_options'] = None if eo is None else json.dumps(eo)
@@ -278,27 +290,39 @@ def update_settings(app_id, fields, rebuild=False):
         unknown = set(deps) - {x[0] for x in db.conn().execute('SELECT id FROM project')}
         if unknown:
             raise server.HttpError(400, f'project_ids: unknown project {min(unknown)}')
-    if new_bundle:
-        catalog.ensure_upstream(fields['bundle_id'])
+    source = (channel, pin) if channel is not None or 'patch_tag' in fields else None
+    return _SettingsChange(sets, deps, new_bundle, source, new_variants)
+
+
+def _apply_settings(r, ch, rebuild):
+    """Write a parsed settings change, switch the patch source, drop unticked variants, queue the pull-then-build."""
+    app_id = r['id']
+    if ch.new_bundle:
+        catalog.ensure_upstream(ch.sets['bundle_id'])
     with db.tx() as c:
-        if sets:   # one statement: the version_pin CHECK spans two columns; names come from the fixed keys above
-            c.execute(f"UPDATE item SET {', '.join(f'{k} = ?' for k in sets)} WHERE id = ?", (*sets.values(), app_id))
-        if deps is not None:
+        if ch.sets:   # one statement: the version_pin CHECK spans two columns; names come from the fixed keys above
+            c.execute(f"UPDATE item SET {', '.join(f'{k} = ?' for k in ch.sets)} WHERE id = ?", (*ch.sets.values(), app_id))
+        if ch.deps is not None:
             c.execute('DELETE FROM item_dependency WHERE item_id = ?', (app_id,))
-            c.executemany('INSERT INTO item_dependency(item_id, project_id) VALUES (?, ?)', [(app_id, d) for d in deps])
-    chained = new_bundle and r['enabled']   # one upstream {item_id} job pulls, then builds: no separate build races the pull
-    if channel is not None or 'patch_tag' in fields:   # after the item update: a bundle change in the same body switches the new bundle's source
-        new_up = catalog.set_source(sets.get('bundle_id', r['bundle_id']), channel, pin)
+            c.executemany('INSERT INTO item_dependency(item_id, project_id) VALUES (?, ?)', [(app_id, d) for d in ch.deps])
+    chained = ch.new_bundle and r['enabled']   # one upstream {item_id} job pulls, then builds: no separate build races the pull
+    if ch.source is not None:   # after the item update: a bundle change in the same body switches the new bundle's source
+        new_up = catalog.set_source(ch.sets.get('bundle_id', r['bundle_id']), *ch.source)
         if new_up is not None:
             if r['enabled']:
                 chained = True
             else:
                 projects.enqueue_pull(new_up)
-    if 'variants' in fields:
-        build.drop_variants(app_id, [v['name'] for v in variants])
+    if ch.variants is not None:
+        build.drop_variants(app_id, [v['name'] for v in ch.variants])
     if chained:
         jobs.enqueue('upstream', _chain_target(app_id, rebuild), 'manual')   # same first fetch + build as enable (apps part §4.6)
     return {**get(app_id), 'update_queued': chained}
+
+
+def update_settings(app_id, fields, rebuild=False):
+    r = item_row(app_id)
+    return _apply_settings(r, _parse_settings(r, fields), rebuild)
 
 
 def patch_tags(app_id):
