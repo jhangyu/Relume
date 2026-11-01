@@ -12,7 +12,7 @@ SIGNER = 'ab' * 32
 
 
 def sync_body(packages, abi_list=('arm64-v8a',)):
-    return {'device': {'model': 'Pixel 9', 'sdk': 36, 'android_release': '16', 'abi_list': list(abi_list),
+    return {'device': {'device_uid': 'a1b2c3d4e5f60718', 'model': 'Pixel 9', 'sdk': 36, 'android_release': '16', 'abi_list': list(abi_list),
                        'app_version_code': 7}, 'packages': packages}
 
 

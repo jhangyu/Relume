@@ -328,15 +328,26 @@ def me(req):
     return 200, _me_json(_me(req))
 
 
+DEVICE_UID_RE = re.compile(r'[0-9A-Za-z]{1,64}\Z')   # Android ANDROID_ID is a 64-bit hex string
+
+
+def parse_device_uid(uid):
+    """Boundary rule for device.device_uid, shared by sign-in (auth) and sync."""
+    if not isinstance(uid, str) or not DEVICE_UID_RE.match(uid):
+        raise HttpError(400, f'device.device_uid must be 1-64 letters or digits, got {uid!r}')
+    return uid
+
+
 def _bad(field, expected, got):
     raise HttpError(400, f'{field} must be {expected}, got {got!r}')
 
 
 def _parse_sync(body):
-    """Boundary parse of POST /api/me/sync -> (facts tuple, {package: {version_code, version_name, signer_sha256}})."""
+    """Boundary parse of POST /api/me/sync -> (device_uid, facts tuple, {package: {version_code, version_name, signer_sha256}})."""
     d = body.get('device')
     if not isinstance(d, dict):
         _bad('device', 'an object', d)
+    uid = parse_device_uid(d.get('device_uid'))
     for f in ('model', 'android_release'):
         if not isinstance(d.get(f), str) or not d[f].strip():
             _bad(f'device.{f}', 'a non-empty string', d.get(f))
@@ -371,13 +382,26 @@ def _parse_sync(body):
             _bad(f + '.signer_sha256', '64 lowercase hex characters or null', e['signer_sha256'])
         out[pkg] = {'version_code': e['version_code'], 'version_name': e.get('version_name'),
                     'signer_sha256': e.get('signer_sha256')}
-    return (d['model'], d['sdk'], d['android_release'], ','.join(abis), d['app_version_code']), out
+    return uid, (d['model'], d['sdk'], d['android_release'], ','.join(abis), d['app_version_code']), out
+
+
+def _adopt_device_uid(c, device_id, uid):
+    """A phone signed in before device_uid existed has it NULL: fill it so the next sign-in reuses this row.
+    A different uid on a filled row is a 400 (the token belongs to another phone). A uid another row already owns
+    (the phone signed in again and got a new row) is left alone: the unique index must not turn a sync into a 500."""
+    have = c.execute('SELECT device_uid FROM devices WHERE id=?', (device_id,)).fetchone()['device_uid']
+    if have is None:
+        c.execute('UPDATE devices SET device_uid=? WHERE id=? AND NOT EXISTS (SELECT 1 FROM devices WHERE device_uid=?)',
+                  (uid, device_id, uid))
+    elif have != uid:
+        raise HttpError(400, f'device.device_uid must match this device\'s id {have!r}, got {uid!r}')
 
 
 def sync(req):
     """Report + plan in one call: facts and tracked packages stored, full plan returned."""
-    facts, packages = _parse_sync(req.json)
+    uid, facts, packages = _parse_sync(req.json)
     with db.tx() as c:
+        _adopt_device_uid(c, req.device_id, uid)
         c.execute('UPDATE devices SET model=?, sdk=?, android_release=?, abi_list=?, app_version_code=?, last_seen_at=? '
                   'WHERE id=?', (*facts, db.utcnow(), req.device_id))
     store_reported(req.device_id, packages)

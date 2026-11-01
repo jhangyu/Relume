@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 import androidx.core.content.pm.PackageInfoCompat
 import io.github.jhangyu.relume.BuildConfig
 import io.github.jhangyu.relume.RelumeApp
@@ -62,7 +63,8 @@ object Inventory {
         )
     }
 
-    fun deviceFacts() = SyncDevice(
+    fun deviceFacts(context: Context) = SyncDevice(
+        deviceUid = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID),
         model = Build.MODEL,
         sdk = Build.VERSION.SDK_INT,
         androidRelease = Build.VERSION.RELEASE,
@@ -74,7 +76,7 @@ object Inventory {
     suspend fun sync(context: Context, api: RelumeApi): SyncResult {
         val tracked = api.me().trackedPackages
         val reported = read(context, tracked)
-        val r = api.sync(SyncReport(deviceFacts(), reported))
+        val r = api.sync(SyncReport(deviceFacts(context), reported))
         InstallRunner.loadState(context)
         val seen = (context.applicationContext as RelumeApp).prefs
             .updateSeenInstalled { seenInstalled(it, r.device, InstallRunner.state.value) }

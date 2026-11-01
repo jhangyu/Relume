@@ -102,6 +102,8 @@ data class InstalledPackage(
 
 @Serializable
 data class SyncDevice(
+    /** Same value as at sign-in: the server fills it on a row that predates device ids. */
+    @SerialName("device_uid") val deviceUid: String,
     val model: String,
     val sdk: Int,
     @SerialName("android_release") val androidRelease: String,

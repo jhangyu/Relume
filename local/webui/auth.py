@@ -26,7 +26,6 @@ ADMIN_PASSWORD_ENV = 'RELUME_ADMIN_PASSWORD'
 SCRYPT_N = 2 ** 14
 MIN_PASSWORD = 10
 USERNAME_RE = re.compile(r'[A-Za-z0-9._-]{1,64}\Z')
-DEVICE_UID_RE = re.compile(r'[0-9A-Za-z]{1,64}\Z')   # Android ANDROID_ID is a 64-bit hex string
 _clock = time.monotonic
 _fails = []
 _state = {'locked_until': 0.0}
@@ -191,8 +190,7 @@ def _device_facts(body):
         raise HttpError(400, f'device must be an object, got {type(d).__name__}')
     uid, name, model, sdk, release, abis = (
         d.get(k) for k in ('device_uid', 'name', 'model', 'sdk', 'android_release', 'abi_list'))
-    if not isinstance(uid, str) or not DEVICE_UID_RE.match(uid):
-        raise HttpError(400, f'device.device_uid must be 1-64 letters or digits, got {uid!r}')
+    uid = ota.parse_device_uid(uid)
     if not isinstance(name, str) or not 0 < len(name.strip()) <= DEVICE_NAME_MAX:
         raise HttpError(400, f'device.name must be 1-{DEVICE_NAME_MAX} characters')
     for field, v in (('model', model), ('android_release', release)):
