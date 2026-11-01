@@ -188,9 +188,8 @@ def _device_facts(body):
     d = body.get('device')
     if not isinstance(d, dict):
         raise HttpError(400, f'device must be an object, got {type(d).__name__}')
-    uid, name, model, sdk, release, abis = (
-        d.get(k) for k in ('device_uid', 'name', 'model', 'sdk', 'android_release', 'abi_list'))
-    uid = ota.parse_device_uid(uid)
+    name, model, sdk, release, abis = (d.get(k) for k in ('name', 'model', 'sdk', 'android_release', 'abi_list'))
+    uid = ota.parse_device_uid(d)
     if not isinstance(name, str) or not 0 < len(name.strip()) <= DEVICE_NAME_MAX:
         raise HttpError(400, f'device.name must be 1-{DEVICE_NAME_MAX} characters')
     for field, v in (('model', model), ('android_release', release)):
@@ -221,7 +220,7 @@ def register_device(req):
     token = secrets.token_urlsafe(32)
     uid, name, *hw = facts
     with db.tx() as c:
-        known = c.execute('SELECT id FROM devices WHERE device_uid=?', (uid,)).fetchone()
+        known = uid and c.execute('SELECT id FROM devices WHERE device_uid=?', (uid,)).fetchone()
         if known:
             did = known['id']
             c.execute('UPDATE devices SET token_hash=?, model=?, sdk=?, android_release=?, abi_list=? WHERE id=?',

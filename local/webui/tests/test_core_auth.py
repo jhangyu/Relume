@@ -162,8 +162,8 @@ class DeviceTokenTest(DataTestCase):
         st, _, body = http('POST', self.base + '/api/me/logout', {}, cookie=self.cookie)
         self.assertEqual((st, json.loads(body)), (403, {'error': 'device token required'}))
         for bad in ({**DEVICE, 'sdk': '35'}, {**DEVICE, 'abi_list': ['mips']}, {**DEVICE, 'name': ''}, None,
-                    {k: v for k, v in DEVICE.items() if k != 'device_uid'}, {**DEVICE, 'device_uid': 'a/b'},
-                    {**DEVICE, 'device_uid': ''}, {**DEVICE, 'device_uid': 7}):
+                    {**DEVICE, 'device_uid': 'a/b'},
+                    {**DEVICE, 'device_uid': ''}, {**DEVICE, 'device_uid': 7}, {**DEVICE, 'device_uid': None}):
             self.assertEqual(self.register(device=bad)[0], 400, bad)
         # revoke from the web UI: row stays, token stops working
         self.assertEqual(http('DELETE', self.base + '/api/devices/1/token', cookie=self.cookie)[:3:2],

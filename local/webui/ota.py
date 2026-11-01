@@ -331,8 +331,12 @@ def me(req):
 DEVICE_UID_RE = re.compile(r'[0-9A-Za-z]{1,64}\Z')   # Android ANDROID_ID is a 64-bit hex string
 
 
-def parse_device_uid(uid):
-    """Boundary rule for device.device_uid, shared by sign-in (auth) and sync."""
+def parse_device_uid(device):
+    """Boundary rule for device.device_uid, shared by sign-in (auth) and sync. Absent = a companion up to v1.2.0
+    (no uid yet) -> None; a present value must be valid."""
+    if 'device_uid' not in device:
+        return None
+    uid = device['device_uid']
     if not isinstance(uid, str) or not DEVICE_UID_RE.match(uid):
         raise HttpError(400, f'device.device_uid must be 1-64 letters or digits, got {uid!r}')
     return uid
@@ -347,7 +351,7 @@ def _parse_sync(body):
     d = body.get('device')
     if not isinstance(d, dict):
         _bad('device', 'an object', d)
-    uid = parse_device_uid(d.get('device_uid'))
+    uid = parse_device_uid(d)
     for f in ('model', 'android_release'):
         if not isinstance(d.get(f), str) or not d[f].strip():
             _bad(f'device.{f}', 'a non-empty string', d.get(f))
@@ -401,7 +405,8 @@ def sync(req):
     """Report + plan in one call: facts and tracked packages stored, full plan returned."""
     uid, facts, packages = _parse_sync(req.json)
     with db.tx() as c:
-        _adopt_device_uid(c, req.device_id, uid)
+        if uid is not None:
+            _adopt_device_uid(c, req.device_id, uid)
         c.execute('UPDATE devices SET model=?, sdk=?, android_release=?, abi_list=?, app_version_code=?, last_seen_at=? '
                   'WHERE id=?', (*facts, db.utcnow(), req.device_id))
     store_reported(req.device_id, packages)
