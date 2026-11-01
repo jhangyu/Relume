@@ -175,6 +175,15 @@ apkm_candidates() {
 	done | sort -s -t$'\t' -k1,1n -k2,2nr -k3,3nr -k4,4nr | cut -f5-
 }
 
+# swap_slug_version <href> <version>: the APKMirror release href with its last version slug (N-N-...) set to <version>
+swap_slug_version() {
+	local href=$1 slug target
+	slug=$(echo "$href" | grep -oP '\d+(-\d+)+' | tail -1)
+	target=$(echo "$2" | tr '.' '-' | grep -oP '\d+(-\d+)+')
+	[[ -n "$slug" ]] && href="${href/$slug/$target}"
+	echo "$href"
+}
+
 # get_apk <pkg> <name> <type> <arch> <dpi> <minver> <list_url> <example_url> <example_url2> <want_abis> <codes>
 #   <exclude_codes> <pick_url> <pick_bundle>
 # want_abis (space-separated) steers the variant pick when <arch> is empty; check_abis verifies the result.
@@ -216,14 +225,9 @@ get_apk() {
 	local version_href=""
 
 	if [[ ${#example_urls[@]} -gt 0 && -n "$version" && -z "$pick_url" ]]; then
-		local example_url slug_ver target_ver
+		local example_url
 		for example_url in "${example_urls[@]}"; do
-			version_href="${example_url#"$base_url"}"
-			slug_ver=$(echo "$version_href" | grep -oP '\d+(-\d+)+' | tail -1)
-			target_ver=$(echo "$version" | tr '.' '-' | grep -oP '\d+(-\d+)+')
-			if [[ -n "$slug_ver" ]]; then
-				version_href="${version_href/$slug_ver/$target_ver}"
-			fi
+			version_href=$(swap_slug_version "${example_url#"$base_url"}" "$version")
 
 			echo "$base_url$version_href"
 			if _cf_get "$base_url$version_href" && [[ "$html" != *"Page Not Found"* && "$html" != *"404 Whoops"* ]]; then
@@ -247,14 +251,7 @@ get_apk() {
 			return 1
 		fi
 
-		if [[ -n "$version" ]]; then
-			local slug_ver target_ver
-			slug_ver=$(echo "$version_href" | grep -oP '\d+(-\d+)+' | tail -1)
-			target_ver=$(echo "$version" | tr '.' '-' | grep -oP '\d+(-\d+)+')
-			if [[ -n "$slug_ver" ]]; then
-				version_href="${version_href/$slug_ver/$target_ver}"
-			fi
-		fi
+		[[ -n "$version" ]] && version_href=$(swap_slug_version "$version_href" "$version")
 
 		echo "$base_url$version_href"
 
