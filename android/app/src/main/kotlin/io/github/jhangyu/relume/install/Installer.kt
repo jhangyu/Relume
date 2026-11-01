@@ -52,6 +52,9 @@ object Installer {
 
     fun sessionExists(context: Context, sessionId: Int) = context.packageManager.packageInstaller.getSessionInfo(sessionId) != null
 
+    /** Ids of this app's sessions still open in the system: the ground truth for "an install is in progress". */
+    fun ownSessions(context: Context): Set<Int> = context.packageManager.packageInstaller.mySessions.map { it.sessionId }.toSet()
+
     /** Abandons this app's sessions that no run step references (left over after process death). */
     fun abandonOwnSessionsExcept(context: Context, keep: Set<Int>) {
         val pi = context.packageManager.packageInstaller

@@ -14,7 +14,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class Origin { UI, BACKGROUND }
 
-enum class StartResult { Started, Busy, Corrupt }
+enum class StartResult { Started, Queued, Corrupt }
 
 /** Per-step state of an install run (spec 9.1). */
 @Serializable
@@ -32,7 +32,7 @@ enum class StepState {
     @SerialName("dependency_failed") DEPENDENCY_FAILED,
     @SerialName("server_error") SERVER_ERROR;
 
-    /** A step in one of these states blocks a new run (spec 9.1). */
+    /** A step in one of these states has not ended; only an open system session of it blocks a new run ([InstallRun.admit]). */
     val active get() = this in ACTIVE
 
     /** The worker picks up steps in these states; downloading/verifying resume after a stopped worker. */
@@ -89,6 +89,8 @@ data class RunState(
     val outbox: List<InstallReceipt>,
     /** Last refusal of an [outbox] receipt other than a stale plan (shown in the UI). */
     val outboxError: String?,
+    /** A requested run that waits for step [QueuedStart.after]'s open system session to end. */
+    val queued: QueuedStart? = null,
 ) {
     val isActive get() = steps.any { it.state.active }
 
@@ -98,6 +100,13 @@ data class RunState(
         steps.indexOfFirst { it.sessionId == sessionId && (it.state == StepState.COMMITTED || it.state == StepState.AWAITING_USER) }
             .takeIf { it >= 0 }
 }
+
+/** A requested [plan] that starts once step [after] of the current run has ended. */
+@Serializable
+data class QueuedStart(val plan: InstallPlan, val origin: Origin, val after: Int)
+
+/** Result of [InstallRun.admit]: the run to save, whether the requested plan started, and the step whose confirmation to show. */
+data class Admission(val run: RunState, val started: Boolean, val surface: Int?)
 
 /** Pure run transitions (spec 9.1). Every function returns a new [RunState]. */
 object InstallRun {
@@ -122,6 +131,39 @@ object InstallRun {
             plan.revision, origin, origin, steps, stalePlan = false, synced = false, syncError = null,
             outbox = unsent, outboxError = null,
         ).propagate()
+    }
+
+    /**
+     * Start decision for [plan]: [live] holds the ids of Relume's PackageInstaller sessions still open in the system.
+     * A step whose session is open blocks: the plan is queued behind it (a newer request replaces an older queued one)
+     * and an `awaiting_user` step's confirmation is to be shown. Otherwise the plan starts; the old run's active steps are
+     * closed first, committed / awaiting ones with [lost] (the reconcile outcome), downloads `cancelled`.
+     */
+    fun admit(cur: RunState?, plan: InstallPlan, origin: Origin, live: Set<Int>, lost: (StepRun) -> StepOutcome): Admission {
+        val blocking = cur?.steps?.indexOfFirst { it.state.active && it.sessionId in live } ?: -1
+        if (cur != null && blocking >= 0) {
+            val surface = blocking.takeIf { cur.steps[it].state == StepState.AWAITING_USER }
+            return Admission(cur.copy(queued = QueuedStart(plan, origin, blocking)), started = false, surface = surface)
+        }
+        val closed = cur?.let { run ->
+            run.steps.indices.fold(run) { acc, i ->
+                val s = acc.steps[i]
+                when {
+                    s.state == StepState.COMMITTED || s.state == StepState.AWAITING_USER -> finish(acc, i, lost(s))
+                    s.state.active -> finish(acc, i, StepOutcome(StepState.CANCELLED, ErrorCodes.USER_REJECTED, "replaced by a new install run"))
+                    else -> acc
+                }
+            }
+        }
+        return Admission(create(plan, origin, closed), started = true, surface = null)
+    }
+
+    /** The queued plan as the new run once the step it waits for has ended (its session finished); else null. */
+    fun dequeue(run: RunState): RunState? {
+        val q = run.queued ?: return null
+        val s = run.steps[q.after]
+        if (s.state.runnable || s.state.active) return null
+        return create(q.plan, q.origin, run)
     }
 
     /** Moves step [index] from one of [from] to [to]; null when the step is no longer in [from] (cancelled meanwhile). */

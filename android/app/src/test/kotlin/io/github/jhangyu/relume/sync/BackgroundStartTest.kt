@@ -9,21 +9,19 @@ import org.junit.Test
 
 class BackgroundStartTest {
     @Test
-    fun startsOnlyOnNewRevisionWithoutActiveRun() {
+    fun startsOnlyOnNewRevision() {
         val withInstall = plan(step(StepKind.ITEM, 1, action = PlanAction.UP_TO_DATE), step(StepKind.ITEM, 2))
         val noInstall = plan(step(StepKind.ITEM, 1, action = PlanAction.UP_TO_DATE), step(StepKind.PROJECT, 3, action = PlanAction.ERROR))
         val cases = listOf(
-            Triple(withInstall, false, null) to true,
-            Triple(withInstall, false, "older") to true,
-            Triple(withInstall, false, "rev") to false,
-            Triple(withInstall, true, null) to false,
-            Triple(withInstall, true, "older") to false,
-            Triple(noInstall, false, null) to false,
-            Triple(noInstall, false, "older") to false,
+            Pair(withInstall, null) to true,
+            Pair(withInstall, "older") to true,
+            Pair(withInstall, "rev") to false,
+            Pair(noInstall, null) to false,
+            Pair(noInstall, "older") to false,
         )
         for ((input, want) in cases) {
-            val (p, active, last) = input
-            assertEquals("active=$active last=$last installs=${p === withInstall}", want, BackgroundStart.shouldStart(p, active, last))
+            val (p, last) = input
+            assertEquals("last=$last installs=${p === withInstall}", want, BackgroundStart.shouldStart(p, last))
         }
     }
 }

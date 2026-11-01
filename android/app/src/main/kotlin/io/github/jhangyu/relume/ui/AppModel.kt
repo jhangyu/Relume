@@ -310,9 +310,9 @@ class AppModel(application: Application) : AndroidViewModel(application) {
 
     private fun start(p: InstallPlan) {
         when (InstallRunner.start(relume, p, Origin.UI)) {
-            StartResult.Busy -> error = "an install run is in progress"
+            // Queued: the sheet shows the run whose open install session it waits for (its confirmation is up).
             // Corrupt: the install sheet shows the unreadable run file and its reset.
-            StartResult.Started, StartResult.Corrupt -> {
+            StartResult.Started, StartResult.Queued, StartResult.Corrupt -> {
                 sheetOpen = true
             }
         }

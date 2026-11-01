@@ -35,6 +35,8 @@ class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         }
         try {
             while (true) {
+                // The step a queued run waits for ended here (e.g. a re-run after a lost confirmation failed).
+                if (InstallRunner.startQueued(ctx)) return@withContext Result.success()
                 sendReceipts(ctx, api)
                 val run = InstallRunStore.state.value ?: return@withContext Result.success()
                 // One session at a time: its result broadcast enqueues the next pass.

@@ -33,13 +33,16 @@ class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         }
         val plan = synced.plan
         val installs = plan.steps.count { it.action == PlanAction.INSTALL }
-        val message = if (BackgroundStart.shouldStart(plan, InstallRunner.state.value?.isActive == true, app.prefs.lastBackgroundRevision)) {
+        val message = if (BackgroundStart.shouldStart(plan, app.prefs.lastBackgroundRevision)) {
             when (InstallRunner.start(app, plan, Origin.BACKGROUND)) {
                 StartResult.Started -> {
                     app.prefs.lastBackgroundRevision = plan.revision
                     "$installs install steps: background run started"
                 }
-                StartResult.Busy -> "$installs install steps: an install run is in progress"
+                StartResult.Queued -> {
+                    app.prefs.lastBackgroundRevision = plan.revision
+                    "$installs install steps: background run queued until the open install session ends"
+                }
                 StartResult.Corrupt -> return fail(CODE_CORRUPT_RUN, "$installs install steps: the install run file is corrupt, reset it in the install sheet (start any install on the Apps tab)")
             }
         } else {

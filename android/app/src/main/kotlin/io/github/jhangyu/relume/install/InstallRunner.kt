@@ -27,28 +27,39 @@ object InstallRunner {
     private val reconciled = AtomicBoolean(false)
 
     /**
-     * Starts [plan] unless a step of the current run is downloading, verifying, committed or awaiting the user, or the
-     * run file is corrupt. Unsent receipts of the replaced run go with the new run.
+     * Starts [plan], or queues it while a step of the current run holds a PackageInstaller session still open in the
+     * system (the run record alone never blocks, [InstallRun.admit]); a queued plan starts when that session ends and a
+     * step awaiting the user gets its confirmation shown now. Unsent receipts of the replaced run go with the new run.
      */
     fun start(context: Context, plan: InstallPlan, origin: Origin): StartResult {
         InstallRunStore.load(context)
         if (InstallRunStore.corrupt.value != null) return StartResult.Corrupt
-        var started = false
-        InstallRunStore.update(context) { cur ->
-            if (cur?.isActive == true) cur else InstallRun.create(plan, origin, cur).also { started = true }
+        val before = InstallRunStore.state.value
+        val live = Installer.ownSessions(context)
+        var admission: Admission? = null
+        InstallRunStore.update(context) { cur -> InstallRun.admit(cur, plan, origin, live) { lostSession(context, it) }.also { admission = it }.run }
+        val a = checkNotNull(admission)
+        if (!a.started) {
+            a.surface?.let { confirm(context, it) }
+            return StartResult.Queued
         }
-        if (!started) return StartResult.Busy
+        before?.steps?.forEachIndexed { i, s -> if (s.state.active) Notifications.cancelStep(context, i) }
         confirmIntents.clear()
         InstallWorker.enqueue(context, origin, replace = true)
         return StartResult.Started
     }
 
-    /** "Confirm" for an `awaiting_user` step: shows the system prompt; after process death the step is re-run. */
+    /**
+     * Shows the system confirmation of `awaiting_user` step [stepIndex] (directly when the app is visible, else as a
+     * notification). Its `EXTRA_INTENT` arrives only once, with `STATUS_PENDING_USER_ACTION`; when it is gone (process
+     * death, app update, lost notification) the committed session is abandoned and the step re-run, whose new commit
+     * brings a fresh confirmation.
+     */
     fun confirm(context: Context, stepIndex: Int) {
         val s = stepAt(stepIndex, StepState.AWAITING_USER)
         val intent = confirmIntents.remove(stepIndex)
         if (intent != null) {
-            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            prompt(context, stepIndex, s.step.displayName, intent)
             return
         }
         // ponytail: a lost prompt re-runs the step (new download + session); keep the verified file if that cost matters.
@@ -72,8 +83,19 @@ object InstallRunner {
             Notifications.cancelStep(context, i)
         }
         confirmIntents.clear()
+        if (startQueued(context)) return
         // User action: only the receipts are left to send, so no background constraints.
         InstallWorker.enqueue(context, Origin.UI, replace = true)
+    }
+
+    /** Starts the queued plan once the step it waits for has ended; true = started. */
+    internal fun startQueued(context: Context): Boolean {
+        var next: RunState? = null
+        InstallRunStore.update(context) { cur -> cur?.let(InstallRun::dequeue)?.also { next = it } ?: cur }
+        val run = next ?: return false
+        confirmIntents.clear()
+        InstallWorker.enqueue(context, run.origin, replace = true)
+        return true
     }
 
     /** The user's reset of a corrupt run file (spec 9.1): the file is deleted, the next start begins empty. */
@@ -99,6 +121,7 @@ object InstallRunner {
             }
         }
         after?.steps?.forEachIndexed { i, s -> if (s.state == StepState.INSTALLED && run.steps[i].state != StepState.INSTALLED) recordPatch(context, s.step) }
+        if (startQueued(context)) return
         if (after != run) InstallWorker.enqueue(context, run.passOrigin, replace = false)
     }
 
@@ -129,6 +152,7 @@ object InstallRunner {
         val after = InstallRunStore.update(context) { cur -> cur?.let { InstallRun.finish(it, index, outcome) } }
         if (after?.steps?.get(index)?.state == StepState.INSTALLED) recordPatch(context, run.steps[index].step)
         if (outcome.state == StepState.NEEDS_UNINSTALL && run.origin == Origin.BACKGROUND) Notifications.needsReinstall(context, index, name)
+        if (startQueued(context)) return
         InstallWorker.enqueue(context, run.passOrigin, replace = false)
     }
 
