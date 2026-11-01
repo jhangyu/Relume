@@ -27,7 +27,7 @@ class InstallBusyTest {
         for (state in listOf(StepState.AWAITING_USER, StepState.COMMITTED)) {
             // no session at all, and an unrelated live session of Relume
             for (live in listOf(emptySet(), setOf(SESSION + 1))) {
-                val a = InstallRun.admit(oldRun(state), requested, Origin.UI, live, lost)
+                val a = InstallRun.admit(oldRun(state), requested, Origin.UI, live, workPending = false, lost)
                 assertTrue("$state live=$live", a.started)
                 assertNull(a.surface)
                 assertEquals(listOf(9), a.run.steps.map { it.step.refId })
@@ -38,16 +38,39 @@ class InstallBusyTest {
                 assertEquals("session lost", r.errorText)
             }
         }
-        // a download in progress holds no system session: it is cancelled, its receipt is sent
-        val a = InstallRun.admit(oldRun(StepState.DOWNLOADING, session = null), requested, Origin.UI, emptySet(), lost)
-        assertTrue(a.started)
-        assertEquals(ErrorCodes.USER_REJECTED, a.run.outbox.single().errorCode)
+        // a download left by a dead worker (no install work pending) is a stale record: closed, its receipt is sent
+        for (state in listOf(StepState.DOWNLOADING, StepState.VERIFYING)) {
+            val a = InstallRun.admit(oldRun(state, session = null), requested, Origin.UI, emptySet(), workPending = false, lost)
+            assertTrue("$state", a.started)
+            val r = a.run.outbox.single()
+            assertEquals(ErrorCodes.INSTALLER_ERROR to "install worker no longer runs", r.errorCode to r.errorText)
+        }
+    }
+
+    @Test
+    fun aDownloadInProgressQueuesTheRequestAndIsNotCancelled() {
+        for (state in listOf(StepState.DOWNLOADING, StepState.VERIFYING)) {
+            val old = oldRun(state, session = null)
+            val a = InstallRun.admit(old, requested, Origin.BACKGROUND, emptySet(), workPending = true, lost)
+            assertFalse("$state", a.started)
+            assertNull(a.surface)
+            assertEquals("$state: the download is untouched", old.steps, a.run.steps)
+            assertEquals(QueuedStart(requested, Origin.BACKGROUND, 0), a.run.queued)
+            // the step goes on to its session, still waited for; when it ends the queued run starts
+            val committed = checkNotNull(InstallRun.move(a.run, 0, setOf(state), StepState.COMMITTED, SESSION))
+            assertNull(InstallRun.dequeue(committed))
+            for (outcome in listOf(InstallResult.from(PackageInstaller.STATUS_SUCCESS, null), StepOutcome(StepState.FAILED, ErrorCodes.HASH_MISMATCH, "bad"))) {
+                val next = InstallRun.dequeue(InstallRun.finish(committed, 0, outcome))
+                assertEquals("$state ${outcome.state}", listOf(9), next?.steps?.map { it.step.refId })
+                assertEquals(Origin.BACKGROUND, next?.origin)
+            }
+        }
     }
 
     @Test
     fun anOpenSessionQueuesTheRequestUntilItEnds() {
         val old = oldRun(StepState.AWAITING_USER)
-        val a = InstallRun.admit(old, requested, Origin.UI, setOf(SESSION), lost)
+        val a = InstallRun.admit(old, requested, Origin.UI, setOf(SESSION), workPending = false, lost)
         assertFalse(a.started)
         assertEquals(0, a.surface)
         assertEquals(old.steps, a.run.steps)
@@ -76,7 +99,7 @@ class InstallBusyTest {
         assertEquals(listOf(9), InstallRun.dequeue(InstallRun.cancelAll(queued))!!.steps.map { it.step.refId })
 
         // a committed session the system is still installing queues without a prompt
-        val committed = InstallRun.admit(oldRun(StepState.COMMITTED), requested, Origin.BACKGROUND, setOf(SESSION), lost)
+        val committed = InstallRun.admit(oldRun(StepState.COMMITTED), requested, Origin.BACKGROUND, setOf(SESSION), workPending = false, lost)
         assertFalse(committed.started)
         assertNull(committed.surface)
         assertEquals(QueuedStart(requested, Origin.BACKGROUND, 0), committed.run.queued)
@@ -84,9 +107,9 @@ class InstallBusyTest {
 
     @Test
     fun nothingPendingStartsAsToday() {
-        assertEquals(Admission(InstallRun.create(requested, Origin.UI, null), true, null), InstallRun.admit(null, requested, Origin.UI, emptySet(), lost))
+        assertEquals(Admission(InstallRun.create(requested, Origin.UI, null), true, null), InstallRun.admit(null, requested, Origin.UI, emptySet(), workPending = false, lost))
         val ended = InstallRun.finish(oldRun(StepState.AWAITING_USER), 0, InstallResult.from(PackageInstaller.STATUS_SUCCESS, null))
-        val a = InstallRun.admit(ended, requested, Origin.UI, emptySet(), lost)
+        val a = InstallRun.admit(ended, requested, Origin.UI, emptySet(), workPending = false, lost)
         assertEquals(Admission(InstallRun.create(requested, Origin.UI, ended), true, null), a)
     }
 

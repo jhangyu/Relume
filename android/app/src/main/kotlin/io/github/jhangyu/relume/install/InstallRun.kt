@@ -32,7 +32,7 @@ enum class StepState {
     @SerialName("dependency_failed") DEPENDENCY_FAILED,
     @SerialName("server_error") SERVER_ERROR;
 
-    /** A step in one of these states has not ended; only an open system session of it blocks a new run ([InstallRun.admit]). */
+    /** A step in one of these states has not ended; it blocks a new run only while its session or worker is live ([InstallRun.admit]). */
     val active get() = this in ACTIVE
 
     /** The worker picks up steps in these states; downloading/verifying resume after a stopped worker. */
@@ -134,13 +134,15 @@ object InstallRun {
     }
 
     /**
-     * Start decision for [plan]: [live] holds the ids of Relume's PackageInstaller sessions still open in the system.
-     * A step whose session is open blocks: the plan is queued behind it (a newer request replaces an older queued one)
-     * and an `awaiting_user` step's confirmation is to be shown. Otherwise the plan starts; the old run's active steps are
-     * closed first, committed / awaiting ones with [lost] (the reconcile outcome), downloads `cancelled`.
+     * Start decision for [plan]: [live] holds the ids of Relume's PackageInstaller sessions still open in the system,
+     * [workPending] says an install worker pass is enqueued or running. A step blocks when its session is open, or when
+     * it is `downloading` / `verifying` and [workPending] (the worker carries it on). The plan is then queued behind it
+     * (a newer request replaces an older queued one) and an `awaiting_user` step's confirmation is to be shown.
+     * Otherwise the plan starts; the old run's active steps are stale records and are closed first: committed /
+     * awaiting ones with [lost] (the reconcile outcome), downloading / verifying ones `failed`.
      */
-    fun admit(cur: RunState?, plan: InstallPlan, origin: Origin, live: Set<Int>, lost: (StepRun) -> StepOutcome): Admission {
-        val blocking = cur?.steps?.indexOfFirst { it.state.active && it.sessionId in live } ?: -1
+    fun admit(cur: RunState?, plan: InstallPlan, origin: Origin, live: Set<Int>, workPending: Boolean, lost: (StepRun) -> StepOutcome): Admission {
+        val blocking = cur?.steps?.indexOfFirst { it.state.active && (it.sessionId in live || workPending && it.state in WORKER_HELD) } ?: -1
         if (cur != null && blocking >= 0) {
             val surface = blocking.takeIf { cur.steps[it].state == StepState.AWAITING_USER }
             return Admission(cur.copy(queued = QueuedStart(plan, origin, blocking)), started = false, surface = surface)
@@ -150,7 +152,7 @@ object InstallRun {
                 val s = acc.steps[i]
                 when {
                     s.state == StepState.COMMITTED || s.state == StepState.AWAITING_USER -> finish(acc, i, lost(s))
-                    s.state.active -> finish(acc, i, StepOutcome(StepState.CANCELLED, ErrorCodes.USER_REJECTED, "replaced by a new install run"))
+                    s.state.active -> finish(acc, i, StepOutcome(StepState.FAILED, ErrorCodes.INSTALLER_ERROR, "install worker no longer runs"))
                     else -> acc
                 }
             }
@@ -288,6 +290,7 @@ object InstallRun {
         )
     }
 
+    private val WORKER_HELD = setOf(StepState.DOWNLOADING, StepState.VERIFYING)
     private val FAILING = setOf(
         StepState.FAILED, StepState.CANCELLED, StepState.SERVER_ERROR, StepState.NEEDS_UNINSTALL, StepState.DEPENDENCY_FAILED,
     )

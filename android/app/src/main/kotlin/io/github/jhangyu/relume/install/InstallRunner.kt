@@ -28,16 +28,17 @@ object InstallRunner {
 
     /**
      * Starts [plan], or queues it while a step of the current run holds a PackageInstaller session still open in the
-     * system (the run record alone never blocks, [InstallRun.admit]); a queued plan starts when that session ends and a
-     * step awaiting the user gets its confirmation shown now. Unsent receipts of the replaced run go with the new run.
+     * system or is being downloaded by a pending install worker (the run record alone never blocks, [InstallRun.admit]);
+     * a queued plan starts when that step ends and a step awaiting the user gets its confirmation shown now. Unsent receipts of the replaced run go with the new run.
      */
     fun start(context: Context, plan: InstallPlan, origin: Origin): StartResult {
         InstallRunStore.load(context)
         if (InstallRunStore.corrupt.value != null) return StartResult.Corrupt
         val before = InstallRunStore.state.value
         val live = Installer.ownSessions(context)
+        val workPending = InstallWorker.pending(context)
         var admission: Admission? = null
-        InstallRunStore.update(context) { cur -> InstallRun.admit(cur, plan, origin, live) { lostSession(context, it) }.also { admission = it }.run }
+        InstallRunStore.update(context) { cur -> InstallRun.admit(cur, plan, origin, live, workPending) { lostSession(context, it) }.also { admission = it }.run }
         val a = checkNotNull(admission)
         if (!a.started) {
             a.surface?.let { confirm(context, it) }

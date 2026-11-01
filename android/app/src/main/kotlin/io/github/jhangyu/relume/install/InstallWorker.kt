@@ -182,6 +182,14 @@ class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                 .build()
         }
 
+        /**
+         * A pass of the install run is enqueued or running (also waiting for constraints or a retry backoff), so a
+         * `downloading` / `verifying` step is live; false after the work ended or failed, so such a step is a stale record.
+         */
+        // ponytail: blocking read of WorkManager's database on the caller's thread (UI start), a few ms.
+        fun pending(context: Context): Boolean =
+            WorkManager.getInstance(context).getWorkInfosForUniqueWork(WORK_NAME).get().any { !it.state.isFinished }
+
         /** [origin] is who triggers this pass (sets [constraints]); [replace] for a new or cancelled run; otherwise appended to the current chain (spec 9.1). */
         fun enqueue(context: Context, origin: Origin, replace: Boolean) {
             val request = OneTimeWorkRequestBuilder<InstallWorker>().setConstraints(constraints(origin)).build()
