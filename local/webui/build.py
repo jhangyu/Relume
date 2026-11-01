@@ -5,6 +5,7 @@ import re
 import shutil
 import threading
 from pathlib import Path
+from typing import NamedTuple
 
 from . import apps, catalog, db, events, jobs, playversion, server, settings
 
@@ -265,6 +266,117 @@ def _apkm_auto(inp):
     return out
 
 
+class _Rejected(NamedTuple):
+    """An attempt that produced no publishable build. variant: the variant was refused (the patcher refused it or
+    applied nothing), the next one may fit; else the runner failed for another reason (code, detail)."""
+    variant: bool
+    code: str      # fail code of a non-variant failure, "" for a variant refusal
+    detail: str
+    used: list     # [(auto entry, ::apkm_variant:: marker)] of this attempt
+
+
+def _write_job_json(awork, job, inp, googleplay, auto):
+    """job.json (+ options.json) of one attempt; paths as the isolated runner sees them."""
+    rp = jobs.runner_path
+    picks = [{"download": a["download"], "exclude_codes": a["exclude"], **(a["pick"] or {})} for a in auto]
+    (awork / "job.json").write_text(json.dumps(dict(inp, job_id=job.id, work_dir=rp(awork), cli_jar=rp(inp["cli_jar"]),
+                                                    patches_files=[rp(f) for f in inp["patches_files"]],
+                                                    googleplay=googleplay, apkmirror_picks=picks), indent=2))
+    if inp["options_file_json"] is not None:
+        (awork / "options.json").write_text(json.dumps(inp["options_file_json"]))
+
+
+def _guard_morphe(job, item_id, awork, result, sha):
+    """Patch guard of a morphe build (design guard §1): (failed patch names, verdict or None). A verdict is stored with
+    the failed names and the fingerprint, so the build is retried only once its inputs change."""
+    results = {v["name"]: _read_patch_result(awork, v["name"]) for v in result["variants"]}
+    failed = list(dict.fromkeys(n for r in results.values() if r for n, _ in r["failed"]))
+    ls = item_status([item_id])[item_id]["last_success"]
+    baseline = set(json.loads(db.conn().execute("SELECT failed_patches FROM build_jobs WHERE job_id = ?",
+                                                (ls["job_id"],)).fetchone()[0] or "[]")) if ls else set()
+    verdict = patch_verdict(results, baseline, ls["app_version"] if ls else None)
+    if verdict:
+        with db.tx() as c:
+            c.execute("UPDATE build_jobs SET failed_patches = ?, inputs_sha = ? WHERE job_id = ?",
+                      (json.dumps(failed) if failed else None, sha, job.id))
+    return failed, verdict
+
+
+def _attempt(job, item_id, inp, awork, googleplay, auto, sha, log):
+    """One isolated runner run in awork (design variant §1). None when the build was published or cancelled, else
+    _Rejected. Timeout, guard rules R0/R2 and a rejected artifact end the job here through _fail."""
+    want = inp["version"]["value"]
+    _write_job_json(awork, job, inp, googleplay, auto)
+    m = _Markers(job.id, inp["package"])
+    try:
+        rc = jobs.run_isolated(log, ["bash", RUNNER, jobs.runner_path(awork / "job.json")], jobs.runner_path(awork),
+                               env_keys=jobs.SOLVER_ENV, env={"RELUME_APK_CACHE": jobs.runner_path(db.DATA / "apk-cache")},
+                               timeout=3600, on_line=m.feed)
+    except jobs.JobTimeout:
+        _fail(job, item_id, "timeout", "runner exceeded 3600 s")
+    if job.cancel_event.is_set():
+        return None
+    used = [(next(a for a in auto if a["download"] == u["download"]), u) for u in m.apkm]
+    for a, u in used:
+        if a["pick"] and a["pick"]["version_code"] != u["version_code"]:   # the remembered page serves another build
+            _apkm_forget(inp["package"], want, a["abis"])
+            a["pick"] = None
+    if rc != 0:   # the runner prints ::fail:: only when it exits 1: rc 0 carries no fail code
+        if used and m.fail_code == "patch_failed":   # the patcher refusing an automatic variant: next one
+            return _Rejected(True, "", m.fail_detail or "the patcher failed", used)
+        if m.fail_code:
+            return _Rejected(False, m.fail_code, m.fail_detail or m.last_err or "", used)
+        return _Rejected(False, "internal", m.last_err or f"runner exited {rc} without result.json", used)
+    try:
+        result = _read_result(awork)
+    except ValueError as e:
+        return _Rejected(False, "internal", str(e), used)
+    for device, vc in sorted({(g["device"], g["version_code"]) for g in googleplay if g["version_code"] is not None}):
+        playversion.remember(inp["package"], want, device, vc)  # the runner verified name and code
+    if want is None:  # latest, or auto with no compatible list: the runner refreshed the APKMirror list
+        sha = apps.inputs_sha(apps.item_row(item_id))
+    # lspatch/npatch embed one module: no per-patch result (design guard §7)
+    failed, verdict = _guard_morphe(job, item_id, awork, result, sha) if inp["engine"] == "morphe" else ([], None)
+    if verdict is None:
+        for a, u in used:
+            _apkm_remember(inp["package"], u["version_name"], a["abis"], u["version_code"], u["variant_url"], u["bundle"])
+        try:
+            _register(job, item_id, inp, awork, result, failed, sha)
+        except OSError as e:
+            shutil.rmtree(db.DATA / "artifacts" / str(item_id) / str(job.id), ignore_errors=True)
+            _fail(job, item_id, "internal", f"artifact rejected: {e}")
+        return None
+    if not (used and verdict[0] == "nothing_applied"):   # R0, R2: not a verdict on the variant
+        _fail(job, item_id, "patch_items_failed", verdict[1])
+    return _Rejected(True, "", verdict[1], used)
+
+
+def _runner_dir(path):
+    path.mkdir(parents=True, exist_ok=True)
+    path.chmod(0o770)  # the isolated runner uid shares the server's gid
+
+
+def _start_row(job, item_id, inp, sha):
+    """The build_jobs row of this build; upstream_missing when a downloaded patch or CLI file is gone."""
+    with db.tx() as c:
+        c.execute("INSERT INTO build_jobs(job_id, item_id, patches_version, cli_version, inputs_sha) VALUES (?, ?, ?, ?, ?)",
+                  (job.id, item_id, inp["upstream_tag"], inp["cli_tag"], sha))
+    missing = [p for p in [*inp["patches_files"], inp["cli_jar"]] if not Path(p).is_file()]
+    if missing:
+        _fail(job, item_id, "upstream_missing", f"missing file {Path(missing[0]).name}")
+
+
+def _fail_exhausted(job, item_id, inp, tried, vname, last):
+    """End of a variant loop with no build: patch_items_failed waits for an input change (needs_build), whichever
+    way the last variant failed."""
+    if inp["version"]["value"] is None:   # fingerprint the version the runner found (as the guard path does)
+        with db.tx() as c:
+            c.execute("UPDATE build_jobs SET inputs_sha = ? WHERE job_id = ?", (apps.inputs_sha(apps.item_row(item_id)), job.id))
+    _fail(job, item_id, "patch_items_failed",
+          f"Tried APKMirror variants {', '.join(map(str, tried))} of {vname}: the patches applied "
+          f"to none of them. Last: {last.rstrip('.')}. Set the app's APKMirror versionCode to pick one.")
+
+
 def handler(job, log):
     item_id = job.target["item_id"]
     work = db.DATA / "work" / str(job.id)
@@ -276,107 +388,37 @@ def handler(job, log):
         sha = apps.inputs_sha(apps.item_row(item_id))
         for name in apps.stale_overrides(item_id):
             log.line(f"[!] stale override dropped: {name}")
-        work.mkdir(parents=True, exist_ok=True)
-        work.chmod(0o770)  # the isolated runner uid shares the server's gid
-        rp = jobs.runner_path
-        with db.tx() as c:
-            c.execute("INSERT INTO build_jobs(job_id, item_id, patches_version, cli_version, inputs_sha) VALUES (?, ?, ?, ?, ?)",
-                      (job.id, item_id, inp["upstream_tag"], inp["cli_tag"], sha))
-        missing = [p for p in [*inp["patches_files"], inp["cli_jar"]] if not Path(p).is_file()]
-        if missing:
-            _fail(job, item_id, "upstream_missing", f"missing file {Path(missing[0]).name}")
+        _runner_dir(work)
+        _start_row(job, item_id, inp, sha)
         googleplay = _googleplay(job, item_id, inp, work, log)
-        auto, want, tried, vname = _apkm_auto(inp), inp["version"]["value"], [], None
-        # one isolated runner run per APKMirror variant attempt (design variant §1), each in a fresh dir: the runner uid
-        # owns its files, the finally below removes them all
+        auto, want, tried, vname, last = _apkm_auto(inp), inp["version"]["value"], [], None, ""
+        # one runner run per APKMirror variant attempt, each in a fresh dir: the runner uid owns its files, the finally
+        # below removes them all
         for attempt in range(1, MAX_VARIANT_ATTEMPTS + 1):
             awork = work / str(attempt)
-            awork.mkdir(exist_ok=True)
-            awork.chmod(0o770)
+            _runner_dir(awork)
             if attempt > 1:
                 log.line(f"[*] APKMirror variant attempt {attempt}/{MAX_VARIANT_ATTEMPTS}, excluding versionCodes "
                          + ", ".join(map(str, tried)))
-            picks = [{"download": a["download"], "exclude_codes": a["exclude"], **(a["pick"] or {})} for a in auto]
-            (awork / "job.json").write_text(json.dumps(dict(inp, job_id=job.id, work_dir=rp(awork), cli_jar=rp(inp["cli_jar"]),
-                                                            patches_files=[rp(f) for f in inp["patches_files"]],
-                                                            googleplay=googleplay, apkmirror_picks=picks), indent=2))
-            if inp["options_file_json"] is not None:
-                (awork / "options.json").write_text(json.dumps(inp["options_file_json"]))
-            m = _Markers(job.id, inp["package"])
-            try:
-                rc = jobs.run_isolated(log, ["bash", RUNNER, rp(awork / "job.json")], rp(awork), env_keys=jobs.SOLVER_ENV,
-                                       env={"RELUME_APK_CACHE": rp(db.DATA / "apk-cache")}, timeout=3600, on_line=m.feed)
-            except jobs.JobTimeout:
-                _fail(job, item_id, "timeout", "runner exceeded 3600 s")
-            if job.cancel_event.is_set():
+            out = _attempt(job, item_id, inp, awork, googleplay, auto, sha, log)
+            if out is None:
                 return
-            used = [(next(a for a in auto if a["download"] == u["download"]), u) for u in m.apkm]
-            for a, u in used:
-                if a["pick"] and a["pick"]["version_code"] != u["version_code"]:   # the remembered page serves another build
-                    _apkm_forget(inp["package"], want, a["abis"])
-                    a["pick"] = None
-            result, bad = None, None
-            if rc == 0:
-                try:
-                    result = _read_result(awork)
-                except ValueError as e:
-                    bad = str(e)
-            if result is None:
-                if not (used and m.fail_code == "patch_failed"):   # the patcher refusing an automatic variant: next one
-                    if tried:   # earlier variants were rejected: end as the exhausted loop, not as a code retried every run
-                        rejected = (f"{rejected.rstrip('.')}. Then {m.fail_code or 'internal'}: "
-                                    f"{bad or m.fail_detail or m.last_err or f'runner exited {rc} without result.json'}")
-                        break
-                    if m.fail_code:
-                        _fail(job, item_id, m.fail_code, m.fail_detail or "")
-                    _fail(job, item_id, "internal", bad or m.last_err or f"runner exited {rc} without result.json")
-                rejected = m.fail_detail or "the patcher failed"
-            else:
-                for device, vc in sorted({(g["device"], g["version_code"]) for g in googleplay if g["version_code"] is not None}):
-                    playversion.remember(inp["package"], want, device, vc)  # the runner verified name and code
-                if want is None:  # latest, or auto with no compatible list: the runner refreshed the APKMirror list
-                    sha = apps.inputs_sha(apps.item_row(item_id))
-                failed, verdict = [], None
-                if inp["engine"] == "morphe":  # lspatch/npatch embed one module: no per-patch result (design guard §7)
-                    results = {v["name"]: _read_patch_result(awork, v["name"]) for v in result["variants"]}
-                    failed = list(dict.fromkeys(n for r in results.values() if r for n, _ in r["failed"]))
-                    ls = item_status([item_id])[item_id]["last_success"]
-                    baseline = set(json.loads(db.conn().execute("SELECT failed_patches FROM build_jobs WHERE job_id = ?",
-                                                                (ls["job_id"],)).fetchone()[0] or "[]")) if ls else set()
-                    verdict = patch_verdict(results, baseline, ls["app_version"] if ls else None)
-                    if verdict:
-                        with db.tx() as c:
-                            c.execute("UPDATE build_jobs SET failed_patches = ?, inputs_sha = ? WHERE job_id = ?",
-                                      (json.dumps(failed) if failed else None, sha, job.id))
-                if verdict is None:
-                    for a, u in used:
-                        _apkm_remember(inp["package"], u["version_name"], a["abis"], u["version_code"], u["variant_url"], u["bundle"])
-                    try:
-                        _register(job, item_id, inp, awork, result, failed, sha)
-                    except OSError as e:
-                        shutil.rmtree(db.DATA / "artifacts" / str(item_id) / str(job.id), ignore_errors=True)
-                        _fail(job, item_id, "internal", f"artifact rejected: {e}")
-                    return
-                if not (used and verdict[0] == "nothing_applied"):   # R0, R2: not a verdict on the variant
-                    _fail(job, item_id, "patch_items_failed", verdict[1])
-                rejected = verdict[1]
-            # wrong variant (R1 or the patcher refused it): exclude the used codes, try the next variant
-            for a, u in used:
+            if not out.variant:
+                if not tried:
+                    _fail(job, item_id, out.code, out.detail)
+                last = f"{last.rstrip('.')}. Then {out.code}: {out.detail}"   # end as the exhausted loop, not a retried code
+                break
+            last = out.detail
+            for a, u in out.used:   # wrong variant: exclude its code, try the next one
                 a["exclude"].append(u["version_code"])
                 tried.append(u["version_code"])
                 vname = u["version_name"]
                 if a["pick"]:   # the remembered variant no longer applies (e.g. a pinned older bundle)
                     _apkm_forget(inp["package"], want, a["abis"])
                     a["pick"] = None
-            if not any(u["remaining"] is None or u["remaining"] > 1 for _, u in used):
+            if not any(u["remaining"] is None or u["remaining"] > 1 for _, u in out.used):
                 break
-        # an exhausted loop waits for an input change (needs_build), whichever way the last variant failed
-        if want is None:   # fingerprint the version the runner found (as the guard path does)
-            with db.tx() as c:
-                c.execute("UPDATE build_jobs SET inputs_sha = ? WHERE job_id = ?", (apps.inputs_sha(apps.item_row(item_id)), job.id))
-        _fail(job, item_id, "patch_items_failed",
-              f"Tried APKMirror variants {', '.join(map(str, tried))} of {vname}: the patches applied "
-              f"to none of them. Last: {rejected.rstrip('.')}. Set the app's APKMirror versionCode to pick one.")
+        _fail_exhausted(job, item_id, inp, tried, vname, last)
     finally:
         shutil.rmtree(work, ignore_errors=True)
         with _steps_lock:
