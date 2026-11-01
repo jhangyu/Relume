@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+from typing import NamedTuple
 
 from . import build, catalog, db, devices, events, jobs, projects, server
 from .server import HttpError, is_int
@@ -211,6 +212,11 @@ def _device_view(dev, states):
     return _view(dev, states, _plan_for(dev, None, None, reported if reported or devices.is_app(dev) else None), reported)
 
 
+def device_view_by_id(device_id):
+    """Device view of a row known only by id (sign-in, token revoke, adopt): app rows, no adb state."""
+    return _device_view(devices.get(device_id), {})
+
+
 def _view(dev, states, v, reported):
     """Device row + assignments + projects from one _plan_for result v."""
     pending = {(s['kind'], s['ref_id']) for s in v['steps'] if s['action'] == 'install'}
@@ -398,24 +404,40 @@ def _bad(field, expected, got):
     raise HttpError(400, f'{field} must be {expected}, got {got!r}')
 
 
-def _parse_sync(body):
-    """Boundary parse of POST /api/me/sync -> (device_uid, facts tuple, {package: {version_code, version_name, signer_sha256}})."""
-    d = body.get('device')
+class DeviceFacts(NamedTuple):
+    uid: str | None          # None = companion up to v1.2.0 (legacy sign-in, decisions.md entry 1)
+    model: str
+    sdk: int
+    android_release: str
+    abi_list: str            # comma-joined, as stored in devices.abi_list
+
+
+def parse_device_facts(d):
+    """Boundary parse of the `device` object shared by sign-in (auth) and sync. Each caller checks its own extra
+    field after this: sign-in `name`, sync `app_version_code`."""
     if not isinstance(d, dict):
         _bad('device', 'an object', d)
     uid = parse_device_uid(d)
     for f in ('model', 'android_release'):
         if not isinstance(d.get(f), str) or not d[f].strip():
             _bad(f'device.{f}', 'a non-empty string', d.get(f))
-    for f in ('sdk', 'app_version_code'):
-        if not is_int(d.get(f)) or d[f] < 1:
-            _bad(f'device.{f}', 'a positive integer', d.get(f))
+    if not is_int(d.get('sdk')) or d['sdk'] < 1:
+        _bad('device.sdk', 'a positive integer', d.get('sdk'))
     abis = d.get('abi_list')
     if not isinstance(abis, list) or not abis:
         _bad('device.abi_list', 'a non-empty list', abis)
     for i, a in enumerate(abis):
         if a not in catalog.ABIS:
             _bad(f'device.abi_list[{i}]', 'one of ' + ', '.join(catalog.ABIS), a)
+    return DeviceFacts(uid, d['model'], d['sdk'], d['android_release'], ','.join(abis))
+
+
+def _parse_sync(body):
+    """Boundary parse of POST /api/me/sync -> (DeviceFacts, app_version_code, {package: {version_code, version_name, signer_sha256}})."""
+    d = body.get('device')
+    facts = parse_device_facts(d)
+    if not is_int(d.get('app_version_code')) or d['app_version_code'] < 1:
+        _bad('device.app_version_code', 'a positive integer', d.get('app_version_code'))
     pkgs = body.get('packages')
     if not isinstance(pkgs, list):
         _bad('packages', 'a list', pkgs)
@@ -438,7 +460,7 @@ def _parse_sync(body):
             _bad(f + '.signer_sha256', '64 lowercase hex characters or null', e['signer_sha256'])
         out[pkg] = {'version_code': e['version_code'], 'version_name': e.get('version_name'),
                     'signer_sha256': e.get('signer_sha256')}
-    return uid, (d['model'], d['sdk'], d['android_release'], ','.join(abis), d['app_version_code']), out
+    return facts, d['app_version_code'], out
 
 
 def _adopt_device_uid(c, device_id, uid):
@@ -474,7 +496,8 @@ def _leave_legacy(c, device_id, uid):
 def sync(req):
     """Report + plan in one call: facts and tracked packages stored, full plan returned. A legacy row (no uid yet)
     stores the report and last_seen only: it gets no device facts."""
-    uid, facts, packages = _parse_sync(req.json)
+    facts, app_version_code, packages = _parse_sync(req.json)
+    uid = facts.uid
     did = req.device_id
     me = _me(req)
     if me is None:   # merged into another row by a concurrent sync after authenticate
@@ -492,7 +515,8 @@ def sync(req):
         if uid is not None:
             _adopt_device_uid(c, did, uid)
         c.execute('UPDATE devices SET model=?, sdk=?, android_release=?, abi_list=?, app_version_code=?, last_seen_at=? '
-                  'WHERE id=?', (*facts, db.utcnow(), did))
+                  'WHERE id=?', (facts.model, facts.sdk, facts.android_release, facts.abi_list, app_version_code,
+                                 db.utcnow(), did))
     store_reported(did, packages)
     dev = devices.get(did)
     return 200, _sync_json(dev)
@@ -602,7 +626,7 @@ def adopt(req):
                   'app_version_code=?, last_seen_at=? WHERE id=?',
                   (*(me_row[k] for k in ('device_uid', 'token_hash', 'model', 'abi_list', 'sdk', 'android_release',
                                          'app_version_code')), db.utcnow(), tid))
-    return 200, {'device': _device_view(devices.get(tid), {})}
+    return 200, {'device': device_view_by_id(tid)}
 
 
 ROUTES = [

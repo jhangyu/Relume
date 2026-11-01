@@ -9,8 +9,8 @@ import secrets
 import threading
 import time
 
-from . import catalog, db, devices, ota, settings
-from .server import HttpError, is_int
+from . import db, ota, settings
+from .server import HttpError
 
 COOKIE = 'relume_session'
 PUBLIC = {('POST', '/api/auth/login'), ('POST', '/api/auth/setup'),
@@ -200,41 +200,20 @@ def login(req):
     return 200, {'ok': True}, {'Set-Cookie': cookie}
 
 
-def _device_facts(body):
-    d = body.get('device')
-    if not isinstance(d, dict):
-        raise HttpError(400, f'device must be an object, got {type(d).__name__}')
-    name, model, sdk, release, abis = (d.get(k) for k in ('name', 'model', 'sdk', 'android_release', 'abi_list'))
-    uid = ota.parse_device_uid(d)
-    if not isinstance(name, str) or not 0 < len(name.strip()) <= DEVICE_NAME_MAX:
-        raise HttpError(400, f'device.name must be 1-{DEVICE_NAME_MAX} characters')
-    for field, v in (('model', model), ('android_release', release)):
-        if not isinstance(v, str) or not v.strip():
-            raise HttpError(400, f'device.{field} must be a non-empty string')
-    if not is_int(sdk) or sdk < 1:
-        raise HttpError(400, f'device.sdk must be a positive integer, got {sdk!r}')
-    if not isinstance(abis, list) or not abis:
-        raise HttpError(400, 'device.abi_list must be a non-empty list')
-    for i, a in enumerate(abis):
-        if a not in catalog.ABIS:
-            raise HttpError(400, f'device.abi_list[{i}] must be one of {", ".join(catalog.ABIS)}, got {a!r}')
-    return uid, name.strip(), model, sdk, release, ','.join(abis)
-
-
-def _device_view(device_id):
-    return ota._device_view(devices.get(device_id), {})
-
-
 def register_device(req):
     """Phone login: same credential check and lockout as login, returns a device token once, sets no cookie.
     A phone that signs in again (same device_uid) keeps its row, name, assignments and history: only the token
     and the hardware facts change."""
-    facts = _device_facts(req.json)
+    d = req.json.get('device')
+    facts = ota.parse_device_facts(d)
+    name = d.get('name')
+    if not isinstance(name, str) or not 0 < len(name.strip()) <= DEVICE_NAME_MAX:
+        raise HttpError(400, f'device.name must be 1-{DEVICE_NAME_MAX} characters, got {name!r}')
     denied = _check_credentials(req)
     if denied:
         return denied
     token = secrets.token_urlsafe(32)
-    uid, name, *hw = facts
+    uid, name, hw = facts.uid, name.strip(), (facts.model, facts.sdk, facts.android_release, facts.abi_list)
     with db.tx() as c:
         known = uid and c.execute('SELECT id FROM devices WHERE device_uid=?', (uid,)).fetchone()
         adb = []   # a known phone is never offered an ADB takeover: adopting would delete its own row
@@ -250,7 +229,7 @@ def register_device(req):
                             "abi_list) VALUES (?, ?, 'app', ?, ?, ?, ?, ?)",
                             (uid, name, token_hash(token), *hw)).lastrowid
             adb = [dict(r) for r in c.execute("SELECT id, name, model FROM devices WHERE kind='adb' ORDER BY id")]
-    return 200, {'token': token, 'device': _device_view(did), 'adb_devices': adb}
+    return 200, {'token': token, 'device': ota.device_view_by_id(did), 'adb_devices': adb}
 
 
 def device_logout(req):
@@ -271,7 +250,7 @@ def revoke_device_token(req):
         if row['kind'] != 'app':
             raise HttpError(409, 'not an app device')
         c.execute('UPDATE devices SET token_hash=NULL WHERE id=?', (did,))
-    return 200, {'device': _device_view(did)}
+    return 200, {'device': ota.device_view_by_id(did)}
 
 
 def list_legacy_sign_ins(req):
