@@ -23,7 +23,6 @@ class LegacyClientTest(DataTestCase):
     def setUp(self):
         super().setUp()
         self.addCleanup(db.close)
-        self.enterContext(mock.patch.object(auth, 'SCRYPT_N', 2 ** 4))
         self.base = serve(self, ['devices', 'notify', 'projects', 'ota'])
         self.cookie = login(self.base)
         add_project(1, SELF)

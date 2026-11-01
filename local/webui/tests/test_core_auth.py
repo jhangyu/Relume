@@ -9,7 +9,6 @@ class AuthTest(DataTestCase):
     def setUp(self):
         super().setUp()
         self.addCleanup(db.close)   # the last test's main-thread connection would otherwise be finalized unclosed
-        self.enterContext(mock.patch.object(auth, 'SCRYPT_N', 2 ** 4))   # fast hashing, the KDF cost is not under test
         self.base = serve(self)
 
     def test_hash_roundtrip(self):
@@ -124,7 +123,6 @@ class DeviceTokenTest(DataTestCase):
     def setUp(self):
         super().setUp()
         self.addCleanup(db.close)   # the last test's main-thread connection would otherwise be finalized unclosed
-        self.enterContext(mock.patch.object(auth, 'SCRYPT_N', 2 ** 4))   # fast hashing, the KDF cost is not under test
         self.base = serve(self, ['devices', 'notify', 'projects', 'ota'])
         self.cookie = login(self.base)
 

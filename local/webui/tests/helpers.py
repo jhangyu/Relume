@@ -9,11 +9,13 @@ import types
 import unittest
 import urllib.error
 import urllib.request
+from unittest import mock
 
 from webui import auth, db, events, jobs, server, settings
 
 
 _templates = {}  # schema_dir -> data dir holding a migrated, closed (no -wal) database
+FAST_SCRYPT_N = 2 ** 4  # tests only: production keeps auth.SCRYPT_N = 2**14, the KDF cost is not under test
 
 
 def _template(schema_dir):
@@ -43,8 +45,10 @@ class DataTestCase(unittest.TestCase):
         self.addCleanup(jobs.stop)      # runs before tmp.cleanup (LIFO): no worker touches a removed dir
         self.addCleanup(db.close)       # this thread's connection; the last test's would finalize unclosed
         self.data = pathlib.Path(tmp.name)
-        shutil.copytree(_template(self.schema_dir), self.data, dirs_exist_ok=True)
+        # the database file only: db.init makes the subdirectories, a tree copy would add ~25 metadata calls per test
+        shutil.copyfile(pathlib.Path(_template(self.schema_dir)) / 'webui.db', self.data / 'webui.db')
         db.init(self.data)
+        self.enterContext(mock.patch.object(auth, 'SCRYPT_N', FAST_SCRYPT_N))
         events.reset()
         jobs.reset()
         auth.reset_lockout()

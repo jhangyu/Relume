@@ -37,7 +37,6 @@ class StartupTest(DataTestCase):
         self.assertIsNone(db.conn().execute("SELECT 1 FROM settings WHERE key LIKE 'admin_%'").fetchone())
 
     def test_boot_applies_env_admin_password(self):
-        self.enterContext(mock.patch.object(auth, 'SCRYPT_N', 2 ** 4))   # fast hashing, the KDF cost is not under test
         settings.put('admin_username', 'root')
         auth.set_password('old-password-1')
         db.conn().execute("INSERT INTO sessions VALUES ('t','2999-01-01T00:00:00Z')")

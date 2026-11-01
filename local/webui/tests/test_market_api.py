@@ -1,6 +1,6 @@
 import json, unittest
 from unittest import mock
-from webui import apklocate, apps, auth, catalog, db, jobs, server
+from webui import apklocate, apps, catalog, db, jobs, server
 from webui.tests import catalog_rows
 from webui.tests.helpers import DataTestCase, serve, http, login
 
@@ -23,7 +23,6 @@ APPS = [market_app('com.b.reddit', 'Reddit', 'Social', ['builtin', 'official'], 
 class MarketCase(DataTestCase):
     def setUp(self):
         super().setUp()
-        self.enterContext(mock.patch.object(auth, 'SCRYPT_N', 2 ** 4))   # fast hashing, the KDF cost is not under test
         self.enterContext(mock.patch.object(catalog, 'feed_status', return_value=FEED))
         self.base = serve(self, names=('market',))
         self.cookie = login(self.base)

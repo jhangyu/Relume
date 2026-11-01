@@ -220,7 +220,7 @@ class WorkerTest(DataTestCase):
         self.assertEqual(queued, [FIRST_JOB_ID])
 
     def test_timeout(self):
-        jobs.register('build', lambda job, log: log.run(['tail', '-f', '/dev/null'], timeout=0.5))
+        jobs.register('build', lambda job, log: log.run(['tail', '-f', '/dev/null'], timeout=0.05))
         j = wait_status(jobs.enqueue('build', {'item_id': 1}, 'manual'), {'failed'}, timeout=15)
         self.assertEqual(j['reason'], 'timeout')
 

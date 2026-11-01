@@ -12,6 +12,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import traceback
@@ -22,8 +23,11 @@ from pathlib import Path
 TOTAL_BUDGET_S = 90
 PER_TEST_BUDGET_S = 1.0
 SLOWEST_SHOWN = 10
-# Each child spawns subprocesses (bash, jq, sqlite I/O): half the cores keeps wall time close to test time.
-PYTHON_WORKERS = max(1, (os.cpu_count() or 2) // 2)
+# Most per-test cost is file-system metadata work (temp dirs, sqlite files, logs, stub scripts). On APFS it does not
+# scale with cores: 14 workers made each test about 3x slower than 4 workers for the same leg wall time
+# (docs/logs/2026-11-01-slow-tests.md), so the pool stops at the measured knee.
+PYTHON_WORKERS_MAX = 4
+PYTHON_WORKERS = max(1, min((os.cpu_count() or 2) // 2, PYTHON_WORKERS_MAX))
 ALL_LEGS = ("python", "shell", "android")
 FORBIDDEN = re.compile(r"sleep|delay\(", re.IGNORECASE)
 CHILD_FLAG = "--child"
@@ -106,10 +110,10 @@ def run_child(module):
     suite.run(JsonLineResult())
 
 
-def python_leg(root):
+def python_leg(root, env):
     tests_dir = root / "local" / "webui" / "tests"
     modules = sorted(p.stem for p in tests_dir.glob("test_*.py"))
-    env = dict(os.environ, PYTHONPATH=str(root / "local"))
+    env = dict(env, PYTHONPATH=str(root / "local"))
     script = Path(__file__).resolve()
 
     def one(module):
@@ -137,12 +141,12 @@ CASE_LINE = re.compile(r"(PASS|FAIL) (\S+?):?(?: |$)")
 SHELL_SCRIPT = "src/build/test-build-item.sh"
 
 
-def shell_leg(root):
+def shell_leg(root, env):
     """Each PASS/FAIL line the script prints is one test, timed from the previous case line."""
     if shutil.which("bash") is None:
         raise SystemExit("shell leg: required tool 'bash' not found on PATH")
-    proc = subprocess.Popen(["bash", SHELL_SCRIPT], cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                            start_new_session=True)
+    proc = subprocess.Popen(["bash", SHELL_SCRIPT], cwd=root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, start_new_session=True)
     timed_out = threading.Event()
 
     def expire():
@@ -174,7 +178,7 @@ def shell_leg(root):
     return units
 
 
-def android_leg(root):
+def android_leg(root, _env):
     sdk = os.environ.get("ANDROID_HOME")
     if not sdk:
         raise SystemExit("android leg: environment variable ANDROID_HOME is not set")
@@ -234,14 +238,22 @@ def main():
     unknown = [leg for leg in legs if leg not in ALL_LEGS]
     if unknown:
         raise SystemExit(f"unknown legs {unknown}, expected a subset of {list(ALL_LEGS)}")
-    root = Path(args.root).resolve()
-    runners = {"python": python_leg, "shell": shell_leg, "android": android_leg}
+    with tempfile.TemporaryDirectory(prefix="relume-test-") as tmp:
+        return run_legs(Path(args.root).resolve(), legs, tmp)
 
+
+def run_legs(root, legs, tmp):
+    # A private TMPDIR: the shared one can hold tens of thousands of entries, and creating or removing an entry there
+    # stalled for up to 270 ms per call while other processes worked on that directory (slow-tests log).
+    # The android leg ignores it: the Gradle daemon outlives this run.
+    os.chmod(tmp, 0o1777)  # the mode of /tmp: tests running as root drop to the runner uid, which must reach their dirs
+    env = dict(os.environ, TMPDIR=tmp)
+    runners = {"python": python_leg, "shell": shell_leg, "android": android_leg}
     failed = False
     all_units = []
     for leg in legs:
         try:
-            units = runners[leg](root)
+            units = runners[leg](root, env)
         except (BudgetExceeded, ProtocolError) as e:
             print(f"FAIL {e}")
             return 1
@@ -258,11 +270,12 @@ def main():
     if wall > TOTAL_BUDGET_S:
         print(f"FAIL wall time {wall:.1f}s exceeds {TOTAL_BUDGET_S}s")
         failed = True
-    slow = sorted((u for u in all_units if u["seconds"] > PER_TEST_BUDGET_S), key=lambda u: -u["seconds"])
+    print(f"slowest {SLOWEST_SHOWN}:")
+    for u in sorted(all_units, key=lambda u: -u["seconds"])[:SLOWEST_SHOWN]:
+        print(f"  {u['seconds']:.3f}s {u['id']}")
+    slow = sum(u["seconds"] > PER_TEST_BUDGET_S for u in all_units)
     if slow:
-        print(f"FAIL {len(slow)} tests exceed {PER_TEST_BUDGET_S}s; slowest {SLOWEST_SHOWN}:")
-        for u in sorted(all_units, key=lambda u: -u["seconds"])[:SLOWEST_SHOWN]:
-            print(f"  {u['seconds']:.3f}s {u['id']}")
+        print(f"FAIL {slow} tests exceed {PER_TEST_BUDGET_S}s")
         failed = True
     hits = forbidden_words(root)
     if hits:
