@@ -20,7 +20,7 @@ def canon(v):
 
 def req(params=None, body=None, query=None, method='POST', path='/'):
     return types.SimpleNamespace(method=method, path=path, params=params or {}, query=query or {},
-                                 headers={}, json={} if body is None else body, session=None)
+                                 headers={}, json={} if body is None else body, session=None, device_id=None)
 
 
 class FakeLog:
