@@ -42,7 +42,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import java.io.IOException
 
 private const val HTTP_UNAUTHORIZED = 401
 private const val KIND_UPSTREAM = "upstream"
@@ -161,15 +160,9 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     suspend fun <T> call(block: suspend (RelumeApi) -> T): T? {
         val a = api ?: return null
         error = null
-        return try {
-            block(a)
-        } catch (e: ApiError) {
-            if (e.status == HTTP_UNAUTHORIZED) signOutLocally(SIGNED_OUT_NOTICE) else error = describe(e)
-            null
-        } catch (e: IOException) {
-            error = describe(e)
-            null
-        }
+        return catchApi({ e ->
+            if (e is ApiError && e.status == HTTP_UNAUTHORIZED) signOutLocally(SIGNED_OUT_NOTICE) else error = describe(e)
+        }) { block(a) }
     }
 
     fun refresh() {
@@ -459,12 +452,10 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         apps.filter { it.status.state == STATE_BUILDING || it.status.state == STATE_QUEUED }.mapNotNull { it.status.jobId }.filter { it !in watching }.forEach { jobId ->
             watching[jobId] = viewModelScope.launch {
                 try {
-                    withContext(Dispatchers.IO) { a.jobLog(jobId, null) { } }
-                    refresh()
-                } catch (e: ApiError) {
-                    error = describe(e)
-                } catch (e: IOException) {
-                    error = describe(e)
+                    catchApi({ error = describe(it) }) {
+                        withContext(Dispatchers.IO) { a.jobLog(jobId, null) { } }
+                        refresh()
+                    }
                 } finally {
                     watching.remove(jobId)
                 }

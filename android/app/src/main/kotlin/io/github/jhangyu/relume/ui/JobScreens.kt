@@ -33,13 +33,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import io.github.jhangyu.relume.api.BuildProgress
-import io.github.jhangyu.relume.api.ApiError
 import io.github.jhangyu.relume.api.Job
 import io.github.jhangyu.relume.api.RelumeApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.IOException
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
@@ -93,7 +91,7 @@ fun LogScreen(api: RelumeApi, jobId: Int, progress: BuildProgress?, label: Strin
 
     LaunchedEffect(jobId, attempt) {
         error = null
-        try {
+        catchApi({ error = describe(it) }) {
             job = api.job(jobId)
             withContext(Dispatchers.IO) {
                 api.jobLog(jobId, lastId) { ev ->
@@ -103,10 +101,6 @@ fun LogScreen(api: RelumeApi, jobId: Int, progress: BuildProgress?, label: Strin
             }
             job = api.job(jobId)
             onEnded()
-        } catch (e: ApiError) {
-            error = describe(e)
-        } catch (e: IOException) {
-            error = describe(e)
         }
     }
     LaunchedEffect(lines.size, follow) {
@@ -145,13 +139,9 @@ fun LogScreen(api: RelumeApi, jobId: Int, progress: BuildProgress?, label: Strin
             job?.takeIf { isActive(it.status) }?.let {
                 ActionButton("Cancel build", kind = ButtonKind.Outlined, onClick = {
                     scope.launch {
-                        try {
+                        catchApi({ cancelError = describe(it) }) {
                             api.cancelJob(jobId)
                             job = api.job(jobId)
-                        } catch (e: ApiError) {
-                            cancelError = describe(e)
-                        } catch (e: IOException) {
-                            cancelError = describe(e)
                         }
                     }
                 })

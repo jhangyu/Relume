@@ -33,7 +33,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import io.github.jhangyu.relume.RelumeApp
 import io.github.jhangyu.relume.api.AdbDevice
-import io.github.jhangyu.relume.api.ApiError
 import io.github.jhangyu.relume.api.DeviceInfo
 import io.github.jhangyu.relume.api.InvalidServerUrl
 import io.github.jhangyu.relume.api.RelumeApi
@@ -82,11 +81,11 @@ fun LoginScreen(app: RelumeApp, notice: String?, onSignedIn: () -> Unit) {
         scope.launch {
             busy = true
             try {
-                if (adopt != null) RelumeApi(url) { token }.adopt(adopt)
-                app.signIn(url, token)
-                onSignedIn()
-            } catch (e: Exception) {
-                formError = describe(e)
+                catchApi({ formError = describe(it) }) {
+                    if (adopt != null) RelumeApi(url) { token }.adopt(adopt)
+                    app.signIn(url, token)
+                    onSignedIn()
+                }
             } finally {
                 busy = false
             }
@@ -106,32 +105,30 @@ fun LoginScreen(app: RelumeApp, notice: String?, onSignedIn: () -> Unit) {
         scope.launch {
             busy = true
             try {
-                val api = RelumeApi(url) { null }
-                try {
-                    api.checkServer()
-                } catch (e: IOException) {
-                    unreachable = "Can't reach $url" to describe(e)
-                    return@launch
+                catchApi({ formError = describe(it) }) {
+                    val api = RelumeApi(url) { null }
+                    try {
+                        api.checkServer()
+                    } catch (e: IOException) {
+                        unreachable = "Can't reach $url" to describe(e)
+                        return@launch
+                    }
+                    val device = DeviceInfo(
+                        // stable per signing key + device + user, survives reinstall: the server keys the phone by it
+                        deviceUid = Settings.Secure.getString(app.contentResolver, Settings.Secure.ANDROID_ID),
+                        name = Build.MODEL,
+                        model = Build.MODEL,
+                        sdk = Build.VERSION.SDK_INT,
+                        androidRelease = Build.VERSION.RELEASE,
+                        abiList = Build.SUPPORTED_ABIS.toList(),
+                    )
+                    val reg = api.registerDevice(user.trim(), password, device)
+                    if (reg.adbDevices.isEmpty()) {
+                        finish(url, reg.token, null)
+                    } else {
+                        pending = Pending(url, reg.token, reg.adbDevices)
+                    }
                 }
-                val device = DeviceInfo(
-                    // stable per signing key + device + user, survives reinstall: the server keys the phone by it
-                    deviceUid = Settings.Secure.getString(app.contentResolver, Settings.Secure.ANDROID_ID),
-                    name = Build.MODEL,
-                    model = Build.MODEL,
-                    sdk = Build.VERSION.SDK_INT,
-                    androidRelease = Build.VERSION.RELEASE,
-                    abiList = Build.SUPPORTED_ABIS.toList(),
-                )
-                val reg = api.registerDevice(user.trim(), password, device)
-                if (reg.adbDevices.isEmpty()) {
-                    finish(url, reg.token, null)
-                } else {
-                    pending = Pending(url, reg.token, reg.adbDevices)
-                }
-            } catch (e: ApiError) {
-                formError = describe(e)
-            } catch (e: IOException) {
-                formError = describe(e)
             } finally {
                 busy = false
             }

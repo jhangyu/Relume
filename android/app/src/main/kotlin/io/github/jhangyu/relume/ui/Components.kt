@@ -87,11 +87,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import io.github.jhangyu.relume.R
-import io.github.jhangyu.relume.api.ApiError
 import io.github.jhangyu.relume.api.RelumeApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.IOException
 import java.util.Locale
 
 /** Smallest touch target. */
@@ -791,17 +789,9 @@ private val iconCache = LruCache<String, ImageBitmap>(ICON_CACHE_ENTRIES)
 private suspend fun loadIcon(api: RelumeApi, path: String): ImageBitmap? {
     val key = api.url.resolve(path).toString()
     iconCache.get(key)?.let { return it }
-    val bmp = try {
-        val bytes = api.bytes(path)
-        withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
-            ?: run { Log.w(ICON_TAG, "icon $path: ${bytes.size} bytes are not a decodable image"); return null }
-    } catch (e: ApiError) {
-        Log.w(ICON_TAG, "icon $path: HTTP ${e.status}: ${e.message}")
-        return null
-    } catch (e: IOException) {
-        Log.w(ICON_TAG, "icon $path: ${e.javaClass.simpleName}: ${e.message}")
-        return null
-    }
+    val bytes = catchApi({ Log.w(ICON_TAG, "icon $path: ${describe(it)}") }) { api.bytes(path) } ?: return null
+    val bmp = withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
+        ?: run { Log.w(ICON_TAG, "icon $path: ${bytes.size} bytes are not a decodable image"); return null }
     return bmp.asImageBitmap().also { iconCache.put(key, it) }
 }
 
