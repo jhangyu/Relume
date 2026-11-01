@@ -197,7 +197,11 @@ def _plan_for(dev, item_ids, project_ids, present):
 def _device_view(dev, states):
     reported = reported_packages(dev['id'])
     # ponytail: an ADB row with no OTA since migration 008 has no report yet: unknown, not 'nothing installed'
-    v = _plan_for(dev, None, None, reported if reported or devices.is_app(dev) else None)
+    return _view(dev, states, _plan_for(dev, None, None, reported if reported or devices.is_app(dev) else None), reported)
+
+
+def _view(dev, states, v, reported):
+    """Device row + assignments + projects from one _plan_for result v."""
     pending = {(s['kind'], s['ref_id']) for s in v['steps'] if s['action'] == 'install'}
     item_pkgs = {s['ref_id']: s['package'] for s in v['steps'] if s['kind'] == 'item'}
     assignments = []
@@ -324,10 +328,8 @@ def _flags(step, present):
                 downgrade=bool(r and d and d['version_code'] is not None and r['version_code'] > d['version_code']))
 
 
-def app_plan(dev, item_ids=None, project_ids=None):
-    """{revision, steps}: ota.plan() order on the phone's report."""
-    present = reported_packages(dev['id'])
-    v = _plan_for(dev, item_ids, project_ids, present)
+def _app_plan_from(v, present):
+    """{revision, steps} of the companion from one _plan_for result on the phone's report."""
     infos = {p['project_id']: p for p in [*v['projects'], *(p for ps in v['deps'].values() for p in ps)]}
     names = {i['item_id']: i['display_name'] for i in v['items']}
     steps = []
@@ -341,12 +343,26 @@ def app_plan(dev, item_ids=None, project_ids=None):
     return {'revision': revision, 'steps': steps}
 
 
+def app_plan(dev, item_ids=None, project_ids=None):
+    """{revision, steps}: ota.plan() order on the phone's report."""
+    present = reported_packages(dev['id'])
+    return _app_plan_from(_plan_for(dev, item_ids, project_ids, present), present)
+
+
 def _me(req):
     return devices.get(req.device_id)
 
 
 def _me_json(dev):
     return {'device': _device_view(dev, {}), 'tracked_packages': tracked_packages()}
+
+
+def _sync_json(dev):
+    """GET /api/me body plus the full plan, both from one _plan_for (an app row plans on its report)."""
+    reported = reported_packages(dev['id'])
+    v = _plan_for(dev, None, None, reported)
+    return {'device': _view(dev, {}, v, reported), 'tracked_packages': tracked_packages(),
+            'plan': _app_plan_from(v, reported)}
 
 
 def me(req):
@@ -458,7 +474,7 @@ def sync(req):
                 c.execute('UPDATE devices SET last_seen_at=? WHERE id=?', (db.utcnow(), did))
             store_reported(did, packages)
             dev = _me(req)
-            return 200, dict(_me_json(dev), plan=app_plan(dev))
+            return 200, _sync_json(dev)
         with db.tx() as c:
             did = _leave_legacy(c, did, uid)
     with db.tx() as c:
@@ -468,7 +484,7 @@ def sync(req):
                   'WHERE id=?', (*facts, db.utcnow(), did))
     store_reported(did, packages)
     dev = devices.get(did)
-    return 200, dict(_me_json(dev), plan=app_plan(dev))
+    return 200, _sync_json(dev)
 
 
 def _query_ids(req, key, have, what):
