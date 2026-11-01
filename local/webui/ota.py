@@ -31,6 +31,12 @@ def assigned_items(device_id, item_ids=None):
     return items
 
 
+def assigned_item_ids(device_id):
+    """Every assigned item id, removed (disabled) apps included: a phone or page may still hold such an id, and
+    assigned_items then drops it from the plan."""
+    return {r[0] for r in db.conn().execute('SELECT item_id FROM device_assignments WHERE device_id = ?', (device_id,))}
+
+
 def last_installs(device_id):
     """-> (items, projects): newest installed/up_to_date row per item id and per project id. No JOIN on jobs:
     rows written from an app receipt have job_id NULL."""
@@ -395,7 +401,7 @@ def _query_ids(req, key, have, what):
 def me_plan(req):
     """?items=&projects= scope the plan like an OTA job target: either key given, the missing one means none."""
     dev = _me(req)
-    item_ids = _query_ids(req, 'items', {i['item_id'] for i in assigned_items(dev['id'])}, 'item')
+    item_ids = _query_ids(req, 'items', assigned_item_ids(dev['id']), 'item')
     project_ids = _query_ids(req, 'projects', set(projects.assigned_projects(dev['id'])), 'project')
     if item_ids is not None or project_ids is not None:
         item_ids, project_ids = item_ids or [], project_ids or []
@@ -711,7 +717,7 @@ def ota_now(req):
     if devices.is_app(dev):
         raise HttpError(409, devices.APP_ONLY)
     body, target = req.json or {}, {'device_id': dev['id']}
-    for key, what, have in (('item_ids', 'item', lambda: {i['item_id'] for i in assigned_items(dev['id'])}),
+    for key, what, have in (('item_ids', 'item', lambda: assigned_item_ids(dev['id'])),
                             ('project_ids', 'project', lambda: set(projects.assigned_projects(dev['id'])))):
         ids = body.get(key)
         if ids is None:

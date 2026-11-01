@@ -155,10 +155,11 @@ def check_assignment(item_ids, project_ids):
     c = db.conn()
     pkgs = []
     for i in item_ids:
-        r = c.execute("SELECT package FROM item WHERE id = ?", (i,)).fetchone()
+        r = c.execute("SELECT package, enabled FROM item WHERE id = ?", (i,)).fetchone()
         if r is None:
             raise server.HttpError(400, f"unknown item {i}")
-        pkgs.append(r[0])
+        if r["enabled"]:  # a removed app is never installed, so its package cannot clash
+            pkgs.append(r["package"])
     for p in project_ids:
         r = c.execute("SELECT package FROM project WHERE id = ?", (p,)).fetchone()
         if r is None:
