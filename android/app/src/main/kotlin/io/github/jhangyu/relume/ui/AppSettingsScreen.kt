@@ -60,8 +60,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 private val VERSION_MODES = listOf("auto", "pinned", "latest")
-private val ABIS = listOf("universal", "arm64-v8a", "armeabi-v7a", "x86", "x86_64")
-private val MAX_SIGBYPASS = mapOf("lspatch" to 3, "npatch" to 4)
 /** Download sources in the picker (variant `download.kind`); `url` is offered only to a variant that already uses it. */
 private val SOURCES = listOf("apkmirror" to "APKMirror", "apkpure" to "APKPure", "googleplay" to "Google Play (apkeep)")
 private const val KIND_URL = "url"
@@ -97,8 +95,6 @@ private fun JsonObject?.orEmpty(): JsonObject = this ?: JsonObject(emptyMap())
 /** Lookup states the manual retry refuses (409): the URL is already known. */
 private val LOOKUP_DONE = setOf("found", "manual")
 
-internal fun isModule(engine: String) = engine in MAX_SIGBYPASS
-
 /** `patch_overrides` entries from the edited patch list: only switches and option values that differ from the default (web `overridesFrom`). */
 internal fun overridesFrom(patches: List<PatchView>): JsonObject = buildJsonObject {
     for (p in patches) {
@@ -111,12 +107,12 @@ internal fun overridesFrom(patches: List<PatchView>): JsonObject = buildJsonObje
     }
 }
 
-/** Variants for the chosen ABIs: kept ones unchanged, new ones copied from the first (web item.js rule). */
-internal fun variantsFor(current: List<JsonObject>, abis: Set<String>, engine: String): List<JsonObject> {
+/** Variants for the chosen ABIs: kept ones unchanged, new ones copied from the first (web item.js rule), in server ABI [order]. */
+internal fun variantsFor(current: List<JsonObject>, abis: Set<String>, engine: String, order: List<String>): List<JsonObject> {
     val kept = current.filter { it["abi"]?.jsonPrimitive?.content in abis }
     val have = kept.map { it["abi"]?.jsonPrimitive?.content }.toSet()
     val template = current.first()
-    return kept + abis.filter { it !in have }.sortedBy(ABIS::indexOf).map { abi ->
+    return kept + abis.filter { it !in have }.sortedBy(order::indexOf).map { abi ->
         JsonObject(template + mapOf(
             "name" to JsonPrimitive(abi),
             "abi" to JsonPrimitive(abi),
@@ -144,6 +140,7 @@ fun AppSettingsScreen(model: AppModel, appId: Int, onBack: () -> Unit, onOpenLog
         }
         val s = d.detail.settings
         val engine = app.bundle.engine
+        val engineLimits = d.limits.engines.getValue(engine)
         var bundleId by remember(d) { mutableStateOf(app.bundle.bundleId) }
         var patches by remember(d) { mutableStateOf(d.patches?.patches.orEmpty()) }
         var mode by remember(d) { mutableStateOf(s.version.mode) }
@@ -182,7 +179,7 @@ fun AppSettingsScreen(model: AppModel, appId: Int, onBack: () -> Unit, onOpenLog
                     })
                 }
                 if ((abis != abisNow || kind != kindNow || codes != codesNow) && !bundleChanged) {
-                    put("variants", JsonArray(withVersionCodes(withKind(variantsFor(s.variants, abis, engine), kind), codes)))
+                    put("variants", JsonArray(withVersionCodes(withKind(variantsFor(s.variants, abis, engine, d.limits.abis), kind), codes)))
                 }
                 if ((sigbypass != sigNow || injectdex != dexNow) && !bundleChanged) {
                     put("engine_options", buildJsonObject { put("sigbypass", sigbypass); put("injectdex", injectdex) })
@@ -229,17 +226,17 @@ fun AppSettingsScreen(model: AppModel, appId: Int, onBack: () -> Unit, onOpenLog
             }
             if (bundleChanged) Banner("Bundle changes on save", Tone.Info, detail = "Patches, variants and module options of the new bundle can be edited after saving. Same-name patch choices are kept.")
 
-            if (!bundleChanged && isModule(engine)) {
+            if (!bundleChanged && engineLimits.isModule) {
                 SectionHeader("Xposed module")
                 InsetGroup {
-                    val max = MAX_SIGBYPASS.getValue(engine)
+                    val max = checkNotNull(engineLimits.maxSigbypass) { "module engine $engine has no max_sigbypass" }
                     Txt("Signature bypass level", Modifier.padding(start = 16.dp, top = 12.dp))
                     ChipRow((0..max).map(Int::toString), sigbypass ?: 0) { sigbypass = it }
                     Hairline()
                     SwitchRow("Inject dex", null, injectdex ?: false) { injectdex = it }
                 }
             }
-            if (!bundleChanged && !isModule(engine)) {
+            if (!bundleChanged && !engineLimits.isModule) {
                 PatchSection(d.patches, patches, s.staleOverrides, badOptions, onChange = { patches = it }, onBad = { badOptions = it })
             }
 
@@ -273,7 +270,7 @@ fun AppSettingsScreen(model: AppModel, appId: Int, onBack: () -> Unit, onOpenLog
 
             if (!bundleChanged) {
                 SectionHeader("ABI variants")
-                FlowChips(ABIS, abis) { abi ->
+                FlowChips(d.limits.abis, abis) { abi ->
                     abis = if (abi in abis) (abis - abi).ifEmpty { abis } else abis + abi
                 }
             }

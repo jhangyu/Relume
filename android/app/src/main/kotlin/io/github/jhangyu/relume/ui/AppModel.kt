@@ -13,6 +13,7 @@ import io.github.jhangyu.relume.api.AppDetail
 import io.github.jhangyu.relume.api.AppObject
 import io.github.jhangyu.relume.api.BundleOption
 import io.github.jhangyu.relume.api.CleanupReport
+import io.github.jhangyu.relume.api.ClientLimits
 import io.github.jhangyu.relume.api.FeedStatus
 import io.github.jhangyu.relume.api.DeviceView
 import io.github.jhangyu.relume.api.FollowedApp
@@ -326,15 +327,17 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Everything App settings edits. [bundles] is null when the catalog has no entry for the package (error shown). */
-    class SettingsData(val detail: AppDetail, val patches: PatchesView?, val bundles: List<BundleOption>?, val projects: List<Project>)
+    class SettingsData(val detail: AppDetail, val patches: PatchesView?, val bundles: List<BundleOption>?, val projects: List<Project>,
+                       val limits: ClientLimits)
 
     /** Null when a required call failed ([error] says which). Module bundles have no patch list (server 409). */
     suspend fun loadSettings(appId: Int): SettingsData? {
+        val limits = call { it.limits() } ?: return null
         val detail = call { it.app(appId) } ?: return null
-        val patches = if (isModule(detail.app.bundle.engine)) null else call { it.patches(appId) } ?: return null
+        val patches = if (limits.engines.getValue(detail.app.bundle.engine).isModule) null else call { it.patches(appId) } ?: return null
         val projects = call { it.projects() } ?: return null
         val bundles = call { it.marketApp(detail.app.packageName).bundles }
-        return SettingsData(detail, patches, bundles, projects)
+        return SettingsData(detail, patches, bundles, projects, limits)
     }
 
     /**

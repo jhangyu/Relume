@@ -25,6 +25,9 @@ class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
 
     suspend fun health(): Health = get(HEALTH_PATH)
 
+    /** Server-owned limits (ABIs, engine kinds, max signature-bypass level, password minimum). */
+    suspend fun limits(): ClientLimits = get<AuthState>("/api/auth/state").limits
+
     /** [health] plus the compatibility rule: throws [ApiError] (status 200, path /api/health) when the server is too old or not ok, [java.io.IOException] when unreachable. */
     suspend fun checkServer(): Health {
         val h = health()

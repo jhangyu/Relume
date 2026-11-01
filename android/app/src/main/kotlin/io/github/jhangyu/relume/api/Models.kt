@@ -596,6 +596,25 @@ data class Project(
 
 // ---- response wrappers ----
 
+/** Engine kind of an Xposed module bundle in [ClientLimits.engines] (the other kind is `patches`). */
+const val ENGINE_KIND_MODULE = "module"
+
+/** `GET /api/auth/state` `limits`: rules the server owns, the app keeps no copy. */
+@Serializable
+data class ClientLimits(
+    @SerialName("min_password") val minPassword: Int,
+    val abis: List<String>,
+    val engines: Map<String, EngineLimits>,
+)
+
+@Serializable
+data class EngineLimits(val kind: String, @SerialName("max_sigbypass") val maxSigbypass: Int?) {
+    val isModule: Boolean get() = kind == ENGINE_KIND_MODULE
+}
+
+@Serializable
+internal data class AuthState(val limits: ClientLimits)
+
 @Serializable
 internal data class DeviceEnvelope(val device: Device)
 
