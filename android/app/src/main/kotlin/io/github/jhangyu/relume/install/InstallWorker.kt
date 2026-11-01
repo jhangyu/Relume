@@ -70,18 +70,17 @@ class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         // Per app: already at its target (the server lacks that install record, or a queued plan is older than the phone):
         // nothing to install; recorded as installed, so the receipt and the patch record are written once.
         if (VerifyRules.atTarget(d, installed) { ApkVerifier.installedSha256(ctx, s.step.packageName) }) {
-            finish(ctx, index, atTargetOutcome)
+            InstallRunner.finishStep(ctx, index, atTargetOutcome)
             InstallRunner.recordPatch(ctx, s.step)
             return false
         }
         if (!InstallRunner.canInstall(ctx)) {
-            finish(ctx, index, StepOutcome(StepState.FAILED, ErrorCodes.INSTALLER_ERROR, "install permission off"))
+            InstallRunner.finishStep(ctx, index, StepOutcome(StepState.FAILED, ErrorCodes.INSTALLER_ERROR, "install permission off"))
             if (run.origin == Origin.BACKGROUND) Notifications.installPermissionOff(ctx, index, s.step.displayName)
             return false
         }
         VerifyRules.checkInstalled(d, installed)?.let {
-            finish(ctx, index, StepOutcome(StepState.NEEDS_UNINSTALL, it.code, it.message))
-            if (run.origin == Origin.BACKGROUND) Notifications.needsReinstall(ctx, index, s.step.displayName)
+            InstallRunner.finishStep(ctx, index, StepOutcome(StepState.NEEDS_UNINSTALL, it.code, it.message))
             return false
         }
         if (!move(ctx, index, setOf(StepState.PENDING, StepState.DOWNLOADING, StepState.VERIFYING), StepState.DOWNLOADING)) return false
@@ -90,12 +89,12 @@ class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                 InstallRunStore.update(ctx) { cur -> cur?.let { InstallRun.progress(it, index, bytes) } }
             }
         } catch (e: StepFailure) {
-            finish(ctx, index, StepOutcome(StepState.FAILED, e.code, e.message))
+            InstallRunner.finishStep(ctx, index, StepOutcome(StepState.FAILED, e.code, e.message))
             return false
         }
         if (!move(ctx, index, setOf(StepState.DOWNLOADING), StepState.VERIFYING)) return false
         ApkVerifier.verify(ctx, s.step, d, apk)?.let {
-            finish(ctx, index, StepOutcome(StepState.FAILED, it.code, it.message))
+            InstallRunner.finishStep(ctx, index, StepOutcome(StepState.FAILED, it.code, it.message))
             return false
         }
         var sessionId: Int? = null
@@ -117,7 +116,7 @@ class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             Installer.commit(ctx, id)
         } catch (e: Exception) {
             // Any session failure (IO, security, illegal state) ends the step; it must not stay "committed".
-            finish(ctx, index, StepOutcome(StepState.FAILED, ErrorCodes.INSTALLER_ERROR, "PackageInstaller session: $e"))
+            InstallRunner.finishStep(ctx, index, StepOutcome(StepState.FAILED, ErrorCodes.INSTALLER_ERROR, "PackageInstaller session: $e"))
             sessionId?.let { Installer.abandon(ctx, it) }
             return false
         } finally {
@@ -138,12 +137,12 @@ class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         }
         if (error != null) {
             // Not installed either; the seen entry stays, so the next run tries the unassign again.
-            finish(ctx, index, StepOutcome(StepState.FAILED, ErrorCodes.INSTALLER_ERROR, "removed from the phone, unassign failed: $error"))
+            InstallRunner.finishStep(ctx, index, StepOutcome(StepState.FAILED, ErrorCodes.INSTALLER_ERROR, "removed from the phone, unassign failed: $error"))
             return
         }
         (ctx as RelumeApp).prefs.updateSeenInstalled { it - seenKey(step.kind, step.refId) }
         InstalledPatches.forget(ctx, step.packageName)
-        finish(ctx, index, removedOutcome)
+        InstallRunner.finishStep(ctx, index, removedOutcome)
     }
 
     private suspend fun sendReceipts(ctx: Context, api: RelumeApi) {
@@ -193,10 +192,6 @@ class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorke
                 }
             }
         }
-    }
-
-    private fun finish(ctx: Context, index: Int, outcome: StepOutcome) {
-        InstallRunStore.update(ctx) { cur -> cur?.let { InstallRun.finish(it, index, outcome) } }
     }
 
     private fun move(ctx: Context, index: Int, from: Set<StepState>, to: StepState, sessionId: Int? = null, priorUpdateTime: Long? = null): Boolean {

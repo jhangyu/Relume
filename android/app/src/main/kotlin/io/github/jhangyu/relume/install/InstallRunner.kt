@@ -137,6 +137,16 @@ object InstallRunner {
 
     fun canInstall(context: Context): Boolean = context.packageManager.canRequestPackageInstalls()
 
+    /** Ends step [index] with [outcome]. A background step this call moved to `needs_uninstall` posts the needs-reinstall notification. */
+    internal fun finishStep(context: Context, index: Int, outcome: StepOutcome): RunState? {
+        var entered = false
+        val after = InstallRunStore.update(context) { cur ->
+            cur?.let { run -> InstallRun.finish(run, index, outcome).also { entered = it !== run && outcome.state == StepState.NEEDS_UNINSTALL } }
+        }
+        if (entered && after != null && after.origin == Origin.BACKGROUND) Notifications.needsReinstall(context, index, after.steps[index].step.displayName)
+        return after
+    }
+
     internal fun onSessionResult(context: Context, sessionId: Int, status: Int, message: String?, confirm: Intent?) {
         InstallRunStore.load(context)
         val run = InstallRunStore.state.value
@@ -154,9 +164,8 @@ object InstallRunner {
         }
         confirmIntents.remove(index)
         Notifications.cancelStep(context, index)
-        val after = InstallRunStore.update(context) { cur -> cur?.let { InstallRun.finish(it, index, outcome) } }
+        val after = finishStep(context, index, outcome)
         if (after?.steps?.get(index)?.state == StepState.INSTALLED) recordPatch(context, run.steps[index].step)
-        if (outcome.state == StepState.NEEDS_UNINSTALL && run.origin == Origin.BACKGROUND) Notifications.needsReinstall(context, index, name)
         if (startQueued(context)) return
         InstallWorker.enqueue(context, run.passOrigin, replace = false)
     }
