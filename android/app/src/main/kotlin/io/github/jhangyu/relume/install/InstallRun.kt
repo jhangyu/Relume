@@ -73,8 +73,8 @@ data class StepRun(
     val receiptError: String?,
     /** Bytes of the `.part` file, updated in [PROGRESS_STEPS] steps of the plan size (spec 9.2). */
     val downloadedBytes: Long,
-    /** The app left the phone through this run's signature reinstall (uninstall, then re-run): its absence is no removal. */
-    val uninstalled: Boolean = false,
+    /** The user was asked (its confirmation was up) and cancelled: a decline, unlike a step cancelled before it was shown. */
+    val userDeclined: Boolean = false,
     /** `lastUpdateTime` of the installed package when this step's session was created; null = not installed then. */
     val priorUpdateTime: Long? = null,
 )
@@ -142,10 +142,10 @@ object InstallRun {
         }
         val unsent = previous?.let { p -> p.outbox + p.steps.filter { it.receiptDue }.map(::receipt) }.orEmpty()
         // The user asks for these apps in the UI: their declined builds are forgotten.
-        val asked = if (origin == Origin.UI) plan.steps.filter { it.action == PlanAction.INSTALL }.map { seenKey(it.kind, it.refId) } else emptyList()
+        val asked = if (origin == Origin.UI) requestedKeys(plan) else emptySet()
         return RunState(
             plan.revision, origin, origin, steps, stalePlan = false, synced = false, syncError = null,
-            outbox = unsent, outboxError = null, declined = declined(previous) - asked.toSet(),
+            outbox = unsent, outboxError = null, declined = declined(previous) - asked,
         ).propagate()
     }
 
@@ -191,8 +191,9 @@ object InstallRun {
 
     /**
      * Builds the user declined in a background run, per app ([seenKey]) to the download sha256: [run]'s carried record
-     * plus its steps the user cancelled (confirmation or sheet cancel, `USER_REJECTED`) or that wait for a signature
-     * uninstall the user has not accepted (`needs_uninstall`; a cancelled uninstall ends `cancelled`, `USER_REJECTED`).
+     * plus its steps the user was asked for and cancelled ([StepRun.userDeclined]: system confirmation cancel, sheet
+     * Cancel while the confirmation was up, cancelled signature uninstall) or that wait for a signature uninstall the user
+     * has not accepted (`needs_uninstall`). Steps a sheet Cancel ended before they were shown are no decline.
      * The background check does not plan that same build again ([io.github.jhangyu.relume.sync.BackgroundStart]); a
      * newer build (another sha256) is planned, and a UI request for the app clears it ([create]). Failures that are not
      * the user's decline (download, verify, install errors) are not recorded and are retried at the next check.
@@ -201,9 +202,7 @@ object InstallRun {
         if (run == null) return emptyMap()
         val now = if (run.origin != Origin.BACKGROUND) emptyList() else run.steps.mapNotNull { s ->
             val d = s.step.download
-            val userDeclined = s.state == StepState.NEEDS_UNINSTALL ||
-                s.state == StepState.CANCELLED && s.errorCode == ErrorCodes.USER_REJECTED
-            if (d != null && userDeclined) seenKey(s.step.kind, s.step.refId) to d.sha256 else null
+            if (d != null && (s.state == StepState.NEEDS_UNINSTALL || s.userDeclined)) seenKey(s.step.kind, s.step.refId) to d.sha256 else null
         }
         return run.declined + now
     }
@@ -237,6 +236,7 @@ object InstallRun {
             errorText = outcome.errorText,
             receiptDue = receipted(s.step, outcome.state),
             receiptError = null,
+            userDeclined = s.state == StepState.AWAITING_USER && outcome.state == StepState.CANCELLED,
         )
         return run.replace(index, done).propagate()
     }
@@ -282,7 +282,10 @@ object InstallRun {
     fun endUninstall(run: RunState, index: Int, outcome: StepOutcome): RunState {
         val s = run.steps[index]
         check(s.state == StepState.NEEDS_UNINSTALL) { "end uninstall: step $index (${s.step.displayName}) is ${s.state}, expected NEEDS_UNINSTALL" }
-        return run.replace(index, s.copy(state = outcome.state, errorCode = outcome.errorCode, errorText = outcome.errorText))
+        return run.replace(index, s.copy(
+            state = outcome.state, errorCode = outcome.errorCode, errorText = outcome.errorText,
+            userDeclined = outcome.state == StepState.CANCELLED,
+        ))
     }
 
     /** User cancel: every step that has not ended becomes `cancelled`; dependents become `dependency_failed`. */
@@ -306,7 +309,7 @@ object InstallRun {
         val steps = run.steps.mapIndexed { i, s ->
             if (i in reopen) s.copy(
                 state = StepState.PENDING, errorCode = null, errorText = null, sessionId = null, receiptDue = false, downloadedBytes = 0,
-                uninstalled = s.uninstalled || i == index && s.state == StepState.NEEDS_UNINSTALL,
+                userDeclined = false,
             ) else s
         }
         return run.copy(passOrigin = Origin.UI, steps = steps, outbox = run.outbox + unsent, synced = false, syncError = null).propagate()

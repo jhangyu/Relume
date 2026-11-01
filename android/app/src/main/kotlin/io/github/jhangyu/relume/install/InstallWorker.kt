@@ -56,7 +56,7 @@ class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorke
     /**
      * Runs step [index] up to its commit; true = committed (stop and wait for the result broadcast). First the phone's
      * real state (every origin, queued or late-started plans too): an app the user removed is skipped and unassigned, an
-     * app already at its target ends `up_to_date`.
+     * app already at its target ends `installed` without an install (receipt and patch record).
      */
     private suspend fun runStep(ctx: Context, api: RelumeApi, run: RunState, index: Int): Boolean {
         val s = run.steps[index]
@@ -67,9 +67,11 @@ class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             unassign(ctx, api, index, s.step)
             return false
         }
-        // Per app: already at its target (e.g. a queued or replaced plan that is older than the phone) -> nothing to do.
+        // Per app: already at its target (the server lacks that install record, or a queued plan is older than the phone):
+        // nothing to install; recorded as installed, so the receipt and the patch record are written once.
         if (VerifyRules.atTarget(d, installed) { ApkVerifier.installedSha256(ctx, s.step.packageName) }) {
-            finish(ctx, index, StepOutcome(StepState.UP_TO_DATE, null, null))
+            finish(ctx, index, atTargetOutcome)
+            InstallRunner.recordPatch(ctx, s.step)
             return false
         }
         if (!InstallRunner.canInstall(ctx)) {

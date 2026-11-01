@@ -82,17 +82,20 @@ class RemovedAppsTest {
         val p = plan(step(StepKind.ITEM, 1))
         val seen = seenAfter(device(item(1, onPhone = true)))
         val needs = InstallRun.finish(InstallRun.create(p, Origin.BACKGROUND, null), 0, StepOutcome(StepState.NEEDS_UNINSTALL, ErrorCodes.SIGNATURE_MISMATCH, "x"))
-        // the system uninstall succeeded: the step re-runs with the app absent and still in the seen set
-        val rerun = InstallRun.retry(needs, 0)
-        assertTrue(rerun.steps[0].uninstalled)
-        assertFalse(removedFromPhone(rerun.steps[0], seen, onPhone = false))
-        // a sync while it is absent (needs_uninstall, or the re-run failed) drops it: the next run installs it
-        val absent = device(item(1, onPhone = false))
-        val failed = InstallRun.finish(rerun, 0, StepOutcome(StepState.FAILED, ErrorCodes.INSTALLER_ERROR, "x"))
-        for (run in listOf(needs, rerun, failed)) {
-            val after = seenInstalled(seen, absent, run)
-            assertFalse("${run.steps[0].state}", removedFromPhone(InstallRun.create(p, Origin.BACKGROUND, run).steps[0], after, onPhone = false))
-        }
+        // removed outside the dialog while it waits for the uninstall: a sync drops it, the next run installs it
+        val after = seenInstalled(seen, device(item(1, onPhone = false)), needs)
+        assertFalse(removedFromPhone(InstallRun.create(p, Origin.BACKGROUND, needs).steps[0], after, onPhone = false))
+    }
+
+    @Test
+    fun aUiRequestDropsEveryAppItInstallsFromTheSeenSet() {
+        // the user removed project 3 earlier, then taps Install on item 4 that needs it and confirms the listed dependency
+        val project = DeviceProject(3, assigned = true, pending = false, installedTag = "v3", installedReported = mark)
+        val seen = seenAfter(device(item(4, onPhone = true), projects = listOf(project)))
+        val ui = plan(step(StepKind.PROJECT, 3), step(StepKind.ITEM, 4, needs = listOf(3)))
+        assertEquals(setOf(seenKey(StepKind.PROJECT, 3), seenKey(StepKind.ITEM, 4)), requestedKeys(ui))
+        val run = InstallRun.create(ui, Origin.UI, null)
+        assertFalse("the confirmed dependency installs", removedFromPhone(run.steps[0], seen - requestedKeys(ui), onPhone = false))
     }
 
     @Test

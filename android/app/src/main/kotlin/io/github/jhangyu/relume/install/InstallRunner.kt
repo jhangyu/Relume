@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.util.Log
+import io.github.jhangyu.relume.RelumeApp
 import io.github.jhangyu.relume.api.InstallPlan
 import io.github.jhangyu.relume.api.PlanStep
 import io.github.jhangyu.relume.inventory.Inventory
@@ -35,6 +36,8 @@ object InstallRunner {
     fun start(context: Context, plan: InstallPlan, origin: Origin): StartResult {
         InstallRunStore.load(context)
         if (InstallRunStore.corrupt.value != null) return StartResult.Corrupt
+        // The user asks for every app of a UI plan (the tapped one and the dependencies the sheet listed): none was removed.
+        if (origin == Origin.UI) prefs(context).updateSeenInstalled { it - requestedKeys(plan) }
         val before = InstallRunStore.state.value
         var admission: Admission? = null
         // System state read under the store lock: the worker cannot commit a session between the read and the decision.
@@ -125,7 +128,6 @@ object InstallRunner {
         val after = InstallRunStore.update(context) { cur ->
             InstallRun.closeStale(checkNotNull(cur), Installer.ownSessions(context), workPending) { lostSession(context, it) }
         }
-        after?.steps?.forEachIndexed { i, s -> if (s.state == StepState.INSTALLED && run.steps[i].state != StepState.INSTALLED) recordPatch(context, s.step) }
         if (startQueued(context)) return
         if (after != run) InstallWorker.enqueue(context, run.passOrigin, replace = false)
     }
@@ -201,16 +203,22 @@ object InstallRunner {
     }
 
     /** Records the patch version of a step that ended `installed` under its built APK package (spec install-states 1). */
-    private fun recordPatch(context: Context, step: PlanStep) {
+    internal fun recordPatch(context: Context, step: PlanStep) {
         step.download?.patchVersion?.let { InstalledPatches.record(context, step.packageName, it) }
     }
 
     /** Re-runs step [index] after a user action (confirm, uninstall): network CONNECTED only, even for a background run. */
     private fun retry(context: Context, index: Int) {
         confirmIntents.remove(index)
+        // A signature uninstall succeeded: the app left for the reinstall, so its absence is never a removal.
+        InstallRunStore.state.value?.steps?.getOrNull(index)?.takeIf { it.state == StepState.NEEDS_UNINSTALL }?.let { s ->
+            prefs(context).updateSeenInstalled { it - seenKey(s.step.kind, s.step.refId) }
+        }
         InstallRunStore.update(context) { cur -> cur?.let { InstallRun.retry(it, index) } }
         InstallWorker.enqueue(context, Origin.UI, replace = false)
     }
+
+    private fun prefs(context: Context) = (context.applicationContext as RelumeApp).prefs
 
     private fun stepAt(index: Int, expected: StepState): StepRun {
         val run = checkNotNull(InstallRunStore.state.value) { "install run: no run, expected step $index in state $expected" }
@@ -224,6 +232,8 @@ object InstallRunner {
         val d = checkNotNull(s.step.download) { "step ${s.step.displayName}: committed without a download" }
         val pkg = s.step.packageName
         val done = VerifyRules.installedBySession(d, Inventory.installed(context, pkg), Inventory.lastUpdateTime(context, pkg), s.priorUpdateTime)
+        // Every reconcile (start, reconcileOnStart) closes through here: the patch record follows the installed outcome.
+        if (done) recordPatch(context, s.step)
         return if (done) StepOutcome(StepState.INSTALLED, null, null)
         else StepOutcome(StepState.FAILED, ErrorCodes.INSTALLER_ERROR, "session lost")
     }

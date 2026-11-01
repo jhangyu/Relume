@@ -3,7 +3,7 @@ package io.github.jhangyu.relume.sync
 import android.content.pm.PackageInstaller
 import io.github.jhangyu.relume.api.InstalledPackage
 import io.github.jhangyu.relume.api.PlanAction
-import io.github.jhangyu.relume.api.PlanStep
+import io.github.jhangyu.relume.api.ReceiptResult
 import io.github.jhangyu.relume.api.StepKind
 import io.github.jhangyu.relume.install.ErrorCodes
 import io.github.jhangyu.relume.install.InstallResult
@@ -13,6 +13,7 @@ import io.github.jhangyu.relume.install.RunState
 import io.github.jhangyu.relume.install.StepOutcome
 import io.github.jhangyu.relume.install.StepState
 import io.github.jhangyu.relume.install.VerifyRules
+import io.github.jhangyu.relume.install.atTargetOutcome
 import io.github.jhangyu.relume.install.download
 import io.github.jhangyu.relume.install.plan
 import io.github.jhangyu.relume.install.seenKey
@@ -37,15 +38,23 @@ class BackgroundStartTest {
             InstallRun.finish(run, 0, InstallResult.from(PackageInstaller.STATUS_SUCCESS, null)),
             1, StepOutcome(StepState.FAILED, ErrorCodes.INSTALLER_ERROR, "x"),
         )
-        // the phone: A is at its target now, B is not; the server plan may still list both
-        val atTarget = { s: PlanStep -> s.refId == 1 }
+        assertTrue("A's install receipt is due", ended.steps[0].receiptDue)
         assertEquals(StepState.FAILED, ended.steps[1].state)
-        val next = BackgroundStart.backgroundPlan(plan(a, b), emptyMap(), atTarget)
-        assertEquals(listOf(2), installs(next))
-        assertEquals(StepState.UP_TO_DATE, InstallRun.create(next!!, Origin.BACKGROUND, ended).steps[0].state)
-        // every app at its target: no run
-        assertNull(BackgroundStart.backgroundPlan(plan(a, b), emptyMap()) { true })
-        assertNull(BackgroundStart.backgroundPlan(plan(step(StepKind.ITEM, 3, action = PlanAction.UP_TO_DATE)), emptyMap(), atTarget))
+        // A's receipt makes the server plan it up_to_date (on the phone's report); B is planned again
+        val aDone = step(StepKind.ITEM, 1, action = PlanAction.UP_TO_DATE)
+        assertEquals(listOf(2), installs(BackgroundStart.backgroundPlan(plan(aDone, b), InstallRun.declined(ended))))
+        assertNull(BackgroundStart.backgroundPlan(plan(aDone), InstallRun.declined(ended)))
+    }
+
+    @Test
+    fun anAppAlreadyAtTargetIsRecordedAsInstalledWithoutInstalling() {
+        // the server lacks A's install record, so it plans A; the phone has the build: the step stays planned once
+        assertEquals(listOf(1), installs(BackgroundStart.backgroundPlan(plan(a), emptyMap())))
+        val skipped = InstallRun.finish(InstallRun.create(plan(a), Origin.BACKGROUND, null), 0, atTargetOutcome)
+        assertEquals(StepState.INSTALLED, skipped.steps[0].state)
+        assertTrue("the receipt tells the server", skipped.steps[0].receiptDue)
+        assertEquals(ReceiptResult.INSTALLED, InstallRun.receipt(skipped.steps[0]).result)
+        assertNull("nothing left to run", skipped.nextRunnable())
     }
 
     @Test
@@ -55,7 +64,7 @@ class BackgroundStartTest {
         val replaced = InstallRun.admit(queued, plan(step(StepKind.ITEM, 9)), Origin.UI, setOf(7), workPending = false) { error("not closed") }.run
         assertEquals(listOf(9), replaced.queued?.plan?.steps?.map { it.refId })
         // nothing of A and B was installed: the next check plans both, with no memory of the replaced plan
-        assertEquals(listOf(1, 2), installs(BackgroundStart.backgroundPlan(plan(a, b), emptyMap()) { false }))
+        assertEquals(listOf(1, 2), installs(BackgroundStart.backgroundPlan(plan(a, b), emptyMap())))
     }
 
     @Test
@@ -64,7 +73,7 @@ class BackgroundStartTest {
         val committed = checkNotNull(InstallRun.move(run, 0, setOf(StepState.PENDING), StepState.COMMITTED, 7))
         val running = checkNotNull(InstallRun.move(committed, 1, setOf(StepState.PENDING), StepState.DOWNLOADING))
         // the phone has neither build yet: both are planned, the started run counts for nothing
-        assertEquals(listOf(1, 2), installs(BackgroundStart.backgroundPlan(plan(a, b), InstallRun.declined(running)) { false }))
+        assertEquals(listOf(1, 2), installs(BackgroundStart.backgroundPlan(plan(a, b), InstallRun.declined(running))))
     }
 
     @Test
@@ -78,9 +87,6 @@ class BackgroundStartTest {
         assertFalse("not installed", VerifyRules.atTarget(d, null, noHash))
         assertFalse("older version", VerifyRules.atTarget(d, same.copy(versionCode = d.versionCode - 1), noHash))
         assertFalse("other signer", VerifyRules.atTarget(d, same.copy(signerSha256 = "00".repeat(32)), noHash))
-        // the check plans exactly that app
-        val atA = { s: PlanStep -> VerifyRules.atTarget(checkNotNull(s.download), same) { if (s.refId == 1) d.sha256 else "ef".repeat(32) } }
-        assertEquals(listOf(2), installs(BackgroundStart.backgroundPlan(plan(a, b), emptyMap(), atA)))
     }
 
     @Test
@@ -113,23 +119,28 @@ class BackgroundStartTest {
         val ended = declinedRun()
         assertEquals(setOf(seenKey(StepKind.ITEM, 1), seenKey(StepKind.ITEM, 2)), InstallRun.declined(ended).keys)
         // next check, nothing at its target: only the failed C is asked again
-        assertEquals(listOf(3), installs(BackgroundStart.backgroundPlan(plan(a, b, c), InstallRun.declined(ended)) { false }))
+        assertEquals(listOf(3), installs(BackgroundStart.backgroundPlan(plan(a, b, c), InstallRun.declined(ended))))
         // the record outlives the run that holds the declined steps
         val next = InstallRun.create(plan(c), Origin.BACKGROUND, ended)
         assertEquals(InstallRun.declined(ended), InstallRun.declined(next))
         // a newer build of A is asked
         val newer = a.copy(download = checkNotNull(a.download).copy(sha256 = "ef".repeat(32)))
-        assertEquals(listOf(1, 3), installs(BackgroundStart.backgroundPlan(plan(newer, b, c), InstallRun.declined(next)) { false }))
-        // a sheet cancel of a background run declines too; a UI run's cancel is no background decline
-        val cancelled = InstallRun.cancelAll(InstallRun.create(plan(c), Origin.BACKGROUND, null))
-        assertEquals(setOf(seenKey(StepKind.ITEM, 3)), InstallRun.declined(cancelled).keys)
+        assertEquals(listOf(1, 3), installs(BackgroundStart.backgroundPlan(plan(newer, b, c), InstallRun.declined(next))))
+        // a sheet Cancel of a background run declines only the confirmation that was up, not the steps never shown
+        val shown = checkNotNull(InstallRun.move(InstallRun.create(plan(a, b, c), Origin.BACKGROUND, null), 0, setOf(StepState.PENDING), StepState.AWAITING_USER, 9))
+        val downloading = checkNotNull(InstallRun.move(shown, 1, setOf(StepState.PENDING), StepState.DOWNLOADING))
+        val cancelled = InstallRun.cancelAll(downloading)
+        assertEquals(listOf(StepState.CANCELLED, StepState.CANCELLED, StepState.CANCELLED), cancelled.steps.map { it.state })
+        assertEquals(setOf(seenKey(StepKind.ITEM, 1)), InstallRun.declined(cancelled).keys)
+        assertEquals(listOf(2, 3), installs(BackgroundStart.backgroundPlan(plan(a, b, c), InstallRun.declined(cancelled))))
+        // a UI run's cancel is no background decline
         val ui = checkNotNull(InstallRun.move(InstallRun.create(plan(c), Origin.UI, null), 0, setOf(StepState.PENDING), StepState.AWAITING_USER, 8))
         assertTrue(InstallRun.declined(InstallRun.finish(ui, 0, aborted)).isEmpty())
         // a declined project leaves out the items that need it
         val p = step(StepKind.PROJECT, 4)
         val needsP = step(StepKind.ITEM, 5, needs = listOf(4))
         val declinedP = mapOf(seenKey(StepKind.PROJECT, 4) to checkNotNull(p.download).sha256)
-        assertNull(BackgroundStart.backgroundPlan(plan(p, needsP), declinedP) { false })
+        assertNull(BackgroundStart.backgroundPlan(plan(p, needsP), declinedP))
     }
 
     @Test
@@ -138,6 +149,6 @@ class BackgroundStartTest {
         // the user taps Install on A; a queued UI request clears it the same way when it starts (dequeue creates the run)
         val ui = InstallRun.create(plan(a), Origin.UI, ended)
         assertEquals(setOf(seenKey(StepKind.ITEM, 2)), InstallRun.declined(ui).keys)
-        assertEquals(listOf(1), installs(BackgroundStart.backgroundPlan(plan(a, b), InstallRun.declined(ui)) { false }))
+        assertEquals(listOf(1), installs(BackgroundStart.backgroundPlan(plan(a, b), InstallRun.declined(ui))))
     }
 }
