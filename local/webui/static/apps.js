@@ -191,6 +191,7 @@ function fieldsOf(app) {
     enabled: app.enabled,
     bundleId: app.bundle.bundle_id,
     channel: app.bundle.channel,
+    patchTag: app.bundle.pinned_tag || '',
     version: { mode: s.version.mode, pin: s.version.pin, allow_nearest: s.version.allow_nearest },
     variants: clone(s.variants),
     eo: clone(s.engine_options),
@@ -239,6 +240,13 @@ const dirty = () => !!D && (!same(D.cur, D.orig) || (patchesEditable() && !same(
 
 const CHANNELS = [['stable', 'Stable (latest release)'], ['prerelease', 'Prerelease']];
 
+const tagLocked = () => D.bundleId !== D.orig.bundleId || D.cur.channel !== D.orig.channel;
+const patchTagOptions = () => {
+  const tags = D.tags ? D.tags.tags : [];
+  const known = D.orig.patchTag && !tags.includes(D.orig.patchTag) ? [D.orig.patchTag] : [];
+  return [['', 'Latest'], ...[...known, ...tags].map(t => [t, t])];
+};
+
 function renderBundle() {
   const bs = D.market ? D.market.bundles : [D.app.bundle];
   const sec = $('#sec-bundle');
@@ -248,7 +256,8 @@ function renderBundle() {
     return html`<label class="bopt"><input type="radio" name="bd" data-f="bundle" value="${id}" ${id === D.cur.bundleId ? html`checked` : ''} ${ok ? '' : html`disabled`}><div class="grow"><div class="strong">${b.name}</div><div class="mono subtle-text">${[b.repo, b.tag || b.list_tag, ENGINE_LABEL[b.engine]].filter(Boolean).join(' · ')}</div>${ok ? '' : html`<div class="caption">${b.not_selectable_reason}</div>`}</div><span class="origin ${b.origin}">${ORIGIN[b.origin] || b.origin}</span></label>`;
   })}</div>
 <p class="hint">Switching bundle keeps the patch choices whose names match in the new bundle.</p>
-<div class="field"><label for="b-chan">Release channel</label><span class="select"><select class="dropdown" id="b-chan" data-f="channel" ${D.bundleId === D.orig.bundleId ? '' : html`disabled`}>${CHANNELS.map(([k, n]) => html`<option value="${k}" ${k === D.cur.channel ? html`selected` : ''}>${n}</option>`)}</select></span><span class="hint">Applies to the patch source, so every app that uses it follows this channel. Save the bundle change first to change the channel.</span></div>`;
+<div class="field"><label for="b-chan">Release channel</label><span class="select"><select class="dropdown" id="b-chan" data-f="channel" ${D.bundleId === D.orig.bundleId ? '' : html`disabled`}>${CHANNELS.map(([k, n]) => html`<option value="${k}" ${k === D.cur.channel ? html`selected` : ''}>${n}</option>`)}</select></span><span class="hint">Applies to the patch source, so every app that uses it follows this channel. Save the bundle change first to change the channel.</span></div>
+<div class="field"><label for="b-tag">Patch version</label><span class="select"><select class="dropdown" id="b-tag" data-f="patchTag" ${tagLocked() ? html`disabled` : ''}>${patchTagOptions().map(([k, n]) => html`<option value="${k}" ${k === D.cur.patchTag ? html`selected` : ''}>${n}</option>`)}</select></span><span class="hint">Pins the patch source to one release, so every app that uses it builds with that version. Save the bundle or channel change first to change the version.</span></div>`;
 }
 
 function stale() {
@@ -413,15 +422,16 @@ async function openDrawer(id, scrollTo) {
   } catch (e) {
     return toast(e.message, 'error');
   }
-  const [market, projects, patches] = await Promise.all([
+  const [market, projects, patches, tags] = await Promise.all([
     api('GET', `/api/marketplace/${encodeURIComponent(app.package)}`).catch(() => null),
     api('GET', '/api/projects').then(r => r.projects),
     isModule(app.bundle.engine) ? null : api('GET', `/api/apps/${id}/patches`).catch(() => null),
+    api('GET', `/api/apps/${id}/patch-tags`).catch(() => null),
   ]).catch(e => { toast(e.message, 'error'); return []; });
   if (!projects) return;
   scroll.mark();
   const f = fieldsOf(app);
-  D = { app, market, projects, patches, orig: f, cur: clone(f), get bundleId() { return this.cur.bundleId; } };
+  D = { app, market, projects, patches, tags, orig: f, cur: clone(f), get bundleId() { return this.cur.bundleId; } };
   D.saved = patches ? overridesFrom(patches) : {};
   D.edit = clone(D.saved);
   $('#dr-tile').innerHTML = html`${iconTile(app, 's48')}`;
@@ -472,9 +482,13 @@ function onEdit(e) {
   if (f === 'bundle') {
     c.bundleId = Number(t.value);
     $('#b-chan').disabled = c.bundleId !== D.orig.bundleId;
+    $('#b-tag').disabled = tagLocked();
     renderPatches(); renderModule(); renderVersion(); renderVariants();
   } else if (f === 'channel') {
     c.channel = t.value;
+    $('#b-tag').disabled = tagLocked();
+  } else if (f === 'patchTag') {
+    c.patchTag = t.value;
   } else if (f === 'patch') {
     setEnabled(D.patches.patches[Number(t.dataset.i)], t.checked);
     patchMeta();
@@ -560,7 +574,8 @@ window.addEventListener('beforeunload', e => { if (dirty()) e.preventDefault(); 
 function settingsBody() {
   const c = D.cur, o = D.orig, body = {};
   if (c.bundleId !== o.bundleId) body.bundle_id = c.bundleId;
-  if (c.channel !== o.channel && c.bundleId === o.bundleId) body.channel = c.channel;
+  if (c.channel !== o.channel && c.bundleId === o.bundleId) body.channel = c.channel;   // a channel change clears the pin
+  else if (c.patchTag !== o.patchTag && c.bundleId === o.bundleId) body.patch_tag = c.patchTag || null;
   if (!same(c.version, o.version)) body.version = { ...c.version, pin: c.version.mode === 'pinned' ? c.version.pin : null };
   if (!same(c.variants, o.variants)) body.variants = c.variants;
   if (!same(c.eo, o.eo)) body.engine_options = c.eo;

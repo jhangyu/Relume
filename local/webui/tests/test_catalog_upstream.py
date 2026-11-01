@@ -59,6 +59,16 @@ class CheckTest(UpstreamCase):
             c.execute(r"UPDATE upstream SET asset_regex='\.jar$' WHERE id=5")
         self.assertIsNone(upstream.check(5)["check_error"])
 
+    def test_pinned_tag_fetches_that_release_on_any_channel(self):
+        with db.tx() as c:
+            c.execute("UPDATE upstream SET tag = 'v1.46.0' WHERE id = ?", (self.pat,))
+        rel = fix("release-stable.json")
+        rel["tag_name"] = "v1.46.0"
+        f = self.http({f"{API}/repos/MorpheApp/morphe-patches/releases/tags/v1.46.0": (200, rel, {})})
+        row = upstream.check(self.pat)
+        self.assertEqual((row["latest_tag"], row["check_error"]), ("v1.46.0", None))
+        self.assertEqual([c[0] for c in f.calls], [f"{API}/repos/MorpheApp/morphe-patches/releases/tags/v1.46.0"])
+
     def test_module_with_two_assets_is_ambiguous(self):
         with db.tx() as c:
             c.execute("INSERT INTO upstream(id, kind, repo, channel, downloaded_tag) VALUES (6,'module','revenge-mod/revenge-xposed','stable','1800')")

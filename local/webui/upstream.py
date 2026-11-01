@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 from . import catalog, db, events, jobs, projects, server, settings
 
 API = "https://api.github.com"
+TAG_LIST_SIZE = 100
 DEFAULT_REGEX = {"patches": r"\.mpp$", "cli": r"^morphe-desktop-.*-all\.jar$", "module": r"\.apk$", "project": r"\.apk$"}
 
 
@@ -107,16 +108,17 @@ def match_assets(row, release):
 
 
 def _release_url(row):
+    if row["tag"]:   # a pinned tag wins over the channel, which then only keeps the asset rules
+        return f"{API}/repos/{row['repo']}/releases/tags/{row['tag']}"
     if row["channel"] == "stable":
         return f"{API}/repos/{row['repo']}/releases/latest"
-    if row["channel"] == "prerelease":
-        return f"{API}/repos/{row['repo']}/releases?per_page=10"
-    return f"{API}/repos/{row['repo']}/releases/tags/{row['tag']}"
+    return f"{API}/repos/{row['repo']}/releases?per_page=10"
 
 
-def fetch(row):
+def _get(url):
+    """Body of a GitHub API GET; failures raise TokenRejected / RateLimited / CheckError."""
     try:
-        status, headers, body, _ = http_get(_release_url(row), gh_headers(settings.github_token()))
+        status, headers, body, _ = http_get(url, gh_headers(settings.github_token()))
     except OSError as e:
         raise CheckError(("network error: " + str(e).splitlines()[0]) if str(e) else "network error")
     if status == 401:
@@ -131,7 +133,19 @@ def fetch(row):
         raise CheckError("not found")
     if status != 200:
         raise CheckError(f"http {status}")
-    rel = select_release(row["channel"], json.loads(body))
+    return body
+
+
+def list_tags(repo, channel):
+    """Release tags of the repo selectable on the channel (stable: no prereleases), newest first."""
+    rels = json.loads(_get(f"{API}/repos/{repo}/releases?per_page={TAG_LIST_SIZE}"))
+    return [r["tag_name"] for r in rels
+            if isinstance(r, dict) and not r.get("draft") and (channel == "prerelease" or not r.get("prerelease"))]
+
+
+def fetch(row):
+    body = _get(_release_url(row))
+    rel = select_release("tag" if row["tag"] else row["channel"], json.loads(body))
     if rel is None:
         raise CheckError("no release")
     assets = match_assets(row, rel)

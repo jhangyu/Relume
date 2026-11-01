@@ -372,6 +372,32 @@ class EnableTest(AppsCase):
         apps.update_settings(1, {"channel": "prerelease"})
         self.assertIsNotNone(row(keep))   # still referenced by `other`
 
+    def test_patch_tag_pins_validates_and_a_channel_change_clears_it(self):
+        repo = db.conn().execute("SELECT repo FROM upstream WHERE id = ?", (self.up,)).fetchone()[0]
+        rels = [{"tag_name": "v3-dev.1", "prerelease": True}, {"tag_name": "v2"}, {"tag_name": "v1"},
+                {"tag_name": "v0", "draft": True}]
+        self.http({f"{upstream.API}/repos/{repo}/releases?per_page=100": (200, rels, {})})
+        bundle = lambda: apps.get(1)["bundle"]
+        self.assertIsNone(bundle()["pinned_tag"])
+        self.assertEqual(apps.patch_tags(1), {"tags": ["v2", "v1"], "pinned": None})   # stable: no prerelease, no draft
+        with self.assertRaises(server.HttpError) as cm:
+            apps.update_settings(1, {"patch_tag": "v3-dev.1"})
+        self.assertEqual(cm.exception.status, 400)
+        self.assertIn("v2, v1", str(cm.exception))
+        self.assertIn("'v3-dev.1'", str(cm.exception))
+        self.assertEqual(self.jobs_of("upstream"), [])
+        o = apps.update_settings(1, {"patch_tag": "v1"})
+        self.assertEqual((o["bundle"]["pinned_tag"], o["bundle"]["channel"], o["update_queued"]), ("v1", "stable", True))
+        row = db.conn().execute("SELECT repo, channel, tag FROM upstream WHERE id = (SELECT upstream_id FROM bundle WHERE id = ?)",
+                                (self.builtin,)).fetchone()
+        self.assertEqual(tuple(row), (repo, "stable", "v1"))
+        o = apps.update_settings(1, {"channel": "prerelease"})   # the pin does not survive a channel change
+        self.assertEqual((o["bundle"]["pinned_tag"], o["bundle"]["channel"]), (None, "prerelease"))
+        apps.update_settings(1, {"patch_tag": "v3-dev.1"})
+        self.assertEqual(apps.get(1)["bundle"]["pinned_tag"], "v3-dev.1")
+        o = apps.update_settings(1, {"patch_tag": None})   # back to latest
+        self.assertEqual((o["bundle"]["pinned_tag"], o["bundle"]["channel"]), (None, "prerelease"))
+
     def test_source_channel_enabled_app_chains_download_and_build(self):
         # one upstream {item_id} job pulls then builds: a separate build POST raced the pull (upstream_missing)
         o = apps.update_settings(1, {"channel": "prerelease"})

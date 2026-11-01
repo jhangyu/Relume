@@ -168,6 +168,10 @@ def get_patches(req):
     return 200, apps.get_patches(_id(req))
 
 
+def get_patch_tags(req):
+    return 200, apps.patch_tags(_id(req))
+
+
 def put_patches(req):
     return 200, apps.put_patches(_id(req), req.json)
 
@@ -251,6 +255,7 @@ ROUTES = [
     ("DELETE", "/api/apps/{id}", delete_app),
     ("GET", "/api/apps/{id}/patches", get_patches),
     ("PUT", "/api/apps/{id}/patches", put_patches),
+    ("GET", "/api/apps/{id}/patch-tags", get_patch_tags),
     ("POST", "/api/apps/{id}/check", check_app),
     ("POST", "/api/apps/{id}/build", build_app),
     ("POST", "/api/apps/{id}/locate", locate_app),

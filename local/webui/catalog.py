@@ -609,15 +609,17 @@ def ensure_upstream(bundle_id):
     return uid
 
 
-def set_channel(bundle_id, channel):
-    """Repoint the bundle to the upstream row of (repo, channel). Returns the new upstream id, or None when the
-    bundle is on that channel already. The old row goes when nothing else uses it (same rule as delete_custom)."""
+def set_source(bundle_id, channel, tag):
+    """Repoint the bundle to the upstream row of (repo, channel, tag): channel None keeps the current one, tag None
+    tracks the newest release. Returns the new upstream id, or None when the bundle is on that source already.
+    The old row goes when nothing else uses it (same rule as delete_custom)."""
     old_id = ensure_upstream(bundle_id)
     with db.tx() as c:
-        old = c.execute("SELECT repo, kind, channel, asset_regex FROM upstream WHERE id = ?", (old_id,)).fetchone()
-        if old["channel"] == channel:
+        old = c.execute("SELECT repo, kind, channel, tag, asset_regex FROM upstream WHERE id = ?", (old_id,)).fetchone()
+        channel = channel or old["channel"]
+        if (old["channel"], old["tag"]) == (channel, tag):
             return None
-        new_id = upstream_row(c, old["kind"], old["repo"], channel, None, old["asset_regex"])
+        new_id = upstream_row(c, old["kind"], old["repo"], channel, tag, old["asset_regex"])
         c.execute("UPDATE bundle SET upstream_id = ? WHERE id = ?", (new_id, bundle_id))
         orphan = not c.execute("""SELECT EXISTS(SELECT 1 FROM bundle WHERE upstream_id = ?)
             OR EXISTS(SELECT 1 FROM project WHERE upstream_id = ?)""", (old_id, old_id)).fetchone()[0]
@@ -626,6 +628,22 @@ def set_channel(bundle_id, channel):
     if orphan:
         shutil.rmtree(db.DATA / "upstream" / str(old_id), ignore_errors=True)
     return new_id
+
+
+def release_tags(bundle_id, channel=None):
+    """Selectable release tags of the bundle's repo on the channel (None = the bundle's current one)."""
+    uid = ensure_upstream(bundle_id)
+    row = db.conn().execute("SELECT repo, channel FROM upstream WHERE id = ?", (uid,)).fetchone()
+    try:
+        return upstream.list_tags(row["repo"], channel or row["channel"])
+    except (upstream.CheckError, upstream.RateLimited, upstream.TokenRejected) as e:
+        raise server.HttpError(502, f"release list of {row['repo']} unavailable: {e}")
+
+
+def check_patch_tag(bundle_id, channel, tag):
+    tags = release_tags(bundle_id, channel)
+    if tag not in tags:
+        raise server.HttpError(400, f"patch_tag expected one of the release tags {', '.join(tags) or '(none)'}, got {tag!r}")
 
 
 def patch_list(bundle_id, package):
