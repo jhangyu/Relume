@@ -204,10 +204,10 @@ for v in "${variants[@]}"; do
 	base="in-$(spec_index "$(jq -cS .download <<<"$v")")"
 	input="download/$base.apk"
 	if [[ "$excl" != null && "$excl" != '[]' ]]; then
-		split_editor "$base" "v-$name" exclude "$(jq -r 'join(" ")' <<<"$excl")"
+		split_editor "$base" "v-$name" "$(jq -r 'join(" ")' <<<"$excl")"
 		input="download/v-$name.apk"
 	elif [[ -d "download/$base" && ! -s "download/$base.apk" ]]; then
-		split_editor "$base"
+		merge_splits "./download/$base" "./download/$base.apk"
 	fi
 	[[ -s "$input" ]] || fail merge_failed "no input APK for variant $name"
 	FAIL_CODE=""

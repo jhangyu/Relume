@@ -430,8 +430,7 @@ get_apk() {
 		if [[ "$pkg_type" == "bundle_extract" && "$type_badge" == "BUNDLE" ]]; then
 			unzip "./download/$base_apk" -d "./download/$(basename "$base_apk" .apkm)" > /dev/null 2>&1
 		else
-			green_log "[+] Merge splits apk to standalone apk"
-			java -jar "$APKEditor" m -i "./download/$apk_name.apkm" -o "./download/$apk_name.apk" > /dev/null 2>&1
+			merge_splits "./download/$apk_name.apkm" "./download/$apk_name.apk"
 		fi
 	fi
 }
@@ -528,11 +527,7 @@ place_download() {
 			mv "./download/$base_apk" "./download/$apk_name.apkm"
 			unzip "./download/$apk_name.apkm" -d "./download/$apk_name" > /dev/null 2>&1
 		else
-			green_log "[+] Merge splits apk to standalone apk"
-			if ! java -jar "$APKEditor" m -i "./download/$base_apk" -o "./download/$apk_name.apk" > /dev/null 2>&1; then
-				red_log "[-] Failed to merge $base_apk to standalone apk"
-				return 1
-			fi
+			merge_splits "./download/$base_apk" "./download/$apk_name.apk" || return 1
 			rm -f "./download/$base_apk"
 		fi
 	else
@@ -668,29 +663,22 @@ apk_signer() {
 		sed -nE 's/^Signer #1 certificate SHA-256 digest: ([0-9a-fA-F]+)$/\1/p' | head -1 | tr 'A-F' 'a-f' | grep .
 }
 
+# merge_splits <split dir | .apkm | .xapk> <out apk>: APKEditor merge into one standalone APK; return 1 (LAST_ERR set)
+merge_splits() {
+	green_log "[+] Merge splits apk to standalone apk"
+	java -jar "$APKEditor" m -i "$1" -o "$2" > /dev/null 2>&1 || { red_log "[-] Failed to merge $1 to standalone apk"; return 1; }
+}
+
+# split_editor <in dir under ./download> <out name> <split names to exclude, no .apk>: base.apk and every split not
+# listed are copied to ./download/<out>/, then merged into ./download/<out>.apk
 split_editor() {
-	if [[ -z "$3" || -z "$4" ]]; then
-		green_log "[+] Merge splits apk to standalone apk"
-		java -jar "$APKEditor" m -i "./download/$1" -o "./download/$1.apk" > /dev/null 2>&1
-		return 0
-	fi
-	local include_files file filename basename_no_ext
-	IFS=' ' read -r -a include_files <<< "$4"
+	local excluded=" $3 " file filename
 	mkdir -p "./download/$2"
 	for file in "./download/$1"/*.apk; do
 		filename=$(basename "$file")
-		basename_no_ext="${filename%.apk}"
-		if [[ "$filename" == "base.apk" ]]; then
-			cp -f "$file" "./download/$2/" > /dev/null 2>&1
-			continue
-		fi
-		local listed=0
-		case " ${include_files[*]} " in *" $basename_no_ext "*) listed=1 ;; esac
-		if [[ "$3" == "include" && $listed -eq 1 ]] || [[ "$3" == "exclude" && $listed -eq 0 ]]; then
+		if [[ "$filename" == base.apk || "$excluded" != *" ${filename%.apk} "* ]]; then
 			cp -f "$file" "./download/$2/" > /dev/null 2>&1
 		fi
 	done
-
-	green_log "[+] Merge splits apk to standalone apk"
-	java -jar "$APKEditor" m -i "./download/$2" -o "./download/$2.apk" > /dev/null 2>&1
+	merge_splits "./download/$2" "./download/$2.apk"
 }
