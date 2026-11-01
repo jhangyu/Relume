@@ -6,8 +6,9 @@ import androidx.work.WorkerParameters
 import io.github.jhangyu.relume.RelumeApp
 import io.github.jhangyu.relume.api.ApiError
 import io.github.jhangyu.relume.api.PlanAction
+import io.github.jhangyu.relume.install.ApkVerifier
+import io.github.jhangyu.relume.install.InstallRun
 import io.github.jhangyu.relume.install.InstallRunner
-import io.github.jhangyu.relume.install.InstalledPatches
 import io.github.jhangyu.relume.install.VerifyRules
 import io.github.jhangyu.relume.install.Origin
 import io.github.jhangyu.relume.install.StartResult
@@ -32,9 +33,10 @@ class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
             return Result.retry()
         }
         val plan = synced.plan
-        val pending = BackgroundStart.backgroundPlan(plan) { s ->
+        // Worker thread: the installed APK is hashed only when version and signer already match (VerifyRules.atTarget).
+        val pending = BackgroundStart.backgroundPlan(plan, InstallRun.declined(InstallRunner.state.value)) { s ->
             val d = checkNotNull(s.download) { "plan step ${s.kind} ${s.refId}: install without a download" }
-            VerifyRules.atTarget(d, Inventory.installed(app, s.packageName), InstalledPatches.get(app, s.packageName))
+            VerifyRules.atTarget(d, Inventory.installed(app, s.packageName)) { ApkVerifier.installedSha256(app, s.packageName) }
         }
         val installs = pending?.steps?.count { it.action == PlanAction.INSTALL } ?: 0
         val message = if (pending != null) {
@@ -44,7 +46,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
                 StartResult.Corrupt -> return fail(CODE_CORRUPT_RUN, "$installs apps not at their target: the install run file is corrupt, reset it in the install sheet (start any install on the Apps tab)")
             }
         } else {
-            "every assigned app is at its target: no background run"
+            "no app to install in the background: every app is at its target or its build was declined"
         }
         record(true, null, message)
         return Result.success()

@@ -75,6 +75,8 @@ data class StepRun(
     val downloadedBytes: Long,
     /** The app left the phone through this run's signature reinstall (uninstall, then re-run): its absence is no removal. */
     val uninstalled: Boolean = false,
+    /** `lastUpdateTime` of the installed package when this step's session was created; null = not installed then. */
+    val priorUpdateTime: Long? = null,
 )
 
 @Serializable
@@ -95,6 +97,11 @@ data class RunState(
     val outboxError: String?,
     /** A requested run that waits for step [QueuedStart.after] to end (its open system session or its pending worker download). */
     val queued: QueuedStart? = null,
+    /**
+     * Builds the user declined in a background run, by app ([seenKey]) to the declined download sha256; carried into
+     * each new run like [outbox]. See [InstallRun.declined].
+     */
+    val declined: Map<String, String> = emptyMap(),
 ) {
     val isActive get() = steps.any { it.state.active }
 
@@ -134,9 +141,11 @@ object InstallRun {
             }
         }
         val unsent = previous?.let { p -> p.outbox + p.steps.filter { it.receiptDue }.map(::receipt) }.orEmpty()
+        // The user asks for these apps in the UI: their declined builds are forgotten.
+        val asked = if (origin == Origin.UI) plan.steps.filter { it.action == PlanAction.INSTALL }.map { seenKey(it.kind, it.refId) } else emptyList()
         return RunState(
             plan.revision, origin, origin, steps, stalePlan = false, synced = false, syncError = null,
-            outbox = unsent, outboxError = null,
+            outbox = unsent, outboxError = null, declined = declined(previous) - asked.toSet(),
         ).propagate()
     }
 
@@ -180,6 +189,25 @@ object InstallRun {
         return create(q.plan, q.origin, run)
     }
 
+    /**
+     * Builds the user declined in a background run, per app ([seenKey]) to the download sha256: [run]'s carried record
+     * plus its steps the user cancelled (confirmation or sheet cancel, `USER_REJECTED`) or that wait for a signature
+     * uninstall the user has not accepted (`needs_uninstall`; a cancelled uninstall ends `cancelled`, `USER_REJECTED`).
+     * The background check does not plan that same build again ([io.github.jhangyu.relume.sync.BackgroundStart]); a
+     * newer build (another sha256) is planned, and a UI request for the app clears it ([create]). Failures that are not
+     * the user's decline (download, verify, install errors) are not recorded and are retried at the next check.
+     */
+    fun declined(run: RunState?): Map<String, String> {
+        if (run == null) return emptyMap()
+        val now = if (run.origin != Origin.BACKGROUND) emptyList() else run.steps.mapNotNull { s ->
+            val d = s.step.download
+            val userDeclined = s.state == StepState.NEEDS_UNINSTALL ||
+                s.state == StepState.CANCELLED && s.errorCode == ErrorCodes.USER_REJECTED
+            if (d != null && userDeclined) seenKey(s.step.kind, s.step.refId) to d.sha256 else null
+        }
+        return run.declined + now
+    }
+
     /** [kept]: the step's system prompt intent is held in this process; [byUser]: the user tapped Confirm. */
     fun confirmAction(kept: Boolean, byUser: Boolean): ConfirmAction = when {
         kept -> ConfirmAction.SHOW
@@ -189,10 +217,13 @@ object InstallRun {
     }
 
     /** Moves step [index] from one of [from] to [to]; null when the step is no longer in [from] (cancelled meanwhile). */
-    fun move(run: RunState, index: Int, from: Set<StepState>, to: StepState, sessionId: Int? = run.steps[index].sessionId): RunState? {
+    fun move(
+        run: RunState, index: Int, from: Set<StepState>, to: StepState, sessionId: Int? = run.steps[index].sessionId,
+        priorUpdateTime: Long? = run.steps[index].priorUpdateTime,
+    ): RunState? {
         val s = run.steps[index]
         if (s.state !in from) return null
-        return run.replace(index, s.copy(state = to, sessionId = sessionId))
+        return run.replace(index, s.copy(state = to, sessionId = sessionId, priorUpdateTime = priorUpdateTime))
     }
 
     /** Ends step [index] with [outcome] and marks the dependents of a failed project step `dependency_failed`. */

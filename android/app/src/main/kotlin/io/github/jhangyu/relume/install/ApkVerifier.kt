@@ -65,12 +65,22 @@ object VerifyRules {
     }
 
     /**
-     * The app is installed at the planned version: same version code and signer as [d], and for a patched build the
-     * patch version Relume recorded for the package ([recordedPatch], InstalledPatches) equals the planned one.
+     * The phone has the planned build of [d]: same version code and signer, and the installed APK file is the planned
+     * file ([installedSha256], read only when version and signer match: a patch-only rebuild keeps the version code).
+     * Null [installedSha256] = the APK could not be read (the app left meanwhile): not at target.
      */
-    fun atTarget(d: Download, installed: InstalledPackage?, recordedPatch: String?): Boolean =
+    fun atTarget(d: Download, installed: InstalledPackage?, installedSha256: () -> String?): Boolean =
         installed != null && installed.versionCode == d.versionCode && hexEquals(installed.signerSha256, d.signerSha256) &&
-            (d.patchVersion == null || recordedPatch == d.patchVersion)
+            installedSha256()?.let { hexEquals(it, d.sha256) } == true
+
+    /**
+     * A committed step's session vanished: it installed [d] when the phone has its version code and signer and the
+     * package was replaced after the commit ([lastUpdateTime] differs from [priorUpdateTime], the package's update time
+     * when the session was created; null = not installed then). No hashing: this runs on the main thread.
+     */
+    fun installedBySession(d: Download, installed: InstalledPackage?, lastUpdateTime: Long?, priorUpdateTime: Long?): Boolean =
+        installed != null && installed.versionCode == d.versionCode && hexEquals(installed.signerSha256, d.signerSha256) &&
+            (priorUpdateTime == null || lastUpdateTime != priorUpdateTime)
 
     fun sha256Hex(bytes: ByteArray): String = hex(MessageDigest.getInstance(SHA256).digest(bytes))
 
@@ -93,6 +103,20 @@ object ApkVerifier {
     private fun archiveFacts(context: Context, file: File): InstalledPackage? =
         context.packageManager.getPackageArchiveInfo(file.path, PackageManager.GET_SIGNING_CERTIFICATES)
             ?.let(Inventory::packageFacts)
+
+    /**
+     * sha256 of [packageName]'s installed base APK (a session writes the downloaded file unchanged as `base.apk`); null =
+     * not installed. Blocking file read: call off the main thread.
+     */
+    fun installedSha256(context: Context, packageName: String): String? {
+        val dir = try {
+            context.packageManager.getApplicationInfo(packageName, 0).sourceDir
+        } catch (e: PackageManager.NameNotFoundException) {
+            // The API's defined answer for "not installed", as in Inventory.installed.
+            return null
+        }
+        return fileSha256(File(dir))
+    }
 
     private fun fileSha256(file: File): String {
         val md = MessageDigest.getInstance(VerifyRules.SHA256)

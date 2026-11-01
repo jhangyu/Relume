@@ -41,6 +41,14 @@ object Inventory {
         null
     }
 
+    /** `PackageInfo.lastUpdateTime` of [packageName]; null = not installed. */
+    fun lastUpdateTime(context: Context, packageName: String): Long? = try {
+        context.packageManager.getPackageInfo(packageName, 0).lastUpdateTime
+    } catch (e: PackageManager.NameNotFoundException) {
+        // The API's defined answer for "not installed".
+        null
+    }
+
     /** True when installing [packageName] through this app prompts once: not installed, or another installer of record (spec 8.3). */
     fun needsConfirmation(context: Context, packageName: String): Boolean {
         if (installed(context, packageName) == null) return true

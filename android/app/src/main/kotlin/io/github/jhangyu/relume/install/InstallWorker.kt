@@ -68,7 +68,7 @@ class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             return false
         }
         // Per app: already at its target (e.g. a queued or replaced plan that is older than the phone) -> nothing to do.
-        if (VerifyRules.atTarget(d, installed, InstalledPatches.get(ctx, s.step.packageName))) {
+        if (VerifyRules.atTarget(d, installed) { ApkVerifier.installedSha256(ctx, s.step.packageName) }) {
             finish(ctx, index, StepOutcome(StepState.UP_TO_DATE, null, null))
             return false
         }
@@ -100,8 +100,10 @@ class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         try {
             val id = Installer.create(ctx, s.step, apk.file.length())
             sessionId = id
-            // Recorded at once: reconcileOnStart keeps referenced sessions, the result broadcast finds the step by id.
-            if (!move(ctx, index, setOf(StepState.VERIFYING), StepState.VERIFYING, id)) {
+            // Recorded at once: reconcileOnStart keeps referenced sessions, the result broadcast finds the step by id. The
+            // package's update time now tells a lost session's reconcile whether the phone replaced the package after it.
+            val prior = Inventory.lastUpdateTime(ctx, s.step.packageName)
+            if (!move(ctx, index, setOf(StepState.VERIFYING), StepState.VERIFYING, id, prior)) {
                 Installer.abandon(ctx, id)
                 return false
             }
@@ -195,10 +197,13 @@ class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         InstallRunStore.update(ctx) { cur -> cur?.let { InstallRun.finish(it, index, outcome) } }
     }
 
-    private fun move(ctx: Context, index: Int, from: Set<StepState>, to: StepState, sessionId: Int? = null): Boolean {
+    private fun move(ctx: Context, index: Int, from: Set<StepState>, to: StepState, sessionId: Int? = null, priorUpdateTime: Long? = null): Boolean {
         var moved = false
         InstallRunStore.update(ctx) { cur ->
-            cur?.let { run -> InstallRun.move(run, index, from, to, sessionId ?: run.steps[index].sessionId)?.also { moved = true } } ?: cur
+            cur?.let { run ->
+                val s = run.steps[index]
+                InstallRun.move(run, index, from, to, sessionId ?: s.sessionId, priorUpdateTime ?: s.priorUpdateTime)?.also { moved = true }
+            } ?: cur
         }
         return moved
     }

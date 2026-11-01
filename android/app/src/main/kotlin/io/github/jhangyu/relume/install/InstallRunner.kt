@@ -222,8 +222,8 @@ object InstallRunner {
     /** A committed step whose session vanished: installed if the phone now has the target, else `session lost`. */
     private fun lostSession(context: Context, s: StepRun): StepOutcome {
         val d = checkNotNull(s.step.download) { "step ${s.step.displayName}: committed without a download" }
-        // The patch record is written on `installed`, so only version and signer can show this session's result.
-        val done = VerifyRules.atTarget(d, Inventory.installed(context, s.step.packageName), d.patchVersion)
+        val pkg = s.step.packageName
+        val done = VerifyRules.installedBySession(d, Inventory.installed(context, pkg), Inventory.lastUpdateTime(context, pkg), s.priorUpdateTime)
         return if (done) StepOutcome(StepState.INSTALLED, null, null)
         else StepOutcome(StepState.FAILED, ErrorCodes.INSTALLER_ERROR, "session lost")
     }
