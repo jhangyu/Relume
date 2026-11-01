@@ -182,9 +182,7 @@ def _tool(argv, log, parse, error):
         os.chmod(tmp, 0o770)
         try:
             rc = jobs.run_isolated(log, argv, tmp, timeout=120, on_line=lines.append)
-        except jobs.JobFailed as e:
-            if str(e) == "cancelled":
-                raise
+        except jobs.JobTimeout as e:
             raise ValueError(str(e))
     value = parse("\n".join(lines))
     if value is None or rc != 0:
@@ -534,7 +532,7 @@ class _RequestLog:
             p = subprocess.run(argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT, text=True, errors="replace", timeout=timeout)
         except subprocess.TimeoutExpired:
-            raise jobs.JobFailed("timeout")
+            raise jobs.JobTimeout()
         for s in p.stdout.splitlines():
             self.line(s)
             on_line(s)

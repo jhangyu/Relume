@@ -488,9 +488,7 @@ def check_versions(package, log, cancel_event):
         try:
             rc = jobs.run_isolated(log, ['bash', CHECK_VERSIONS, row['apkmirror_list_url']], jobs.runner_path(work),
                                    env_keys=build.SOLVER_ENV, timeout=CHECK_TIMEOUT, on_line=m.feed)
-        except jobs.JobFailed as e:
-            if str(e) == 'cancelled':
-                raise
+        except jobs.JobTimeout as e:
             raise failed(f'version check {e}') from None
     finally:
         shutil.rmtree(work, ignore_errors=True)

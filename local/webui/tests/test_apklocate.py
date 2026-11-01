@@ -127,7 +127,7 @@ class ThrottleTest(LocateCase):
         apklocate.throttle(ev)
         self.assertEqual(ev.waits, [apklocate.MIN_INTERVAL - 3])
         self.clock.t += 1
-        with self.assertRaisesRegex(jobs.JobFailed, 'cancelled'):
+        with self.assertRaisesRegex(jobs.JobCancelled, 'cancelled'):
             apklocate.throttle(FakeEvent(cancelled=True))   # the wait returns early on cancel
         apklocate._block('test')
         fetched = []

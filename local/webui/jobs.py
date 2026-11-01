@@ -67,6 +67,20 @@ class JobFailed(Exception):
         self.reason = reason
 
 
+class JobCancelled(JobFailed):
+    """The job's cancel_event fired while it ran or waited."""
+
+    def __init__(self, reason='cancelled'):
+        super().__init__(reason)
+
+
+class JobTimeout(JobFailed):
+    """A child process exceeded its timeout (Log.run)."""
+
+    def __init__(self, reason='timeout'):
+        super().__init__(reason)
+
+
 class Job:
     def __init__(self, row):
         self.id = row['id']
@@ -214,9 +228,9 @@ class Log:
                     done.set()
                     self.cond.notify_all()
         if timed_out.is_set():
-            raise JobFailed('timeout')
+            raise JobTimeout()
         if self.job.cancel_event.is_set():
-            raise JobFailed('cancelled')
+            raise JobCancelled()
         return rc
 
     def close(self):

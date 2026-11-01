@@ -184,14 +184,14 @@ def _block(reason):
 
 def throttle(cancel_event):
     """Wait until MIN_INTERVAL after the previous lookup request (rate limit = time as business data), then record
-    this one. Raises Blocked during the cooldown and jobs.JobFailed('cancelled') when the job is cancelled."""
+    this one. Raises Blocked during the cooldown and jobs.JobCancelled when the job is cancelled."""
     with _lock:  # ponytail: the wait holds the lock, one lookup at a time is the goal
         now = _clock()
         if now < _state["blocked_until"]:
             raise Blocked(f"blocked until {_state['retry_at']}: cooldown after an earlier block")
         if _state["last"] is not None and now < _state["last"] + MIN_INTERVAL:
             if cancel_event.wait(_state["last"] + MIN_INTERVAL - now):
-                raise jobs.JobFailed("cancelled")
+                raise jobs.JobCancelled()
         _state["last"] = _clock()
 
 
@@ -203,9 +203,7 @@ def _fetch(url, log, cancel_event):
         try:
             rc = jobs.run_isolated(log, ["bash", FETCH_PAGE, url, PAGE_FILE], jobs.runner_path(work),
                                    env_keys=build.SOLVER_ENV, timeout=FETCH_TIMEOUT)
-        except jobs.JobFailed as e:
-            if str(e) == "cancelled":
-                raise
+        except jobs.JobTimeout as e:
             raise _block(f"solver chain {e} on {url}")
         if rc != 0:
             raise _block(f"FlareSolverr and CFBypass both failed on {url} (runner exit {rc})")
@@ -230,7 +228,7 @@ def _row(package):
 
 def locate(package, log, cancel_event):
     """Look the package up when due (API part §1.4 table) and write the apkm_* columns and a found list URL.
-    Raises only jobs.JobFailed('cancelled')."""
+    Raises only jobs.JobCancelled."""
     r = _row(package)
     state = r["apkm_state"]
     if r["apkmirror_list_url"] or r["apkpure_url"] or state in NEVER_DUE:

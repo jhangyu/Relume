@@ -294,9 +294,7 @@ def inspect_row(upstream_id, tag, log):
             argv = ["bash", INSPECT, jobs.runner_path(jars[0]), pkg, out, *(jobs.runner_path(f) for f in files)]
             try:
                 rc = jobs.run_isolated(log, argv, out, timeout=120)
-            except jobs.JobFailed as e:
-                if str(e) == "cancelled":
-                    raise
+            except jobs.JobTimeout as e:
                 rc = str(e)
             if rc != 0:
                 log.line(f"[!] inspect failed for {pkg}: {rc}")

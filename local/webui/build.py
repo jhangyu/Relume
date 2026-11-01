@@ -299,10 +299,8 @@ def handler(job, log):
             try:
                 rc = jobs.run_isolated(log, ["bash", RUNNER, rp(awork / "job.json")], rp(awork), env_keys=SOLVER_ENV,
                                        env={"RELUME_APK_CACHE": rp(db.DATA / "apk-cache")}, timeout=3600, on_line=m.feed)
-            except jobs.JobFailed as e:
-                if str(e) == "timeout":
-                    _fail(job, item_id, "timeout", "runner exceeded 3600 s")
-                raise
+            except jobs.JobTimeout:
+                _fail(job, item_id, "timeout", "runner exceeded 3600 s")
             if job.cancel_event.is_set():
                 return
             used = [(next(a for a in auto if a["download"] == u["download"]), u) for u in m.apkm]
