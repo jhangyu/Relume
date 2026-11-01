@@ -184,7 +184,7 @@ def get_notify(req):
 
 def put_notify(req):
     b = req.json
-    if not isinstance(b, dict) or set(b) - {'type', 'enabled', 'config', 'events', 'last_test'}:
+    if set(b) - {'type', 'enabled', 'config', 'events', 'last_test'}:
         raise HttpError(400, 'unknown field')
     t = b.get('type')
     if t not in CONFIG_KEYS:

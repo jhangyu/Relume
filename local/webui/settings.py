@@ -171,7 +171,7 @@ def get_route(req):
 
 def put_route(req):
     b = req.json
-    if not isinstance(b, dict) or set(b) - {'job_history_count', 'base_url', 'artifact_retention', 'github_token', 'google_play'}:
+    if set(b) - {'job_history_count', 'base_url', 'artifact_retention', 'github_token', 'google_play'}:
         raise server.HttpError(400, 'unknown setting')
     gp = b.get('google_play')
     if gp is not None and not (isinstance(gp, dict) and set(gp) == {'email', 'aas_token'}
