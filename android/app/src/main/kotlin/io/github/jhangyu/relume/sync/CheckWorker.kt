@@ -52,11 +52,12 @@ class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
     /**
      * The only automatic unassign (user decision): apps the user removed from the phone leave its list before the
      * background run is planned, so the run does not reinstall them. A run in progress may have uninstalled on purpose.
+     * The follow-up sync drops the unassigned apps from the seen-installed set.
      */
     private suspend fun unassignRemoved(app: RelumeApp, api: RelumeApi, synced: SyncResult): SyncResult {
         val run = InstallRunner.state.value
         if (run?.isActive == true) return synced
-        val removed = removedFromPhone(synced.before, synced.device, synced.plan, run)
+        val removed = removedFromPhone(synced.seen, synced.device, synced.plan)
         if (!removed.any) return synced
         val d = synced.device
         api.putAssignments(

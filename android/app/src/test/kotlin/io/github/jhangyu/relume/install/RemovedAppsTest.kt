@@ -9,8 +9,10 @@ import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
+/** Each case is a sequence of syncs (UI, install worker or check worker) ending with the check worker's decision. */
 class RemovedAppsTest {
     private val mark = JsonObject(emptyMap())
+    private val none = emptySet<Int>()
 
     private fun device(vararg a: Assignment) = DeviceView(
         1, "Phone", DeviceKind.APP, null, null, null, null, "t", null, a.toList(), emptyList(),
@@ -20,28 +22,55 @@ class RemovedAppsTest {
     private fun item(id: Int, onPhone: Boolean) =
         Assignment(id, pending = !onPhone, installed = mark, installedReported = mark.takeIf { onPhone })
 
+    /** Applies the syncs in order from a cleared set (sign-in) and returns the set after the last one. */
+    private fun seenAfter(vararg syncs: DeviceView, lastRun: RunState? = null) =
+        syncs.fold(emptySet<String>()) { seen, d -> seenInstalled(seen, d, lastRun) }
+
     @Test
-    fun onlyAPresentToAbsentTransitionIsRemoved() {
-        val before = device(item(1, onPhone = true), item(2, onPhone = false), item(3, onPhone = true), item(4, onPhone = false))
-        val now = device(item(1, onPhone = false), item(2, onPhone = false), item(3, onPhone = true), item(4, onPhone = true))
-        val p = plan(step(StepKind.ITEM, 1), step(StepKind.ITEM, 2), step(StepKind.ITEM, 3, action = PlanAction.UP_TO_DATE))
-        assertEquals(setOf(1), removedFromPhone(before, now, p, null).items)
+    fun uninstallThenUiSyncThenCheckUnassigns() {
+        val absent = device(item(1, onPhone = false))
+        val seen = seenAfter(device(item(1, onPhone = true)), absent, absent)
+        assertEquals(setOf(1), removedFromPhone(seen, absent, plan(step(StepKind.ITEM, 1))).items)
     }
 
     @Test
-    fun firstSyncWithNoPreviousReportRemovesNothing() {
-        val now = device(item(1, onPhone = false))
-        assertEquals(emptySet<Int>(), removedFromPhone(device(), now, plan(step(StepKind.ITEM, 1)), null).items)
+    fun reassignedOnTheWebWhileAbsentIsKept() {
+        val absent = device(item(1, onPhone = false))
+        val seen = seenAfter(device(item(1, onPhone = true)), device(), absent)
+        assertEquals(none, removedFromPhone(seen, absent, plan(step(StepKind.ITEM, 1))).items)
     }
 
     @Test
-    fun signatureReinstallInProgressOrUnfinishedIsKept() {
-        val before = device(item(1, onPhone = true))
-        val now = device(item(1, onPhone = false))
+    fun justAssignedInstallPendingIsKept() {
+        val pending = device(item(1, onPhone = false))
+        val seen = seenAfter(device(), pending, pending)
+        assertEquals(none, removedFromPhone(seen, pending, plan(step(StepKind.ITEM, 1))).items)
+    }
+
+    @Test
+    fun presentWithPendingUpdateIsKept() {
+        val present = device(item(1, onPhone = true))
+        val seen = seenAfter(present, present)
+        assertEquals(none, removedFromPhone(seen, present, plan(step(StepKind.ITEM, 1, action = PlanAction.INSTALL))).items)
+    }
+
+    @Test
+    fun signatureReinstallOrUnfinishedStepIsKept() {
         val p = plan(step(StepKind.ITEM, 1))
+        val absent = device(item(1, onPhone = false))
         val needs = InstallRun.finish(InstallRun.create(p, Origin.BACKGROUND, null), 0, StepOutcome(StepState.NEEDS_UNINSTALL, ErrorCodes.SIGNATURE_MISMATCH, "x"))
-        assertEquals(emptySet<Int>(), removedFromPhone(before, now, p, needs).items)
         val failed = InstallRun.finish(InstallRun.create(p, Origin.BACKGROUND, null), 0, StepOutcome(StepState.FAILED, ErrorCodes.INSTALLER_ERROR, "x"))
-        assertEquals(emptySet<Int>(), removedFromPhone(before, now, p, failed).items)
+        for (run in listOf(needs, failed)) {
+            val seen = seenInstalled(seenAfter(device(item(1, onPhone = true))), absent, run)
+            assertEquals(none, removedFromPhone(seen, absent, p).items)
+            // A later run for another app replaces the last run: the app stays assigned until it is seen installed again.
+            assertEquals(none, removedFromPhone(seenInstalled(seen, absent, null), absent, p).items)
+        }
+    }
+
+    @Test
+    fun freshSignInUnassignsNothing() {
+        val absent = device(item(1, onPhone = false))
+        assertEquals(none, removedFromPhone(seenAfter(absent), absent, plan(step(StepKind.ITEM, 1))).items)
     }
 }

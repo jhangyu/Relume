@@ -30,6 +30,15 @@ class Prefs(context: Context) {
         get() = prefs.getString(KEY_LAST_BACKGROUND_REVISION, null)
         set(value) = save { putString(KEY_LAST_BACKGROUND_REVISION, value) }
 
+    /** Keys (`install.seenKey`) of assigned apps this phone reported installed; see `install.seenInstalled`. */
+    val seenInstalled: Set<String>
+        get() = prefs.getStringSet(KEY_SEEN_INSTALLED, null)?.toSet() ?: emptySet()
+
+    /** Read-modify-write of [seenInstalled] under one lock: the UI, the install worker and the check worker all sync. */
+    fun updateSeenInstalled(change: (Set<String>) -> Set<String>): Set<String> = synchronized(this) {
+        change(seenInstalled).also { save { putStringSet(KEY_SEEN_INSTALLED, it) } }
+    }
+
     private fun save(edit: android.content.SharedPreferences.Editor.() -> Unit) {
         val saved = prefs.edit().apply(edit).commit()
         check(saved) { "prefs: SharedPreferences '$PREFS' commit failed" }
@@ -41,6 +50,7 @@ class Prefs(context: Context) {
         const val KEY_CHECK_INTERVAL = "check_interval"
         const val KEY_LAST_BACKGROUND_REVISION = "last_background_revision"
         const val KEY_DAILY_CHECK_MINUTE = "daily_check_minute"
+        const val KEY_SEEN_INSTALLED = "seen_installed"
         const val MINUTES_PER_DAY = 24 * 60
         /** Spec install-states 4: 03:15 until the user picks another time. */
         const val DEFAULT_DAILY_CHECK_MINUTE = 3 * 60 + 15

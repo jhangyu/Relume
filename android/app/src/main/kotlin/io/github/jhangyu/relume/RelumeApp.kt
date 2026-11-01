@@ -29,12 +29,14 @@ class RelumeApp : Application() {
     fun signIn(url: ServerUrl, token: String) {
         prefs.serverUrl = url
         tokenStore.write(token)
+        prefs.updateSeenInstalled { emptySet() }
         api = RelumeApi(url, tokenStore::read)
     }
 
-    /** After logout or a 401: drop the token; the server URL stays for the next login. */
+    /** After logout or a 401: drop the token and the seen-installed set; the server URL stays for the next login. */
     fun signOut() {
         tokenStore.clear()
+        prefs.updateSeenInstalled { emptySet() }
         api = null
     }
 }

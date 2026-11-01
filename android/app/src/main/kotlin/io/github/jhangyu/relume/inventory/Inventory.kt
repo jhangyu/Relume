@@ -6,19 +6,22 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.pm.PackageInfoCompat
 import io.github.jhangyu.relume.BuildConfig
+import io.github.jhangyu.relume.RelumeApp
 import io.github.jhangyu.relume.api.DeviceView
 import io.github.jhangyu.relume.api.InstallPlan
 import io.github.jhangyu.relume.api.InstalledPackage
 import io.github.jhangyu.relume.api.RelumeApi
 import io.github.jhangyu.relume.api.SyncDevice
 import io.github.jhangyu.relume.api.SyncReport
+import io.github.jhangyu.relume.install.InstallRunner
 import io.github.jhangyu.relume.install.VerifyRules
+import io.github.jhangyu.relume.install.seenInstalled
 
 /** Result of `POST /api/me/sync`, plus the package list that was reported. */
 data class SyncResult(
     val device: DeviceView,
-    /** The device as the server knew it before this sync: its report is the previous one. */
-    val before: DeviceView,
+    /** The phone's seen-installed set after this sync (`install.seenInstalled`). */
+    val seen: Set<String>,
     val trackedPackages: List<String>,
     val plan: InstallPlan,
     val reported: List<InstalledPackage>,
@@ -67,12 +70,14 @@ object Inventory {
         appVersionCode = BuildConfig.VERSION_CODE.toLong(),
     )
 
-    /** `GET /api/me` for the tracked list, read the packages, then `POST /api/me/sync`. */
+    /** `GET /api/me` for the tracked list, read the packages, `POST /api/me/sync`, then update the seen-installed set. */
     suspend fun sync(context: Context, api: RelumeApi): SyncResult {
-        val me = api.me()
-        val tracked = me.trackedPackages
+        val tracked = api.me().trackedPackages
         val reported = read(context, tracked)
         val r = api.sync(SyncReport(deviceFacts(), reported))
-        return SyncResult(r.device, me.device, r.trackedPackages, r.plan, reported)
+        InstallRunner.loadState(context)
+        val seen = (context.applicationContext as RelumeApp).prefs
+            .updateSeenInstalled { seenInstalled(it, r.device, InstallRunner.state.value) }
+        return SyncResult(r.device, seen, r.trackedPackages, r.plan, reported)
     }
 }
