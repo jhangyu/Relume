@@ -420,6 +420,8 @@ def _receipt_target(dev, b):
             _bad('artifact_id', 'an integer', aid)
         item = next((i for i in assigned_items(dev['id']) if i['item_id'] == ref), None)
         if item is None:
+            if ref in assigned_item_ids(dev['id']):  # removed in Apps while the phone installed it: the plan changed
+                raise HttpError(409, 'stale plan')
             raise HttpError(400, f'item {ref} not assigned to this device')
         a = build.latest_artifact(ref, first_abi(dev))
         if a is None or a['id'] != aid or not a['package']:  # no package = never offered for download

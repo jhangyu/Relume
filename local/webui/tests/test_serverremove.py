@@ -2,6 +2,7 @@
 or a later project assignment."""
 from webui import db, ota, projects
 from webui.server import HttpError
+from webui.server import HttpError
 from webui.tests import helpers
 from webui.tests.device_helpers import add_app_device, add_catalog_item, add_project, assign, req
 
@@ -23,3 +24,13 @@ class ServerRemovedAppTest(helpers.DataTestCase):
     def test_project_with_removed_apps_package_can_be_assigned(self):
         add_project(2, PKG)
         projects._set_devices(db.conn(), 2, [self.d])   # raised HttpError 'two apps with package'
+
+    def test_receipt_for_removed_item_is_stale_plan_but_unassigned_stays_400(self):
+        def post(ref):
+            r = req(body={'kind': 'item', 'ref_id': ref, 'artifact_id': 1, 'result': 'installed'})
+            r.device_id = self.d
+            with self.assertRaises(HttpError) as cm:
+                ota.post_install(r)
+            return cm.exception.status, cm.exception.message
+        self.assertEqual(post(1), (409, 'stale plan'))
+        self.assertEqual(post(99)[0], 400)
