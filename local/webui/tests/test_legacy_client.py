@@ -205,8 +205,7 @@ class LegacyClientTest(DataTestCase):
         and the upgraded app's sync with a uid converts it back with its assignments."""
         did = add_app_device(name='Old', token_hash=auth.token_hash('old-token'))
         assign_projects(did, 2)
-        db.conn().execute('PRAGMA user_version=13')
-        db.migrate()
+        db.conn().executescript(next(db.SCHEMA_DIR.glob('014_*.sql')).read_text())   # re-run 014 alone: later files need not be re-runnable
         self.assertEqual(count('SELECT legacy FROM devices WHERE id=?', did), 1)
         self.assertEqual(count('SELECT count(*) FROM devices WHERE id=? AND kind=?', self.did, 'app'), 1)
         body = json.loads(json.dumps(SYNC))

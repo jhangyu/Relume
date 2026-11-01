@@ -190,8 +190,7 @@ def _check(upstream_id, job_id=None):
         return _row(upstream_id), None
     tag = rel["tag_name"]
     _set(upstream_id, latest_tag=tag, latest_published_at=rel.get("published_at"), checked_at=now, check_error=None)
-    if tag != row["notified_tag"]:
-        _set(upstream_id, notified_tag=tag)
+    if tag != row["latest_tag"]:   # row was read before this check: the previous successful check saw another tag
         events.emit("upstream.new_version", {"upstream_id": upstream_id, "tag": tag,
                                              "item_ids": affected_items(upstream_id), "job_id": job_id})
     return _row(upstream_id), assets

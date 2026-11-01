@@ -80,8 +80,8 @@ class MigrationTest(unittest.TestCase):
                       "VALUES (7,5,'dependency',23,'7.2.1',?,'installed')", (GMS,))
         db.migrate()
         self.assertEqual(c.execute("PRAGMA user_version").fetchone()[0], LATEST_SCHEMA)
-        u = c.execute("SELECT kind, downloaded_tag, notified_tag, asset_regex FROM upstream WHERE id=23").fetchone()
-        self.assertEqual(tuple(u), ("project", None, "7.2.2", "^microg-[0-9.]+\\.apk$"))
+        u = c.execute("SELECT kind, downloaded_tag, asset_regex FROM upstream WHERE id=23").fetchone()
+        self.assertEqual(tuple(u), ("project", None, "^microg-[0-9.]+\\.apk$"))
         p = c.execute("SELECT * FROM project WHERE id=1").fetchone()
         self.assertEqual((p["upstream_id"], p["package"], p["display_name"], p["auto_push"], p["signer_sha256"]),
                          (23, GMS, "MicroG RE", 0, None))
@@ -93,6 +93,24 @@ class MigrationTest(unittest.TestCase):
         self.assertEqual(c.execute("PRAGMA foreign_key_check").fetchall(), [])
         self.assertIn("project_ids", [r[1] for r in c.execute("PRAGMA table_info(ota_jobs)")])
         self.assertEqual(c.execute("PRAGMA foreign_keys").fetchone()[0], 1)
+
+    def test_skipped_text_moves_to_list_skipped(self):
+        """The stored 'skipped: ...' list_error text moves to list_skipped; a failure text stays in list_error."""
+        mine = int(next(db.SCHEMA_DIR.glob("[0-9][0-9][0-9]_catalog_upstream_columns.sql")).name[:3])
+        old = self.data / "schema-before"
+        old.mkdir()
+        for f in sorted(db.SCHEMA_DIR.glob("[0-9][0-9][0-9]_*.sql")):
+            if int(f.name[:3]) < mine:   # another stream's later migration must not make this one look applied
+                shutil.copy(f, old / f.name)
+        db.migrate(old)
+        with db.tx() as t:
+            t.execute("INSERT INTO bundle(origin, host, repo, engine, name, list_error) VALUES "
+                      "('custom', 'github', 'a/b', 'morphe', 'b', 'skipped: a; b'), "
+                      "('custom', 'github', 'a/c', 'morphe', 'c', 'rate limited')")
+        db.migrate()
+        rows = [tuple(r) for r in db.conn().execute(
+            "SELECT repo, list_error, list_skipped FROM bundle WHERE repo IN ('a/b', 'a/c') ORDER BY repo")]
+        self.assertEqual(rows, [("a/b", None, '["a; b"]'), ("a/c", "rate limited", None)])
 
     def test_fresh_database_tables(self):
         db.migrate()
@@ -313,10 +331,9 @@ class CrudRouteTest(ProjectCase):
     def test_put_channel_in_place(self):
         with db.tx() as c:
             add_project(c)
-            c.execute("UPDATE upstream SET downloaded_tag='v1', latest_tag='v1', notified_tag='v1' WHERE id=9")
+            c.execute("UPDATE upstream SET downloaded_tag='v1', latest_tag='v1' WHERE id=9")
         st, p = self.call(projects.put_project, json={"channel": "prerelease"}, method="PUT", id=1)
         self.assertEqual((p["upstream_id"], p["channel"], p["latest_tag"], p["downloaded_tag"]), (9, "prerelease", None, None))
-        self.assertIsNone(db.conn().execute("SELECT notified_tag FROM upstream WHERE id=9").fetchone()[0])
         self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM upstream").fetchone()[0], 3)
         with db.tx() as c:
             c.execute("INSERT INTO upstream(id, kind, repo, channel) VALUES (10,'project','MorpheApp/MicroG-RE','stable')")

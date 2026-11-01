@@ -445,8 +445,8 @@ def _store_list(c, bundle_id, tag, parsed):
                                      for p in patches for pkg in (p["packages"] or [UNIVERSAL])])
     for pkg, name in names.items():   # catalog store rows (category set) win
         c.execute("UPDATE store_app SET name = ? WHERE package = ? AND category IS NULL", (name, pkg))
-    err = "skipped: " + "; ".join(s.error for s in skipped) if skipped else None
-    c.execute("UPDATE bundle SET list_tag = ?, list_error = ? WHERE id = ?", (tag, err, bundle_id))
+    c.execute("UPDATE bundle SET list_tag = ?, list_error = NULL, list_skipped = ? WHERE id = ?",
+              (tag, json.dumps([s.error for s in skipped]) if skipped else None, bundle_id))
 
 
 def _refresh_list(b, log):
@@ -457,7 +457,7 @@ def _refresh_list(b, log):
             raise ValueError(f"release check: {row['check_error']}")
         tag = row["latest_tag"]
         # a failure recorded on an unchanged tag (e.g. rate limit) re-reads the list so _store_list clears it
-        if tag == b["list_tag"] and (not b["list_error"] or b["list_error"].startswith("skipped: ")):
+        if tag == b["list_tag"] and not b["list_error"]:
             return
         parsed = parse_patches_list(_get_list(b["repo"], tag))
     except (OSError, ValueError, upstream.TokenRejected, upstream.RateLimited) as e:
@@ -501,6 +501,13 @@ def refresh(log):
 
 # ---- read API (spec §2.5) ----
 
+def _list_error(r):
+    """API text of a bundle's patch-list state: the last read failure, else the entries the last good read skipped."""
+    if r["list_error"]:
+        return r["list_error"]
+    return "skipped: " + "; ".join(json.loads(r["list_skipped"])) if r["list_skipped"] else None
+
+
 def feed_status():
     c = db.conn()
     feeds = []
@@ -514,7 +521,7 @@ def feed_status():
                       "duplicates": json.loads(r["duplicates"]) if r and r["duplicates"] else [],
                       "skipped": json.loads(r["skipped"]) if r and r["skipped"] else []})
     sources = [{"bundle_id": r["id"], "origin": r["origin"], "repo": r["repo"], "list_tag": r["list_tag"],
-                "last_error": r["list_error"]} for r in c.execute(
+                "last_error": _list_error(r)} for r in c.execute(
         "SELECT * FROM bundle WHERE origin IN ('builtin', 'custom') ORDER BY origin, id")]
     return {"feeds": feeds, "sources": sources}
 
@@ -698,7 +705,7 @@ def patch_list(bundle_id, package):
 def list_custom():
     c = db.conn()
     return [{"bundle_id": r["id"], "repo": r["repo"], "name": r["name"], "engine": r["engine"],
-             "asset_regex": r["asset_regex"], "list_tag": r["list_tag"], "list_error": r["list_error"],
+             "asset_regex": r["asset_regex"], "list_tag": r["list_tag"], "list_error": _list_error(r),
              "packages": [x[0] for x in c.execute("SELECT package FROM bundle_app WHERE bundle_id = ? ORDER BY package",
                                                   (r["id"],))]}
             for r in c.execute("SELECT * FROM bundle WHERE origin = 'custom' ORDER BY id")]

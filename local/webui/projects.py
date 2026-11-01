@@ -452,7 +452,7 @@ def put_project(req):
     if "asset_regex" in b and _regex(b["asset_regex"]) != cur["asset_regex"]:
         up.update(asset_regex=b["asset_regex"], downloaded_tag=None)
     if "channel" in b and _channel(b["channel"]) != cur["channel"]:
-        up.update(channel=b["channel"], latest_tag=None, downloaded_tag=None, notified_tag=None)
+        up.update(channel=b["channel"], latest_tag=None, downloaded_tag=None)
     devs = _device_ids(b["device_ids"]) if "device_ids" in b else None
     try:
         with db.tx() as c:

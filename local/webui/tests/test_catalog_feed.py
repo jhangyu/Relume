@@ -186,8 +186,10 @@ class SourceTest(FeedCase):
         self.serve()
         catalog.refresh(self.log)
         b = self.bundles()["MorpheApp/morphe-patches"]
-        self.assertEqual(b["list_tag"], "v1.47.0")
-        self.assertTrue(b["list_error"].startswith("skipped: patches[3].name"))
+        self.assertEqual((b["list_tag"], b["list_error"]), ("v1.47.0", None))
+        self.assertTrue(json.loads(b["list_skipped"])[0].startswith("patches[3].name"))
+        src = next(s for s in catalog.feed_status()["sources"] if s["repo"] == "MorpheApp/morphe-patches")
+        self.assertTrue(src["last_error"].startswith("skipped: patches[3].name"))   # API text unchanged
         builtin = catalog.app_bundles(YT)[0]
         self.assertEqual([(p["name"], p["default_enabled"]) for p in builtin["patches"]],
                          [("Change package name", False), ("Hide ads", True), ("Spoof client", False)])
@@ -200,7 +202,9 @@ class SourceTest(FeedCase):
             c.execute("UPDATE bundle SET list_error = 'rate limited until 2026-10-28T14:53:05Z' WHERE repo = ?",
                       ("MorpheApp/morphe-patches",))
         catalog.refresh(self.log)
-        self.assertTrue(self.bundles()["MorpheApp/morphe-patches"]["list_error"].startswith("skipped: patches[3].name"))
+        b = self.bundles()["MorpheApp/morphe-patches"]
+        self.assertIsNone(b["list_error"])
+        self.assertTrue(json.loads(b["list_skipped"])[0].startswith("patches[3].name"))
 
     def test_add_custom_module_rules(self):
         f = self.http({})
