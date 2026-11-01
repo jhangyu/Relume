@@ -1,9 +1,11 @@
 import { $, $$, act, api, confirmDialog, every, fillDownloads, fmt, html, icon, iconTile, report, scrollKeeper, shell, STATUS, toast } from '/static/app.js';
 
+// rules the server owns (GET /api/auth/state): ABI list, engine kind, max signature-bypass level
+const { limits: LIMITS } = await api('GET', '/api/auth/state');
+
 const REFRESH_MS = 5000;
 const scroll = scrollKeeper();
 const COLOR = /^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/;
-const ABIS = ['universal', 'arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'];
 const ENGINE_LABEL = { lspatch: 'Xposed, LSPatch', npatch: 'Xposed, NPatch' };
 const ORIGIN = { official: 'Official catalog', builtin: 'Built-in', custom: 'Custom' };
 const MODE_TEXT = { auto: 'Auto', pinned: 'Pinned', latest: 'Latest' };
@@ -180,7 +182,7 @@ $('#checkall').addEventListener('click', () => act('POST', '/api/schedule/run', 
 
 // ---------- drawer: draft state ----------
 
-const isModule = engine => engine === 'lspatch' || engine === 'npatch';
+const isModule = engine => LIMITS.engines[engine].kind === 'module';
 const chosenBundle = () => (D.market && D.market.bundles.find(b => b.bundle_id === D.bundleId)) || null;
 const chosenEngine = () => (chosenBundle() ? chosenBundle().engine : D.app.bundle.engine);
 const patchesEditable = () => D.patches && D.bundleId === D.orig.bundleId;
@@ -338,7 +340,7 @@ function renderModule() {
   const engine = chosenEngine();
   sec.hidden = !(isModule(engine) && eo && D.bundleId === D.orig.bundleId);
   if (sec.hidden) return;
-  const max = engine === 'npatch' ? 4 : 3;
+  const max = LIMITS.engines[engine].max_sigbypass;
   sec.innerHTML = html`<h3 class="subtitle2" id="s-m">${icon('package')}Xposed module</h3>
 <div class="field"><label for="m-sig">Signature bypass level</label><span class="select"><select class="dropdown" id="m-sig" data-f="sig">${Array.from({ length: max + 1 }, (_, n) => html`<option value="${n}" ${n === eo.sigbypass ? html`selected` : ''}>${n}</option>`)}</select></span></div>
 <label class="row"><span class="switch"><input type="checkbox" data-f="dex" ${eo.injectdex ? html`checked` : ''}><span class="track"></span></span>Inject loader dex</label>`;
@@ -369,7 +371,7 @@ function pinWarn() {
 function renderVariants() {
   const xposed = isModule(chosenEngine());
   $('#sec-variants').innerHTML = html`<h3 class="subtitle2" id="s-a">${icon('package')}ABI variants</h3>
-<div class="row wrap">${ABIS.map(a => html`<label class="pill"><input type="checkbox" data-f="abi" value="${a}" ${D.cur.variants.some(v => v.abi === a) ? html`checked` : ''}>${a}</label>`)}</div>
+<div class="row wrap">${LIMITS.abis.map(a => html`<label class="pill"><input type="checkbox" data-f="abi" value="${a}" ${D.cur.variants.some(v => v.abi === a) ? html`checked` : ''}>${a}</label>`)}</div>
 <p class="hint">${xposed ? 'Each checked ABI is built as its own variant.' : 'Each checked ABI is built as its own variant, stripped to that ABI.'}</p>`;
 }
 

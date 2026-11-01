@@ -1,6 +1,6 @@
 import { $, api, fmt, html } from '/static/app.js';
 
-const MIN_PASSWORD_LENGTH = 10;
+let minPassword = null;   // GET /api/auth/state limits.min_password: the server owns the rule
 const form = $('#f'), user = $('#u'), pw = $('#p'), pw2 = $('#p2'), err = $('#err'), go = $('#go');
 let setupMode = false;
 const cooldownTimers = new Map(); // one cooldown timer per button
@@ -45,6 +45,7 @@ function lockButton(btn, seconds) {
 async function boot() {
   try {
     const st = await api('GET', '/api/auth/state');
+    minPassword = st.limits.min_password;
     setMode(st.setup_required);
   } catch (_) {
     showError('Server unreachable');
@@ -54,7 +55,7 @@ async function boot() {
 form.addEventListener('submit', async e => {
   e.preventDefault();
   if (setupMode) {
-    if (pw.value.length < MIN_PASSWORD_LENGTH) return showError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+    if (pw.value.length < minPassword) return showError(`Password must be at least ${minPassword} characters.`);
     if (pw.value !== pw2.value) return showError('Passwords do not match.');
   }
   busy(true);

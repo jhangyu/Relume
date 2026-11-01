@@ -1,5 +1,8 @@
 import { $, $$, act, api, confirmDialog, fmt, html, icon, shell, toast } from '/static/app.js';
 
+// rules the server owns (GET /api/auth/state): the password minimum
+const { limits: LIMITS } = await api('GET', '/api/auth/state');
+
 const FIELDS = {
   telegram: { bot_token: '#tg-token', chat_id: '#tg-chat' },
   discord: { webhook_url: '#dc-url' },
@@ -87,7 +90,7 @@ async function saveSettings() {
 
 function score(p) {
   let n = 0;
-  if (p.length >= 10) n++;
+  if (p.length >= LIMITS.min_password) n++;
   if (p.length >= 14) n++;
   if (/[a-z]/.test(p) && /[A-Z]/.test(p)) n++;
   if (/\d/.test(p)) n++;
@@ -101,7 +104,7 @@ function checkPw() {
   $('#pw-meter').value = s;
   $('#pw-meter').title = word;
   $('#pw-meter-l').textContent = a ? word : '';
-  const err = a && a.length < 10 ? 'At least 10 characters' : b && a !== b ? 'Passwords do not match' : '';
+  const err = a && a.length < LIMITS.min_password ? `At least ${LIMITS.min_password} characters` : b && a !== b ? 'Passwords do not match' : '';
   $('#pw-err').textContent = err;
   $('#pw-err').hidden = !err;
   $('#pw-save').disabled = !!err || !a || a !== b || !$('#pw-old').value;
