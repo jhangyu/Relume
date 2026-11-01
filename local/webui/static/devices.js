@@ -1,8 +1,13 @@
-import { $, $$, act, api, ask, confirmDialog, every, fmt, html, shell, toast } from '/static/app.js';
+import { $, $$, act, api, ask, confirmDialog, every, fmt, html, report, shell, toast, toastSettled } from '/static/app.js';
 
 const D = { devices: [], items: new Map(), projects: [], last: new Map() };
 const label = id => (D.items.get(id) || {}).label || `app ${id}`;
 const otpValue = g => $$('input', g).map(i => i.value).join('');
+// Pair request of both pair forms: host, pairing port, the 6-digit code, and the connect port when one was typed.
+const pairBody = (host, pairPort, otpGroup, connectPortInput) => ({
+  host, pair_port: Number(pairPort), code: otpValue(otpGroup),
+  ...(connectPortInput.value && { connect_port: Number(connectPortInput.value) }),
+});
 
 function wireOtp(g) {
   const boxes = $$('input', g);
@@ -124,7 +129,7 @@ async function reconnect(d, btn) {
   } catch (e) {
     if (e.status === 409 && e.data && e.data.error === 'DEVICE_OFFLINE') {
       const port = await askPort(d);
-      if (port) await act('POST', `/api/devices/${d.id}/connect`, { connect_port: port }, `${d.name} connected`).catch(() => {});
+      if (port) await act('POST', `/api/devices/${d.id}/connect`, { connect_port: port }, `${d.name} connected`).catch(report);
     } else {
       toast(e.message, 'error');
     }
@@ -141,7 +146,7 @@ async function editAssignments(d) {
   $('#as-projects').innerHTML = html`<span class="label" style="margin-top:.5rem">Followed projects</span>${D.projects.length ? D.projects.map(p => html`<label class="row sm"><input type="checkbox" value="${p.id}" ${mineP.has(p.id) ? html`checked` : ''}> ${p.label} <span class="xs muted mono">${p.package || p.repo}</span></label>`) : html`<p class="xs muted">No followed projects.</p>`}`;
   const dlg = $('#dlg-assign');
   if (await ask(dlg) !== 'ok') return;
-  act('PUT', `/api/devices/${d.id}/assignments`, { item_ids: $$('#as-items input:checked').map(i => Number(i.value)), project_ids: $$('#as-projects input:checked').map(i => Number(i.value)) }, 'Apps saved').then(loadDevices).catch(() => {});
+  act('PUT', `/api/devices/${d.id}/assignments`, { item_ids: $$('#as-items input:checked').map(i => Number(i.value)), project_ids: $$('#as-projects input:checked').map(i => Number(i.value)) }, 'Apps saved').then(loadDevices).catch(report);
 }
 
 async function pairDialog(p) {
@@ -149,9 +154,7 @@ async function pairDialog(p) {
   $$('#d-otp input').forEach(i => { i.value = ''; });
   const dlg = $('#dlg-pair');
   if (await ask(dlg) !== 'ok') return;
-  const body = { host: p.dataset.pair, pair_port: Number(p.dataset.port), code: otpValue($('#d-otp')) };
-  if ($('#d-cport').value) body.connect_port = Number($('#d-cport').value);
-  pair(body);
+  pair(pairBody(p.dataset.pair, p.dataset.port, $('#d-otp'), $('#d-cport')));
 }
 
 document.addEventListener('click', async e => {
@@ -183,7 +186,7 @@ document.addEventListener('click', async e => {
     } else return;
     await loadDevices();
     await loadHistory();
-  } catch (_) { /* act() showed it */ }
+  } catch (e) { report(e); }
 });
 
 document.addEventListener('change', e => {
@@ -206,16 +209,14 @@ document.addEventListener('focusout', e => {
 });
 $('#man').addEventListener('submit', e => {
   e.preventDefault();
-  const body = { host: $('#m-host').value.trim(), pair_port: Number($('#m-pport').value), code: otpValue($('#m-otp')) };
-  if ($('#m-cport').value) body.connect_port = Number($('#m-cport').value);
-  pair(body);
+  pair(pairBody($('#m-host').value.trim(), $('#m-pport').value, $('#m-otp'), $('#m-cport')));
 });
 $('#ota-all').addEventListener('click', async () => {
   const online = D.devices.filter(d => d.kind !== 'app' && d.online);
-  for (const d of online) await act('POST', `/api/devices/${d.id}/ota`, {}).catch(() => {});
-  toast(`OTA queued on ${online.length} device${online.length === 1 ? '' : 's'}`);
+  const r = await Promise.allSettled(online.map(d => api('POST', `/api/devices/${d.id}/ota`, {})));
+  toastSettled(r, `OTA queued on ${r.length} device${r.length === 1 ? '' : 's'}`);
 });
-$('#of').addEventListener('change', () => loadHistory().catch(() => {}));
+$('#of').addEventListener('change', () => loadHistory().catch(report));
 
 (async () => {
   shell();
@@ -226,7 +227,7 @@ $('#of').addEventListener('change', () => loadHistory().catch(() => {}));
   $('#hostline').textContent = `Network mode: ${s.server.network_mode || 'unknown'} · discovery runs on every platform; when nothing is found, enter the phone's IP and ports below`;
   await loadDevices();
   await loadHistory();
-  await loadDiscovered().catch(() => {});
-  every(10000, () => loadDiscovered().catch(() => {}));
-  every(15000, () => { if (!document.querySelector('dialog[open]') && !document.activeElement.closest('[data-rename]')) loadDevices().catch(() => {}); });
+  await loadDiscovered().catch(report);
+  every(10000, () => loadDiscovered().catch(report));
+  every(15000, () => { if (!document.querySelector('dialog[open]') && !document.activeElement.closest('[data-rename]')) loadDevices().catch(report); });
 })().catch(e => toast(e.message, 'error'));

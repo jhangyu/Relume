@@ -1,4 +1,4 @@
-import { $, $$, act, api, confirmDialog, fmt, html, icon, JOB_BADGE, shell, toast } from '/static/app.js';
+import { $, $$, act, api, confirmDialog, fmt, html, icon, JOB_BADGE, report, shell, toast } from '/static/app.js';
 
 const DAYS = ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'];
 const UI_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -69,7 +69,7 @@ async function putGlobal(body, msg) {
   try {
     R.global = await act('PUT', '/api/schedule', body, msg);
     renderGlobal();
-  } catch (_) { renderGlobal(); }
+  } catch (e) { report(e); renderGlobal(); }
 }
 
 $('#g-seg').addEventListener('change', e => {
@@ -80,7 +80,7 @@ $('#g-custom').addEventListener('change', e => { if (e.target.id === 'gs-f') syn
 $('#g-save').addEventListener('click', () => putGlobal({ spec: readSpecForm('gs') }, 'Schedule saved'));
 $('#g-en').addEventListener('change', e => putGlobal({ enabled: e.target.checked }, e.target.checked ? 'Schedule on' : 'Schedule paused'));
 $('#g-notify').addEventListener('change', e => putGlobal({ options: { notify: e.target.checked } }));
-$('#g-run').addEventListener('click', () => act('POST', '/api/schedule/run', {}, 'Update run started — see Builds').catch(() => {}));
+$('#g-run').addEventListener('click', () => act('POST', '/api/schedule/run', {}, 'Update run started — see Builds').catch(report));
 
 // ---- OTA schedules ----
 
@@ -153,7 +153,7 @@ $('#o-save').addEventListener('click', async () => {
     else await act('POST', '/api/schedules', body, 'Schedule saved');
     byId('dlg-ota').close();
     await load();
-  } catch (_) { /* shown */ }
+  } catch (e) { report(e); }
 });
 $('#new').addEventListener('click', () => openDialog(null));
 $('#list').addEventListener('click', async e => {
@@ -168,7 +168,7 @@ $('#list').addEventListener('click', async e => {
       await act('DELETE', `/api/schedules/${del.dataset.del}`, {}, 'Schedule deleted');
       await load();
     } else if (en) { await act('PUT', `/api/schedules/${en.dataset.en}`, { enabled: en.checked }); await load(); }
-  } catch (_) { load(); }
+  } catch (e) { report(e); load(); }
 });
 
 async function load() {

@@ -1,4 +1,4 @@
-import { $, $$, act, api, ask, catSlug, fmt, html, icon, iconTile, scrollKeeper, shell, toast } from '/static/app.js';
+import { $, $$, act, api, ask, catSlug, fmt, html, icon, iconTile, report, scrollKeeper, shell, toast } from '/static/app.js';
 
 // Marketplace (spec §7.3): catalog gallery, expand-in-place enable panel, custom sources.
 const PER_PAGE = 48;
@@ -280,7 +280,7 @@ async function enable() {
 // ---------- events ----------
 gallery.addEventListener('click', e => {
   const c = e.target.closest('.app');
-  if (c) openApp(c.dataset.pkg).catch(() => {});   // act() toasted the failure
+  if (c) openApp(c.dataset.pkg).catch(report);
 });
 detail.addEventListener('click', e => {
   const a = e.target.closest('[data-act]');

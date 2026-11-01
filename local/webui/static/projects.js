@@ -1,5 +1,5 @@
 // Followed projects page (spec 2026-10-23-follow-project-design §8).
-import { $, $$, act, api, ask, confirmDialog, every, fmt, html, icon, iconTile, shell, toast } from '/static/app.js';
+import { $, $$, act, api, ask, confirmDialog, every, fmt, html, icon, iconTile, report, shell, toast, toastSettled } from '/static/app.js';
 
 const S = { projects: [], devices: [], items: new Map(), schedule: null, running: [], queued: [], ota: [], cur: null, filter: 'all', q: '' };
 const byId = id => S.projects.find(p => p.id === id);
@@ -156,7 +156,7 @@ $('#rows').addEventListener('change', async e => {
   const p = byId(id), on = e.target.checked;
   try {
     await act('PUT', `/api/projects/${id}`, { auto_push: on }, `Auto-push ${on ? 'on' : 'off'} for ${p.label}${p.signer_alert && on ? ' (still paused until the signer is confirmed)' : ''}`);
-  } catch (_) { /* act showed it */ }
+  } catch (e) { report(e); }
   reload();
 });
 $('#rows').addEventListener('keydown', e => {
@@ -176,8 +176,7 @@ $$('input[name=f]').forEach(r => r.addEventListener('change', () => { S.filter =
 
 $('#pullAll').addEventListener('click', async () => {
   const r = await Promise.allSettled(S.projects.map(pull));
-  const bad = r.filter(x => x.status === 'rejected');
-  toast(bad.length ? `${bad[0].reason.message} (${bad.length} of ${r.length} failed)` : `Checking ${r.length} projects`, bad.length ? 'error' : 'ok');
+  toastSettled(r, `Checking ${r.length} projects`);
   reload();
 });
 
@@ -203,7 +202,7 @@ $('#pane').addEventListener('click', async e => {
       S.cur = null;
     } else return;
     reload();
-  } catch (_) { /* act showed it */ }
+  } catch (e) { report(e); }
 });
 
 // ---- signer dialog
@@ -218,7 +217,7 @@ function signerDialog(p) {
     try {
       await act('POST', `/api/projects/${p.id}/signer/accept`, { signer_sha256: p.signer_alert }, `New signer trusted for ${p.label}`);
       $('#sigDlg').close();
-    } catch (_) { /* act showed it */ }
+    } catch (e) { report(e); }
     reload();
   };
   $('#sigDlg').showModal();
@@ -235,7 +234,7 @@ async function assignDialog(p) {
   if (await ask($('#asgDlg')) !== 'ok') return;
   try {
     await act('PUT', `/api/projects/${p.id}`, { device_ids: $$('#asgList input:checked').map(i => Number(i.value)) }, 'Phones saved');
-  } catch (_) { /* act showed it */ }
+  } catch (e) { report(e); }
   reload();
 }
 

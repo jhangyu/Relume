@@ -35,8 +35,21 @@ export async function act(method, path, body, okMsg) {
     return d;
   } catch (e) {
     if (e.status !== 401) toast(e.message, 'error');
+    e.shown = true;   // report() does not show it a second time
     throw e;
   }
+}
+
+// Shows a failure nobody showed yet: act() toasted its own, and a 401 already went to the login page.
+export function report(e) {
+  if (!e.shown && e.status !== 401) toast(e.message, 'error');
+}
+
+// One toast for a bulk action from Promise.allSettled: the first failure and the failed count, else okMsg.
+export function toastSettled(results, okMsg) {
+  const bad = results.filter(x => x.status === 'rejected');
+  if (bad.length) toast(`${bad[0].reason.message} (${bad.length} of ${results.length} failed)`, 'error');
+  else toast(okMsg);
 }
 
 export function toast(msg, kind = 'ok') {

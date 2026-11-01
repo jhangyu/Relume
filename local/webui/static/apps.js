@@ -1,4 +1,4 @@
-import { $, $$, act, api, confirmDialog, every, fillDownloads, fmt, html, icon, iconTile, scrollKeeper, shell, STATUS, toast } from '/static/app.js';
+import { $, $$, act, api, confirmDialog, every, fillDownloads, fmt, html, icon, iconTile, report, scrollKeeper, shell, STATUS, toast } from '/static/app.js';
 
 const REFRESH_MS = 5000;
 const scroll = scrollKeeper();
@@ -146,7 +146,7 @@ document.addEventListener('keydown', e => {
   if (S.menuOpen) closeMenus();
   else if (D) {
     e.preventDefault(); // the same keypress must not also cancel the Discard dialog that closeDrawer opens
-    closeDrawer().catch(() => {});
+    closeDrawer().catch(report);
   }
 });
 
@@ -167,7 +167,7 @@ $('#list').addEventListener('click', async e => {
     if (t.dataset.act === 'check') await act('POST', `/api/apps/${a.id}/check`, {}, `Checking ${a.name}`);
     if (t.dataset.act === 'build') await act('POST', `/api/apps/${a.id}/build`, {}, `Build queued for ${a.name}`);
     await loadList();
-  } catch (_) { /* toast shown by act or api */ }
+  } catch (e) { report(e); }
 });
 $('#summary').addEventListener('click', e => {
   const b = e.target.closest('[data-filter]');
@@ -176,7 +176,7 @@ $('#summary').addEventListener('click', e => {
   renderList();
 });
 $('#q').addEventListener('input', e => { S.q = e.target.value; renderList(); });
-$('#checkall').addEventListener('click', () => act('POST', '/api/schedule/run', {}, 'Checking all apps for updates').then(loadList).catch(() => {}));
+$('#checkall').addEventListener('click', () => act('POST', '/api/schedule/run', {}, 'Checking all apps for updates').then(loadList).catch(report));
 
 // ---------- drawer: draft state ----------
 
@@ -562,7 +562,7 @@ async function onClickIn(e) {
     } else if (t.dataset.f === 'icon') {
       await act('POST', `/api/apps/${encodeURIComponent(D.app.package)}/icon/refresh`, {}, 'Icon refreshed');
     }
-  } catch (_) { /* toast shown by act */ }
+  } catch (e) { report(e); }
 }
 
 const drawer = $('#drawer');

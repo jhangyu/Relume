@@ -1,4 +1,4 @@
-import { $, $$, act, api, every, fmt, html, icon, iconTile, JOB_BADGE, logStream, shell, toast } from '/static/app.js';
+import { $, $$, act, api, every, fmt, html, icon, iconTile, JOB_BADGE, logStream, report, shell, toast } from '/static/app.js';
 
 const qs = new URLSearchParams(location.search);
 const ITEM = qs.get('item') ? Number(qs.get('item')) : null;
@@ -192,7 +192,7 @@ async function renderHistory(mode) {
 }
 
 async function refresh() {
-  try { await renderQueue(); await renderHistory('refresh'); } catch (_) { /* next tick retries */ }
+  try { await renderQueue(); await renderHistory('refresh'); } catch (e) { report(e); }
 }
 
 document.addEventListener('click', async e => {
@@ -207,9 +207,9 @@ document.addEventListener('click', async e => {
     }
     if (retry) await act('POST', retryRoute(B.jobs.get(Number(retry.dataset.retry))), {}, 'Retry queued');
     if (retry) await refresh();
-  } catch (_) { /* act() showed it */ }
+  } catch (e) { report(e); }
 });
-$('#cancel').addEventListener('click', () => act('POST', `/api/jobs/${B.sel}/cancel`, {}, 'Cancel requested').then(refresh).catch(() => {}));
+$('#cancel').addEventListener('click', () => act('POST', `/api/jobs/${B.sel}/cancel`, {}, 'Cancel requested').then(refresh).catch(report));
 $('#log').addEventListener('scroll', () => { const l = $('#log'); B.follow = l.scrollTop + l.clientHeight >= l.scrollHeight - 24; });
 $('#dlog').addEventListener('click', () => {
   const a = document.createElement('a');
@@ -226,7 +226,7 @@ $('#pills').addEventListener('click', e => {
   renderHistory('reset').catch(err => toast(err.message, 'error'));
 });
 $('#hq').addEventListener('input', applySearch);
-$('#older').addEventListener('click', () => renderHistory('append').catch(() => {}));
+$('#older').addEventListener('click', () => renderHistory('append').catch(report));
 
 (async () => {
   shell();
