@@ -139,7 +139,7 @@ class BuildCase(helpers.DataTestCase):
         job = job or self.job()
         if runner:
             build.RUNNER = str(FIX / runner)
-        release = self.data / "work" / str(job.id) / "release"
+        release = self.data / "work" / str(job.id) / "1" / "release"   # attempt 1
         release.mkdir(parents=True, exist_ok=True)
         for name, r in patch_results.items():
             (release / f"{name}.result.json").write_text(r if isinstance(r, str) else json.dumps(r))
@@ -384,7 +384,7 @@ class IsolationTest(BuildCase):
         build.RUNNER = str(script)
         with mock.patch.dict(os.environ, {"RELUME_RUNNER_UID": "10001", "RELUME_RUNNER_DATA": str(view)}):
             job, log, err = self.run_handler()
-        work = f"{view}/work/{job.id}"
+        work = f"{view}/work/{job.id}/1"
         self.assertEqual(log.argv[:2], ["setpriv", "--reuid=10001"])
         for want in ("UID 10001", f"HOME {work}", f"WORK {work}", f"CLI {view}/up/morphe-desktop-1.0.0-all.jar",
                      f"CACHE {view}/apk-cache", "CapEff:\t0000000000000000", "DENIED", "WROTE"):
@@ -428,7 +428,12 @@ class PatchVerdictTest(unittest.TestCase):
     """Guard rules (design guard §1, §6): R0 result file, R1 nothing applied, R2 new failures vs the published build."""
 
     def verdict(self, results, baseline=(), published="584.0.0.51.56"):
-        return build.patch_verdict({k: v and build._result_shape(v) for k, v in results.items()}, set(baseline), published)
+        v = build.patch_verdict({k: v and build._result_shape(v) for k, v in results.items()}, set(baseline), published)
+        self.rules.append(v and v[0])
+        return v and v[1]
+
+    def setUp(self):
+        self.rules = []
 
     def test_nothing_applied_names_the_root_cause(self):
         d = self.verdict({"universal": patch_result(0, [("Allow chat bubbles", MSG_ERROR)] + [(f"P{i}", "x") for i in range(65)])})
@@ -438,6 +443,7 @@ class PatchVerdictTest(unittest.TestCase):
                          "0 of 0 patches applied (variant universal). No build was published.")
         self.assertTrue(self.verdict({"universal": patch_result(98, []), "arm64-v8a": patch_result(0, [("A", "boom")])})
                         .startswith("0 of 1 patches applied (variant arm64-v8a). First error: boom."))
+        self.assertEqual(self.rules, ["nothing_applied"] * 3)
 
     def test_new_failures_against_the_published_build(self):
         failed = [(n, f"app.morphe.patcher.patch.PatchException: {n}: found 0\n\tat x.Kt.f(Kt.kt:1)") for n in FB_NEW]
@@ -447,10 +453,12 @@ class PatchVerdictTest(unittest.TestCase):
                          "First error: Clean up Reels: found 0. The previous build (584.0.0.51.56) stays published.")
         self.assertIsNone(self.verdict({"universal": patch_result(98, failed), "arm64-v8a": patch_result(98, failed)}, FB_NEW))
         self.assertIsNone(self.verdict({"universal": patch_result(98, failed)}, published=None))   # first build: no regression
+        self.assertEqual(self.rules, ["regression", None, None])
 
     def test_missing_or_malformed_result_file(self):
         self.assertEqual(self.verdict({"universal": patch_result(5, []), "arm64-v8a": None}),
                          "patcher result file missing or unreadable for variant arm64-v8a. The previous build (584.0.0.51.56) stays published.")
+        self.assertEqual(self.rules, ["result_missing"])
         for bad in ({"appliedPatches": 3, "failedPatches": []}, {"failedPatches": []}, {"appliedPatches": [], "failedPatches": [{"name": "A"}]},
                     {"appliedPatches": [], "failedPatches": [{"name": 1, "error": "e"}]}, []):
             self.assertIsNone(build._result_shape(bad), bad)
@@ -505,6 +513,103 @@ class GuardHandlerTest(BuildCase):
         with db.tx() as c:
             c.execute("UPDATE build_jobs SET fail_code = 'download_failed' WHERE job_id = ?", (job.id,))
         self.assertTrue(build.needs_build(1))   # other fail codes keep retrying
+
+
+class VariantLoopTest(BuildCase):
+    """APKMirror variant attempts (design variant §1-§4): fake page of variants 101, 102, 103 (runner-variants.sh)."""
+
+    def setUp(self):
+        super().setUp()
+        self.used = self.data / "used.txt"
+        self.fake = {"codes": [101, 102, 103], "patchable": [102], "log": str(self.used)}
+        self.codes = None   # manual download.version_codes
+        sha = json.dumps({"base": "b", "variants": {"universal": "u", "arm64-v8a": "a"}})
+        self.enterContext(mock.patch.object(apps, "inputs_sha", lambda i: sha))
+        real = self.cat.job_input
+
+        def job_input(item_id):
+            j = json.loads(json.dumps(real(item_id)))
+            for v in j["recipe"]["variants"]:
+                v["download"] = dict(v["download"], kind="apkmirror", url=None,
+                                     **({"version_codes": self.codes} if self.codes else {}))
+            return dict(j, _fake=self.fake)
+        self.enterContext(mock.patch.object(apps, "job_input", job_input))
+
+    def build(self, **fake):
+        self.fake.update(fake)
+        self.used.write_text("")
+        job, log, err = self.run_handler("runner-variants.sh", patch_results={})
+        return job, err, self.used.read_text().split()
+
+    def remembered(self):
+        return [tuple(r) for r in db.conn().execute("SELECT package, version_name, abis, version_code, variant_url, bundle FROM apkm_variant")]
+
+    def test_second_variant_wins_is_remembered_and_reused(self):
+        job, err, used = self.build()
+        self.assertIsNone(err)
+        self.assertEqual(used, ["101", "102"])
+        self.assertEqual(self.remembered(), [(YT, "1.0.0", "arm64-v8a", 102, "https://www.apkmirror.com/v/102/", 0)])
+        self.assertEqual(db.conn().execute("SELECT DISTINCT version_code FROM artifacts WHERE job_id = ?", (job.id,)).fetchone()[0], 102)
+        job, err, used = self.build()
+        self.assertIsNone(err)
+        self.assertEqual(used, ["102"])   # straight to the remembered variant
+
+    def test_attempt_cap_ends_without_scheduled_retry(self):
+        job, err, used = self.build(codes=[101, 102, 103, 104], patchable=[])
+        self.assertEqual(used, ["101", "102", "103"])
+        b = self.bj(job)
+        self.assertEqual(b["fail_code"], "patch_items_failed")
+        self.assertTrue(b["fail_detail"].startswith("Tried APKMirror variants 101, 102, 103 of 1.0.0: the patches applied to none of them. "
+                                                    "Last: 0 of 1 patches applied (variant universal). First error: no fit for 103."), b["fail_detail"])
+        with db.tx() as c:
+            c.execute("UPDATE jobs SET status = 'failed' WHERE id = ?", (job.id,))
+        self.assertFalse(build.needs_build(1))
+        self.assertEqual(self.remembered(), [])
+
+    def test_patcher_refusing_every_variant_ends_as_patch_items_failed(self):
+        job, err, used = self.build(codes=[101, 102], patchable=[], refuse=True)
+        self.assertEqual(used, ["101", "102"])   # remaining 1 on the 2nd attempt: no 3rd
+        self.assertEqual(self.bj(job)["fail_code"], "patch_items_failed")
+        self.assertIn("Last: patcher exited 1 on 102. Set the app's APKMirror versionCode", self.bj(job)["fail_detail"])
+        with db.tx() as c:
+            c.execute("UPDATE jobs SET status = 'failed' WHERE id = ?", (job.id,))
+        self.assertFalse(build.needs_build(1))
+
+    def test_single_candidate_runs_once(self):
+        job, err, used = self.build(codes=[101], patchable=[])
+        self.assertEqual((used, self.bj(job)["fail_code"]), (["101"], "patch_items_failed"))
+
+    def test_remembered_variant_rejected_is_forgotten_and_excluded(self):
+        build._apkm_remember(YT, "1.0.0", "arm64-v8a", 102, "https://www.apkmirror.com/v/102/", False)
+        job, err, used = self.build(patchable=[103])
+        self.assertIsNone(err)
+        self.assertEqual(used, ["102", "101", "103"])
+        self.assertEqual([r[3] for r in self.remembered()], [103])
+
+    def test_remembered_page_serving_another_build_is_forgotten(self):
+        build._apkm_remember(YT, "1.0.0", "arm64-v8a", 102, "https://www.apkmirror.com/v/102/", False)
+        job, err, used = self.build(serves=101)
+        self.assertEqual((used, self.bj(job)["fail_code"]), (["101"], "download_failed"))
+        self.assertEqual(self.remembered(), [])
+
+    def test_not_a_variant_verdict_runs_once(self):
+        job, err, used = self.build(codes=[101, 102], patchable=[101], noresult=True)   # R0: the instrument is blind
+        self.assertEqual((used, self.bj(job)["fail_code"]), (["101"], "patch_items_failed"))
+        self.assertTrue(self.bj(job)["fail_detail"].startswith("patcher result file missing"))
+        self.assertEqual(self.remembered(), [])
+
+    def test_manual_codes_run_once(self):
+        self.codes = [101]
+        seen = []
+        real = StreamLog.run
+
+        def spy(log, argv, cwd, env, timeout=None, on_line=None):
+            seen.append(json.loads(Path(argv[2]).read_text())["apkmirror_picks"])
+            return real(log, argv, cwd, env, timeout, on_line)
+        with mock.patch.object(StreamLog, "run", spy):
+            job, err, used = self.build(patchable=[])
+        self.assertEqual((seen, used, self.bj(job)["fail_code"]), ([[]], ["101"], "patch_items_failed"))
+        self.assertTrue(self.bj(job)["fail_detail"].startswith("0 of 1 patches applied"))
 
 
 class ArtifactSwapTest(BuildCase):

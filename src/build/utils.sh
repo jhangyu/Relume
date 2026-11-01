@@ -124,16 +124,80 @@ emit_apkm_versions() {
 	return 0
 }
 
-# get_apk <pkg> <name> <type> <arch> <dpi> <minver> <list_url> <example_url> <example_url2> <want_abis>
+# apkm_candidates <type_badge> <arch> <dpi> <minver> <want_abis> <codes> <exclude_codes>: APKMirror variants-table
+# HTML on stdin -> TSV "href code type arch minver dpi", best first: the requested type (APK/BUNDLE) before the other;
+# within a type the highest Minimum Version, then the widest DPI span (nodpi widest), then the highest versionCode
+# (low-minAPI builds are the ones patch bundles reject). codes / exclude_codes (space-separated versionCodes) keep
+# only / drop rows showing one of them. Warnings go to stderr.
+apkm_candidates() {
+	local type_badge=$1 arch=$2 dpi=$3 minver=$4 want_abis=$5 codes=$6 exclude=$7
+	local rows try_type rank=0 other=BUNDLE
+	[[ "$type_badge" == BUNDLE ]] && other=APK
+	rows=$(tr '\n' ' ' | awk '{gsub(/<div class="table-row/, "\n&"); print}')
+	local dpi_fallback=("120-640dpi" "120-480dpi" "480-640dpi" "480dpi")
+	for try_type in "$type_badge" "$other"; do
+		local filtered_rows
+		filtered_rows=$(echo "$rows" | grep -iE "apkm-badge[^>]*>[[:space:]]*$try_type[[:space:]]*<")
+		[[ -n "$arch" ]] && filtered_rows=$(echo "$filtered_rows" | grep -iF -- "$arch")
+		[[ -n "$minver" ]] && filtered_rows=$(echo "$filtered_rows" | grep -iF -- "$minver")
+		if [[ -z "$arch" && -n "$want_abis" && -n "$filtered_rows" ]]; then
+			local arch_rows w
+			arch_rows=$filtered_rows
+			for w in $want_abis; do arch_rows=$(echo "$arch_rows" | grep -iF -- "$w"); done
+			[[ -z "$arch_rows" ]] && arch_rows=$(echo "$filtered_rows" | grep -iwE -- 'universal|noarch')
+			if [[ -n "$arch_rows" ]]; then filtered_rows=$arch_rows; else yellow_log "[!] No $try_type variant lists ABIs $want_abis, universal or noarch" >&2; fi
+		fi
+		if [[ -n "$dpi" ]]; then
+			local dpi_filtered fb_dpi
+			dpi_filtered=$(echo "$filtered_rows" | grep -iF -- "$dpi")
+			if [[ -z "$dpi_filtered" ]]; then
+				for fb_dpi in "${dpi_fallback[@]}"; do
+					dpi_filtered=$(echo "$filtered_rows" | grep -iF -- "$fb_dpi")
+					[[ -n "$dpi_filtered" ]] && { yellow_log "[!] DPI fallback: $dpi -> $fb_dpi" >&2; break; }
+				done
+			fi
+			filtered_rows="$dpi_filtered"
+		fi
+		# one row per line: href, versionCode, then the cells Architecture, Minimum Version, Screen DPI; sort keys first
+		awk -v rank="$rank" -v type="$try_type" -v codes=" $codes " -v exclude=" $exclude " -v OFS='\t' '
+			match($0, /accent_color[^>]*href="[^"]+"/) {
+				href = substr($0, RSTART, RLENGTH); sub(/.*href="/, "", href); sub(/"$/, "", href)
+				code = ""
+				if (match($0, /colorLightBlack">[[:space:]]*[0-9]+/)) { code = substr($0, RSTART, RLENGTH); gsub(/[^0-9]/, "", code) }
+				if (codes != "  " && index(codes, " " code " ") == 0) next
+				if (code != "" && index(exclude, " " code " ")) next
+				split("", cell); n = 0; rest = $0
+				while (n < 3 && match(rest, /dowrap">[^<]*/)) {
+					c = substr(rest, RSTART + 8, RLENGTH - 8); gsub(/^[[:space:]]+|[[:space:]]+$/, "", c)
+					cell[++n] = c; rest = substr(rest, RSTART + RLENGTH)
+				}
+				minkey = 0
+				if (match(cell[2], /[0-9]+(\.[0-9]+)?/)) { split(substr(cell[2], RSTART, RLENGTH), mv, "."); minkey = mv[1] * 100 + mv[2] }
+				if (cell[3] ~ /nodpi/) span = 100000
+				else if (match(cell[3], /[0-9]+-[0-9]+/)) { split(substr(cell[3], RSTART, RLENGTH), d, "-"); span = d[2] - d[1] }
+				else span = 0
+				print rank, minkey, span, code + 0, href, code, type, cell[1], cell[2], cell[3]
+			}' <<<"$filtered_rows"
+		rank=1
+	done | sort -s -t$'\t' -k1,1n -k2,2nr -k3,3nr -k4,4nr | cut -f5-
+}
+
+# get_apk <pkg> <name> <type> <arch> <dpi> <minver> <list_url> <example_url> <example_url2> <want_abis> <codes>
+#   <exclude_codes> <pick_url> <pick_bundle>
 # want_abis (space-separated) steers the variant pick when <arch> is empty; check_abis verifies the result.
+# codes / exclude_codes: see apkm_candidates. pick_url (+ pick_bundle true/false): a remembered variant page, the list
+# and version pages are skipped. Sets APKM_VARIANT_URL, APKM_BUNDLE (true/false) and APKM_REMAINING (candidate rows
+# left including the used one; empty for a remembered pick).
 get_apk() {
 	local pkg_name=$1 apk_name=$2
 	local pkg_type=${3:-apk} arch=${4:-} dpi=${5:-} minver=${6:-} want_abis=${10:-}
 	local list_url=${7:-}
+	local codes=${11:-} exclude_codes=${12:-} pick_url=${13:-} pick_bundle=${14:-}
 	local allow_near_version=${near_version:-0}
 	unset near_version
 	local base_url="https://www.apkmirror.com"
 	html=""
+	APKM_VARIANT_URL="" APKM_BUNDLE="" APKM_REMAINING=""
 
 	local example_urls=()
 	[[ -n "${8:-}" ]] && example_urls+=("$8")
@@ -158,7 +222,7 @@ get_apk() {
 
 	local version_href=""
 
-	if [[ ${#example_urls[@]} -gt 0 && -n "$version" ]]; then
+	if [[ ${#example_urls[@]} -gt 0 && -n "$version" && -z "$pick_url" ]]; then
 		local example_url slug_ver target_ver
 		for example_url in "${example_urls[@]}"; do
 			version_href="${example_url#"$base_url"}"
@@ -176,7 +240,7 @@ get_apk() {
 		done
 	fi
 
-	if [[ -z "$version_href" ]]; then
+	if [[ -z "$version_href" && -z "$pick_url" ]]; then
 		_cf_get "$list_url" || return 1
 		emit_apkm_versions
 
@@ -257,71 +321,46 @@ get_apk() {
 	local type_badge="APK"
 	[[ "$pkg_type" == "bundle" || "$pkg_type" == "bundle_extract" ]] && type_badge="BUNDLE"
 
-	local vtable_html rows variant_href=""
-	vtable_html=$(echo "$html" | "$pup" 'div.variants-table')
-	rows=$(echo "$vtable_html" | tr '\n' ' ' | sed 's/<div class="table-row/\n<div class="table-row/g')
-
-	local dpi_fallback=("120-640dpi" "120-480dpi" "480-640dpi" "480dpi")
-	local type_attempts=("$type_badge")
-	if [[ "$type_badge" == "BUNDLE" ]]; then
-		type_attempts+=("APK")
+	local matched_type="" variant_href="" variant_page_loaded=false
+	if [[ -n "$pick_url" ]]; then
+		variant_href=${pick_url#"$base_url"}
+		matched_type=APK
+		[[ "$pick_bundle" == true ]] && matched_type=BUNDLE
+		green_log "[+] Remembered APKMirror variant: $pick_url"
 	else
-		type_attempts+=("BUNDLE")
-	fi
-
-	local matched_type=""
-	local variant_page_loaded=false
-	local try_type
-	for try_type in "${type_attempts[@]}"; do
-		local filtered_rows
-		filtered_rows=$(echo "$rows" | grep -iP "apkm-badge[^>]*>\s*$try_type\s*<")
-		[[ -n "$arch" ]] && filtered_rows=$(echo "$filtered_rows" | grep -iF -- "$arch")
-		[[ -n "$minver" ]] && filtered_rows=$(echo "$filtered_rows" | grep -iF -- "$minver")
-		if [[ -z "$arch" && -n "$want_abis" && -n "$filtered_rows" ]]; then
-			local arch_rows w
-			arch_rows=$filtered_rows
-			for w in $want_abis; do arch_rows=$(echo "$arch_rows" | grep -iF -- "$w"); done
-			[[ -z "$arch_rows" ]] && arch_rows=$(echo "$filtered_rows" | grep -iwE -- 'universal|noarch')
-			if [[ -n "$arch_rows" ]]; then filtered_rows=$arch_rows; else yellow_log "[!] No $try_type variant lists ABIs $want_abis, universal or noarch"; fi
-		fi
-
-		if [[ -n "$dpi" ]]; then
-			local dpi_filtered fb_dpi
-			dpi_filtered=$(echo "$filtered_rows" | grep -iF -- "$dpi")
-			if [[ -z "$dpi_filtered" ]]; then
-				for fb_dpi in "${dpi_fallback[@]}"; do
-					dpi_filtered=$(echo "$filtered_rows" | grep -iF -- "$fb_dpi")
-					[[ -n "$dpi_filtered" ]] && { yellow_log "[!] DPI fallback: $dpi -> $fb_dpi"; break; }
-				done
-			fi
-			filtered_rows="$dpi_filtered"
-		fi
-
-		variant_href=$(echo "$filtered_rows" | grep -oP 'accent_color[^>]*href="\K[^"]+' | head -1)
-		if [[ -n "$variant_href" ]]; then
-			matched_type="$try_type"
-			[[ "$try_type" != "$type_badge" ]] && yellow_log "[!] Type fallback: $type_badge -> $try_type"
-			break
-		fi
-	done
-
-	if [[ -z "$variant_href" ]]; then
-		local direct_apk_href
-		direct_apk_href=$(echo "$html" | "$pup" 'a.downloadButton attr{href}' | grep 'forcebaseapk' | head -1)
-		if [[ -n "$direct_apk_href" && -z "$arch" && -z "$dpi" && -z "$minver" ]]; then
-			matched_type="APK"
-			variant_page_loaded=true
-			[[ "$type_badge" != "APK" ]] && yellow_log "[!] Type fallback: $type_badge -> APK"
-			yellow_log "[!] APKMirror redirected directly to the APK download page"
+		local vtable_html cands
+		vtable_html=$(echo "$html" | "$pup" 'div.variants-table')
+		cands=$(apkm_candidates "$type_badge" "$arch" "$dpi" "$minver" "$want_abis" "$codes" "$exclude_codes" <<<"$vtable_html")
+		if [[ -n "$cands" ]]; then
+			variant_href=$(head -1 <<<"$cands" | cut -f1)
+			matched_type=$(head -1 <<<"$cands" | cut -f3)
+			APKM_REMAINING=$(grep -c . <<<"$cands")
+			[[ "$matched_type" != "$type_badge" ]] && yellow_log "[!] Type fallback: $type_badge -> $matched_type"
+			green_log "[+] APKMirror variant versionCode $(head -1 <<<"$cands" | cut -f2) ($APKM_REMAINING candidate(s)${exclude_codes:+, excluded $exclude_codes})"
 		else
-			red_log "[-] Could not find variant (type=$type_badge arch=${arch:-any} dpi=$dpi)"
-			return 1
+			local direct_apk_href
+			direct_apk_href=$(echo "$html" | "$pup" 'a.downloadButton attr{href}' | grep 'forcebaseapk' | head -1)
+			if [[ -n "$codes" && -n "$vtable_html" ]]; then
+				red_log "[-] no APKMirror variant of ${version:-the latest version} shows versionCode ${codes// / or }; rows show $(tr '\n' ' ' <<<"$vtable_html" | grep -oE 'colorLightBlack">[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | paste -sd, - | sed 's/,/, /g')"
+				return 1
+			elif [[ -n "$direct_apk_href" && -z "$arch" && -z "$dpi" && -z "$minver" ]]; then
+				matched_type="APK"
+				variant_page_loaded=true
+				variant_href=$version_href
+				APKM_REMAINING=1
+				[[ "$type_badge" != "APK" ]] && yellow_log "[!] Type fallback: $type_badge -> APK"
+				yellow_log "[!] APKMirror redirected directly to the APK download page"
+			else
+				red_log "[-] Could not find variant (type=$type_badge arch=${arch:-any} dpi=$dpi${exclude_codes:+, excluding versionCodes $exclude_codes})"
+				return 1
+			fi
 		fi
 	fi
-	if [[ "$variant_page_loaded" == false ]]; then
-		variant_href=$(echo "$variant_href" | sed 's/&amp;/\&/g')
-		echo "$base_url$variant_href"
-	fi
+	variant_href=$(echo "$variant_href" | sed 's/&amp;/\&/g')
+	[[ "$variant_page_loaded" == false ]] && echo "$base_url$variant_href"
+	APKM_VARIANT_URL="$base_url$variant_href"
+	APKM_BUNDLE=false
+	[[ "$matched_type" == "BUNDLE" ]] && APKM_BUNDLE=true
 
 	if [[ "$matched_type" == "BUNDLE" ]]; then
 		base_apk="$apk_name.apkm"
@@ -606,6 +645,28 @@ apk_info() {
 	name=$(grep -iE 'version[-_ ]?name' <<<"$raw" | head -1 | sed -E 's/^[^=:]*[=:][[:space:]]*//')
 	[[ -n "$pkg" ]] || return 1
 	printf 'package=%s\nversion_code=%s\nversion_name=%s\n' "$pkg" "$code" "$name"
+}
+
+# read_version <apk>: versionName/versionCode of a downloaded input into dl_name/dl_code; return 1 (LAST_ERR set)
+read_version() {
+	local info
+	info=$(apk_info "$1")
+	dl_name=$(sed -n 's/^version_name=//p' <<<"$info")
+	dl_code=$(sed -n 's/^version_code=//p' <<<"$info")
+	[[ -n "$dl_name" && "$dl_code" =~ ^[0-9]+$ ]] && return 0
+	red_log "cannot read versionName/versionCode of $1"
+	return 1
+}
+
+# match_version <source> <want_name> <want_codes>: return 1 (LAST_ERR set) when dl_name/dl_code (read_version) differ
+# from a non-empty request; want_codes = space-separated versionCodes, any one of them matches.
+match_version() {
+	local src=$1 want_name=$2 want_codes=$3 any
+	any=${want_codes// / or }
+	if [[ -n "$want_name" && "$want_name" != "$dl_name" ]] || [[ -n "$want_codes" && " $want_codes " != *" $dl_code "* ]]; then
+		red_log "$src download does not match the request: expected versionName ${want_name:-any} versionCode ${any:-any}, downloaded versionName $dl_name versionCode $dl_code"
+		return 1
+	fi
 }
 
 # apk_signer <apk> -> lowercase SHA-256 of signer #1

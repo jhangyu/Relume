@@ -94,6 +94,19 @@ class GooglePlayKindTest(unittest.TestCase):
         with self.assertRaises(server.HttpError):
             catalog.validate_variants(v)
 
+    def test_version_codes(self):
+        def dl(codes, kind="apkmirror"):
+            return catalog.validate_variants([{"name": "u", "abi": "universal", "download": {"kind": kind, "version_codes": codes}}])[0]["download"]
+        self.assertEqual(dl([476015655, 476015543])["version_codes"], [476015543, 476015655])
+        self.assertNotIn("version_codes", dl(None))   # unset: the stored variant (and its build hash) is unchanged
+        for bad in ([], ["1"], [0], [-5], [2147483648], [1, 1], list(range(1, 12)), [True], "1", [1.0]):
+            with self.assertRaises(server.HttpError, msg=bad) as e:
+                dl(bad)
+            self.assertIn("expected null or 1-10 distinct integers", e.exception.message)
+        with self.assertRaises(server.HttpError) as e:
+            dl([1], "googleplay")
+        self.assertIn("only for APKMirror downloads, got kind googleplay", e.exception.message)
+
     def test_missing_url_needs_credentials(self):
         with mock.patch.object(settings, "google_play", return_value=None):
             self.assertEqual(apps._missing_url(self.row("googleplay")), "googleplay")
@@ -116,7 +129,7 @@ class VersionTest(AppsCase):
 
     def test_job_json_has_version_value_not_mode(self):
         j = apps.job_input(1)
-        self.assertEqual(set(j), set(JOB_FIXTURE) - {"job_id", "work_dir", "googleplay"})  # googleplay: added by build.handler
+        self.assertEqual(set(j), set(JOB_FIXTURE) - {"job_id", "work_dir", "googleplay", "apkmirror_picks"})  # added by build.handler
         self.assertEqual(set(j["version"]), {"value", "near"})
         self.assertEqual(set(j["apkmirror"]), set(JOB_FIXTURE["apkmirror"]))
         self.assertEqual(j["options_file_json"], [{"patches": {"Hide ads": {"enabled": False}}}])

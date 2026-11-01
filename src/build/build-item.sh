@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Build runner (spec build §2-§4): executes one job.json. No DB, queue or HTTP knowledge.
 # Usage: bash src/build/build-item.sh <job.json>
-# stdout markers: ::step::<name>[::i/n]  ::version::<v>  ::apkm_versions::<csv>  ::fail::<code>::<detail>
+# stdout markers: ::step::<name>[::i/n]  ::version::<v>  ::apkm_versions::<csv>  ::apkm_variant::<json>
+#   ::fail::<code>::<detail>
 # shellcheck disable=SC2034  # globals are read by utils.sh
 set -o pipefail
 RELUME_REPO=$(cd "$(dirname "$0")/../.." && pwd)
@@ -69,15 +70,35 @@ ex1=$(j .apkmirror.example_url)
 ex2=$(j .apkmirror.example_url2)
 apkpure_url=$(j .apkpure_url)
 
+# apkm_marker <download spec> <variant url> <bundle true/false> <remaining or "">: the APKMirror variant an automatic
+# download used (dl_name/dl_code from read_version), for the server's variant loop (webui/build.py)
+apkm_marker() {
+	local m
+	m=$(jq -nc --argjson d "$1" --argjson code "$dl_code" --arg name "$dl_name" --arg url "$2" --argjson bundle "$3" \
+		--arg rem "$4" '{download:$d, version_code:$code, version_name:$name, variant_url:$url, bundle:$bundle,
+		remaining:($rem|tonumber? // null)}') || fail internal "cannot write the APKMirror variant marker (bundle=$3)"
+	echo "::apkm_variant::$m"
+}
+
 fetch_input() {
-	local n=$1 d=$2 name="in-$1" kind type arch dpi minver url ext=apk
+	local n=$1 d=$2 name="in-$1" kind type arch dpi minver url codes ext=apk
 	kind=$(jq -r .kind <<<"$d")
 	type=$(jq -r '.type // "apk"' <<<"$d")
 	arch=$(jq -r '.arch // empty' <<<"$d")
 	dpi=$(jq -r '.dpi // empty' <<<"$d")
 	minver=$(jq -r '.minver // empty' <<<"$d")
 	url=$(jq -r '.url // empty' <<<"$d")
+	codes=$(jq -r '.version_codes // [] | map(tostring) | join(" ")' <<<"$d")  # manual APKMirror versionCodes
 	[[ $type == bundle_extract ]] && ext=apkm
+	# automatic APKMirror mode: the server's remembered variant and the versionCodes earlier attempts rejected
+	local pick="{}" pick_code="" pick_url="" pick_bundle="" exclude=""
+	[[ $kind == apkmirror && -z $codes ]] &&
+		pick=$(jq -c --argjson d "$d" 'first(.apkmirror_picks[]? | select(.download == $d)) // {}' "$job")
+	pick_code=$(jq -r '.version_code // empty' <<<"$pick")
+	pick_url=$(jq -r '.variant_url // empty' <<<"$pick")
+	pick_bundle=$(jq -r '.bundle | values' <<<"$pick")   # false is a value
+	exclude=$(jq -r '.exclude_codes // [] | map(tostring) | join(" ")' <<<"$pick")
+	local want_codes=${codes:-$pick_code}
 	local -a want
 	want=(); while IFS= read -r x; do want+=("$x"); done < <(jq -r --argjson d "$d" '[.recipe.variants[] | select(.download == $d and .abi != "universal") | .abi] | unique[]' "$job")
 	local label="$package $version (download $kind type=$type arch=${arch:-any})" got
@@ -86,8 +107,10 @@ fetch_input() {
 	local vkey cache_file
 	vkey=$(printf '%s' "$version" | tr -c 'A-Za-z0-9._-' '_')
 	cache_file="$cache_dir/$vkey$spec_key.$ext"
-	# googleplay: the server already downloaded the file, nothing to cache
-	[[ -n "${RELUME_APK_CACHE:-}" && -n "$version" && $allow_near -eq 0 && $kind != googleplay ]] && use_cache=1
+	# googleplay: the server already downloaded the file, nothing to cache. apkmirror: the key has no versionCode, so
+	# the cache serves only an expected versionCode (manual or remembered) and the cached file's code is checked.
+	[[ -n "${RELUME_APK_CACHE:-}" && -n "$version" && $allow_near -eq 0 && $kind != googleplay ]] &&
+		[[ $kind != apkmirror || -n $want_codes ]] && use_cache=1
 	if [[ $use_cache -eq 1 && -s "$cache_file" ]]; then
 		green_log "[+] Input from cache: $(basename "$cache_file")"
 		cp "$cache_file" "download/$name.$ext" || fail internal "cannot copy from cache"
@@ -95,34 +118,36 @@ fetch_input() {
 		got="download/$name.$ext"
 		[[ -d "download/$name" ]] && got="download/$name"
 		check_abis "$got" "$label" "${want[@]}" || { rm -f "$cache_file"; fail download_failed "$LAST_ERR (cached file removed)"; }
-		return 0
+		[[ $kind == apkmirror ]] || return 0
+		read_version "$(input_apk "$got")" || { rm -f "$cache_file"; fail download_failed "$LAST_ERR (cached file removed)"; }
+		if match_version APKMirror "" "$want_codes"; then
+			[[ -z $codes ]] && apkm_marker "$d" "$pick_url" "$pick_bundle" ""
+			return 0
+		fi
+		yellow_log "[!] Cached input is another APKMirror variant, downloading: $LAST_ERR"
+		rm -rf "$cache_file" "download/$name.$ext" "download/$name"
 	fi
 	case "$kind" in
 	apkmirror)
 		[[ -n "$list_url" ]] || fail apk_not_listed "no APKMirror list URL for $package"
 		[[ $allow_near -eq 1 ]] && near_version=1
-		get_apk "$package" "$name" "$type" "$arch" "$dpi" "$minver" "$list_url" "$ex1" "$ex2" "${want[*]}" ||
-			fail download_failed "${LAST_ERR:-download failed}"
+		get_apk "$package" "$name" "$type" "$arch" "$dpi" "$minver" "$list_url" "$ex1" "$ex2" "${want[*]}" \
+			"$codes" "$exclude" "$pick_url" "$pick_bundle" || fail download_failed "${LAST_ERR:-download failed}"
 		;;
 	apkpure)
 		get_apkpure "$package" "$name" "$type" "$apkpure_url" || fail download_failed "${LAST_ERR:-download failed}"
 		;;
 	googleplay)
-		local gp base gpver gpcode wantcode info
+		local gp base wantcode
 		gp=$(jq -r --argjson d "$d" 'first(.googleplay[] | select(.download == $d) | .path) // empty' "$job")
 		wantcode=$(jq -r --argjson d "$d" 'first(.googleplay[] | select(.download == $d) | .version_code) // empty' "$job")
 		[[ -n "$gp" && -e "$gp" ]] || fail internal "no Google Play download for $d"
 		base=$gp
 		[[ -d "$gp" ]] && base=$gp/$package.apk
-		info=$(apk_info "$base")
-		gpver=$(sed -n 's/^version_name=//p' <<<"$info")
-		gpcode=$(sed -n 's/^version_code=//p' <<<"$info")
-		[[ -n "$gpver" && -n "$gpcode" ]] || fail download_failed "cannot read versionName/versionCode of $base"
+		read_version "$base" || fail download_failed "$LAST_ERR"
 		# a concrete version is downloaded as <pkg>@<versionCode>: both must match the request
-		if [[ -n "$version" && "$version" != "$gpver" ]] || [[ -n "$wantcode" && "$wantcode" != "$gpcode" ]]; then
-			fail download_failed "Google Play download does not match the request: expected versionName ${version:-any} versionCode ${wantcode:-any}, downloaded versionName $gpver versionCode $gpcode"
-		fi
-		version=$gpver
+		match_version "Google Play" "$version" "$wantcode" || fail download_failed "$LAST_ERR"
+		version=$dl_name
 		get_googleplay "$gp" "$name" "$type" || fail download_failed "${LAST_ERR:-Google Play input failed}"
 		;;
 	url)
@@ -133,10 +158,20 @@ fetch_input() {
 	got="download/$name.$ext"
 	[[ -d "download/$name" ]] && got="download/$name"
 	check_abis "$got" "$label" "${want[@]}" || fail download_failed "$LAST_ERR"
+	if [[ $kind == apkmirror ]]; then
+		read_version "$(input_apk "$got")" || fail download_failed "$LAST_ERR"
+		[[ -z $codes ]] && apkm_marker "$d" "$APKM_VARIANT_URL" "$APKM_BUNDLE" "$APKM_REMAINING"
+		match_version APKMirror "" "$want_codes" || fail download_failed "$LAST_ERR"
+	fi
 	if [[ $use_cache -eq 1 && -s "download/$name.$ext" ]]; then
 		mkdir -p "$cache_dir" && rm -f "$cache_dir"/*"$spec_key".* && cp "download/$name.$ext" "$cache_file"
 	fi
 	return 0
+}
+
+# input_apk <file | extracted bundle dir>: the APK whose manifest names the version
+input_apk() {
+	if [[ -d "$1" ]]; then echo "$1/base.apk"; else echo "$1"; fi
 }
 
 for k in "${!specs[@]}"; do fetch_input "$k" "${specs[$k]}"; done

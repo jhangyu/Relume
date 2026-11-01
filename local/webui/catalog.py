@@ -784,6 +784,23 @@ def default_variants():
              "strip_libs": "arm64-v8a"}]
 
 
+VERSION_CODES_MAX = 10
+VERSION_CODE_MAX = 2147483647   # Android versionCode is a positive int32
+
+
+def _version_codes(codes, kind):
+    """download.version_codes: null, or 1-10 distinct versionCodes (stored sorted), only for APKMirror downloads."""
+    if codes is None:
+        return None
+    if kind != "apkmirror":
+        raise server.HttpError(400, f"download.version_codes is only for APKMirror downloads, got kind {kind}")
+    if (not isinstance(codes, list) or not 1 <= len(codes) <= VERSION_CODES_MAX
+            or not all(type(c) is int and 1 <= c <= VERSION_CODE_MAX for c in codes) or len(set(codes)) != len(codes)):
+        raise server.HttpError(400, f"download.version_codes: expected null or 1-{VERSION_CODES_MAX} distinct integers "
+                                    f"in 1..{VERSION_CODE_MAX}, got {json.dumps(codes)[:200]}")
+    return sorted(codes)
+
+
 def validate_variants(variants):
     if not isinstance(variants, list) or not 1 <= len(variants) <= 10:
         raise server.HttpError(400, "invalid variants")
@@ -808,6 +825,9 @@ def validate_variants(variants):
               "arch": _opt(d.get("arch"), ARCH_RE, "arch"),
               "dpi": None if d.get("dpi") is None else server.validate_slug(d["dpi"], "dpi"),
               "minver": _opt(d.get("minver"), MINVER_RE, "minver"), "url": url}
+        codes = _version_codes(d.get("version_codes"), d["kind"])
+        if codes is not None:   # absent when unset: rows saved before the field keep their variant hash (no rebuild)
+            dl["version_codes"] = codes
         ex = v.get("exclude_splits")
         if ex is not None:
             if not isinstance(ex, list):

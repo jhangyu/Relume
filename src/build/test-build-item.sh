@@ -67,6 +67,19 @@ if grep -q 'expected ABIs \[arm64-v8a\], found \[armeabi-v7a\]' <<<"$out" && gre
 	pass check_abis
 else fail check_abis "$out / $ok"; fi
 
+# apkm_candidates: hand-written variants table (rows 209 Android 9 480dpi, 203 480dpi, 202 120-640dpi, 203 640dpi,
+# all BUNDLE arm64-v8a; 204 APK armeabi-v7a nodpi): order, exclusion, manual codes, type fallback
+cand() { (source "$REPO/src/build/utils.sh" && apkm_candidates "$@" < "$FIX/apkm-variants.html" 2>/dev/null | cut -f2,3 | paste -sd' ' -); }
+out="$(cand BUNDLE '' '' '' arm64-v8a '' '')|$(cand BUNDLE '' '' '' arm64-v8a '' '202 203')|$(cand BUNDLE '' '' '' arm64-v8a '203' '')|$(cand APK '' '' '' arm64-v8a '' '')"
+want=$'202\tBUNDLE 203\tBUNDLE 203\tBUNDLE 209\tBUNDLE 204\tAPK|209\tBUNDLE 204\tAPK|203\tBUNDLE 203\tBUNDLE|204\tAPK 202\tBUNDLE 203\tBUNDLE 203\tBUNDLE 209\tBUNDLE'
+if [ "$out" = "$want" ]; then pass apkm_candidates; else fail apkm_candidates "$out"; fi
+
+out=$(source "$REPO/src/build/utils.sh" && read_version "$SHIM_SERVE/input.apk" && match_version APKMirror "" "1 1561173354" &&
+	echo "ok=$dl_code" && match_version APKMirror "" "7 8"; echo "rc=$? $LAST_ERR")
+if grep -q '^ok=1561173354$' <<<"$out" && grep -qxF 'rc=1 APKMirror download does not match the request: expected versionName any versionCode 7 or 8, downloaded versionName 21.20.405 versionCode 1561173354' <<<"$out"; then
+	pass match_version
+else fail match_version "$out"; fi
+
 # ---- runner cases (Task P3.3) ----
 run_runner() { (bash "$REPO/src/build/build-item.sh" "$T/job.json" > "$T/out.txt" 2>&1); echo $?; }
 fail_lines() { grep -c '^::fail::' "$T/out.txt"; }
@@ -184,6 +197,34 @@ rc1=$(run_runner)
 rm -rf "${T:?}/work" && mkdir -p "$T/work" && make_job '.' && rm "$SHIM_SERVE/input.apk"
 rc2=$(run_runner)
 if [ "$rc1" = 0 ] && [ "$rc2" = 0 ] && grep -q 'Input from cache' "$T/out.txt"; then pass runner_cache_hit; else fail runner_cache_hit "rc1=$rc1 rc2=$rc2"; fi
+
+# APKMirror cache (no versionCode in its key): served only for an expected code, checked against the file (shim 1561173354)
+AM='.recipe.variants[].download.kind="apkmirror" | .recipe.variants[].download.url=null'
+am_cache() { mkdir -p "$T/cache/$YT"; cp "$SHIM_SERVE/input.apk" "$T/cache/$YT/1.0.0-apk-any-any.apk"; }
+new_env; am_cache; make_job "$AM | .recipe.variants[].download.version_codes=[1561173354]"
+rc=$(run_runner)
+if [ "$rc" = 0 ] && grep -q 'Input from cache' "$T/out.txt" && ! grep -q '^::apkm_variant::' "$T/out.txt"; then
+	pass apkm_manual_code_cache_hit
+else fail apkm_manual_code_cache_hit "rc=$rc $(tail -3 "$T/out.txt")"; fi
+
+new_env; am_cache; make_job "$AM | .recipe.variants[].download.version_codes=[7]"
+rc=$(run_runner)
+if [ "$rc" != 0 ] && [ ! -e "$T/cache/$YT/1.0.0-apk-any-any.apk" ] &&
+	grep -qF '[!] Cached input is another APKMirror variant, downloading: APKMirror download does not match the request: expected versionName any versionCode 7, downloaded versionName 21.20.405 versionCode 1561173354' "$T/out.txt"; then
+	pass apkm_manual_code_cache_mismatch
+else fail apkm_manual_code_cache_mismatch "rc=$rc $(tail -3 "$T/out.txt")"; fi
+
+new_env; am_cache; make_job "$AM | .apkmirror_picks=[{download:.recipe.variants[0].download, version_code:1561173354, variant_url:\"https://www.apkmirror.com/v/\", bundle:false, exclude_codes:[]}]"
+rc=$(run_runner)
+if [ "$rc" = 0 ] && [ "$(grep -c '^::apkm_variant::' "$T/out.txt")" = 1 ] &&
+	grep '^::apkm_variant::' "$T/out.txt" | cut -c17- | jq -e '.version_code == 1561173354 and .version_name == "21.20.405" and
+		.variant_url == "https://www.apkmirror.com/v/" and .bundle == false and .remaining == null and .download.kind == "apkmirror"' >/dev/null; then
+	pass apkm_remembered_cache_hit_marker
+else fail apkm_remembered_cache_hit_marker "rc=$rc $(grep '^::' "$T/out.txt" | tail -3)"; fi
+
+new_env; am_cache; make_job "$AM"
+rc=$(run_runner)
+if [ "$rc" != 0 ] && ! grep -q 'Input from cache' "$T/out.txt"; then pass apkm_automatic_skips_cache; else fail apkm_automatic_skips_cache "rc=$rc"; fi
 # ---- inspect cases (Task P3.4) ----
 new_env
 o=$T/inspect
