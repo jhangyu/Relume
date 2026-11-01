@@ -124,7 +124,6 @@ def start():
 
 DISCOVERY_TIMEOUT = 2.0
 SERVICES = {'_adb-tls-pairing._tcp.local': 'pairing', '_adb-tls-connect._tcp.local': 'connect'}
-DISCOVERED = {}
 _MAX_JUMPS = 32
 
 
@@ -205,8 +204,8 @@ def _udp_socket():
 
 
 def browse(timeout=None):
-    """One mDNS query; {} when nothing answers or the network refuses (macOS bridge)."""
-    global DISCOVERED
+    """One mDNS query -> {name: {service, host, port, last_seen}}; {} when nothing answers or the network refuses
+    (macOS bridge)."""
     timeout = DISCOVERY_TIMEOUT if timeout is None else timeout
     records = []
     try:
@@ -223,10 +222,8 @@ def browse(timeout=None):
                 records += parse_packet(data)
     except OSError:
         pass
-    found = _merge(records)
     now = time.time()
-    DISCOVERED = {k: dict(v, last_seen=now) for k, v in found.items()}
-    return found
+    return {k: dict(v, last_seen=now) for k, v in _merge(records).items()}
 
 
 _CODE = re.compile(r'^[0-9]{6}$')
@@ -466,8 +463,7 @@ def resolve_devices(target):
 
 
 def discovered(req):
-    browse()
-    found = DISCOVERED
+    found = browse()
     known = {r['mdns_name']: r['id'] for r in
              db.conn().execute('SELECT id, mdns_name FROM devices WHERE mdns_name IS NOT NULL')}
     pairing = [{'name': n, 'host': e['host'], 'port': e['port'], 'last_seen': e['last_seen']}

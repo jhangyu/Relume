@@ -238,7 +238,7 @@ class DeviceRoutesTest(helpers.DataTestCase):
     def test_discovered_route(self):
         add_device(mdns_name='adb-ABC123-x1y2')
         found = dict(DISC, **{'adb-ABC123-p': {'service': 'pairing', 'host': '192.168.1.20', 'port': 41000}})
-        self.browse.side_effect = lambda: setattr(devices, 'DISCOVERED', {k: dict(v, last_seen=1.0) for k, v in found.items()})
+        self.browse.return_value = {k: dict(v, last_seen=1.0) for k, v in found.items()}
         st, body = devices.discovered(req(method='GET'))
         self.assertEqual(body['pairing'], [{'name': 'adb-ABC123-p', 'host': '192.168.1.20', 'port': 41000, 'last_seen': 1.0}])
         self.assertEqual(body['connect'][0]['device_id'], 1)

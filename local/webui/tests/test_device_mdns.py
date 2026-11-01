@@ -98,6 +98,7 @@ class MdnsTest(unittest.TestCase):
     def test_browse_collects_replies(self):
         sock = FakeSock(packets=[build_reply(), b'\x00\x01'])
         with mock.patch.object(devices, '_udp_socket', return_value=sock):
-            self.assertEqual(devices.browse(timeout=0.2), EXPECTED)
+            found = devices.browse(timeout=0.2)
+        self.assertEqual({k: {f: x for f, x in v.items() if f != 'last_seen'} for k, v in found.items()}, EXPECTED)
+        self.assertIn('last_seen', found['adb-ABC123-x1y2'])
         self.assertEqual(sock.sent[0][1], ('224.0.0.251', 5353))
-        self.assertIn('last_seen', devices.DISCOVERED['adb-ABC123-x1y2'])
