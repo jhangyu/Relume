@@ -1,6 +1,6 @@
 """Marketplace HTTP API (spec marketplace §6): every new route, on top of apps, catalog, apklocate and build.
 No route here is session-only: the Android app reaches all of them with its device token."""
-from . import apklocate, apps, build, catalog, db, devices, ota, projects
+from . import apklocate, apps, build, catalog, db, devices, jobs, ota, projects
 from .server import HttpError, is_int, validate_package
 
 SORTS = ("name", "bundles", "stars", "updated")
@@ -210,16 +210,9 @@ def catalog_status(req):
     return 200, catalog.feed_status()
 
 
-class _ServerLog:
-    """catalog.refresh log without a job: lines go to the server log."""
-
-    def line(self, text):
-        print(f"catalog refresh: {text}", flush=True)
-
-
 def catalog_refresh(req):
     try:
-        catalog.refresh(_ServerLog())
+        catalog.refresh(jobs.RequestLog("catalog refresh"))
     except catalog.CatalogRefreshBusy as e:
         raise HttpError(409, f"catalog refresh: expected idle, got busy ({e})", "catalog_refresh_busy")
     except catalog.CatalogRefreshFailed as e:

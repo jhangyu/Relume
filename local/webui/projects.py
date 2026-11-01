@@ -4,7 +4,6 @@ import os
 import re
 import shutil
 import sqlite3
-import subprocess
 import tempfile
 import urllib.parse
 import zipfile
@@ -178,10 +177,9 @@ def check_assignment(item_ids, project_ids):
 def _tool(argv, log, parse, error):
     lines = []
     # parses an untrusted downloaded APK: isolated runner uid like the inspector
-    with tempfile.TemporaryDirectory() as tmp:
-        os.chmod(tmp, 0o770)
+    with jobs.isolated_scratch("tool-") as tmp:
         try:
-            rc = jobs.run_isolated(log, argv, tmp, timeout=120, on_line=lines.append)
+            rc = jobs.run_isolated(log, argv, jobs.runner_path(tmp), timeout=120, on_line=lines.append)
         except jobs.JobTimeout as e:
             raise ValueError(str(e))
     value = parse("\n".join(lines))
@@ -521,30 +519,12 @@ def download_apk(req):
                                         "X-Relume-Package": f["package"], "X-Relume-Version-Code": str(f["version_code"])})
 
 
-class _RequestLog:
-    """_tool log in a request handler: no job to cancel, lines go to the server log."""
-
-    def line(self, text):
-        print(f"project icon: {text}", flush=True)
-
-    def run(self, argv, cwd=None, env=None, timeout=None, on_line=None):
-        try:
-            p = subprocess.run(argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT, text=True, errors="replace", timeout=timeout)
-        except subprocess.TimeoutExpired:
-            raise jobs.JobTimeout()
-        for s in p.stdout.splitlines():
-            self.line(s)
-            on_line(s)
-        return p.returncode
-
-
 def _extract_icon(d, facts):
     """Largest raster launcher icon of the release's APK copied to d/icon.<ext>, else the d/icon.none marker."""
     apk = d / sorted(f["file"] for f in facts)[0]  # one release = one package: every APK has the same icon
     try:
-        paths = _tool([*APKEDITOR, "info", "-i", jobs.runner_path(apk), "-app-icon", "-v"], _RequestLog(),
-                      _APK_ICON.findall, f"icon unreadable: {apk.name}")
+        paths = _tool([*APKEDITOR, "info", "-i", jobs.runner_path(apk), "-app-icon", "-v"],
+                      jobs.RequestLog("project icon"), _APK_ICON.findall, f"icon unreadable: {apk.name}")
     except ValueError as e:
         raise server.HttpError(500, f"no icon: {e}")
     with zipfile.ZipFile(apk) as z:

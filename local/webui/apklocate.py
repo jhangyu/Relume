@@ -4,10 +4,7 @@ runner (src/build/fetch-page.sh); this module only parses the text it wrote, rea
 import datetime
 import html.parser
 import json
-import pathlib
 import re
-import shutil
-import tempfile
 import threading
 import time
 import urllib.parse
@@ -197,9 +194,7 @@ def throttle(cancel_event):
 
 def _fetch(url, log, cancel_event):
     throttle(cancel_event)
-    work = tempfile.mkdtemp(prefix="apklocate-", dir=db.DATA / "work")
-    try:
-        pathlib.Path(work).chmod(0o770)  # the isolated runner uid shares the server's gid
+    with jobs.isolated_scratch("apklocate-") as work:
         try:
             rc = jobs.run_isolated(log, ["bash", FETCH_PAGE, url, PAGE_FILE], jobs.runner_path(work),
                                    env_keys=jobs.SOLVER_ENV, timeout=FETCH_TIMEOUT)
@@ -209,8 +204,6 @@ def _fetch(url, log, cancel_event):
             raise _block(f"FlareSolverr and CFBypass both failed on {url} (runner exit {rc})")
         with jobs.open_runner_file(work, PAGE_FILE) as f:
             raw = f.read(PAGE_MAX_BYTES + 1)
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
     if len(raw) > PAGE_MAX_BYTES:
         raise PageShape(f"page expected at most {PAGE_MAX_BYTES} bytes, got more")
     text = raw.decode("utf-8", "replace")

@@ -1,3 +1,4 @@
+import contextlib
 import json
 import os
 import pathlib
@@ -6,6 +7,7 @@ import signal
 import sqlite3
 import stat
 import subprocess
+import tempfile
 import threading
 import time
 import traceback
@@ -143,6 +145,38 @@ def run_isolated(log, argv, home, env_keys=(), env=None, timeout=None, on_line=N
     child.update(env or {})
     child['HOME'] = home
     return log.run(isolate(argv), cwd=home, env=child, timeout=timeout, on_line=on_line)
+
+
+@contextlib.contextmanager
+def isolated_scratch(prefix):
+    """Scratch dir for one isolated run: under DATA/work, which the runner sees through runner_path, mode 0770 so
+    the runner uid (same gid) can write, deleted on exit (a cleanup failure raises, as TemporaryDirectory does).
+    Pass runner_path(dir) to the child, read its files with open_runner_file(dir, ...)."""
+    with tempfile.TemporaryDirectory(prefix=prefix, dir=db.DATA / 'work') as d:
+        os.chmod(d, 0o770)
+        yield pathlib.Path(d)
+
+
+class RequestLog:
+    """Log stand-in for a run in a request handler (no job, nothing to cancel): lines go to the server log."""
+
+    def __init__(self, prefix):
+        self.prefix = prefix
+
+    def line(self, text):
+        print(f'{self.prefix}: {text}', flush=True)
+
+    def run(self, argv, cwd=None, env=None, timeout=None, on_line=None):
+        try:
+            p = subprocess.run(argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, text=True, errors='replace', timeout=timeout)
+        except subprocess.TimeoutExpired:
+            raise JobTimeout()
+        for s in p.stdout.splitlines():
+            self.line(s)
+            if on_line:
+                on_line(s)
+        return p.returncode
 
 
 def runner_path(p):

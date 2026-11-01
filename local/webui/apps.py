@@ -2,10 +2,7 @@
 the update run and the global update schedule. No routes: market.py serves them."""
 import hashlib
 import json
-import shutil
-import tempfile
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 from . import apklocate, build, catalog, db, jobs, projects, scheduler, server, settings, upstream
 
@@ -482,16 +479,12 @@ def check_versions(package, log, cancel_event):
     except apklocate.Blocked as e:
         raise failed(f'version check blocked: {e}') from None
     m = build._Markers(None, package)
-    work = Path(tempfile.mkdtemp(prefix='versions-', dir=db.DATA / 'work'))
-    try:
-        work.chmod(0o770)  # the isolated runner uid shares the server's gid
+    with jobs.isolated_scratch('versions-') as work:
         try:
             rc = jobs.run_isolated(log, ['bash', CHECK_VERSIONS, row['apkmirror_list_url']], jobs.runner_path(work),
                                    env_keys=jobs.SOLVER_ENV, timeout=CHECK_TIMEOUT, on_line=m.feed)
         except jobs.JobTimeout as e:
             raise failed(f'version check {e}') from None
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
     if cancel_event.is_set():
         return
     if rc != 0 or m.versions is None:

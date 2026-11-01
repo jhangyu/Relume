@@ -1,10 +1,8 @@
 """Upstream release tracking: check, pull, inspect (spec catalog §5)."""
 import hashlib
 import json
-import os
 import re
 import shutil
-import tempfile
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -288,12 +286,12 @@ def inspect_row(upstream_id, tag, log):
         log.line("[!] inspect skipped: CLI not downloaded")
         return
     for pkg in _packages(upstream_id):
-        with tempfile.TemporaryDirectory() as out:
-            # third-party CLI and patch bundle code: isolated runner uid, same gid writes into out
-            os.chmod(out, 0o770)
-            argv = ["bash", INSPECT, jobs.runner_path(jars[0]), pkg, out, *(jobs.runner_path(f) for f in files)]
+        # third-party CLI and patch bundle code: isolated runner uid, same gid writes into out
+        with jobs.isolated_scratch("inspect-") as out:
+            argv = ["bash", INSPECT, jobs.runner_path(jars[0]), pkg, jobs.runner_path(out),
+                    *(jobs.runner_path(f) for f in files)]
             try:
-                rc = jobs.run_isolated(log, argv, out, timeout=120)
+                rc = jobs.run_isolated(log, argv, jobs.runner_path(out), timeout=120)
             except jobs.JobTimeout as e:
                 rc = str(e)
             if rc != 0:
