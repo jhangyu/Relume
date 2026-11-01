@@ -153,10 +153,32 @@ def plan(items, artifacts, deps_by_item, direct, item_installs, proj_installs, p
     return steps
 
 
+SELF_PACKAGE = 'io.github.jhangyu.relume'   # the companion app: the one package a legacy client is offered unasked
+
+
+def _legacy_scope(item_ids, project_ids):
+    """(items, project ids) of a legacy row: ids asked for (any enabled app, any project, assigned or not), else
+    only the companion app's own item/project. Ids that do not exist drop out."""
+    c = db.conn()
+    if item_ids is None and project_ids is None:
+        item_ids = [r[0] for r in c.execute('SELECT id FROM item WHERE package = ?', (SELF_PACKAGE,))]
+        project_ids = [r[0] for r in c.execute('SELECT id FROM project WHERE package = ?', (SELF_PACKAGE,))]
+    items = [dict(r) for r in c.execute(
+        'SELECT item.id AS item_id, item.package, COALESCE(item.display_name, store_app.name, item.package) AS display_name '
+        'FROM item LEFT JOIN store_app ON store_app.package = item.package WHERE item.enabled = 1 ORDER BY item.id')
+        if r['item_id'] in (item_ids or ())]
+    return items, [p for p in (project_ids or ()) if c.execute('SELECT 1 FROM project WHERE id = ?', (p,)).fetchone()]
+
+
 def _plan_for(dev, item_ids, project_ids, present):
-    """item_ids/project_ids None = all assigned. Returns the planner inputs plus 'direct' ids and 'steps'."""
+    """item_ids/project_ids None = all assigned (a legacy row: the companion app). Returns the planner inputs plus
+    'direct' ids and 'steps'."""
     abis = abis_of(dev)
-    items = assigned_items(dev['id'], item_ids)
+    if dev['legacy']:
+        items, direct = _legacy_scope(item_ids, project_ids)
+    else:
+        items = assigned_items(dev['id'], item_ids)
+        direct = [pid for pid in projects.assigned_projects(dev['id']) if project_ids is None or pid in project_ids]
     item_inst, proj_inst = last_installs(dev['id'])
     info = {}
 
@@ -166,7 +188,6 @@ def _plan_for(dev, item_ids, project_ids, present):
         return info[pid]
     arts = {i['item_id']: build.latest_artifact(i['item_id'], first_abi(dev)) for i in items}
     deps = {i['item_id']: [p for p in map(pinfo, projects.item_projects(i['item_id'])) if p] for i in items}
-    direct = [pid for pid in projects.assigned_projects(dev['id']) if project_ids is None or pid in project_ids]
     direct_info = [p for p in map(pinfo, direct) if p]
     steps = plan(items, arts, deps, direct_info, item_inst, proj_inst, present)
     return {'items': items, 'arts': arts, 'deps': deps, 'projects': direct_info, 'item_inst': item_inst,
@@ -213,7 +234,7 @@ def _device_view(dev, states):
 
 def list_devices(req):
     states = devices.online_states()
-    rows = db.conn().execute('SELECT * FROM devices ORDER BY id').fetchall()
+    rows = db.conn().execute('SELECT * FROM devices WHERE legacy = 0 ORDER BY id').fetchall()
     return 200, {'devices': [_device_view(dict(r), states) for r in rows]}
 
 
@@ -321,7 +342,10 @@ def _me(req):
 
 
 def _me_json(dev):
-    return {'device': _device_view(dev, {}), 'tracked_packages': tracked_packages()}
+    tracked = tracked_packages()
+    if dev['legacy']:   # a legacy client reports and is offered the companion app only
+        tracked = [p for p in tracked if p == SELF_PACKAGE]
+    return {'device': _device_view(dev, {}), 'tracked_packages': tracked}
 
 
 def me(req):
@@ -401,16 +425,38 @@ def _adopt_device_uid(c, device_id, uid):
         raise HttpError(400, f'device.device_uid must match this device\'s id {have!r}, got {uid!r}')
 
 
+def _leave_legacy(c, device_id, uid):
+    """The same token syncs with a uid: the app was replaced by a current one. The legacy row becomes a normal app
+    row with that uid, or when a row with that uid exists the token moves there and the legacy row goes. -> row id."""
+    owner = c.execute('SELECT id FROM devices WHERE device_uid=?', (uid,)).fetchone()
+    if owner is None:
+        c.execute('UPDATE devices SET legacy=0, device_uid=? WHERE id=?', (uid, device_id))
+        return device_id
+    token = c.execute('SELECT token_hash FROM devices WHERE id=?', (device_id,)).fetchone()['token_hash']
+    c.execute('DELETE FROM devices WHERE id=?', (device_id,))   # token_hash is UNIQUE: free it before the move
+    c.execute('UPDATE devices SET token_hash=? WHERE id=?', (token, owner['id']))
+    return owner['id']
+
+
 def sync(req):
-    """Report + plan in one call: facts and tracked packages stored, full plan returned."""
+    """Report + plan in one call: facts and tracked packages stored, full plan returned. A legacy row (no uid yet)
+    stores nothing but the companion app's own version, which its plan needs."""
     uid, facts, packages = _parse_sync(req.json)
+    did = req.device_id
+    if _me(req)['legacy']:
+        if uid is None:
+            store_reported(did, {k: v for k, v in packages.items() if k == SELF_PACKAGE})
+            dev = _me(req)
+            return 200, dict(_me_json(dev), plan=app_plan(dev))
+        with db.tx() as c:
+            did = _leave_legacy(c, did, uid)
     with db.tx() as c:
         if uid is not None:
-            _adopt_device_uid(c, req.device_id, uid)
+            _adopt_device_uid(c, did, uid)
         c.execute('UPDATE devices SET model=?, sdk=?, android_release=?, abi_list=?, app_version_code=?, last_seen_at=? '
-                  'WHERE id=?', (*facts, db.utcnow(), req.device_id))
-    store_reported(req.device_id, packages)
-    dev = _me(req)
+                  'WHERE id=?', (*facts, db.utcnow(), did))
+    store_reported(did, packages)
+    dev = devices.get(did)
     return 200, dict(_me_json(dev), plan=app_plan(dev))
 
 
@@ -422,7 +468,7 @@ def _query_ids(req, key, have, what):
         ids = [int(x) for x in raw.split(',')]
     except ValueError:
         raise HttpError(400, f'{key} must be comma-separated integers, got {raw!r}')
-    if not set(ids) <= have:
+    if have is not None and not set(ids) <= have:
         raise HttpError(400, f'{what} not assigned to this device')
     return ids
 
@@ -430,8 +476,9 @@ def _query_ids(req, key, have, what):
 def me_plan(req):
     """?items=&projects= scope the plan like an OTA job target: either key given, the missing one means none."""
     dev = _me(req)
-    item_ids = _query_ids(req, 'items', assigned_item_ids(dev['id']), 'item')
-    project_ids = _query_ids(req, 'projects', set(projects.assigned_projects(dev['id'])), 'project')
+    legacy = dev['legacy']   # an install request of a legacy client is answered for any app, assigned or not
+    item_ids = _query_ids(req, 'items', None if legacy else assigned_item_ids(dev['id']), 'item')
+    project_ids = _query_ids(req, 'projects', None if legacy else set(projects.assigned_projects(dev['id'])), 'project')
     if item_ids is not None or project_ids is not None:
         item_ids, project_ids = item_ids or [], project_ids or []
     return 200, {'plan': app_plan(dev, item_ids, project_ids)}
@@ -479,6 +526,8 @@ def post_install(req):
         _bad('error_code', 'one of ' + ', '.join(sorted(devices.APP_ERROR_CODES)), code)
     if text is not None and not isinstance(text, str):
         _bad('error_text', 'a string or null', text)
+    if dev['legacy']:   # install-only client: the install happened, nothing about it is kept
+        return 200, {'ok': True}
     job_id, tag, pkg, vname, vcode, signer = _receipt_target(dev, b)
     now = db.utcnow()
     with db.tx() as c:
@@ -742,9 +791,7 @@ def _int_list(v):
 
 
 def ota_now(req):
-    dev = devices.get(req.params['id'])
-    if dev is None:
-        raise HttpError(404, 'device not found')
+    dev = devices._dev_or_404(req.params['id'])
     if devices.is_app(dev):
         raise HttpError(409, devices.APP_ONLY)
     body, target = req.json or {}, {'device_id': dev['id']}

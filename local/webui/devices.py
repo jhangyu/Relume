@@ -249,7 +249,7 @@ def get(device_id):
 
 def _dev_or_404(device_id):
     dev = get(device_id)
-    if dev is None:
+    if dev is None or dev['legacy']:   # a legacy row (companion up to v1.2.0) is not a device the server manages
         raise HttpError(404, 'device not found')
     return dev
 

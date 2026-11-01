@@ -355,7 +355,7 @@ def _bool(v, field):
 def _device_ids(v):
     server.int_list(v, "device_ids")
     for d in v:
-        if not db.conn().execute("SELECT 1 FROM devices WHERE id = ?", (d,)).fetchone():
+        if not db.conn().execute("SELECT 1 FROM devices WHERE id = ? AND legacy = 0", (d,)).fetchone():
             raise server.HttpError(400, f"unknown device {d}")
     return v
 

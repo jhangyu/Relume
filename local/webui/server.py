@@ -222,6 +222,8 @@ class Handler(BaseHTTPRequestHandler):
                     raise HttpError(403, 'device token required')
             elif req.device_id is not None and (method, pattern) in auth.SESSION_ONLY:
                 raise HttpError(403, 'session required')
+            if req.device_id is not None and auth.legacy_refused(req.device_id, method, pattern):
+                raise HttpError(403, auth.LEGACY_DENIED_MSG)
         return fn(req)
 
     def _read_json_body(self):

@@ -19,6 +19,7 @@ PUBLIC = {('POST', '/api/auth/login'), ('POST', '/api/auth/setup'),
 # a device token gets 403 here: these change the account or revoke another phone
 SESSION_ONLY = {('POST', '/api/auth/password'), ('POST', '/api/auth/logout'), ('PUT', '/api/settings'),
                 ('PUT', '/api/notify'), ('DELETE', '/api/devices/{id}'), ('DELETE', '/api/devices/{id}/token')}
+LEGACY_DENIED_MSG = 'this Relume app version cannot change device settings: update the app'
 DEVICE_NAME_MAX = 64
 MAX_FAILS, WINDOW, LOCK = 5, 300, 300
 REMEMBER, SHORT = 30 * 86400, 12 * 3600
@@ -128,6 +129,13 @@ def authenticate(headers):
     return None, row['id']
 
 
+def legacy_refused(device_id, method, pattern):
+    """A legacy token (companion up to v1.2.0, no device_uid) is install-only: no device-setting write."""
+    if method == 'GET' or not (pattern.startswith('/api/devices') or pattern == '/api/me/adopt'):
+        return False
+    return bool(db.conn().execute('SELECT legacy FROM devices WHERE id=?', (device_id,)).fetchone()['legacy'])
+
+
 def auth_state(req):
     return 200, {'setup_required': not account_exists()}
 
@@ -221,11 +229,14 @@ def register_device(req):
     uid, name, *hw = facts
     with db.tx() as c:
         known = uid and c.execute('SELECT id FROM devices WHERE device_uid=?', (uid,)).fetchone()
+        adb = []   # a known phone is never offered an ADB takeover: adopting would delete its own row
         if known:
             did = known['id']
             c.execute('UPDATE devices SET token_hash=?, model=?, sdk=?, android_release=?, abi_list=? WHERE id=?',
                       (token_hash(token), *hw, did))
-            adb = []   # a known phone is never offered an ADB takeover: adopting would delete its own row
+        elif uid is None:   # companion up to v1.2.0: hidden install-only row, no ADB takeover (it would split on every sign-in)
+            did = c.execute("INSERT INTO devices(name, kind, legacy, token_hash, model, sdk, android_release, abi_list) "
+                            "VALUES (?, 'app', 1, ?, ?, ?, ?, ?)", (name, token_hash(token), *hw)).lastrowid
         else:
             did = c.execute("INSERT INTO devices(device_uid, name, kind, token_hash, model, sdk, android_release, "
                             "abi_list) VALUES (?, ?, 'app', ?, ?, ?, ?, ?)",
