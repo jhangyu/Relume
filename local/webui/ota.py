@@ -18,11 +18,11 @@ def first_abi(dev):
 
 
 def assigned_items(device_id, item_ids=None):
-    """Assigned items in item id order; disabled items included."""
+    """Enabled assigned items in item id order: a removed (disabled) app is never synced."""
     rows = db.conn().execute(
         "SELECT item.id AS item_id, item.package, COALESCE(item.display_name, store_app.name, item.package) AS display_name "
         'FROM device_assignments da JOIN item ON item.id = da.item_id '
-        'LEFT JOIN store_app ON store_app.package = item.package WHERE da.device_id = ? ORDER BY item.id',
+        'LEFT JOIN store_app ON store_app.package = item.package WHERE da.device_id = ? AND item.enabled = 1 ORDER BY item.id',
         (device_id,)).fetchall()
     items = [dict(r) for r in rows]
     if item_ids is not None:
@@ -694,7 +694,8 @@ def detail(job_id):
 def on_build_succeeded(payload):
     item_id = payload.get('item_id')
     rows = db.conn().execute('SELECT d.id FROM devices d JOIN device_assignments da ON da.device_id = d.id '
-                             "WHERE d.kind = 'adb' AND d.ota_after_build = 1 AND da.item_id = ? ORDER BY d.id", (item_id,)).fetchall()
+                             "JOIN item ON item.id = da.item_id WHERE d.kind = 'adb' AND d.ota_after_build = 1 AND item.enabled = 1 "
+                             "AND da.item_id = ? ORDER BY d.id", (item_id,)).fetchall()
     for r in rows:
         jobs.enqueue('ota', {'device_id': r['id'], 'item_ids': [item_id]}, 'after_build')
 

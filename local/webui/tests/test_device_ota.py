@@ -148,14 +148,14 @@ class PlanTest(helpers.DataTestCase):
         self.assertEqual(pcalls, [['x86_64', 'x86']])
         self.assertEqual(ota.abis_of({'abi_list': ''}), ['universal'])
 
-    def test_assigned_items_id_order_incl_disabled(self):
+    def test_assigned_items_id_order_skips_disabled(self):
         add_catalog_item(1, 'a.b.one')
         add_catalog_item(2, 'a.b.two')
         add_catalog_item(3, 'a.b.three', enabled=0)
         add_catalog_item(4, 'a.b.four')
         d = add_device()
         assign(d, 4, 3, 2, 1)
-        self.assertEqual([i['item_id'] for i in ota.assigned_items(d)], [1, 2, 3, 4])
+        self.assertEqual([i['item_id'] for i in ota.assigned_items(d)], [1, 2, 4])
         self.assertEqual([i['item_id'] for i in ota.assigned_items(d, [4, 2])], [2, 4])
 
     def test_get_devices_no_adb(self):

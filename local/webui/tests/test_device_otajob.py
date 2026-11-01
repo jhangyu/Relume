@@ -169,6 +169,13 @@ class OtaJobTest(helpers.DataTestCase):
         rows = db.conn().execute("SELECT target, trigger FROM jobs WHERE kind='ota'").fetchall()
         self.assertEqual([(r['target'], r['trigger']) for r in rows], [(f'{{"device_id":{d2},"item_ids":[1]}}', 'after_build')])
 
+    def test_after_build_skips_disabled_item(self):
+        d2 = add_device(serial='SER2', after_build=1)
+        assign(d2, 1)
+        db.conn().execute('UPDATE item SET enabled = 0 WHERE id = 1')
+        ota.on_build_succeeded({'item_id': 1, 'job_id': 5, 'app_version': 'x', 'patches_version': 'v', 'artifacts': []})
+        self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM jobs WHERE kind='ota'").fetchone()[0], 0)
+
     def test_artifact_reresolved_once(self):
         self.deps = {}
         seq = [art(1, 6, str(self.yt)), art(1, 6, str(db.DATA / 'gone.apk')), art(1, 6, str(self.yt))]
