@@ -98,6 +98,30 @@ class FireTest(DataTestCase):
         self.assertEqual(tuple(row), ('2026-10-19T12:00:00Z', '2026-10-20T04:00:00Z'))
 
 
+class WaitTest(DataTestCase):
+    """The loop waits until the earliest future run, at most WALL_CLOCK_RESYNC_S, and never spins at zero."""
+
+    def wait_with(self, *runs):
+        db.conn().execute('DELETE FROM schedules')
+        for enabled, at in runs:
+            sid = scheduler.create('x', 'ota', {'all': True}, SPEC, {}, enabled)
+            db.conn().execute('UPDATE schedules SET next_run_at=? WHERE id=?', (at, sid))
+        return scheduler._next_wait(NOW)   # NOW = 2026-10-19T12:00:00Z
+
+    def test_waits_until_earliest_future_run(self):
+        self.assertEqual(self.wait_with((True, '2026-10-19T12:00:40Z'), (True, '2026-10-19T12:00:30Z'),
+                                        (False, '2026-10-19T12:00:05Z')), 30)
+
+    def test_wait_is_capped(self):
+        self.assertEqual(self.wait_with((True, '2026-10-20T04:00:00Z')), scheduler.WALL_CLOCK_RESYNC_S)
+        self.assertEqual(self.wait_with(), scheduler.WALL_CLOCK_RESYNC_S)
+
+    def test_row_still_due_after_a_pass_gives_no_zero_wait(self):
+        # a fire that raised leaves next_run_at in the past: the next pass retries it, the loop does not spin
+        self.assertEqual(self.wait_with((True, '2026-10-19T11:00:00Z'), (True, '2026-10-19T12:00:20Z')), 20)
+        self.assertEqual(self.wait_with((True, '2026-10-19T11:00:00Z')), scheduler.WALL_CLOCK_RESYNC_S)
+
+
 class RoutesTest(DataTestCase):
     def setUp(self):
         super().setUp()

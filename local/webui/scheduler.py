@@ -18,6 +18,9 @@ OPTION_KEYS = {
 UPDATE_DEFAULT = ('Update', 'update', {}, {'every': 'day', 'at': '09:00'}, {'notify': True})
 EXPAND = {'ota': lambda t: [{'device_id': i} for i in devices.resolve_devices(t)]}
 _wake = threading.Event()
+# The loop's wait runs on a monotonic clock, which does not count host suspend or wall-clock steps: re-read the wall
+# clock at least this often so a long wait (a daily run) cannot overshoot by hours after the NAS sleeps.
+WALL_CLOCK_RESYNC_S = 60
 
 
 def _tz():
@@ -171,6 +174,17 @@ def tick(now=None):
             traceback.print_exc()
 
 
+def _next_wait(now):
+    """Seconds the loop may wait after the pass at `now`: until the earliest enabled run after `now`, at most
+    WALL_CLOCK_RESYNC_S. A row still due here failed to fire in this pass (tick printed why): the next pass retries
+    it instead of the loop spinning. Writes that move a run earlier call wake()."""
+    nxt = db.conn().execute('SELECT min(next_run_at) FROM schedules WHERE enabled=1 AND next_run_at > ?',
+                            (db.iso(now),)).fetchone()[0]
+    if nxt is None:
+        return WALL_CLOCK_RESYNC_S
+    return min(WALL_CLOCK_RESYNC_S, (db.parse_iso(nxt) - now).total_seconds())
+
+
 def wake():
     _wake.set()
 
@@ -178,10 +192,13 @@ def wake():
 def _loop():
     while True:
         try:
-            tick()
+            now = _now()
+            tick(now)
+            wait = _next_wait(now)
         except Exception:
             traceback.print_exc()
-        _wake.wait(30)
+            wait = WALL_CLOCK_RESYNC_S
+        _wake.wait(wait)
         _wake.clear()
 
 
