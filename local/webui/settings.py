@@ -159,6 +159,17 @@ def server_info():
                      'artifacts_count': sum(1 for _ in arts.rglob('*.apk')) if arts.exists() else 0}}
 
 
+def shell_route(req):
+    """Sidebar status polled by every open page (app.js shell()): counts and disk totals only, no directory walk."""
+    c = db.conn()
+    counts = dict(c.execute("SELECT status, count(*) FROM jobs WHERE status IN ('running', 'queued') "
+                            "GROUP BY status").fetchall())
+    u = shutil.disk_usage(db.DATA)
+    return 200, {'running': counts.get('running', 0), 'queued': counts.get('queued', 0),
+                 'disk': {'total': u.total, 'free': u.free}, 'arch': platform.machine(),
+                 'apps_enabled': c.execute('SELECT count(*) FROM item WHERE enabled = 1').fetchone()[0]}
+
+
 def _payload(recheck=False):
     return {'job_history_count': get('job_history_count', JOB_HISTORY_DEFAULT), 'base_url': get('base_url', ''),
             'artifact_retention': get('artifact_retention', build.ARTIFACT_RETENTION_DEFAULT),
@@ -205,5 +216,6 @@ def put_route(req):
 ROUTES = [
     ('GET', '/api/health', health),
     ('GET', '/api/settings', get_route),
+    ('GET', '/api/shell', shell_route),
     ('PUT', '/api/settings', put_route),
 ]

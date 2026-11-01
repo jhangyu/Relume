@@ -267,17 +267,11 @@ export function shell() {
   $$('[data-host]').forEach(el => { el.textContent = location.hostname; });
   const box = $('[data-shell-status]'), count = $('[data-apps-count]');
   const load = async () => {
-    const [run, queued, s, apps] = await Promise.all([
-      api('GET', '/api/jobs?status=running&limit=100'),
-      api('GET', '/api/jobs?status=queued&limit=100'),
-      api('GET', '/api/settings'),
-      api('GET', '/api/apps'),
-    ]);
-    const n = run.jobs.length, m = queued.jobs.length, d = s.server.disk;
-    box.innerHTML = html`<span class="row"><span class="dot ${n ? 'on' : 'off'}" aria-hidden="true"></span>${n ? 'Worker busy' : 'Idle'} · ${n} running · ${m} queued</span><span>Disk ${fmt.gb(d.total - d.free)} / ${fmt.gb(d.total)} GB · ${s.server.arch}</span>`;
-    count.textContent = apps.apps.length;
+    const s = await api('GET', '/api/shell'), n = s.running, m = s.queued, d = s.disk;
+    box.innerHTML = html`<span class="row"><span class="dot ${n ? 'on' : 'off'}" aria-hidden="true"></span>${n ? 'Worker busy' : 'Idle'} · ${n} running · ${m} queued</span><span>Disk ${fmt.gb(d.total - d.free)} / ${fmt.gb(d.total)} GB · ${s.arch}</span>`;
+    count.textContent = s.apps_enabled;
     count.hidden = false;
-    count.setAttribute('aria-label', `${apps.apps.length} enabled apps`);
+    count.setAttribute('aria-label', `${s.apps_enabled} enabled apps`);
   };
   const refresh = () => load().catch(err => console.error('shell status:', err));
   refresh();
