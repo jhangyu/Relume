@@ -32,7 +32,7 @@ class StartupTest(DataTestCase):
                 mock.patch.object(cli.jobs, 'recover', lambda: calls.append('jobs.recover')), \
                 mock.patch.object(cli.scheduler, 'start', lambda: calls.append('scheduler.start')):
             cli.boot(start=True, names=names)
-        self.assertEqual(calls, ['devices.register', 'jobs.recover', 'jobs.start', 'scheduler.start', 'devices.start'])
+        self.assertEqual(calls, ['devices.register', 'jobs.recover', 'devices.start', 'jobs.start', 'scheduler.start'])
         self.assertNotIn('password', out.getvalue())
         self.assertIsNone(db.conn().execute("SELECT 1 FROM settings WHERE key LIKE 'admin_%'").fetchone())
 

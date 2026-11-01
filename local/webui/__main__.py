@@ -38,11 +38,11 @@ def boot(start=False, names=None):
         auth.apply_env_password()
         settings.check_token_file()
         jobs.recover()
-        jobs.start()
-        scheduler.start()
-        for m in mods:
+        for m in mods:   # before any job worker: build.start() clears DATA/work, where running jobs keep their scratch dirs
             if hasattr(m, 'start'):
                 m.start()
+        jobs.start()
+        scheduler.start()
     return mods
 
 
