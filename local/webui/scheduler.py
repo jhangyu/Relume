@@ -247,18 +247,23 @@ def create_route(req):
                                b.get('options'), b.get('enabled', True))}
 
 
-def update_route(req):
-    r = _row(req.params['id'])
-    cur = {k: json.loads(r[k]) for k in ('target', 'spec', 'options')}
-    cur.update(name=r['name'], kind=r['kind'], enabled=bool(r['enabled']))
-    _require_ota(req.json.get('kind', 'ota'))
-    v = _validate(req.json, cur)
-    nxt = db.iso(next_run(v['spec'], _now(), db.parse_iso(r['last_run_at']))) if v['enabled'] else None
+def update(row, body):
+    """Save a schedule edit: body validated over the stored row, next run computed (None when disabled), loop woken."""
+    cur = {k: json.loads(row[k]) for k in ('target', 'spec', 'options')}
+    cur.update(name=row['name'], kind=row['kind'], enabled=bool(row['enabled']))
+    v = _validate(body, cur)
+    nxt = db.iso(next_run(v['spec'], _now(), db.parse_iso(row['last_run_at']))) if v['enabled'] else None
     with db.tx() as c:
         c.execute('UPDATE schedules SET name=?, target=?, spec=?, options=?, enabled=?, next_run_at=? WHERE id=?',
                   (v['name'], jobs.canon(v['target']), jobs.canon(v['spec']), jobs.canon(v['options']),
-                   int(v['enabled']), nxt, r['id']))
+                   int(v['enabled']), nxt, row['id']))
     wake()
+
+
+def update_route(req):
+    r = _row(req.params['id'])
+    _require_ota(req.json.get('kind', 'ota'))
+    update(r, req.json)
     return 200, _to_json(_row(r['id']), _now())
 
 

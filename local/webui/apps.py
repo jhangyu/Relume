@@ -446,14 +446,7 @@ def put_schedule(fields):
     r = _schedule_row()
     if not isinstance(fields, dict) or set(fields) - {'spec', 'enabled', 'options'}:
         raise server.HttpError(400, f'schedule expected an object with spec, enabled, options, got {fields!r}')
-    cur = {'name': r['name'], 'kind': 'update', 'target': {}, 'spec': json.loads(r['spec']),
-           'options': json.loads(r['options']), 'enabled': bool(r['enabled'])}
-    v = scheduler._validate(fields, cur)
-    nxt = db.iso(scheduler.next_run(v['spec'], scheduler._now(), db.parse_iso(r['last_run_at']))) if v['enabled'] else None
-    with db.tx() as c:
-        c.execute('UPDATE schedules SET spec = ?, options = ?, enabled = ?, next_run_at = ? WHERE id = ?',
-                  (jobs.canon(v['spec']), jobs.canon(v['options']), int(v['enabled']), nxt, r['id']))
-    scheduler.wake()
+    scheduler.update(r, fields)
     return get_schedule()
 
 

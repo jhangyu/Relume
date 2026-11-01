@@ -68,6 +68,16 @@ class FireTest(DataTestCase):
         scheduler.fire(self.update_row(), NOW)
         self.assertEqual(self.jobs(), [('upstream', 'schedule', row['id'], '{"all":true}', '{"notify":false}')])
 
+    def test_update_row_edit_keeps_name_and_target(self):
+        scheduler.ensure_update()
+        with mock.patch.object(scheduler, '_now', return_value=NOW):
+            scheduler.update(self.update_row(), {'spec': {'every': 'hours', 'hours': 2}, 'options': {'notify': False}})
+        r = self.update_row()
+        self.assertEqual((r['name'], r['target'], json.loads(r['options']), r['next_run_at']),
+                         ('Update', '{}', {'notify': False}, '2026-10-19T14:00:00Z'))
+        scheduler.update(r, {'enabled': False})
+        self.assertIsNone(self.update_row()['next_run_at'])
+
     def test_update_target_and_options(self):
         from webui.server import HttpError
         for target, options in (({'all': True}, {}), ({}, {'build': True}), ({}, {'notify': 1})):
