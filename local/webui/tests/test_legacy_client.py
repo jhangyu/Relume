@@ -79,12 +79,31 @@ class LegacyClientTest(DataTestCase):
         self.assertEqual(tuple(db.conn().execute('SELECT * FROM devices WHERE id=?', (self.did,)).fetchone()), before)
 
     def test_device_setting_writes_refused(self):
-        for method, path, body in (('PUT', f'/api/devices/{self.did}/assignments', {'item_ids': [], 'project_ids': [1]}),
+        for method, path, body in (('PUT', f'/api/devices/{self.did + 1}/assignments', {'item_ids': [], 'project_ids': [1]}),
                                    ('POST', '/api/me/adopt', {'device_id': 1}),
                                    ('PATCH', f'/api/devices/{self.did}', {'name': 'x'})):
             st, _, raw = self.bearer(method, path, body)
             self.assertEqual(st, 403, (path, raw))
         self.assertEqual(count('SELECT count(*) FROM device_projects'), 0)
+
+    def test_begin_install_sequence_of_v1_2_0(self):
+        """AppModel.beginInstall: me -> PUT assignments (own id, app not assigned yet) -> plan(ids) -> receipt.
+        The old app drops the whole install on any non-401 error of a step."""
+        st, _, raw = self.bearer('GET', '/api/me')
+        dev = json.loads(raw)['device']
+        self.assertEqual((st, dev['assignments'], dev['id']), (200, [], self.did))
+        st, _, raw = self.bearer('PUT', f'/api/devices/{self.did}/assignments', {'item_ids': [], 'project_ids': [2]})
+        self.assertEqual(st, 200, raw)
+        got = json.loads(raw)['device']
+        self.assertEqual({k: got[k] for k in ('id', 'name', 'kind', 'model', 'sdk', 'android_release', 'app_version_code',
+                                              'created_at', 'last_seen_at')},
+                         {'id': self.did, 'name': 'Pixel 8', 'kind': 'app', 'model': 'Pixel 8', 'sdk': 35,
+                          'android_release': '15', 'app_version_code': None, 'created_at': got['created_at'],
+                          'last_seen_at': None})
+        self.assertEqual(count('SELECT count(*) FROM device_projects'), 0)
+        self.assertEqual([(s['ref_id'], s['action']) for s in self.steps('/api/me/plan?projects=2')], [(2, 'install')])
+        receipt = {'kind': 'project', 'ref_id': 2, 'result': 'installed', 'tag': '2.0'}
+        self.assertEqual(self.bearer('POST', '/api/me/installs', receipt)[0], 200)
 
     def test_receipt_accepted_not_recorded(self):
         for body in ({'kind': 'project', 'ref_id': 1, 'result': 'installed', 'tag': '1.3.0'},

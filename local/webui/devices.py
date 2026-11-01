@@ -424,6 +424,13 @@ def delete_device(req):
 
 def put_assignments(req):
     """Items replace device_assignments; project_ids, when present, replace device_projects (spec follow-project 5.5)."""
+    me = get(req.device_id) if req.device_id is not None else None
+    if me and me['legacy']:
+        # Companion up to v1.2.0 assigns the app to its own row before every install and gives up on any error:
+        # answer as if done, change nothing (the explicit-id plan that follows needs no assignment).
+        if req.params['id'] != me['id']:
+            raise HttpError(403, 'a legacy token can only name its own device')
+        return 200, {'device': device_json(me, {})}
     dev = _dev_or_404(req.params['id'])
     body = req.json or {}
     ids, pids = body.get('item_ids'), body.get('project_ids')

@@ -131,8 +131,9 @@ def authenticate(headers):
 
 def legacy_refused(device_id, method, pattern):
     """A legacy token (companion up to v1.2.0, no device_uid) is install-only: no device-setting write."""
-    if method == 'GET' or not (pattern.startswith('/api/devices') or pattern == '/api/me/adopt'):
-        return False
+    if method == 'GET' or pattern == '/api/devices/{id}/assignments' or not (
+            pattern.startswith('/api/devices') or pattern == '/api/me/adopt'):
+        return False   # assignments: a no-op answer in devices.put_assignments, the old app aborts installs on an error
     return bool(db.conn().execute('SELECT legacy FROM devices WHERE id=?', (device_id,)).fetchone()['legacy'])
 
 
