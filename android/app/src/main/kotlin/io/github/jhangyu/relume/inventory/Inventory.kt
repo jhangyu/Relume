@@ -33,21 +33,16 @@ object Inventory {
 
     fun read(context: Context, tracked: List<String>): List<InstalledPackage> = tracked.mapNotNull { installed(context, it) }
 
-    /** Null = not installed. */
-    fun installed(context: Context, packageName: String): InstalledPackage? = try {
-        packageFacts(context.packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES))
+    /** The installed package with its signing certificates; null = not installed. */
+    fun packageInfo(context: Context, packageName: String): PackageInfo? = try {
+        context.packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
     } catch (e: PackageManager.NameNotFoundException) {
         // The API's defined answer for "not installed" (spec 9.6): the package is omitted.
         null
     }
 
-    /** `PackageInfo.lastUpdateTime` of [packageName]; null = not installed. */
-    fun lastUpdateTime(context: Context, packageName: String): Long? = try {
-        context.packageManager.getPackageInfo(packageName, 0).lastUpdateTime
-    } catch (e: PackageManager.NameNotFoundException) {
-        // The API's defined answer for "not installed".
-        null
-    }
+    /** Null = not installed. */
+    fun installed(context: Context, packageName: String): InstalledPackage? = packageInfo(context, packageName)?.let { packageFacts(it) }
 
     /** True when installing [packageName] through this app prompts once: not installed, or another installer of record (spec 8.3). */
     fun needsConfirmation(context: Context, packageName: String): Boolean {

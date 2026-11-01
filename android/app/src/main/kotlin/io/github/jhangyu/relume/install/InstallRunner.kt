@@ -231,7 +231,8 @@ object InstallRunner {
     private fun lostSession(context: Context, s: StepRun): StepOutcome {
         val d = checkNotNull(s.step.download) { "step ${s.step.displayName}: committed without a download" }
         val pkg = s.step.packageName
-        val done = VerifyRules.installedBySession(d, Inventory.installed(context, pkg), Inventory.lastUpdateTime(context, pkg), s.priorUpdateTime)
+        val info = Inventory.packageInfo(context, pkg)
+        val done = VerifyRules.installedBySession(d, info?.let { Inventory.packageFacts(it) }, info?.lastUpdateTime, s.priorUpdateTime)
         // Every reconcile (start, reconcileOnStart) closes through here: the patch record follows the installed outcome.
         if (done) recordPatch(context, s.step)
         return if (done) StepOutcome(StepState.INSTALLED, null, null)

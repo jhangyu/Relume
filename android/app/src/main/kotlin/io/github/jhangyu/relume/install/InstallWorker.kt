@@ -104,7 +104,7 @@ class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorke
             sessionId = id
             // Recorded at once: reconcileOnStart keeps referenced sessions, the result broadcast finds the step by id. The
             // package's update time now tells a lost session's reconcile whether the phone replaced the package after it.
-            val prior = Inventory.lastUpdateTime(ctx, s.step.packageName)
+            val prior = Inventory.packageInfo(ctx, s.step.packageName)?.lastUpdateTime
             if (!move(ctx, index, setOf(StepState.VERIFYING), StepState.VERIFYING, id, prior)) {
                 Installer.abandon(ctx, id)
                 return false
