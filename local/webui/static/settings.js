@@ -173,14 +173,14 @@ async function loadCatalog() {
 async function loadAppDevices() {
   const { devices } = await api('GET', '/api/devices');
   const apps = Z.appDevs = devices.filter(d => d.kind === 'app');
-  $('#app-devs').innerHTML = html`${apps.length ? apps.map(d => html`<li data-app-dev="${d.id}"><div><div class="sm" style="font-weight:500">${d.name}</div><div class="xs muted">${d.model} · Android ${d.android_release} · created ${fmt.abs(d.created_at)} · last seen ${fmt.rel(d.last_seen_at)}</div></div>${d.has_token ? html`<button class="btn small danger" type="button" data-revoke="${d.id}">Revoke</button>` : html`<span class="badge">revoked</span><button class="btn small danger" type="button" data-remove="${d.id}">Remove</button>`}</li>`) : html`<li><span class="sm muted">No phones have signed in with the app.</span></li>`}`;
+  $('#app-devs').innerHTML = html`${apps.length ? apps.map(d => html`<li data-app-dev="${d.id}"><div><div class="sm" style="font-weight:500">${d.name}</div><div class="xs muted">${d.model} · Android ${d.android_release} · created ${fmt.abs(d.created_at)} · last seen ${fmt.rel(d.last_seen_at)}</div></div>${d.has_token ? html`<button class="btn small danger" type="button" data-revoke="${d.id}">Revoke</button>` : html`<span class="badge">revoked</span>`}<button class="btn small danger" type="button" data-remove="${d.id}">Remove</button></li>`) : html`<li><span class="sm muted">No phones have signed in with the app.</span></li>`}`;
 }
 
 $('#app-devs').addEventListener('click', async e => {
   const rm = e.target.closest('[data-remove]');
   if (rm) {
     const d = Z.appDevs.find(x => x.id === Number(rm.dataset.remove));
-    const body = html`<strong>${d.name}</strong> is deleted with its app assignments and install history.`;
+    const body = html`<strong>${d.name}</strong> is deleted with its app assignments and install history.${d.has_token ? html` It is also signed out of the app.` : ''}`;
     if (!await confirmDialog({ title: 'Remove this phone?', body, action: 'Remove' })) return;
     await act('DELETE', `/api/devices/${d.id}`, {}, 'Phone removed');
     await loadAppDevices();

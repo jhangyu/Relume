@@ -28,7 +28,7 @@ function appCard(d) {
 <p class="xs muted">${d.model} · Android ${d.android_release} · app version ${d.app_version_code == null ? 'not reported' : d.app_version_code} · last report ${fmt.rel(lastReport || d.last_seen_at)}</p></div>
 <div class="card-pad stack-sm"><ul class="alist two">${d.assignments.map(a => html`<li><span>${label(a.item_id)} <span class="xs muted mono">${reported(a.installed_reported)}${a.available ? ` → ${a.available.version_name}` : ''}</span></span><span class="xs ${a.pending ? 'newer' : 'muted'}">${a.pending ? 'pending' : 'current'}</span></li>`)}</ul>
 ${d.projects.length ? html`<ul class="alist two">${d.projects.map(x => html`<li><span>${x.display_name} <span class="xs muted mono">${reported(x.installed_reported)} → ${x.available_tag || '—'}</span></span><span class="xs ${x.pending ? 'newer' : 'muted'}">${x.pending ? 'pending' : 'current'}</span></li>`)}</ul>` : ''}</div>
-<div class="dlg-actions"><button class="btn subtle" type="button" data-assign>Edit apps…</button><span class="grow"></span>${d.has_token ? html`<a class="btn subtle danger" href="/settings.html">Revoke in Settings</a>` : html`<button class="btn subtle danger" type="button" data-remove-app>Remove</button>`}</div></section>`;
+<div class="dlg-actions"><button class="btn subtle" type="button" data-assign>Edit apps…</button><span class="grow"></span>${d.has_token ? html`<a class="btn subtle danger" href="/settings.html">Revoke in Settings</a>` : ''}<button class="btn subtle danger" type="button" data-remove-app>Remove</button></div></section>`;
 }
 
 function card(d) {
@@ -167,7 +167,7 @@ document.addEventListener('click', async e => {
     }
     if (d && t('[data-ota]')) await act('POST', `/api/devices/${d.id}/ota`, {}, `OTA queued on ${d.name}`);
     else if (d && t('[data-remove-app]')) {
-      if (!await confirmDialog({ title: 'Remove this phone?', body: html`<strong>${d.name}</strong> is deleted with its app assignments and install history.`, action: 'Remove' })) return;
+      if (!await confirmDialog({ title: 'Remove this phone?', body: html`<strong>${d.name}</strong> is deleted with its app assignments and install history.${d.has_token ? html` It is also signed out of the app.` : ''}`, action: 'Remove' })) return;
       await act('DELETE', `/api/devices/${d.id}`, {}, 'Phone removed');
     } else if (d && t('[data-unpair]')) {
       if (!await confirmDialog({ title: 'Remove device?', body: html`<strong>${d.name}</strong> is removed. On the phone, also tap Forget under Wireless debugging.`, action: 'Remove' })) return;
