@@ -2,7 +2,6 @@ import datetime
 import hashlib
 import hmac
 import http.cookies
-import json
 import math
 import os
 import re
@@ -80,8 +79,7 @@ def apply_env_password():
         print(f'{ADMIN_PASSWORD_ENV} ignored: no admin account yet, create it on the setup page first', flush=True)
         return
     with db.tx() as c:  # one transaction: the new hash and the sign-out of old sessions happen together
-        c.execute('INSERT INTO settings(key, value) VALUES (?, ?) '
-                  'ON CONFLICT(key) DO UPDATE SET value=excluded.value', ('admin_password_hash', json.dumps(hash_password(pw))))
+        settings.put('admin_password_hash', hash_password(pw), c=c)
         c.execute('DELETE FROM sessions')
     print(f'admin password set from {ADMIN_PASSWORD_ENV}, all sessions signed out', flush=True)
 
@@ -163,8 +161,7 @@ def setup(req):
         if len(have) == 2:
             return 409, {'error': 'already set up'}
         for k, v in (('admin_username', username), ('admin_password_hash', stored)):
-            c.execute('INSERT INTO settings(key, value) VALUES (?, ?) '
-                      'ON CONFLICT(key) DO UPDATE SET value=excluded.value', (k, json.dumps(v)))
+            settings.put(k, v, c=c)
     _, cookie = create_session(bool(req.json.get('remember', True)))
     return 200, {'ok': True}, {'Set-Cookie': cookie}
 

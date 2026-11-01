@@ -25,10 +25,16 @@ def get(key, default=None):
     return json.loads(r['value']) if r else default
 
 
-def put(key, value):
+_UPSERT = 'INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value'
+
+
+def put(key, value, c=None):
+    """Upsert one setting. Pass `c` (a connection inside an open db.tx()) to write as part of the caller's transaction."""
+    if c is not None:
+        c.execute(_UPSERT, (key, json.dumps(value)))
+        return
     with db.tx() as c:
-        c.execute('INSERT INTO settings(key, value) VALUES (?, ?) '
-                  'ON CONFLICT(key) DO UPDATE SET value=excluded.value', (key, json.dumps(value)))
+        c.execute(_UPSERT, (key, json.dumps(value)))
 
 
 def ui_token_path():
