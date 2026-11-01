@@ -2,7 +2,6 @@
 or a later project assignment."""
 from webui import db, ota, projects
 from webui.server import HttpError
-from webui.server import HttpError
 from webui.tests import helpers
 from webui.tests.device_helpers import add_app_device, add_catalog_item, add_project, assign, req
 
