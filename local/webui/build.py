@@ -178,8 +178,6 @@ def _register(job, item_id, inp, work, result, failed_patches, sha, cache_names)
                   "inputs_sha = ?, apk_cache = ? WHERE job_id = ?",
                   (result["app_version"], inp["upstream_tag"], inp["cli_tag"], json.dumps(failed_patches) if failed_patches else None,
                    sha, json.dumps(cache_names), job.id))
-    for p in _stale_cache(inp["package"], set(cache_names)):   # the runner no longer deletes older cached versions
-        _remove(p)
     run_retention(item_id)
     events.emit("build.succeeded", {"item_id": item_id, "job_id": job.id, "app_version": result["app_version"],
                                     "patches_version": inp["upstream_tag"], "artifacts": ids})
@@ -313,9 +311,19 @@ def _stale_cache(package, keep):
 
 def _remove(p):
     if p.is_dir():
-        shutil.rmtree(p, ignore_errors=True)
+        shutil.rmtree(p)
     else:
         p.unlink(missing_ok=True)
+
+
+def _prune_cache(job, package, keep, log):
+    """After a published build: remove the app's cache entries it did not record (the runner no longer deletes older
+    versions). A failure is logged, not fatal: the build is already published and clean-up removes the leftovers."""
+    for p in _stale_cache(package, keep):
+        try:
+            _remove(p)
+        except OSError as e:
+            log.line(f"[!] apk-cache prune failed: {p}: {e}; artifact of job {job.id} kept, clean-up removes the file")
 
 
 class _Rejected(NamedTuple):
@@ -399,6 +407,7 @@ def _attempt(job, item_id, inp, awork, googleplay, auto, sha, log):
         except OSError as e:
             shutil.rmtree(db.DATA / "artifacts" / str(item_id) / str(job.id), ignore_errors=True)
             _fail(job, item_id, "internal", f"artifact rejected: {e}")
+        _prune_cache(job, inp["package"], {n for _, n in cache}, log)
         return None
     if not (used and verdict[0] == "nothing_applied"):   # R0, R2: not a verdict on the variant
         _fail(job, item_id, "patch_items_failed", verdict[1])

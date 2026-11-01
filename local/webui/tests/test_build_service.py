@@ -833,6 +833,19 @@ class CleanupTest(BuildCase):
         _, paths, _ = build._cleanup_plan()
         self.assertEqual(paths, [cache / "com.gone", cache / YT / "0.9.0-apk-any-any.apk"])
 
+    def test_prune_failure_keeps_the_published_build(self):
+        # review r2b S1: a prune error after the artifacts commit must not run the "artifact rejected" path
+        stale = self.data / "apk-cache" / YT / "0.8.0-apk-any-any.apk"
+        stale.parent.mkdir(parents=True, exist_ok=True)
+        stale.write_bytes(b"x")
+        with mock.patch.object(build, "_remove", side_effect=PermissionError("denied")):
+            job, log, err = self.run_handler()
+        self.assertIsNone(err)
+        rows = db.conn().execute("SELECT path FROM artifacts WHERE job_id = ?", (job.id,)).fetchall()
+        self.assertEqual([Path(r["path"]).is_file() for r in rows], [True, True])
+        self.assertIn(f"[!] apk-cache prune failed: {stale}: denied; artifact of job {job.id} kept, clean-up removes the file",
+                      log.lines)
+
 
 if __name__ == "__main__":
     unittest.main()
