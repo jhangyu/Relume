@@ -9,7 +9,7 @@ import secrets
 import threading
 import time
 
-from . import db, ota, settings
+from . import catalog, db, ota, settings
 from .server import HttpError
 
 COOKIE = 'relume_session'
@@ -145,8 +145,15 @@ def legacy_refused(device_id, method, pattern):
     return bool(row and row['legacy'])
 
 
+def client_limits():
+    """Rules the server owns and the clients must not copy (web pages, companion). Public: nothing secret."""
+    return {'min_password': MIN_PASSWORD, 'abis': list(catalog.ABIS),
+            'engines': {name: {'kind': e['kind'], 'max_sigbypass': e.get('max_sigbypass')}
+                        for name, e in catalog.ENGINES.items()}}
+
+
 def auth_state(req):
-    return 200, {'setup_required': not account_exists()}
+    return 200, {'setup_required': not account_exists(), 'limits': client_limits()}
 
 
 def setup(req):

@@ -74,9 +74,11 @@ class AuthTest(DataTestCase):
         self.assertEqual(http('GET', self.base + '/api/jobs', cookie=a)[0], 200)
 
     def test_state_and_boot_silent(self):
-        self.assertEqual(json.loads(http('GET', self.base + '/api/auth/state')[2]), {'setup_required': True})
+        state = json.loads(http('GET', self.base + '/api/auth/state')[2])
+        self.assertTrue(state['setup_required'])
+        self.assertEqual(state['limits']['min_password'], auth.MIN_PASSWORD)   # the login and settings pages enforce it from here
         settings.put('admin_password_hash', auth.hash_password('x' * 10))   # hash without username = no account
-        self.assertEqual(json.loads(http('GET', self.base + '/api/auth/state')[2]), {'setup_required': True})
+        self.assertTrue(json.loads(http('GET', self.base + '/api/auth/state')[2])['setup_required'])
         self.assertEqual(http('GET', self.base + '/api/jobs')[0], 401)
 
     def test_setup(self):
@@ -89,7 +91,7 @@ class AuthTest(DataTestCase):
         self.assertEqual(http('GET', self.base + '/api/jobs', cookie=h['Set-Cookie'].split(';')[0])[0], 200)
         st, _, body = http('POST', url, {'username': 'other', 'password': 'long-enough-pw'})
         self.assertEqual((st, json.loads(body)), (409, {'error': 'already set up'}))
-        self.assertEqual(json.loads(http('GET', self.base + '/api/auth/state')[2]), {'setup_required': False})
+        self.assertFalse(json.loads(http('GET', self.base + '/api/auth/state')[2])['setup_required'])
 
     def test_concurrent_setup_one_winner(self):
         url = self.base + '/api/auth/setup'
