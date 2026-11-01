@@ -478,8 +478,9 @@ def delete_project(req):
         raise server.HttpError(409, "pull queued or running")
     with db.tx() as c:
         c.execute("DELETE FROM project WHERE id = ?", (pid,))
-        c.execute("DELETE FROM upstream WHERE id = ?", (uid,))
-    shutil.rmtree(db.DATA / "upstream" / str(uid), ignore_errors=True)
+        dropped = catalog.drop_upstream_if_unused(c, uid)   # a project's row is never shared: always True today
+    if dropped:
+        shutil.rmtree(db.DATA / "upstream" / str(uid), ignore_errors=True)
     return 200, {"ok": True}
 
 

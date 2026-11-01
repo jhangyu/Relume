@@ -563,9 +563,24 @@ def app_bundles(package):
 
 # ---- bundle -> upstream (catalog part §4) ----
 
+def _find_upstream(c, repo, channel, tag):
+    """(id, kind) row of the upstream (repo, channel, tag), or None."""
+    return c.execute("SELECT id, kind FROM upstream WHERE repo = ? AND channel = ? AND ifnull(tag, '') = ifnull(?, '')",
+                     (repo, channel, tag)).fetchone()
+
+
+def drop_upstream_if_unused(c, uid):
+    """Delete the upstream row when no bundle and no project uses it. True = deleted: the caller removes
+    DATA/upstream/<uid> after its commit."""
+    used = c.execute("""SELECT EXISTS(SELECT 1 FROM bundle WHERE upstream_id = ?)
+        OR EXISTS(SELECT 1 FROM project WHERE upstream_id = ?)""", (uid, uid)).fetchone()[0]
+    if not used:
+        c.execute("DELETE FROM upstream WHERE id = ?", (uid,))
+    return not used
+
+
 def upstream_row(c, kind, repo, channel, tag, asset_regex):
-    r = c.execute("SELECT id, kind FROM upstream WHERE repo = ? AND channel = ? AND ifnull(tag, '') = ifnull(?, '')",
-                  (repo, channel, tag)).fetchone()
+    r = _find_upstream(c, repo, channel, tag)
     if r is not None:
         if r["kind"] != kind:
             raise server.HttpError(400, "upstream kind conflict")
@@ -586,8 +601,7 @@ def _bundle_row(bundle_id):
 def engine_cli(engine):
     """Upstream id of the engine's CLI row; the row is created on first use (the migration keeps the live ones)."""
     repo, channel, tag, rx = ENGINE_CLI[engine]
-    r = db.conn().execute("SELECT id FROM upstream WHERE repo = ? AND channel = ? AND ifnull(tag, '') = ifnull(?, '')",
-                          (repo, channel, tag)).fetchone()
+    r = _find_upstream(db.conn(), repo, channel, tag)
     if r is not None:
         return r["id"]
     with db.tx() as c:
@@ -612,7 +626,7 @@ def ensure_upstream(bundle_id):
 def set_source(bundle_id, channel, tag):
     """Repoint the bundle to the upstream row of (repo, channel, tag): channel None keeps the current one, tag None
     tracks the newest release. Returns the new upstream id, or None when the bundle is on that source already.
-    The old row goes when nothing else uses it (same rule as delete_custom)."""
+    The old row goes when nothing else uses it (drop_upstream_if_unused)."""
     old_id = ensure_upstream(bundle_id)
     with db.tx() as c:
         old = c.execute("SELECT repo, kind, channel, tag, asset_regex FROM upstream WHERE id = ?", (old_id,)).fetchone()
@@ -621,10 +635,7 @@ def set_source(bundle_id, channel, tag):
             return None
         new_id = upstream_row(c, old["kind"], old["repo"], channel, tag, old["asset_regex"])
         c.execute("UPDATE bundle SET upstream_id = ? WHERE id = ?", (new_id, bundle_id))
-        orphan = not c.execute("""SELECT EXISTS(SELECT 1 FROM bundle WHERE upstream_id = ?)
-            OR EXISTS(SELECT 1 FROM project WHERE upstream_id = ?)""", (old_id, old_id)).fetchone()[0]
-        if orphan:
-            c.execute("DELETE FROM upstream WHERE id = ?", (old_id,))
+        orphan = drop_upstream_if_unused(c, old_id)
     if orphan:
         shutil.rmtree(db.DATA / "upstream" / str(old_id), ignore_errors=True)
     return new_id
@@ -745,11 +756,8 @@ def delete_custom(bundle_id):
             raise server.HttpError(409, f"custom source {r['repo']} is used by apps {used}", code="source_in_use",
                                    item_ids=used)
         c.execute("DELETE FROM bundle WHERE id = ?", (bundle_id,))
-        keep = uid is None or c.execute("""SELECT EXISTS(SELECT 1 FROM bundle WHERE upstream_id = ?)
-            OR EXISTS(SELECT 1 FROM project WHERE upstream_id = ?)""", (uid, uid)).fetchone()[0]
-        if not keep:
-            c.execute("DELETE FROM upstream WHERE id = ?", (uid,))
-    if not keep:
+        dropped = uid is not None and drop_upstream_if_unused(c, uid)
+    if dropped:
         shutil.rmtree(db.DATA / "upstream" / str(uid), ignore_errors=True)
 
 
