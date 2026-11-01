@@ -77,6 +77,21 @@ internal fun withKind(variants: List<JsonObject>, kind: String): List<JsonObject
     JsonObject(v + ("download" to JsonObject(dl + ("kind" to JsonPrimitive(kind)))))
 }
 
+/** APKMirror versionCodes of the first variant (all variants carry the same list); empty = automatic. */
+internal fun versionCodesOf(v: JsonObject): List<Int> =
+    ((v["download"] as? JsonObject)?.get("version_codes") as? JsonArray)?.map { it.jsonPrimitive.content.toInt() }.orEmpty()
+
+/** Comma or space separated digits; blank = automatic (empty list). Null = not a list of ints. Range limits are the server's. */
+internal fun parseVersionCodes(text: String): List<Int>? =
+    text.split(Regex("[,\\s]+")).filter(String::isNotEmpty).map { it.toIntOrNull() ?: return null }
+
+/** Every variant's download gets `version_codes`: the list, or null when empty (same way as `kind`). */
+internal fun withVersionCodes(variants: List<JsonObject>, codes: List<Int>): List<JsonObject> = variants.map { v ->
+    val dl = (v["download"] as? JsonObject).orEmpty()
+    val value = if (codes.isEmpty()) JsonNull else JsonArray(codes.map(::JsonPrimitive))
+    JsonObject(v + ("download" to JsonObject(dl + ("version_codes" to value))))
+}
+
 private fun JsonObject?.orEmpty(): JsonObject = this ?: JsonObject(emptyMap())
 
 /** Lookup states the manual retry refuses (409): the URL is already known. */
@@ -147,6 +162,11 @@ fun AppSettingsScreen(model: AppModel, appId: Int, onBack: () -> Unit, onOpenLog
         var pureUrl by remember(d) { mutableStateOf(dl.apkpureUrl.orEmpty()) }
         val kindNow = kindOf(s.variants.first())
         var kind by remember(d) { mutableStateOf(kindNow) }
+        val codesNow = versionCodesOf(s.variants.first())
+        var codesText by remember(d) { mutableStateOf(codesNow.joinToString(", ")) }
+        val parsedCodes = parseVersionCodes(codesText)
+        // Another source keeps no codes (the server rejects them for a non-APKMirror kind).
+        val codes = if (kind == KIND_APKMIRROR) parsedCodes.orEmpty() else emptyList()
         var badOptions by remember(d) { mutableStateOf(emptySet<String>()) }
 
         val bundleChanged = bundleId != app.bundle.bundleId
@@ -161,8 +181,8 @@ fun AppSettingsScreen(model: AppModel, appId: Int, onBack: () -> Unit, onOpenLog
                         put("allow_nearest", nearest)
                     })
                 }
-                if ((abis != abisNow || kind != kindNow) && !bundleChanged) {
-                    put("variants", JsonArray(withKind(variantsFor(s.variants, abis, engine), kind)))
+                if ((abis != abisNow || kind != kindNow || codes != codesNow) && !bundleChanged) {
+                    put("variants", JsonArray(withVersionCodes(withKind(variantsFor(s.variants, abis, engine), kind), codes)))
                 }
                 if ((sigbypass != sigNow || injectdex != dexNow) && !bundleChanged) {
                     put("engine_options", buildJsonObject { put("sigbypass", sigbypass); put("injectdex", injectdex) })
@@ -300,6 +320,10 @@ fun AppSettingsScreen(model: AppModel, appId: Int, onBack: () -> Unit, onOpenLog
                 }
             }
             dl.error?.let { Txt(it, style = MaterialTheme.typography.bodySmall, color = muted()) }
+            Field("APKMirror versionCode (optional)", codesText, { codesText = it }, mono = true,
+                error = if (parsedCodes == null && kind == KIND_APKMIRROR) "Expected whole numbers separated by commas or spaces" else null,
+                hint = "Empty = automatic: the build tries this version's variants and keeps the first one the patches apply to.",
+                keyboard = KeyboardOptions(keyboardType = KeyboardType.Number))
             }
             if (kind == KIND_APKMIRROR || kind == KIND_APKPURE) {
                 Field(if (kind == KIND_APKPURE) "APKPure" else "APKPure (optional)", pureUrl, { pureUrl = it }, leadingIcon = R.drawable.ms_link, mono = true)
@@ -312,7 +336,7 @@ fun AppSettingsScreen(model: AppModel, appId: Int, onBack: () -> Unit, onOpenLog
             Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer).padding(horizontal = ScreenPadding, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            val ok = !pinMissing && badOptions.isEmpty()
+            val ok = !pinMissing && badOptions.isEmpty() && (kind != KIND_APKMIRROR || parsedCodes != null)
             ActionButton("Save", { save(false) }, Modifier.weight(1f), kind = ButtonKind.Outlined, enabled = ok)
             ActionButton("Save & rebuild", { save(true) }, Modifier.weight(1f), enabled = ok, icon = R.drawable.ms_build)
         }
