@@ -295,8 +295,8 @@ def logout(req):
 
 def change_password(req):
     old, new = req.json.get('old'), req.json.get('new')
-    if not isinstance(new, str) or len(new) < 10:
-        raise HttpError(400, 'new password must have at least 10 characters')
+    if not isinstance(new, str) or len(new) < MIN_PASSWORD:
+        raise HttpError(400, f'new password must have at least {MIN_PASSWORD} characters')
     if not isinstance(old, str) or not verify_password(old, settings.get('admin_password_hash')):
         raise HttpError(403, 'wrong password')
     set_password(new)
