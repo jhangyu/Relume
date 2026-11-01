@@ -258,6 +258,19 @@ class LogStreamTest(DataTestCase):
             t.join(WAKE_LIMIT_S)
         self.assertEqual(out, [b'event: end\ndata: cancelled\n\n'])
 
+    def test_conditions_live_only_while_job_live(self):
+        """A job's log condition goes at the job end, a finished job's stream takes none, and one taken after the end
+        (ota._pull_project, wait_status) goes at the next job end: before, the map grew with every job and log view."""
+        jobs.register('build', lambda job, log: log.line('x'))
+        a = run_inline('build', {'item_id': 1}, 'manual')['id']
+        self.assertNotIn(a, jobs._conds)
+        self.assertEqual(list(jobs.log_stream(a))[-1], b'event: end\ndata: success\n\n')
+        self.assertNotIn(a, jobs._conds)
+        jobs.log_condition(a)
+        b = run_inline('build', {'item_id': 2}, 'manual')['id']
+        self.assertNotIn(a, jobs._conds)
+        self.assertNotIn(b, jobs._conds)
+
 
 class InlineTest(DataTestCase):
     def test_parity(self):

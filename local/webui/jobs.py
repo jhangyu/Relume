@@ -94,8 +94,25 @@ class Job:
 
 
 def log_condition(job_id):
+    """The job's _Signal while it is queued or running (_drop_finished_conditions removes it after the end)."""
     with _lock:
-        return _conds.setdefault(job_id, _Signal())  # ponytail: never pruned, one small object per job
+        return _conds.setdefault(job_id, _Signal())
+
+
+def _drop_finished_conditions():
+    """Drop the conditions of finished or missing jobs. Holders keep their reference: one taken before the end saw
+    the end notify (Log.close), one taken after reads the final status before it waits, because the status is
+    committed before Log.close and before this runs."""
+    with _lock:
+        ids = [i for i in _conds if i not in _running]
+    if not ids:
+        return
+    live = {r[0] for r in db.conn().execute(
+        f"SELECT id FROM jobs WHERE id IN ({','.join('?' * len(ids))}) AND status IN ('queued','running')", ids)}
+    with _lock:
+        for i in ids:
+            if i not in live and i not in _running:
+                _conds.pop(i, None)
 
 
 def _killpg(pid, sig):
@@ -325,6 +342,7 @@ def _execute(job):
         c.execute('UPDATE jobs SET status=?, reason=COALESCE(?, reason), finished_at=? WHERE id=?',
                   (status, reason, db.utcnow(), job.id))
     log.close()
+    _drop_finished_conditions()
     _cleanup(job.kind)
     return status
 
@@ -379,6 +397,7 @@ def cancel(job_id):
                       "WHERE id=? AND status='queued'", (db.utcnow(), job_id)).rowcount
     if n:
         _wake_job_waiters()
+        _drop_finished_conditions()
         return 'cancelled'
     with _lock:
         job = _running.get(job_id)
@@ -391,7 +410,8 @@ def cancel(job_id):
 
 def _wake_job_waiters():
     """A cancel notifies every job's condition, not only its own: a job may wait on another job's condition
-    (ota pulling a project waits for the upstream job and for its own cancel). Waiters recheck their state."""
+    (ota pulling a project waits for the upstream job and for its own cancel). Waiters recheck their state.
+    Only live jobs have a condition."""
     with _lock:
         conds = list(_conds.values())
     for cond in conds:
@@ -437,12 +457,14 @@ KEEPALIVE = 15
 
 def log_stream(job_id, offset=0):
     path = db.DATA / 'logs' / f'{job_id}.log'
-    cond = log_condition(job_id)
-    last = time.monotonic()
+    cond, last = None, time.monotonic()
     while True:
-        seen = cond.mark()
+        seen = cond.mark() if cond else None
         row = db.conn().execute('SELECT status FROM jobs WHERE id=?', (job_id,)).fetchone()
         done = row is None or row['status'] not in ('queued', 'running')
+        if not done and cond is None:  # a live job: take its condition, then look again before the first wait
+            cond = log_condition(job_id)
+            continue
         chunk = b''
         if path.exists():
             with open(path, 'rb') as f:
