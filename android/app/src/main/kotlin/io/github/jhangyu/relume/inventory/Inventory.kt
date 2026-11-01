@@ -17,6 +17,8 @@ import io.github.jhangyu.relume.install.VerifyRules
 /** Result of `POST /api/me/sync`, plus the package list that was reported. */
 data class SyncResult(
     val device: DeviceView,
+    /** The device as the server knew it before this sync: its report is the previous one. */
+    val before: DeviceView,
     val trackedPackages: List<String>,
     val plan: InstallPlan,
     val reported: List<InstalledPackage>,
@@ -67,9 +69,10 @@ object Inventory {
 
     /** `GET /api/me` for the tracked list, read the packages, then `POST /api/me/sync`. */
     suspend fun sync(context: Context, api: RelumeApi): SyncResult {
-        val tracked = api.me().trackedPackages
+        val me = api.me()
+        val tracked = me.trackedPackages
         val reported = read(context, tracked)
         val r = api.sync(SyncReport(deviceFacts(), reported))
-        return SyncResult(r.device, r.trackedPackages, r.plan, reported)
+        return SyncResult(r.device, me.device, r.trackedPackages, r.plan, reported)
     }
 }

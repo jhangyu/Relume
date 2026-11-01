@@ -56,7 +56,7 @@ class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
     private suspend fun unassignRemoved(app: RelumeApp, api: RelumeApi, synced: SyncResult): SyncResult {
         val run = InstallRunner.state.value
         if (run?.isActive == true) return synced
-        val removed = removedFromPhone(synced.device, synced.plan, run)
+        val removed = removedFromPhone(synced.before, synced.device, synced.plan, run)
         if (!removed.any) return synced
         val d = synced.device
         api.putAssignments(
