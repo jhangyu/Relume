@@ -19,6 +19,18 @@ class InstallPersistenceTest {
 
     private val installed = StepOutcome(StepState.INSTALLED, null, null)
 
+    /** A run saved by companion v1.3.0/v1.4.0 has plan keys this version dropped, it must still read after the upgrade. */
+    @Test
+    fun aRunFileWithKeysRemovedFromThePlanStepReadsBack() {
+        val path = File(tmp.root, "old-run.json")
+        val file = RunFile(path)
+        file.write(InstallRun.create(plan(step(StepKind.ITEM, 1)), Origin.UI, null))
+        val old = path.readText().replace("\"needs\":[]", "\"needs\":[],\"signer_conflict\":false,\"downgrade\":false")
+        assertTrue("fixture carries the removed keys: $old", old.contains("\"signer_conflict\":false"))
+        path.writeText(old)
+        assertEquals(listOf(1), checkNotNull(file.read()).steps.map { it.step.refId })
+    }
+
     @Test
     fun uiPassNeedsOnlyANetwork() {
         val ui = InstallWorker.constraints(Origin.UI)

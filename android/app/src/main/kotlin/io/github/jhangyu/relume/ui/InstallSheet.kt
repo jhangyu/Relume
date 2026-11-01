@@ -37,6 +37,7 @@ import io.github.jhangyu.relume.R
 import io.github.jhangyu.relume.api.PlanAction
 import io.github.jhangyu.relume.api.PlanStep
 import io.github.jhangyu.relume.api.StepKind
+import io.github.jhangyu.relume.install.ErrorCodes
 import io.github.jhangyu.relume.install.InstallRunner
 import io.github.jhangyu.relume.install.RunState
 import io.github.jhangyu.relume.install.StepRun
@@ -174,7 +175,7 @@ fun InstallSheet(run: RunState?, model: AppModel) {
     val index = confirmIndex
     val waiting = if (index != null) run?.steps?.getOrNull(index) else null
     if (index != null && waiting != null && waiting.state == StepState.NEEDS_UNINSTALL) {
-        val detail = listOfNotNull(waiting.step.download?.versionName, conflictTitle(waiting.step)).joinToString(" · ")
+        val detail = listOfNotNull(waiting.step.download?.versionName, conflictTitle(waiting)).joinToString(" · ")
         ReinstallSheet(waiting.step.displayName, detail, onDismiss = { confirmIndex = null }) {
             confirmIndex = null
             model.markReinstall(waiting.step.packageName)   // the LaunchedEffect above opens the system uninstall
@@ -207,7 +208,7 @@ private fun StepBlock(s: StepRun, index: Int, ctx: Context, model: AppModel, onU
             }
             StepState.INSTALLED -> PhaseRail(s.state)
             StepState.NEEDS_UNINSTALL -> {
-                Banner(conflictTitle(step), Tone.Danger, detail = s.errorText)
+                Banner(conflictTitle(s), Tone.Danger, detail = s.errorText)
                 ActionButton("Uninstall and install…", onUninstall, Modifier.fillMaxWidth(), kind = ButtonKind.Danger)
             }
             StepState.UP_TO_DATE -> Unit
@@ -224,7 +225,8 @@ private fun StepBlock(s: StepRun, index: Int, ctx: Context, model: AppModel, onU
 
 private fun failureDetail(s: StepRun) = listOfNotNull(s.errorCode, s.errorText).joinToString(": ").ifEmpty { s.step.reason }
 
-private fun conflictTitle(step: PlanStep) = if (step.signerConflict) "Signature doesn't match" else "A newer version is installed"
+/** A needs_uninstall step always carries SIGNATURE_MISMATCH or VERSION_DOWNGRADE (InstallResult.from, VerifyRules.checkInstalled). */
+private fun conflictTitle(s: StepRun) = if (s.errorCode == ErrorCodes.VERSION_DOWNGRADE) "A newer version is installed" else "Signature doesn't match"
 
 /** Large percent readout above the bar: download progress while downloading, full once the bytes are on the phone. */
 @Composable

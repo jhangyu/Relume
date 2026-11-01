@@ -14,6 +14,9 @@ import java.nio.file.StandardCopyOption
 class CorruptRunFile(val path: String, cause: Exception) :
     Exception("install run file $path: expected a saved install run, got unreadable content ($cause)", cause)
 
+/** The app's own run file: a key an older companion wrote and this one dropped is ignored, a missing field still fails. */
+private val RunJson = Json { ignoreUnknownKeys = true }
+
 /** One run file on disk: atomic replace via a temp file and rename. */
 internal class RunFile(private val file: File) {
     private val temp = File(file.path + ".new")
@@ -22,7 +25,7 @@ internal class RunFile(private val file: File) {
     fun read(): RunState? {
         if (!file.exists()) return null
         return try {
-            Json.decodeFromString(RunState.serializer(), file.readText(Charsets.UTF_8))
+            RunJson.decodeFromString(RunState.serializer(), file.readText(Charsets.UTF_8))
         } catch (e: IllegalArgumentException) {
             // SerializationException (bad JSON or fields) and model `init` checks (e.g. a receipt without its key).
             throw CorruptRunFile(file.path, e)
@@ -31,7 +34,7 @@ internal class RunFile(private val file: File) {
 
     fun write(run: RunState) {
         FileOutputStream(temp).use { out ->
-            out.write(Json.encodeToString(RunState.serializer(), run).toByteArray(Charsets.UTF_8))
+            out.write(RunJson.encodeToString(RunState.serializer(), run).toByteArray(Charsets.UTF_8))
             out.fd.sync()
         }
         Files.move(temp.toPath(), file.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)

@@ -40,8 +40,6 @@ data class PlanStep(
     val action: PlanAction,
     val reason: String,
     val needs: List<Int>,
-    @SerialName("signer_conflict") val signerConflict: Boolean,
-    val downgrade: Boolean,
     @SerialName("pull_job_id") val pullJobId: Int?,
     @SerialName("signer_change") val signerChange: SignerChange?,
     val download: Download?,

@@ -14,8 +14,8 @@ internal fun download(kind: StepKind, ref: Int) = Download(
 
 internal fun step(kind: StepKind, ref: Int, needs: List<Int> = emptyList(), action: PlanAction = PlanAction.INSTALL) = PlanStep(
     kind = kind, refId = ref, packageName = "p.$kind.$ref", displayName = "$kind $ref", action = action,
-    reason = if (action == PlanAction.ERROR) "NOT_DOWNLOADED" else "", needs = needs, signerConflict = false,
-    downgrade = false, pullJobId = null, signerChange = null,
+    reason = if (action == PlanAction.ERROR) "NOT_DOWNLOADED" else "", needs = needs,
+    pullJobId = null, signerChange = null,
     download = if (action == PlanAction.INSTALL) download(kind, ref) else null,
 )
 
