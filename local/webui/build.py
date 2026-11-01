@@ -11,13 +11,14 @@ from . import apps, catalog, db, events, jobs, playversion, server, settings
 ARTIFACT_RETENTION_DEFAULT = 1  # successful builds kept per item
 RUNNER = str(db.REPO_ROOT / "src" / "build" / "build-item.sh")
 FAIL_CODES = ("upstream_missing", "apk_not_listed", "download_failed",
-              "merge_failed", "patch_failed", "timeout", "internal")
+              "merge_failed", "patch_failed", "patch_items_failed", "timeout", "internal")
 SOLVER_ENV = ("FLARESOLVERR_URL", "CFBYPASS_URL", "APKM_SOLVER_URL")  # passed to the isolated runner
 APKEEP = "apkeep"
 APKEEP_TIMEOUT = 1800  # one Google Play login + download per distinct googleplay spec
 APKEEP_DEVICE = {"arm64-v8a": "px_9a", "armeabi-v7a": "sm_a13_5g", "x86_64": "google_kiwi_x86_64"}  # single-ABI profiles
 APKEEP_MULTI_DEVICE = "nothing_p1"  # arm64-v8a + armeabi-v7a, SDK 34: universal or several ABIs (mi_a1 is SDK 29, too old for some apps)
-FAILED_PATCH_PREFIX = "ERROR: FAILED: "  # patcher CLI line for a patch that did not apply
+FAILED_NAMES_SHOWN = 5  # failed patch names listed in a guard verdict before "and N more"
+ERROR_TEXT_MAX = 300  # chars of the patcher's error kept in a guard verdict
 _steps = {}
 _steps_lock = threading.Lock()
 
@@ -28,7 +29,6 @@ class _Markers:
     def __init__(self, job_id, package):
         self.job_id, self.package = job_id, package
         self.fail_code = self.fail_detail = self.last_err = self.versions = None
-        self.failed_patches = []
 
     def feed(self, text):
         if text.startswith("::step::"):
@@ -51,10 +51,6 @@ class _Markers:
             code, _, detail = text[8:].partition("::")
             self.fail_code = code if code in FAIL_CODES else "internal"
             self.fail_detail = detail.strip()
-        elif text.startswith(FAILED_PATCH_PREFIX):  # the CLI runs with --continue-on-error: the build still succeeds
-            name = text[len(FAILED_PATCH_PREFIX):].strip()
-            if name not in self.failed_patches:  # one line per variant
-                self.failed_patches.append(name)
         elif text.startswith("[-]"):
             self.last_err = text.strip()
 
@@ -83,6 +79,61 @@ def _read_result(work):
         return r
     except (OSError, ValueError, KeyError, TypeError):
         return None
+
+
+def _result_shape(r):
+    """A morphe CLI -r result (appliedPatches: list of names, failedPatches: [{name, error}]) as
+    {"applied": n, "failed": [(name, error)]}, None when not in that shape."""
+    try:
+        applied, failed = r["appliedPatches"], r["failedPatches"]
+        out = [(p["name"], p["error"]) for p in failed]
+    except (KeyError, TypeError):
+        return None
+    if not isinstance(applied, list) or not all(isinstance(n, str) and isinstance(e, str) for n, e in out):
+        return None
+    return {"applied": len(applied), "failed": out}
+
+
+def _read_patch_result(work, variant):
+    """release/<variant>.result.json written by the morphe CLI (-r, utils.sh patch_variant), None when missing or bad."""
+    try:
+        with jobs.open_runner_file(work, f"release/{variant}.result.json") as f:
+            return _result_shape(json.load(f))
+    except (OSError, ValueError):
+        return None
+
+
+def _error_text(error):
+    """Root cause of a patcher exception: the last "Caused by:" line, else the first line; without the class name."""
+    lines = error.splitlines() or [""]
+    msg = next((s[len("Caused by: "):] for s in reversed(lines) if s.startswith("Caused by: ")), lines[0])
+    return re.sub(r"^[\w.$]+(?:Exception|Error): ", "", msg)[:ERROR_TEXT_MAX].rstrip(".")
+
+
+def patch_verdict(results, baseline, published):
+    """Guard for a morphe build (design guard §1): results = {variant: _read_patch_result(...)}, baseline = failed
+    names of the published build, published = its app version, None when nothing is published (no regression to
+    judge: R2 is skipped). The fail detail, or None when the build may publish."""
+    tail = f"The previous build ({published}) stays published." if published else "No build was published."
+    for name, r in results.items():
+        if r is None:
+            return f"patcher result file missing or unreadable for variant {name}. {tail}"
+    for name, r in results.items():
+        if r["applied"] == 0:
+            first = f" First error: {_error_text(r['failed'][0][1])}." if r["failed"] else ""
+            return f"0 of {len(r['failed'])} patches applied (variant {name}).{first} {tail}"
+    if published is None:
+        return None
+    errors = {}
+    for r in results.values():
+        for n, e in r["failed"]:
+            errors.setdefault(n, e)
+    new = [n for n in errors if n not in baseline]
+    if not new:
+        return None
+    names = ", ".join(new[:FAILED_NAMES_SHOWN]) + (f", ... and {len(new) - FAILED_NAMES_SHOWN} more" if len(new) > FAILED_NAMES_SHOWN else "")
+    return (f"{len(new)} patches failed that work in the published build: {names}. "
+            f"First error: {_error_text(errors[new[0]])}. {tail}")
 
 
 def artifact_name(package, variant, app_version, upstream_tag):
@@ -213,8 +264,21 @@ def handler(job, log):
             playversion.remember(inp["package"], inp["version"]["value"], device, vc)  # the runner verified name and code
         if inp["version"]["value"] is None:  # latest, or auto with no compatible list: the runner refreshed the APKMirror list
             sha = apps.inputs_sha(item_id)
+        failed = []
+        if inp["engine"] == "morphe":  # lspatch/npatch embed one module: no per-patch result (design guard §7)
+            results = {v["name"]: _read_patch_result(work, v["name"]) for v in result["variants"]}
+            failed = list(dict.fromkeys(n for r in results.values() if r for n, _ in r["failed"]))
+            ls = item_status([item_id])[item_id]["last_success"]
+            baseline = set(json.loads(db.conn().execute("SELECT failed_patches FROM build_jobs WHERE job_id = ?",
+                                                        (ls["job_id"],)).fetchone()[0] or "[]")) if ls else set()
+            verdict = patch_verdict(results, baseline, ls["app_version"] if ls else None)
+            if verdict:
+                with db.tx() as c:
+                    c.execute("UPDATE build_jobs SET failed_patches = ?, inputs_sha = ? WHERE job_id = ?",
+                              (json.dumps(failed) if failed else None, sha, job.id))
+                _fail(job, item_id, "patch_items_failed", verdict)
         try:
-            _register(job, item_id, inp, work, result, m.failed_patches, sha)
+            _register(job, item_id, inp, work, result, failed, sha)
         except OSError as e:
             shutil.rmtree(db.DATA / "artifacts" / str(item_id) / str(job.id), ignore_errors=True)
             _fail(job, item_id, "internal", f"artifact rejected: {e}")
@@ -373,10 +437,16 @@ def item_status(item_ids):
 
 
 def needs_build(item_id):
-    """Apps part §4.3: never built, last build failed, artifacts cleaned up, or the build inputs changed."""
+    """Apps part §4.3: never built, last build failed (a patch_items_failed verdict: and the inputs changed since),
+    artifacts cleaned up, or the build inputs changed."""
     st = item_status([item_id])[item_id]
     ls, lb = st["last_success"], st["last_build"]
-    if ls is None or lb["status"] == "failed":
+    if lb is not None and lb["status"] == "failed":  # a guard verdict is retried only once its inputs change
+        if lb["fail_code"] != "patch_items_failed":
+            return True
+        sha = db.conn().execute("SELECT inputs_sha FROM build_jobs WHERE job_id = ?", (lb["job_id"],)).fetchone()[0]
+        return not apps.inputs_cover(sha, apps.inputs_sha(item_id))
+    if ls is None:
         return True
     want = {v["name"] for v in json.loads(db.conn().execute("SELECT variants FROM item WHERE id = ?", (item_id,)).fetchone()[0])}
     have = {r[0] for r in db.conn().execute("SELECT variant FROM artifacts WHERE job_id = ?", (ls["job_id"],))}

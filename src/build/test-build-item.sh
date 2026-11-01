@@ -52,7 +52,8 @@ out=$(cd "$T/work" && mkdir -p release && source "$REPO/src/build/utils.sh" &&
 log=$(cat "$SHIM_LOG")
 if [ "$out" = OK ] && [ -s "$T/work/release/x.apk" ] && grep -q -- "--striplibs arm64-v8a" <<<"$log" &&
 	grep -q -- "--options-file options.json" <<<"$log" && grep -q -- "--keystore=$REPO/src/keystore/morphe.keystore" <<<"$log" &&
-	grep -q -- "-p $T/up/patches-1.0.0.mpp" <<<"$log" && grep -q -- "--continue-on-error" <<<"$log"; then
+	grep -q -- "-p $T/up/patches-1.0.0.mpp" <<<"$log" && grep -q -- "--continue-on-error" <<<"$log" &&
+	grep -q -- "-r release/x.result.json --out=release/x.apk" <<<"$log"; then
 	pass patch_variant_argv
 else fail patch_variant_argv "$out / $log"; fi
 

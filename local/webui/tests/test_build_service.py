@@ -17,6 +17,20 @@ from webui.tests.catalog_rows import add_item as add_item_row, builtin_id
 FIX = Path(__file__).parent / "fixtures" / "build"
 JOB_FIXTURE = json.loads((db.REPO_ROOT / "src" / "build" / "test-fixtures" / "job.json").read_text())
 YT = "com.google.android.youtube"
+MSG_ERROR = ('app.morphe.patcher.patch.PatchException: The patch "Allow chat bubbles" depends on "BytecodePatch@1", which raised an exception\n'
+             'Caused by: app.morphe.patcher.patch.PatchException: This Messenger build (version code 347014977) isn\'t supported yet, '
+             'so nothing was patched.\n\tat app.hushmessenger.patches.Kt.validateVersionCode(Kt.kt:153)\n\t... 12 more')
+FB_NEW = ["Clean up Reels", "Comment sheet options", "Default playback quality", "Hide affiliate product links",
+          "Hide post prompts", "Newest reels first", "Open comments with a gesture", "Turn off double tap to like"]
+
+
+def patch_result(applied, failed):
+    """A morphe CLI -r result file (layout of the real Messenger 585 file): failed = [(name, error)]."""
+    return {"success": True, "appliedPatches": [f"P{i}" for i in range(applied)],
+            "failedPatches": [{"name": n, "error": e} for n, e in failed], "stepResults": []}
+
+
+PASS = {"universal": patch_result(5, []), "arm64-v8a": patch_result(5, [])}
 
 
 def add_item(c, iid=1, package=YT):
@@ -120,10 +134,15 @@ class BuildCase(helpers.DataTestCase):
             jid = add_job(c, item_id, status)
         return SimpleNamespace(id=jid, target={"item_id": item_id}, options={}, cancel_event=threading.Event())
 
-    def run_handler(self, runner=None, job=None):
+    def run_handler(self, runner=None, job=None, patch_results=PASS):
+        """patch_results: {variant: result file object, or a str written as is} placed where the CLI writes them."""
         job = job or self.job()
         if runner:
             build.RUNNER = str(FIX / runner)
+        release = self.data / "work" / str(job.id) / "release"
+        release.mkdir(parents=True, exist_ok=True)
+        for name, r in patch_results.items():
+            (release / f"{name}.result.json").write_text(r if isinstance(r, str) else json.dumps(r))
         log = StreamLog()
         try:
             build.handler(job, log)
@@ -310,11 +329,6 @@ class HandlerFailTest(BuildCase):
         self.assertEqual(self.cat.versions, [(YT, ["20.2.0", "20.1.0"])])
         m.feed("::step::patch::2/3")
         self.assertEqual(build._steps[job.id], {"step": "patch", "step_index": 2, "step_count": 3})
-        self.assertEqual(m.failed_patches, [])
-        m.feed("INFO: Applied: Change app name")
-        m.feed("ERROR: FAILED: Hide ads")
-        m.feed("ERROR: FAILED: Hide ads")
-        self.assertEqual(m.failed_patches, ["Hide ads"])
         m.feed("::fail::bogus::x")
         self.assertEqual(m.fail_code, "internal")
 
@@ -410,6 +424,89 @@ class HandlerOkTest(BuildCase):
         self.assertEqual(self.bj(job)["inputs_sha"], "sha-20.1.0")
 
 
+class PatchVerdictTest(unittest.TestCase):
+    """Guard rules (design guard §1, §6): R0 result file, R1 nothing applied, R2 new failures vs the published build."""
+
+    def verdict(self, results, baseline=(), published="584.0.0.51.56"):
+        return build.patch_verdict({k: v and build._result_shape(v) for k, v in results.items()}, set(baseline), published)
+
+    def test_nothing_applied_names_the_root_cause(self):
+        d = self.verdict({"universal": patch_result(0, [("Allow chat bubbles", MSG_ERROR)] + [(f"P{i}", "x") for i in range(65)])})
+        self.assertEqual(d, "0 of 66 patches applied (variant universal). First error: This Messenger build (version code "
+                            "347014977) isn't supported yet, so nothing was patched. The previous build (584.0.0.51.56) stays published.")
+        self.assertEqual(self.verdict({"universal": patch_result(0, [])}, published=None),
+                         "0 of 0 patches applied (variant universal). No build was published.")
+        self.assertTrue(self.verdict({"universal": patch_result(98, []), "arm64-v8a": patch_result(0, [("A", "boom")])})
+                        .startswith("0 of 1 patches applied (variant arm64-v8a). First error: boom."))
+
+    def test_new_failures_against_the_published_build(self):
+        failed = [(n, f"app.morphe.patcher.patch.PatchException: {n}: found 0\n\tat x.Kt.f(Kt.kt:1)") for n in FB_NEW]
+        self.assertEqual(self.verdict({"universal": patch_result(98, failed)}),
+                         "8 patches failed that work in the published build: Clean up Reels, Comment sheet options, "
+                         "Default playback quality, Hide affiliate product links, Hide post prompts, ... and 3 more. "
+                         "First error: Clean up Reels: found 0. The previous build (584.0.0.51.56) stays published.")
+        self.assertIsNone(self.verdict({"universal": patch_result(98, failed), "arm64-v8a": patch_result(98, failed)}, FB_NEW))
+        self.assertIsNone(self.verdict({"universal": patch_result(98, failed)}, published=None))   # first build: no regression
+
+    def test_missing_or_malformed_result_file(self):
+        self.assertEqual(self.verdict({"universal": patch_result(5, []), "arm64-v8a": None}),
+                         "patcher result file missing or unreadable for variant arm64-v8a. The previous build (584.0.0.51.56) stays published.")
+        for bad in ({"appliedPatches": 3, "failedPatches": []}, {"failedPatches": []}, {"appliedPatches": [], "failedPatches": [{"name": "A"}]},
+                    {"appliedPatches": [], "failedPatches": [{"name": 1, "error": "e"}]}, []):
+            self.assertIsNone(build._result_shape(bad), bad)
+
+
+class GuardHandlerTest(BuildCase):
+    def published(self):
+        job, _, err = self.run_handler(patch_results={"universal": patch_result(5, [("Old", "e")]), "arm64-v8a": patch_result(5, [])})
+        self.assertIsNone(err)
+        with db.tx() as c:
+            c.execute("UPDATE jobs SET status = 'success' WHERE id = ?", (job.id,))
+        return job
+
+    def test_verdict_keeps_the_published_build(self):
+        first = self.published()
+        self.assertEqual(json.loads(self.bj(first)["failed_patches"]), ["Old"])
+        files = [r["path"] for r in db.conn().execute("SELECT path FROM artifacts")]
+        cases = {"R1": {"universal": patch_result(0, [("Old", "e"), ("A", "boom")]), "arm64-v8a": patch_result(5, [])},
+                 "R2": {"universal": patch_result(5, [("Old", "e")]), "arm64-v8a": patch_result(5, [("A", "boom")])},
+                 "R0": {"universal": patch_result(5, [("Old", "e")])}}
+        for rule, results in cases.items():
+            job, _, err = self.run_handler(patch_results=results)
+            b = self.bj(job)
+            self.assertEqual((b["fail_code"], b["inputs_sha"]), ("patch_items_failed", "sha-of-inputs"), rule)
+            self.assertIn("The previous build (20.1.0) stays published.", b["fail_detail"], rule)
+            self.assertEqual(self.events[-1][0], "build.failed", rule)
+            self.assertEqual([r["path"] for r in db.conn().execute("SELECT path FROM artifacts")], files, rule)
+            self.assertTrue(all(Path(f).is_file() for f in files), rule)
+            self.assertFalse((self.data / "work" / str(job.id)).exists(), rule)
+        self.assertEqual(json.loads(self.bj(job)["failed_patches"] or "[]"), ["Old"])   # R0: the variant that has a file
+        job, _, _ = self.run_handler(patch_results=cases["R2"])
+        self.assertEqual(json.loads(self.bj(job)["failed_patches"]), ["Old", "A"])
+
+    def test_other_engines_skip_the_guard(self):
+        real = self.cat.job_input
+        self.enterContext(mock.patch.object(apps, "job_input", lambda i: dict(real(i), engine="lspatch")))
+        job, _, err = self.run_handler(patch_results={})
+        self.assertIsNone(err)
+        self.assertIsNone(self.bj(job)["failed_patches"])
+
+    def test_no_retry_until_the_inputs_change(self):
+        sha = {"v": json.dumps({"base": "b1", "variants": {"universal": "u", "arm64-v8a": "a"}})}
+        self.enterContext(mock.patch.object(apps, "inputs_sha", lambda i: sha["v"]))
+        self.published()
+        job, _, err = self.run_handler(patch_results={"universal": patch_result(0, []), "arm64-v8a": patch_result(0, [])})
+        with db.tx() as c:
+            c.execute("UPDATE jobs SET status = 'failed' WHERE id = ?", (job.id,))
+        self.assertFalse(build.needs_build(1))
+        sha["v"] = sha["v"].replace("b1", "b2")   # a new bundle tag, app version or override
+        self.assertTrue(build.needs_build(1))
+        sha["v"] = sha["v"].replace("b2", "b1")
+        with db.tx() as c:
+            c.execute("UPDATE build_jobs SET fail_code = 'download_failed' WHERE job_id = ?", (job.id,))
+        self.assertTrue(build.needs_build(1))   # other fail codes keep retrying
+
+
 class ArtifactSwapTest(BuildCase):
     """A leftover runner process swaps a validated artifact for a symlink before registration."""
 
@@ -445,6 +542,9 @@ class ArtifactSwapTest(BuildCase):
         d.mkdir()
         (d / "universal.apk").write_bytes(b"secret")
         (d / "arm64-v8a.apk").write_bytes(b"secret")
+
+        real = self.cat.job_input   # morphe: the guard already refuses result files behind the link (R0)
+        self.enterContext(mock.patch.object(apps, "job_input", lambda i: dict(real(i), engine="lspatch")))
 
         def swap(work):
             shutil.rmtree(work / "release")

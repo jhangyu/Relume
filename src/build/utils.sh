@@ -543,7 +543,7 @@ patch_variant() {
 		for f in "${patches_files[@]}"; do args+=(-p "$f"); done
 		args+=(--options-file options.json "--keystore=$RELUME_REPO/src/keystore/$keystore" --force --continue-on-error)
 		[[ -n "$strip" ]] && args+=(--striplibs "$strip")
-		args+=("--out=$out" "$in")
+		args+=(-r "${out%.apk}.result.json" "--out=$out" "$in") # per-patch result, read by the server's guard (build.py)
 		java "${args[@]}" || { red_log "[-] Patch failed: $out"; return 1; }
 		;;
 	lspatch | npatch)
