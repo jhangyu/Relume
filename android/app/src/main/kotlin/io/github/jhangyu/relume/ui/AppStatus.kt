@@ -21,7 +21,7 @@ enum class Lookup { NeedsUrl, PickOne }
 /** The server builds this app now or has its build queued. */
 internal val AppObject.building: Boolean get() = status.state == STATE_BUILDING || status.state == STATE_QUEUED
 
-/** What the phone knows about one enabled app: the built APK it would install, that package on the phone, its recorded patch version. */
+/** What the phone knows about one enabled app: the built APK it would install, that package on the phone, its patch version from the server's install record. */
 class AppFacts(val app: AppObject, val target: InstallTarget?, val installed: InstalledPackage?, val installedPatch: String?) {
     val building: Boolean get() = app.building
 
@@ -71,7 +71,7 @@ data class InstallTarget(
 
 /**
  * Spec install-states 1, conditions in order. [installed] is looked up by [InstallTarget.packageName]; [installedPatch] is the
- * patch version Relume recorded when it installed the package (null = no record, the patch version is not compared).
+ * patch version of the server's install record (null = none, not compared).
  */
 internal fun cardAction(target: InstallTarget, installed: InstalledPackage?, installedPatch: String?): CardAction {
     if (installed == null) return CardAction.Install

@@ -6,7 +6,6 @@ import android.content.pm.PackageInstaller
 import android.util.Log
 import io.github.jhangyu.relume.RelumeApp
 import io.github.jhangyu.relume.api.InstallPlan
-import io.github.jhangyu.relume.api.PlanStep
 import io.github.jhangyu.relume.inventory.Inventory
 import io.github.jhangyu.relume.sync.CheckScheduler
 import io.github.jhangyu.relume.sync.Notifications
@@ -164,8 +163,7 @@ object InstallRunner {
         }
         confirmIntents.remove(index)
         Notifications.cancelStep(context, index)
-        val after = finishStep(context, index, outcome)
-        if (after?.steps?.get(index)?.state == StepState.INSTALLED) recordPatch(context, run.steps[index].step)
+        finishStep(context, index, outcome)
         if (startQueued(context)) return
         InstallWorker.enqueue(context, run.passOrigin, replace = false)
     }
@@ -211,11 +209,6 @@ object InstallRunner {
         }
     }
 
-    /** Records the patch version of a step that ended `installed` under its built APK package (spec install-states 1). */
-    internal fun recordPatch(context: Context, step: PlanStep) {
-        step.download?.patchVersion?.let { InstalledPatches.record(context, step.packageName, it) }
-    }
-
     /** Re-runs step [index] after a user action (confirm, uninstall): network CONNECTED only, even for a background run. */
     private fun retry(context: Context, index: Int) {
         confirmIntents.remove(index)
@@ -242,8 +235,6 @@ object InstallRunner {
         val pkg = s.step.packageName
         val info = Inventory.packageInfo(context, pkg)
         val done = VerifyRules.installedBySession(d, info?.let { Inventory.packageFacts(it) }, info?.lastUpdateTime, s.priorUpdateTime)
-        // Every reconcile (start, reconcileOnStart) closes through here: the patch record follows the installed outcome.
-        if (done) recordPatch(context, s.step)
         return if (done) StepOutcome(StepState.INSTALLED, null, null)
         else StepOutcome(StepState.FAILED, ErrorCodes.INSTALLER_ERROR, "session lost")
     }

@@ -30,7 +30,6 @@ import io.github.jhangyu.relume.api.PatchesView
 import io.github.jhangyu.relume.api.Project
 import io.github.jhangyu.relume.api.StepKind
 import io.github.jhangyu.relume.install.InstallRunner
-import io.github.jhangyu.relume.install.InstalledPatches
 import io.github.jhangyu.relume.install.Origin
 import io.github.jhangyu.relume.install.StartResult
 import io.github.jhangyu.relume.inventory.Inventory
@@ -108,10 +107,12 @@ class AppModel(application: Application) : AndroidViewModel(application) {
 
     fun app(id: Int): AppObject? = apps.firstOrNull { it.id == id }
 
-    /** Card facts looked up by the built APK package, never the source app's package (a patch can rename it). */
+    /** Card facts looked up by the built APK package, never the source app's package (a patch can rename it); the
+     *  patch version comes from the server's install record (decision 14). */
     fun facts(app: AppObject): AppFacts {
         val t = app.target
-        return AppFacts(app, t, t?.let { installed[it.packageName] }, t?.let { InstalledPatches.get(relume, it.packageName) })
+        val patch = device?.assignments?.firstOrNull { it.itemId == app.id }?.installed?.patchVersion
+        return AppFacts(app, t, t?.let { installed[it.packageName] }, patch)
     }
 
     fun followedStep(app: FollowedApp): PlanStep? = plan?.steps?.firstOrNull { it.refId == app.id && it.kind == StepKind.PROJECT }
@@ -121,7 +122,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
 
     /** The followed card's action (same function as item cards); null when the project has nothing to install. */
     fun followedAction(app: FollowedApp): CardAction? =
-        followedTarget(app)?.let { cardAction(it, installed[it.packageName], InstalledPatches.get(relume, it.packageName)) }
+        followedTarget(app)?.let { cardAction(it, installed[it.packageName], null) }
 
     fun signedIn() {
         api = relume.api

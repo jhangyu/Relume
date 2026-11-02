@@ -9,12 +9,12 @@ import io.github.jhangyu.relume.install.seenKey
 /** Background-start decision (spec 9.5). Pure. */
 object BackgroundStart {
     /**
-     * Per app: the server [plan] (built on the phone's package report and its install receipts) without the builds the
-     * user declined in the background ([declined], app to download sha256, `InstallRun.declined`) and the items that need
-     * them; null when no app is left to install. No batch marker: an app that failed, was cancelled before it was shown
+     * Per app: the server [plan] (built on the phone's package report and APK hashes; receipts fill in for older records)
+     * without the builds the user declined in the background ([declined], app to download sha256, `InstallRun.declined`)
+     * and the items that need them; null when no app is left to install. No batch marker: an app that failed, was cancelled before it was shown
      * or sat in a replaced queued plan is planned again by the next check, whatever happened to the others. An app the
      * phone already has at the planned build stays in: the worker records it as installed without installing (its
-     * receipt fixes the server record), right before the step (`VerifyRules.atTarget`).
+     * receipt is history), right before the step (`VerifyRules.atTarget`).
      */
     fun backgroundPlan(plan: InstallPlan, declined: Map<String, String>): InstallPlan? {
         fun isDeclined(s: PlanStep) = s.download != null && declined[seenKey(s.kind, s.refId)] == s.download.sha256

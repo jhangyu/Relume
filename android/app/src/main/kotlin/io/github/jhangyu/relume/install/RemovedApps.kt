@@ -11,7 +11,7 @@ val removedOutcome = StepOutcome(StepState.REMOVED, null, "removed from the phon
 
 /**
  * Outcome of a step whose app the phone already has at the planned build (`VerifyRules.atTarget`): recorded as installed,
- * so its receipt and patch record are written; the server planned it because it lacks that install record.
+ * so its receipt is written; the server planned it because its install record did not match the phone.
  */
 val atTargetOutcome = StepOutcome(StepState.INSTALLED, null, null)
 
