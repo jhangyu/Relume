@@ -1,4 +1,5 @@
 """Build job service (spec Part 3): job.json, runner child process, artifacts, retention, routes."""
+import hashlib
 import json
 import os
 import re
@@ -7,7 +8,7 @@ import threading
 from pathlib import Path
 from typing import NamedTuple
 
-from . import apps, catalog, db, events, jobs, playversion, server, settings
+from . import apkmanifest, apps, catalog, db, events, jobs, playversion, server, settings
 
 ARTIFACT_RETENTION_DEFAULT = 1  # successful builds kept per item
 RUNNER = str(db.REPO_ROOT / "src" / "build" / "build-item.sh")
@@ -22,6 +23,7 @@ ERROR_TEXT_MAX = 300  # chars of the patcher's error kept in a guard verdict
 # APKMirror variants tried per build (design variant §3): each attempt is one download.php hit plus a full download,
 # merge and patch, far below the rate limit (about 17 hits in 11 s); the ordering finds the known cases on attempt 1
 MAX_VARIANT_ATTEMPTS = 3
+COPY_CHUNK = 1 << 20  # bytes per read while copying and hashing an artifact
 RUNNER_TIMEOUT = 3600  # s, one isolated runner run: downloads, merges and patches of every variant
 # failures a build retries only when its inputs change (decision 9, same rule as the patch guard)
 RETRY_ON_INPUT_CHANGE = ("patch_items_failed", "upstream_missing", "merge_failed", "apk_not_listed")
@@ -47,9 +49,11 @@ class _Markers:
                 st.update(step_index=int(i), step_count=int(n))
             with _steps_lock:
                 _steps[self.job_id] = st
+            events.changed("jobs")   # live build progress (decision 2)
         elif text.startswith("::version::"):
             with db.tx() as c:
                 c.execute("UPDATE build_jobs SET app_version = ? WHERE job_id = ?", (text[11:].strip(), self.job_id))
+            events.changed("jobs")
         elif text.startswith("::apkm_versions::"):
             versions = [v for v in text[17:].strip().split(",") if v]
             if versions:
@@ -103,6 +107,27 @@ def _read_result(work):
         if size == 0:
             raise ValueError(f"variant file {name}: empty")
     return r
+
+
+def _apk_facts(work, result):
+    """Package, version and signer of each output, read by the server (decision 13): fills each variant dict and an
+    empty app_version from the first variant's versionName. None, or the error detail."""
+    for v in result["variants"]:
+        try:
+            with jobs.open_runner_file(work, v["file"]) as f:
+                fd = f.fileno()
+                size = os.fstat(fd).st_size
+
+                def read(off, n):
+                    return os.pread(fd, n, off)
+                m = apkmanifest.read_manifest(read, size)
+                v.update(package=m.package, version_code=m.version_code, version_name=m.version_name,
+                         signer_sha256=apkmanifest.read_signer(read, size))
+        except (OSError, apkmanifest.ManifestError) as e:
+            return f"cannot read the APK info of {v['file']}: {e}"
+    if not result.get("app_version"):
+        result["app_version"] = result["variants"][0]["version_name"]
+    return None
 
 
 def _result_shape(r):
@@ -173,13 +198,16 @@ def _register(job, item_id, inp, work, result, failed_patches, sha, cache_names)
         for v in result["variants"]:
             target = dest / artifact_name(inp["package"], v["name"], result["app_version"], inp["upstream_tag"])
             # copy from the fd validated now, not the path validated earlier
+            h = hashlib.sha256()
             with jobs.open_runner_file(work, v["file"]) as src, open(target, "xb") as out:
-                shutil.copyfileobj(src, out, 1 << 20)
+                for chunk in iter(lambda: src.read(COPY_CHUNK), b""):
+                    h.update(chunk)
+                    out.write(chunk)
             ids.append(c.execute("""INSERT INTO artifacts(job_id, item_id, variant, abi, package, version_name, version_code,
                 patches_version, signer_sha256, path, size, sha256, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                                 (job.id, item_id, v["name"], v["abi"], v.get("package"), v.get("version_name"),
-                                  v.get("version_code"), inp["upstream_tag"], v.get("signer_sha256"), str(target),
-                                  target.stat().st_size, v.get("sha256"), now)).lastrowid)
+                                 (job.id, item_id, v["name"], v["abi"], v["package"], v["version_name"],
+                                  v["version_code"], inp["upstream_tag"], v["signer_sha256"], str(target),
+                                  target.stat().st_size, h.hexdigest(), now)).lastrowid)
         c.execute("UPDATE build_jobs SET app_version = ?, patches_version = ?, cli_version = ?, failed_patches = ?, "
                   "inputs_sha = ?, apk_cache = ? WHERE job_id = ?",
                   (result["app_version"], inp["upstream_tag"], inp["cli_tag"], json.dumps(failed_patches) if failed_patches else None,
@@ -398,6 +426,9 @@ def _attempt(job, item_id, inp, awork, googleplay, auto, sha, log):
         result = _read_result(awork)
     except ValueError as e:
         return _Rejected(False, "internal", str(e), used)
+    bad = _apk_facts(awork, result)
+    if bad:   # an unreadable output of an automatic APKMirror variant: next one
+        return _Rejected(True, "", bad, used) if used else _Rejected(False, "patch_failed", bad, used)
     for device, vc in sorted({(g["device"], g["version_code"]) for g in googleplay if g["version_code"] is not None}):
         playversion.remember(inp["package"], want, device, vc)  # the runner verified name and code
     if want is None:  # latest, or auto with no compatible list: the runner refreshed the APKMirror list

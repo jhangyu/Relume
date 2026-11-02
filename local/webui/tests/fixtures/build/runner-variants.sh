@@ -5,6 +5,7 @@
 #   serves: a code the remembered page serves instead of its own, noresult: true = no patcher result file,
 #   log: file the used code is appended to}
 set -e
+fx=$(cd "$(dirname "$0")/../apkmanifest" && pwd)/signed.apk   # a real signed APK: the server reads its info
 job=$1
 f() { jq -r "._fake.$1 // empty" "$job"; }
 d=$(jq -c '.recipe.variants[0].download' "$job")
@@ -36,11 +37,11 @@ if [ "$applied" = '[]' ] && [ "$(f refuse)" = true ]; then
 fi
 mkdir -p release
 for v in universal arm64-v8a; do
-	printf 'apk' > "release/$v.apk"
+	cp "$fx" "release/$v.apk"
 	[ "$(f noresult)" = true ] || echo "{\"appliedPatches\":$applied,\"failedPatches\":[{\"name\":\"q\",\"error\":\"no fit for $code\"}]}" > "release/$v.result.json"
 done
 cat > result.json <<JSON
 {"app_version": "1.0.0", "patches_version": "v1.2.3", "cli_version": "v1.0.0", "variants": [
- {"name": "universal", "abi": "universal", "file": "release/universal.apk", "size": 3, "sha256": "aa", "package": "com.google.android.youtube", "version_name": "1.0.0", "version_code": $code, "signer_sha256": "bb"},
- {"name": "arm64-v8a", "abi": "arm64-v8a", "file": "release/arm64-v8a.apk", "size": 3, "sha256": "cc", "package": "com.google.android.youtube", "version_name": "1.0.0", "version_code": $code, "signer_sha256": "bb"}]}
+ {"name": "universal", "abi": "universal", "file": "release/universal.apk"},
+ {"name": "arm64-v8a", "abi": "arm64-v8a", "file": "release/arm64-v8a.apk"}]}
 JSON

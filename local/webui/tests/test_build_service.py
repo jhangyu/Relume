@@ -1,4 +1,5 @@
 """Build job service tests (spec build §3-§6, §8)."""
+import hashlib
 import json
 import os
 import shutil
@@ -17,6 +18,8 @@ from webui.tests.catalog_rows import add_item as add_item_row, builtin_id
 FIX = Path(__file__).parent / "fixtures" / "build"
 JOB_FIXTURE = json.loads((db.REPO_ROOT / "src" / "build" / "test-fixtures" / "job.json").read_text())
 YT = "com.google.android.youtube"
+SIGNED_APK = Path(__file__).parent / "fixtures" / "apkmanifest" / "signed.apk"   # com.rawcam.app 57 / 1.4.5
+SIGNED_DIGEST = "d48bd2eaf4db81c9325a4ff0667cf749cdff8b0c463185125827c9a6ccac0e5e"   # apksigner verify --print-certs
 MSG_ERROR = ('app.morphe.patcher.patch.PatchException: The patch "Allow chat bubbles" depends on "BytecodePatch@1", which raised an exception\n'
              'Caused by: app.morphe.patcher.patch.PatchException: This Messenger build (version code 347014977) isn\'t supported yet, '
              'so nothing was patched.\n\tat app.hushmessenger.patches.Kt.validateVersionCode(Kt.kt:153)\n\t... 12 more')
@@ -356,12 +359,14 @@ class HandlerFailTest(BuildCase):
         with db.tx() as c:
             c.execute("INSERT INTO build_jobs(job_id, item_id) VALUES (?, 1)", (job.id,))
         m = build._Markers(job.id, YT)
+        changed = self.enterContext(mock.patch.object(events, "changed"))
         m.feed("::version::20.1.0")
         self.assertEqual(self.bj(job)["app_version"], "20.1.0")
         m.feed("::apkm_versions::20.2.0,20.1.0")
         self.assertEqual(self.cat.versions, [(YT, ["20.2.0", "20.1.0"])])
         m.feed("::step::patch::2/3")
         self.assertEqual(build._steps[job.id], {"step": "patch", "step_index": 2, "step_count": 3})
+        self.assertEqual(changed.call_args_list, [mock.call("jobs"), mock.call("jobs")])   # live progress (decision 2)
         m.feed("::fail::bogus::x")
         self.assertEqual(m.fail_code, "internal")
 
@@ -437,8 +442,11 @@ class HandlerOkTest(BuildCase):
         rows = db.conn().execute("SELECT * FROM artifacts WHERE job_id = ? ORDER BY id", (job.id,)).fetchall()
         self.assertEqual([Path(r["path"]).name for r in rows],
                          [f"{YT}-universal-20.1.0-v1.2.3.apk", f"{YT}-arm64-v8a-20.1.0-v1.2.3.apk"])
-        self.assertTrue(all(Path(r["path"]).is_file() for r in rows))
-        self.assertEqual([(r["size"], r["sha256"], r["signer_sha256"]) for r in rows], [(1, "aa", "bb"), (3, "cc", "bb")])
+        self.assertEqual([(r["package"], r["version_code"], r["version_name"], r["signer_sha256"]) for r in rows],
+                         [("com.rawcam.app", 57, "1.4.5", SIGNED_DIGEST)] * 2)   # read by the server (decision 13)
+        for r in rows:
+            data = Path(r["path"]).read_bytes()
+            self.assertEqual((r["size"], r["sha256"]), (len(data), hashlib.sha256(data).hexdigest()))
         b = self.bj(job)
         self.assertEqual((b["app_version"], b["patches_version"], b["cli_version"], b["fail_code"], b["inputs_sha"]),
                          ("20.1.0", "v1.2.3", "v1.0.0", None, "sha-of-inputs"))
@@ -446,6 +454,29 @@ class HandlerOkTest(BuildCase):
                                                                "patches_version": "v1.2.3", "artifacts": [r["id"] for r in rows]}))
         self.assertFalse((self.data / "work" / str(job.id)).exists())
         self.assertEqual(len(build.detail(job.id)["artifacts"]), 2)
+
+    def inline_runner(self, make_apk, app_version):
+        script = self.data / "runner-inline.sh"
+        script.write_text(f'mkdir -p release && {make_apk} release/universal.apk && {make_apk} release/arm64-v8a.apk\n'
+                          f'echo \'{{"app_version": "{app_version}", "variants": [{{"name": "universal", "abi": "universal", '
+                          '"file": "release/universal.apk"}, {"name": "arm64-v8a", "abi": "arm64-v8a", '
+                          '"file": "release/arm64-v8a.apk"}]}\' > result.json\n')
+        build.RUNNER = str(script)
+
+    def test_empty_app_version_takes_apk_version_name(self):
+        self.inline_runner(f"cp {SIGNED_APK}", "")
+        job, log, err = self.run_handler()
+        self.assertIsNone(err)
+        self.assertEqual(self.bj(job)["app_version"], "1.4.5")
+        names = [Path(r[0]).name for r in db.conn().execute("SELECT path FROM artifacts WHERE job_id = ?", (job.id,))]
+        self.assertEqual(names, [f"{YT}-universal-1.4.5-v1.2.3.apk", f"{YT}-arm64-v8a-1.4.5-v1.2.3.apk"])
+
+    def test_unreadable_output_is_patch_failed(self):
+        self.inline_runner("printf 'not an apk' >", "20.1.0")
+        job, log, err = self.run_handler()
+        self.assertEqual(self.bj(job)["fail_code"], "patch_failed")
+        self.assertIn("cannot read the APK info of release/universal.apk: APK end record", self.bj(job)["fail_detail"])
+        self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM artifacts").fetchone()[0], 0)
 
     def test_latest_mode_fingerprints_the_version_built(self):
         # past bug: the sha was taken before the runner refreshed the APKMirror list, so the next run rebuilt once
@@ -616,7 +647,6 @@ class VariantLoopTest(BuildCase):
         self.assertIsNone(err)
         self.assertEqual(used, ["101", "102"])
         self.assertEqual(self.remembered(), [(YT, "1.0.0", "arm64-v8a", 102, "https://www.apkmirror.com/v/102/", 0)])
-        self.assertEqual(db.conn().execute("SELECT DISTINCT version_code FROM artifacts WHERE job_id = ?", (job.id,)).fetchone()[0], 102)
         job, err, used = self.build()
         self.assertIsNone(err)
         self.assertEqual(used, ["102"])   # straight to the remembered variant
@@ -695,14 +725,14 @@ class ArtifactSwapTest(BuildCase):
     """A leftover runner process swaps a validated artifact for a symlink before registration."""
 
     def swap_after_validation(self, swap):
-        real = build._read_result
+        real = build._apk_facts
 
-        def spy(work):
-            r = real(work)
+        def spy(work, result):
+            r = real(work, result)
             swap(work)
             return r
 
-        with mock.patch.object(build, "_read_result", spy):
+        with mock.patch.object(build, "_apk_facts", spy):
             return self.run_handler()
 
     def assert_rejected(self, job, err):
