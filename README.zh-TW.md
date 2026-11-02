@@ -304,10 +304,10 @@ OTA 排程會在指定時間透過無線 ADB 把最新建置的應用程式推�
 ### 取得應用程式
 
 1. 開啟本儲存庫的 GitHub **Releases** 頁面，選最新、標籤為 `companion-vX.Y.Z` 的版本。
-2. 下載 `relume-companion.apk` 並在手機上開啟（需要 Android 10 / API 29 以上）。
+2. 下載 `relume-<version>-universal.apk` 並在手機上開啟（需要 Android 10 / API 29 以上）。
 3. 若 Android 詢問，請允許瀏覽器或檔案管理員安裝未知來源的應用程式。
 
-只有推送 `companion-vX.Y.Z` 標籤時，CI 才會建置並發佈應用程式。應用程式不會自行更新：要更新配套應用程式，請從 Releases 下載較新的 `relume-companion.apk`，直接覆蓋安裝。目前版本顯示在 Settings 的 `App version`。
+只有推送 `companion-vX.Y.Z` 標籤時，CI 才會建置並發佈應用程式。應用程式不會自行更新：要更新配套應用程式，請從 Releases 下載較新的 `relume-<version>-universal.apk`，直接覆蓋安裝。目前版本顯示在 Settings 的 `App version`。
 
 ### 第一次啟動：連線到伺服器
 
@@ -391,7 +391,7 @@ token 隨時可以在伺服器端撤銷；撤銷後應用程式會要求重新�
   ```
 
   Android 測試（需要 Android SDK）：`ANDROID_HOME=<sdk> python3 scripts/test.py --legs android`。
-- 伴侶應用程式以推送 tag `companion-vX.Y.Z` 發佈：`Android` workflow 會建置並把 `relume-companion.apk` 發佈為本儲存庫的 GitHub release。
+- 伴侶應用程式以推送 tag `companion-vX.Y.Z` 發佈：`Android` workflow 會建置並把 `relume-<version>-universal.apk` 發佈為本儲存庫的 GitHub release。
 - 映像檔以 `python3 scripts/release.py <version>` 發佈到 Docker Hub。
 - 更多：常見問題見 [docs/Frequently Asked Questions.md](docs/Frequently%20Asked%20Questions.md)。
 

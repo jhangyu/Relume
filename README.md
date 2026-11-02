@@ -304,10 +304,10 @@ You can enable apps and trigger builds in the web UI or in the app. The app's ma
 ### Get the app
 
 1. Open this repository's GitHub **Releases** page and pick the newest release tagged `companion-vX.Y.Z`.
-2. Download `relume-companion.apk` and open it on the phone (the app needs Android 10 / API 29 or newer).
+2. Download `relume-<version>-universal.apk` and open it on the phone (the app needs Android 10 / API 29 or newer).
 3. If Android asks, allow your browser or file manager to install unknown apps.
 
-CI builds and publishes the app only when a `companion-vX.Y.Z` tag is pushed. The app does not update itself: to update the companion, download the newer `relume-companion.apk` from Releases and install it over the old one. The installed version is shown in Settings under `App version`.
+CI builds and publishes the app only when a `companion-vX.Y.Z` tag is pushed. The app does not update itself: to update the companion, download the newer `relume-<version>-universal.apk` from Releases and install it over the old one. The installed version is shown in Settings under `App version`.
 
 ### First start: connect to your server
 
@@ -391,7 +391,7 @@ Background installs follow the same rules as manual ones. Where Android needs a 
   ```
 
   Android leg (needs the Android SDK): `ANDROID_HOME=<sdk> python3 scripts/test.py --legs android`.
-- The companion app is released by pushing a tag `companion-vX.Y.Z`: the `Android` workflow builds and publishes `relume-companion.apk` as a GitHub release of this repo.
+- The companion app is released by pushing a tag `companion-vX.Y.Z`: the `Android` workflow builds and publishes `relume-<version>-universal.apk` as a GitHub release of this repo.
 - Images are published to Docker Hub with `python3 scripts/release.py <version>`.
 - More: common questions are answered in [docs/Frequently Asked Questions.md](docs/Frequently%20Asked%20Questions.md).
 
