@@ -12,3 +12,4 @@ local/.env.bak*
 local/verify/
 scripts/tmp/
 tmp/
+android/.kotlin/
