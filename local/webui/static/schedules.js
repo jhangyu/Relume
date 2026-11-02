@@ -1,4 +1,4 @@
-import { $, $$, act, api, confirmDialog, fmt, html, icon, JOB_BADGE, report, shell } from '/static/app.js';
+import { $, $$, act, afterWrite, api, confirmDialog, fmt, html, icon, JOB_BADGE, live, report, shell } from '/static/app.js';
 
 const DAYS = ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'];
 const UI_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -152,7 +152,7 @@ $('#o-save').addEventListener('click', async () => {
     if (R.cur) await act('PUT', `/api/schedules/${R.cur.id}`, body, 'Schedule saved');
     else await act('POST', '/api/schedules', body, 'Schedule saved');
     byId('dlg-ota').close();
-    await load();
+    afterWrite();
   } catch (e) { report(e); }
 });
 $('#new').addEventListener('click', () => openDialog(null));
@@ -168,14 +168,15 @@ $('#list').addEventListener('click', async e => {
       await act('DELETE', `/api/schedules/${del.dataset.del}`, {}, 'Schedule deleted');
     } else if (en) await act('PUT', `/api/schedules/${en.dataset.en}`, { enabled: en.checked });
     else return;
-  } catch (e) { report(e); }   // the reload below also resets a failed switch
-  load().catch(report);        // one reload after success or failure
+  } catch (e) { report(e); renderList(); return; }   // renderList resets a failed switch
+  afterWrite();
 });
 
 async function load() {
-  const [{ schedules }, settings, g] = await Promise.all([api('GET', '/api/schedules'), api('GET', '/api/settings'), api('GET', '/api/schedule')]);
+  const [{ schedules }, settings, g, { devices }] = await Promise.all([api('GET', '/api/schedules'), api('GET', '/api/settings'), api('GET', '/api/schedule'), api('GET', '/api/devices')]);
   const { jobs } = await api('GET', `/api/jobs?kind=upstream&schedule_id=${g.id}&limit=1`);   // newest update run (scheduled or manual); its queued builds carry the id too
   R.lastRun = jobs[0] || null;
+  R.devices = devices.filter(d => d.kind !== 'app');
   R.ota = schedules.filter(s => s.kind === 'ota');
   R.global = g;
   $('#srvtime').textContent = `Server time ${new Date(settings.server.now).toLocaleString('en', { timeZone: settings.server.tz, weekday: 'short', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · ${settings.server.tz}`;
@@ -184,8 +185,6 @@ async function load() {
   renderList();
 }
 
-(async () => {
-  shell();
-  R.devices = (await api('GET', '/api/devices')).devices.filter(d => d.kind !== 'app');
-  await load();
-})().catch(report);
+shell();
+live(['schedules', 'jobs', 'devices'], load,
+  () => Boolean(document.querySelector('dialog[open]') || document.activeElement.closest('#g-custom')));
