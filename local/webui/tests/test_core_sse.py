@@ -76,6 +76,22 @@ class JobsApiTest(DataTestCase):
         self.assertEqual(http('GET', f'{self.base}/api/jobs/999', cookie=self.c)[0], 404)
 
 
+class ScheduleIdFilterTest(DataTestCase):
+    def test_schedule_id_filter(self):
+        base = serve(self)
+        cookie = login(base)
+        scheduler.ensure_update()
+        sid = db.conn().execute("SELECT id FROM schedules WHERE kind='update'").fetchone()[0]
+        s1 = jobs.enqueue('upstream', {'all': True}, 'manual', sid)
+        jobs.enqueue('upstream', {'upstream_id': 5}, 'manual')   # newer, no schedule: must be filtered out
+        get = lambda q: [j['id'] for j in json.loads(http('GET', f'{base}/api/jobs?{q}', cookie=cookie)[2])['jobs']]
+        self.assertEqual(get(f'schedule_id={sid}'), [s1])
+        self.assertEqual(get(f'kind=upstream&schedule_id={sid}&limit=1'), [s1])
+        self.assertEqual(get(f'kind=build&schedule_id={sid}'), [])
+        r = http('GET', f'{base}/api/jobs?schedule_id=x', cookie=cookie)
+        self.assertEqual((r[0], json.loads(r[2])['error']), (400, "schedule_id expected an integer, got 'x'"))
+
+
 class EventsTest(DataTestCase):
     def test_change_stream_coalesces_topics(self):
         s = events.stream(lambda: True)
