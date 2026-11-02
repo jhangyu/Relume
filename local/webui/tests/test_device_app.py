@@ -65,6 +65,7 @@ class AppTest(helpers.DataTestCase):
         cases = (
             ([pkg(YT), {'package': GMS, 'version_code': 'x'}], "packages[1].version_code must be a non-negative integer, got 'x'"),
             ([pkg(YT, signer='AB' * 32)], 'packages[0].signer_sha256 must be 64 lowercase hex characters or null'),
+            ([dict(pkg(YT), apk_sha256='CD' * 32)], 'packages[0].apk_sha256 must be 64 lowercase hex characters or null'),
             ([pkg('not a package')], "packages[0].package must be an Android package name, got 'not a package'"),
             ([pkg(YT), pkg(YT)], 'packages[1].package must be unique in packages'),
             (['x'], "packages[0] must be an object, got 'x'"),
@@ -133,6 +134,7 @@ class AppTest(helpers.DataTestCase):
         self.assertEqual(db.conn().execute('SELECT COUNT(*) FROM ota_installs').fetchone()[0], 0)
         st, body = self.call(ota.post_install, {'kind': 'item', 'ref_id': 1, 'artifact_id': 50, 'result': 'installed'})
         self.assertEqual((st, body), (200, {'ok': True}))
+        self.assertEqual(self.stored(), {})   # receipts are history only: the phone's sync writes the report (decision 15)
         self.assertEqual(self.call(ota.post_install, {'kind': 'project', 'ref_id': 2, 'tag': '7.2.1', 'result': 'failed',
                                                       'error_code': 'USER_REJECTED'})[0], 200)
         rows = [dict(r) for r in db.conn().execute('SELECT * FROM ota_installs ORDER BY id')]
@@ -140,6 +142,7 @@ class AppTest(helpers.DataTestCase):
                            r['result'], r['error_code']) for r in rows],
                          [(None, self.me, 'item', 5, None, 1547, 'installed', None),
                           (None, self.me, 'project', None, '7.2.1', 255070218, 'failed', 'USER_REJECTED')])
+        self.call(ota.sync, sync_body([pkg(YT, 1547)]))   # the companion syncs right after its receipts
         step = self.call(ota.me_plan)[1]['plan']['steps'][0]
         self.assertEqual((step['kind'], step['action'], step['download']), ('item', 'up_to_date', None))
 
@@ -163,6 +166,8 @@ class AppTest(helpers.DataTestCase):
         self.assertEqual((s2['action'], s2['reason']), ('error', f"ARTIFACT_INCOMPLETE: artifact {a1 + 1} has no package"))
         self.call(ota.post_install, {'kind': 'item', 'ref_id': 1, 'artifact_id': a1, 'result': 'installed'})
         self.assertEqual(db.conn().execute('SELECT package FROM ota_installs').fetchone()[0], renamed)
+        self.call(ota.sync, sync_body([pkg(YT, 7), pkg(renamed, 7)]))   # the companion syncs right after its receipts
+        self.assertEqual(self.stored(), {YT: 7, renamed: 7})
         s1 = self.call(ota.me_plan)[1]['plan']['steps'][0]
         self.assertEqual((s1['action'], s1['reason']), ('up_to_date', 'same build installed'))
         self.call(ota.sync, sync_body([pkg(renamed, 6)]))                # drift is read on the renamed package

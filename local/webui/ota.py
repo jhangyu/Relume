@@ -64,20 +64,21 @@ def tracked_packages():
 
 def store_reported(device_id, packages):
     """Replace a phone's device_packages with the tracked part of packages {package: {version_code, version_name,
-    signer_sha256}}; one transaction."""
+    signer_sha256, apk_sha256}}; one transaction."""
     keep = set(tracked_packages())
     now = db.utcnow()
     with db.tx() as c:
         c.execute('DELETE FROM device_packages WHERE device_id = ?', (device_id,))
-        c.executemany('INSERT INTO device_packages(device_id,package,version_code,version_name,signer_sha256,reported_at) '
-                      'VALUES (?,?,?,?,?,?)',
-                      [(device_id, pkg, v['version_code'], v['version_name'], v['signer_sha256'], now)
+        c.executemany('INSERT INTO device_packages(device_id,package,version_code,version_name,signer_sha256,apk_sha256,'
+                      'reported_at) VALUES (?,?,?,?,?,?,?)',
+                      [(device_id, pkg, v['version_code'], v['version_name'], v['signer_sha256'], v['apk_sha256'], now)
                        for pkg, v in sorted(packages.items()) if pkg in keep])
 
 
 def reported_packages(device_id):
-    """device_packages of a phone: {package: {version_code, version_name, signer_sha256, reported_at}}."""
-    return {r['package']: {k: r[k] for k in ('version_code', 'version_name', 'signer_sha256', 'reported_at')}
+    """device_packages of a phone: {package: {version_code, version_name, signer_sha256, apk_sha256, reported_at}}."""
+    return {r['package']: {k: r[k] for k in ('version_code', 'version_name', 'signer_sha256', 'apk_sha256',
+                                             'reported_at')}
             for r in db.conn().execute('SELECT * FROM device_packages WHERE device_id = ?', (device_id,))}
 
 
@@ -433,7 +434,8 @@ def parse_device_facts(d):
 
 
 def _parse_sync(body):
-    """Boundary parse of POST /api/me/sync -> (DeviceFacts, app_version_code, {package: {version_code, version_name, signer_sha256}})."""
+    """Boundary parse of POST /api/me/sync -> (DeviceFacts, app_version_code, {package: {version_code, version_name, signer_sha256,
+    apk_sha256}}). apk_sha256 absent/null = no hash (companions up to v1.4.0, decision 15)."""
     d = body.get('device')
     facts = parse_device_facts(d)
     if not is_int(d.get('app_version_code')) or d['app_version_code'] < 1:
@@ -458,8 +460,10 @@ def _parse_sync(body):
         if e.get('signer_sha256') is not None and not (isinstance(e['signer_sha256'], str)
                                                        and SIGNER.match(e['signer_sha256'])):
             _bad(f + '.signer_sha256', '64 lowercase hex characters or null', e['signer_sha256'])
+        if e.get('apk_sha256') is not None and not (isinstance(e['apk_sha256'], str) and SIGNER.match(e['apk_sha256'])):
+            _bad(f + '.apk_sha256', '64 lowercase hex characters or null', e['apk_sha256'])
         out[pkg] = {'version_code': e['version_code'], 'version_name': e.get('version_name'),
-                    'signer_sha256': e.get('signer_sha256')}
+                    'signer_sha256': e.get('signer_sha256'), 'apk_sha256': e.get('apk_sha256')}
     return facts, d['app_version_code'], out
 
 
@@ -537,8 +541,8 @@ def me_plan(req):
 
 
 def _receipt_target(dev, b):
-    """-> (build_job_id, upstream_tag, package, version_name, version_code, signer_sha256) of the install the receipt
-    is for; 409 stale plan when the key is not the current download."""
+    """-> (build_job_id, upstream_tag, package, version_name, version_code) of the install the receipt is for;
+    409 stale plan when the key is not the current download."""
     ref = b.get('ref_id')
     if not is_int(ref):
         _bad('ref_id', 'an integer', ref)
@@ -554,7 +558,7 @@ def _receipt_target(dev, b):
         a = build.latest_artifact(ref, first_abi(dev))
         if a is None or a['id'] != aid or not a['package']:  # no package = never offered for download
             raise HttpError(409, 'stale plan')
-        return a['job_id'], None, a['package'], a['version_name'], a['version_code'], a['signer_sha256']
+        return a['job_id'], None, a['package'], a['version_name'], a['version_code']
     tag = b.get('tag')
     if not isinstance(tag, str):
         _bad('tag', 'a string', tag)
@@ -563,11 +567,12 @@ def _receipt_target(dev, b):
         raise HttpError(400, f'project {ref} not found')
     if p['tag'] != tag or p['path'] is None:
         raise HttpError(409, 'stale plan')
-    return None, tag, p['package'], p['version_name'], p['version_code'], p['signer_sha256']
+    return None, tag, p['package'], p['version_name'], p['version_code']
 
 
 def post_install(req):
-    """One ota_installs row (job_id NULL) per receipt; an installed receipt also updates the phone's report."""
+    """One ota_installs row (job_id NULL) per receipt: history only, the phone's next sync writes its report
+    (decision 15)."""
     dev, b = _me(req), req.json
     if b.get('kind') not in ('item', 'project'):
         _bad('kind', 'item or project', b.get('kind'))
@@ -580,16 +585,13 @@ def post_install(req):
         _bad('error_text', 'a string or null', text)
     if devices.is_legacy(dev):   # install-only client: the install happened, nothing about it is kept
         return 200, {'ok': True}
-    job_id, tag, pkg, vname, vcode, signer = _receipt_target(dev, b)
+    job_id, tag, pkg, vname, vcode = _receipt_target(dev, b)
     now = db.utcnow()
     with db.tx() as c:
         c.execute('INSERT INTO ota_installs(job_id,device_id,kind,ref_id,build_job_id,upstream_tag,package,version_name,'
                   'version_code,result,error_code,error_text,at) VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?)',
                   (dev['id'], b['kind'], b['ref_id'], job_id, tag, pkg, vname, vcode, b['result'], code,
                    text[-ERROR_TEXT_MAX:] if text else None, now))
-        if b['result'] == 'installed':
-            c.execute('INSERT OR REPLACE INTO device_packages(device_id,package,version_code,version_name,signer_sha256,'
-                      'reported_at) VALUES (?,?,?,?,?,?)', (dev['id'], pkg, vcode, vname, signer, now))
     return 200, {'ok': True}
 
 

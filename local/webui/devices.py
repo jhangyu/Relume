@@ -41,7 +41,8 @@ def parse_getprop(text):
 
 
 def parse_packages(text):
-    """`pm list packages --show-versioncode` -> {package: {version_code, version_name: None, signer_sha256: None}}."""
+    """`pm list packages --show-versioncode` -> {package: {version_code, version_name: None, signer_sha256: None,
+    apk_sha256: None}}."""
     out = {}
     for line in text.splitlines():
         if not line.startswith('package:'):
@@ -49,7 +50,7 @@ def parse_packages(text):
         m = _PKG_LINE.match(line.strip())
         if m is None:
             raise ValueError(f'pm list packages: expected "package:<name> versionCode:<n>", got {line!r}')
-        out[m[1]] = {'version_code': int(m[2]), 'version_name': None, 'signer_sha256': None}
+        out[m[1]] = {'version_code': int(m[2]), 'version_name': None, 'signer_sha256': None, 'apk_sha256': None}
     return out
 
 
