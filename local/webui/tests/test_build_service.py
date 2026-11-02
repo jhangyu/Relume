@@ -180,6 +180,20 @@ class HandlerFailTest(BuildCase):
         self.assertTrue(str(err).startswith("upstream_missing: "))
         self.assertIsNone(log.argv)
 
+    def test_upstream_missing_stores_the_fingerprint(self):
+        self.cat.missing = True
+        job, _, _ = self.run_handler()
+        self.assertEqual((self.bj(job)["fail_code"], self.bj(job)["inputs_sha"]), ("upstream_missing", "sha-of-inputs"))
+
+    def test_disabled_after_enqueue_is_app_disabled(self):
+        with db.tx() as c:
+            c.execute("UPDATE item SET enabled = 0 WHERE id = 1")
+        job, log, err = self.run_handler()
+        self.assertEqual(str(err), f"app_disabled: app 1 ({YT}) was disabled after this build was queued")
+        self.assertEqual(self.bj(job)["fail_code"], "app_disabled")
+        self.assertIsNone(log.argv)                                 # runner never started
+        self.assertNotIn("build.failed", [t for t, _ in self.events])
+
     def test_missing_file_is_upstream_missing(self):
         (self.up / "morphe-desktop-1.0.0-all.jar").unlink()
         job, log, err = self.run_handler()
@@ -533,20 +547,24 @@ class GuardHandlerTest(BuildCase):
         self.assertIsNone(err)
         self.assertIsNone(self.bj(job)["failed_patches"])
 
-    def test_no_retry_until_the_inputs_change(self):
+    def test_retry_rule_per_fail_code(self):
         sha = {"v": json.dumps({"base": "b1", "variants": {"universal": "u", "arm64-v8a": "a"}})}
         self.enterContext(mock.patch.object(apps, "inputs_sha", lambda i: sha["v"]))
         self.published()
-        job, _, err = self.run_handler(patch_results={"universal": patch_result(0, []), "arm64-v8a": patch_result(0, [])})
+        job, _, _ = self.run_handler(patch_results={"universal": patch_result(0, []), "arm64-v8a": patch_result(0, [])})
         with db.tx() as c:
             c.execute("UPDATE jobs SET status = 'failed' WHERE id = ?", (job.id,))
-        self.assertFalse(self.needs_build())
-        sha["v"] = sha["v"].replace("b1", "b2")   # a new bundle tag, app version or override
-        self.assertTrue(self.needs_build())
-        sha["v"] = sha["v"].replace("b2", "b1")
-        with db.tx() as c:
-            c.execute("UPDATE build_jobs SET fail_code = 'download_failed' WHERE job_id = ?", (job.id,))
-        self.assertTrue(self.needs_build())   # other fail codes keep retrying
+        for code in build.RETRY_ON_INPUT_CHANGE:
+            with db.tx() as c:
+                c.execute("UPDATE build_jobs SET fail_code = ? WHERE job_id = ?", (code, job.id))
+            self.assertFalse(self.needs_build(), code)
+            sha["v"] = sha["v"].replace("b1", "b2")   # a new bundle tag, app version or override
+            self.assertTrue(self.needs_build(), code)
+            sha["v"] = sha["v"].replace("b2", "b1")
+        for code in ("download_failed", "timeout", "patch_failed", "internal", "app_disabled"):
+            with db.tx() as c:
+                c.execute("UPDATE build_jobs SET fail_code = ? WHERE job_id = ?", (code, job.id))
+            self.assertTrue(self.needs_build(), code)   # retried every update
 
 
 class VariantLoopTest(BuildCase):

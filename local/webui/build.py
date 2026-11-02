@@ -23,6 +23,8 @@ ERROR_TEXT_MAX = 300  # chars of the patcher's error kept in a guard verdict
 # merge and patch, far below the rate limit (about 17 hits in 11 s); the ordering finds the known cases on attempt 1
 MAX_VARIANT_ATTEMPTS = 3
 RUNNER_TIMEOUT = 3600  # s, one isolated runner run: downloads, merges and patches of every variant
+# failures a build retries only when its inputs change (decision 9, same rule as the patch guard)
+RETRY_ON_INPUT_CHANGE = ("patch_items_failed", "upstream_missing", "merge_failed", "apk_not_listed")
 _steps = {}
 _steps_lock = threading.Lock()
 
@@ -63,11 +65,15 @@ class _Markers:
             self.last_err = text.strip()
 
 
-def _fail(job, item_id, code, detail):
+def _record_fail(job, item_id, code, detail):
     with db.tx() as c:
         c.execute("""INSERT INTO build_jobs(job_id, item_id, fail_code, fail_detail) VALUES (?, ?, ?, ?)
             ON CONFLICT(job_id) DO UPDATE SET fail_code = excluded.fail_code, fail_detail = excluded.fail_detail""",
                   (job.id, item_id, code, detail))
+
+
+def _fail(job, item_id, code, detail):
+    _record_fail(job, item_id, code, detail)
     events.emit("build.failed", {"item_id": item_id, "job_id": job.id, "fail_code": code, "fail_detail": detail})
     raise jobs.JobFailed(f"{code}: {detail}")
 
@@ -419,22 +425,33 @@ def _runner_dir(path):
     path.chmod(0o770)  # the isolated runner uid shares the server's gid
 
 
-def _start_row(job, item_id, inp, sha):
-    """The build_jobs row of this build; upstream_missing when a downloaded patch or CLI file is gone."""
+def _open_row(job, item_id, sha):
+    """The build_jobs row with the input fingerprint, before anything can fail (decision 9)."""
     with db.tx() as c:
-        c.execute("INSERT INTO build_jobs(job_id, item_id, patches_version, cli_version, inputs_sha) VALUES (?, ?, ?, ?, ?)",
-                  (job.id, item_id, inp["upstream_tag"], inp["cli_tag"], sha))
+        c.execute("INSERT INTO build_jobs(job_id, item_id, inputs_sha) VALUES (?, ?, ?)", (job.id, item_id, sha))
+
+
+def _start_row(job, item_id, inp):
+    """Tags of this build; upstream_missing when a downloaded patch or CLI file is gone."""
+    with db.tx() as c:
+        c.execute("UPDATE build_jobs SET patches_version = ?, cli_version = ? WHERE job_id = ?",
+                  (inp["upstream_tag"], inp["cli_tag"], job.id))
     missing = [p for p in [*inp["patches_files"], inp["cli_jar"]] if not Path(p).is_file()]
     if missing:
         _fail(job, item_id, "upstream_missing", f"missing file {Path(missing[0]).name}")
 
 
+def _refingerprint_if_latest(job, item_id, inp):
+    """Latest mode: fingerprint the version the runner found (it refreshes the APKMirror list during the run)."""
+    if inp["version"]["value"] is None:
+        with db.tx() as c:
+            c.execute("UPDATE build_jobs SET inputs_sha = ? WHERE job_id = ?", (apps.inputs_sha(apps.item_row(item_id)), job.id))
+
+
 def _fail_exhausted(job, item_id, inp, tried, vname, last):
     """End of a variant loop with no build: patch_items_failed waits for an input change (needs_build), whichever
     way the last variant failed."""
-    if inp["version"]["value"] is None:   # fingerprint the version the runner found (as the guard path does)
-        with db.tx() as c:
-            c.execute("UPDATE build_jobs SET inputs_sha = ? WHERE job_id = ?", (apps.inputs_sha(apps.item_row(item_id)), job.id))
+    _refingerprint_if_latest(job, item_id, inp)
     _fail(job, item_id, "patch_items_failed",
           f"Tried APKMirror variants {', '.join(map(str, tried))} of {vname}: the patches applied "
           f"to none of them. Last: {last.rstrip('.')}. Set the app's APKMirror versionCode to pick one.")
@@ -444,15 +461,21 @@ def handler(job, log):
     item_id = job.target["item_id"]
     work = db.DATA / "work" / str(job.id)
     try:
+        r = apps.item_row(item_id)
+        sha = apps.inputs_sha(r)
+        _open_row(job, item_id, sha)
+        if not r["enabled"]:   # disabled while queued (decision 4): no runner, no notification
+            detail = f"app {item_id} ({r['package']}) was disabled after this build was queued"
+            _record_fail(job, item_id, "app_disabled", detail)
+            raise jobs.JobFailed(f"app_disabled: {detail}")
         try:
             inp = apps.job_input(item_id)
         except catalog.UpstreamMissing as e:
             _fail(job, item_id, "upstream_missing", str(e))
-        sha = apps.inputs_sha(apps.item_row(item_id))
         for name in apps.stale_overrides(item_id):
             log.line(f"[!] stale override dropped: {name}")
         _runner_dir(work)
-        _start_row(job, item_id, inp, sha)
+        _start_row(job, item_id, inp)
         googleplay = _googleplay(job, item_id, inp, work, log)
         auto, want, tried, vname, last = _apkm_auto(inp), inp["version"]["value"], [], None, ""
         # one runner run per APKMirror variant attempt, each in a fresh dir: the runner uid owns its files, the finally
@@ -468,6 +491,8 @@ def handler(job, log):
                 return
             if not out.variant:
                 if not tried:
+                    if out.code in RETRY_ON_INPUT_CHANGE:
+                        _refingerprint_if_latest(job, item_id, inp)
                     _fail(job, item_id, out.code, out.detail)
                 last = f"{last.rstrip('.')}. Then {out.code}: {out.detail}"   # end as the exhausted loop, not a retried code
                 break
@@ -641,11 +666,11 @@ def item_status(item_ids):
 
 
 def needs_build(st, r):
-    """Apps part §4.3: never built, last build failed (a patch_items_failed verdict: and the inputs changed since),
+    """Apps part §4.3: never built, last build failed (a code in RETRY_ON_INPUT_CHANGE: and the inputs changed since),
     artifacts cleaned up, or the build inputs changed. st = item_status entry, r = apps.ROW_SQL row of the item."""
     ls, lb = st["last_success"], st["last_build"]
-    if lb is not None and lb["status"] == "failed":  # a guard verdict is retried only once its inputs change
-        if lb["fail_code"] != "patch_items_failed":
+    if lb is not None and lb["status"] == "failed":  # decision 9: these codes retry only once the inputs change
+        if lb["fail_code"] not in RETRY_ON_INPUT_CHANGE:
             return True
         return not apps.inputs_cover(lb["inputs_sha"], apps.inputs_sha(r))
     if ls is None:
