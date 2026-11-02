@@ -189,7 +189,7 @@ class PlanTest(helpers.DataTestCase):
         self.assertEqual((dev['kind'], dev['app_version_code'], dev['last_seen_at']), ('app', 3, None))
         self.assertRegex(dev['created_at'], r'^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$')
         self.assertEqual(dev['assignments'][0]['installed_reported'],
-                         {'version_code': 7, 'version_name': '19.47.53', 'signer_sha256': 'aa',
+                         {'version_code': 7, 'version_name': '19.47.53', 'signer_sha256': 'aa', 'apk_sha256': None,
                           'reported_at': '2026-10-25T08:00:00Z'})
 
     def test_projects_shape_and_update_available(self):
