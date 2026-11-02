@@ -160,7 +160,7 @@ $('#list').addEventListener('click', async e => {
     if (t.dataset.act === 'dl') {
       e.preventDefault();
       if ($('.menu', t.parentElement)) return closeMenus();
-      closeMenus();
+      $$('.menu').forEach(m => m.remove());   // not closeMenus(): its re-render would detach t before openMenu
       return await openMenu(t, a);
     }
     if (t.dataset.act === 'settings') { e.preventDefault(); return await openDrawer(a.id); }
