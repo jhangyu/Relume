@@ -18,6 +18,10 @@ class AuthTest(DataTestCase):
         self.assertFalse(auth.verify_password('other', h))
         self.assertFalse(auth.verify_password('x', None))
 
+    def test_logged_out_page_redirects_to_login(self):
+        st, h, _ = http('GET', self.base + '/')
+        self.assertEqual((st, h.get('Location'), http('GET', self.base + '/login.html')[0]), (302, '/login.html', 200))
+
     def test_401_without_cookie(self):
         self.assertEqual(http('GET', self.base + '/api/jobs')[0], 401)
 
