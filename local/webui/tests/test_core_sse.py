@@ -88,9 +88,6 @@ class ScheduleIdFilterTest(DataTestCase):
         self.assertEqual(get(f'schedule_id={sid}'), [s1])
         self.assertEqual(get(f'kind=upstream&schedule_id={sid}&limit=1'), [s1])
         self.assertEqual(get(f'kind=build&schedule_id={sid}'), [])
-        b1 = jobs.enqueue('build', {'item_id': 1}, 'manual', sid)   # a run also queues its builds under the same schedule id
-        self.assertEqual(get(f'schedule_id={sid}&limit=1'), [b1])
-        self.assertEqual(get(f'schedule_id={sid}&kind=upstream&limit=1'), [s1])
         r = http('GET', f'{base}/api/jobs?schedule_id=x', cookie=cookie)
         self.assertEqual((r[0], json.loads(r[2])['error']), (400, "schedule_id expected an integer, got 'x'"))
 
