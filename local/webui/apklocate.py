@@ -1,5 +1,6 @@
 """APKMirror auto-locate (spec marketplace §5, API part §1): find the listing of an enabled app by package with an
-exact Play-id match, rate-limited, state per app in the app.apkm_* columns. Every page is fetched by the isolated
+exact Play-id match, rate-limited; lookup outcome in app.apkm_*, list URL source in app.apkmirror_list_by, block end in
+settings. Every page is fetched by the isolated
 runner (src/build/fetch-page.sh); this module only parses the text it wrote, reading attributes and link text."""
 import datetime
 import html.parser
@@ -10,14 +11,14 @@ import time
 import urllib.parse
 from dataclasses import dataclass
 
-from . import catalog, db, jobs
+from . import catalog, db, jobs, settings
 from .server import HttpError
 
 MIN_INTERVAL = 10              # s between two APKMirror lookup requests (global)
 BLOCK_COOLDOWN = 3600          # s after a block without any lookup request
 NOT_FOUND_RETRY = 7 * 86400    # s until a not_found / failed lookup is due again
 MAX_CANDIDATES = 5             # app pages checked per lookup
-FETCH_TIMEOUT = 120            # s per page: one solver round with its retries
+FETCH_TIMEOUT = 120            # s per page: FlareSolverr then CFBypass, one try each
 PAGE_MAX_BYTES = 8 * 1024 * 1024
 FETCH_PAGE = str(db.REPO_ROOT / "src" / "build" / "fetch-page.sh")
 PAGE_FILE = "page.html"
@@ -30,12 +31,11 @@ CHALLENGE = re.compile(r"<title>\s*Just a moment|cf-chl|challenge-platform", re.
 NO_RESULTS = "No results found"
 PLAY_LINK = "View on Play Store"
 LIST_URL_FORMS = f"{BASE}/uploads/?appcategory=<slug> or {BASE}/apk/<org>/<slug>/"
-NEVER_DUE = ("found", "manual", "ambiguous")
-RETRY_DUE = ("not_found", "failed", "blocked")
-_clock = time.monotonic        # tests replace; wall time for retry_at uses db.utcnow()
+BLOCKED_KEY = "apkmirror_blocked_until"   # settings key: end of the APKMirror block (UTC ISO), survives a restart
+_clock = time.monotonic        # rate limit only (MIN_INTERVAL); tests replace
+_now = db.utcnow               # wall clock of block and retry times; tests replace
 _lock = threading.Lock()
-# ponytail: in memory, a restart resets the cooldown (spec §14)
-_state = {"last": None, "blocked_until": 0.0, "retry_at": None}
+_state = {"last": None}        # time of the previous lookup request (rate limit, in memory on purpose)
 
 
 @dataclass(frozen=True)
@@ -167,24 +167,30 @@ def decide(package, name, fetch):
 
 
 def _wall(seconds):
-    return db.iso(db.parse_iso(db.utcnow()) + datetime.timedelta(seconds=seconds))
+    return db.iso(db.parse_iso(_now()) + datetime.timedelta(seconds=seconds))
+
+
+def blocked_until():
+    """End of the APKMirror block while it is in the future, else None."""
+    until = settings.get(BLOCKED_KEY)
+    return until if until and until > _now() else None
 
 
 def _block(reason):
     """Start the cooldown; returns the Blocked to raise."""
-    with _lock:
-        _state["blocked_until"] = _clock() + BLOCK_COOLDOWN
-        _state["retry_at"] = _wall(BLOCK_COOLDOWN)
-        return Blocked(f"blocked until {_state['retry_at']}: {reason}")
+    until = _wall(BLOCK_COOLDOWN)
+    settings.put(BLOCKED_KEY, until)
+    return Blocked(f"blocked until {until}: {reason}")
 
 
 def throttle(cancel_event):
     """Wait until MIN_INTERVAL after the previous lookup request (rate limit = time as business data), then record
     this one. Raises Blocked during the cooldown and jobs.JobCancelled when the job is cancelled."""
     with _lock:  # ponytail: the wait holds the lock, one lookup at a time is the goal
+        until = blocked_until()
+        if until:
+            raise Blocked(f"blocked until {until}: cooldown after an earlier block")
         now = _clock()
-        if now < _state["blocked_until"]:
-            raise Blocked(f"blocked until {_state['retry_at']}: cooldown after an earlier block")
         if _state["last"] is not None and now < _state["last"] + MIN_INTERVAL:
             if cancel_event.wait(_state["last"] + MIN_INTERVAL - now):
                 raise jobs.JobCancelled()
@@ -223,24 +229,26 @@ def locate(package, log, cancel_event):
     Raises only jobs.JobCancelled."""
     r = _row(package)
     state = r["apkm_state"]
-    if r["apkmirror_list_url"] or r["apkpure_url"] or state in NEVER_DUE:
+    if r["apkmirror_list_url"] or r["apkpure_url"] or state == "ambiguous":
         return
-    if state in RETRY_DUE and r["apkm_retry_at"] and r["apkm_retry_at"] > db.utcnow():
+    if state == "blocked" and blocked_until():
+        return
+    if state in ("not_found", "failed") and r["apkm_retry_at"] and r["apkm_retry_at"] > _now():
         return
     s = db.conn().execute("SELECT name FROM store_app WHERE package = ?", (package,)).fetchone()
     log.line(f"[*] APKMirror lookup for {package}")
     res = decide(package, s["name"] if s and s["name"] else package, lambda url: _fetch(url, log, cancel_event))
-    retry = {"not_found": lambda: _wall(NOT_FOUND_RETRY), "failed": lambda: _wall(NOT_FOUND_RETRY),
-             "blocked": lambda: _state["retry_at"]}.get(res.state, lambda: None)()
+    retry = _wall(NOT_FOUND_RETRY) if res.state in ("not_found", "failed") else None
+    found = res.state == "found"
     cands = [{"title": c.title, "url": app_url(c), "list_url": list_url(c)} for c in res.candidates]
     with db.tx() as c:  # a URL the user set during the lookup wins
         c.execute("UPDATE app SET apkm_state = ?, apkm_candidates = ?, apkm_error = ?, apkm_checked_at = ?, "
-                  "apkm_retry_at = ?, apkmirror_list_url = ? "
+                  "apkm_retry_at = ?, apkmirror_list_url = ?, apkmirror_list_by = ? "
                   "WHERE package = ? AND apkmirror_list_url IS NULL AND apkpure_url IS NULL",
-                  (res.state, json.dumps(cands) if cands else None,
+                  ("pending" if found else res.state, json.dumps(cands) if cands else None,
                    f"APKMirror lookup for {package}: {res.error}" if res.error else None,
-                   db.utcnow(), retry, res.list_url, package))
-    log.line(f"[{'+' if res.state == 'found' else '!'}] APKMirror lookup for {package}: {res.state}"
+                   _now(), retry, res.list_url, "lookup" if found else None, package))
+    log.line(f"[{'+' if found else '!'}] APKMirror lookup for {package}: {res.state}"
              f"{' ' + res.list_url if res.list_url else ''}{': ' + res.error if res.error else ''}")
 
 
@@ -286,15 +294,17 @@ def validate_download(package, fields):
 
 
 def put_download(package, fields):
-    """Set download URL fields (all validated first); a set list URL -> 'manual', a cleared one -> 'pending'."""
+    """Set download URL fields (all validated first); a set list URL is marked 'user' (state 'manual'), a cleared one
+    -> 'pending'."""
     vals = validate_download(package, fields)
     with db.tx() as c:
         c.execute("INSERT OR IGNORE INTO app(package) VALUES (?)", (package,))
         for f, v in vals.items():  # f from URL_FIELDS
             c.execute(f"UPDATE app SET {f} = ? WHERE package = ?", (v, package))
         if "apkmirror_list_url" in vals:
-            c.execute("UPDATE app SET apkm_state = ?, apkm_candidates = NULL, apkm_error = NULL, apkm_retry_at = NULL "
-                      "WHERE package = ?", ("manual" if vals["apkmirror_list_url"] else "pending", package))
+            c.execute("UPDATE app SET apkm_state = 'pending', apkmirror_list_by = ?, apkm_candidates = NULL, "
+                      "apkm_error = NULL, apkm_retry_at = NULL WHERE package = ?",
+                      ("user" if vals["apkmirror_list_url"] else None, package))
 
 
 def download_state(package):
@@ -302,22 +312,26 @@ def download_state(package):
     r = db.conn().execute("SELECT * FROM app WHERE package = ?", (package,)).fetchone()
     if r is None:
         return None
-    return {"state": r["apkm_state"], **{f: r[f] for f in URL_FIELDS},
+    until = blocked_until()
+    if r["apkmirror_list_url"]:
+        state = "found" if r["apkmirror_list_by"] == "lookup" else "manual"
+    else:
+        state = r["apkm_state"]
+    return {"state": state, **{f: r[f] for f in URL_FIELDS},
             "candidates": json.loads(r["apkm_candidates"]) if r["apkm_candidates"] else [],
-            "error": r["apkm_error"], "retry_at": r["apkm_retry_at"], "checked_at": r["apkm_checked_at"]}
+            "error": r["apkm_error"], "retry_at": until if state == "blocked" else r["apkm_retry_at"],
+            "checked_at": r["apkm_checked_at"], "blocked_until": until}
 
 
 def reset_lookup(package):
     """Manual retry (spec §5.3): back to 'pending' so the next {item_id} run looks it up."""
     r = _row(package)
-    with _lock:
-        until = _state["retry_at"] if _clock() < _state["blocked_until"] else None
+    until = blocked_until()
     if until:
         raise HttpError(409, f"APKMirror lookup for {package} blocked until {until}", "apkmirror_blocked",
                         retry_at=until)
-    if r["apkm_state"] in ("found", "manual"):
-        raise HttpError(409, f"app {package}: lookup expected state pending, not_found, failed, ambiguous or blocked, "
-                             f"got {r['apkm_state']} ({r['apkmirror_list_url']})")
+    if r["apkmirror_list_url"]:
+        raise HttpError(409, f"app {package}: lookup expected no APKMirror listing, got {r['apkmirror_list_url']}")
     with db.tx() as c:
         c.execute("UPDATE app SET apkm_state = 'pending', apkm_candidates = NULL, apkm_error = NULL, apkm_retry_at = NULL "
                   "WHERE package = ?", (package,))

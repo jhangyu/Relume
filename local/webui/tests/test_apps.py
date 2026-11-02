@@ -295,7 +295,7 @@ class UpdateRunTest(AppsCase):
 
         def found(package, log, cancel_event):
             db.conn().execute("UPDATE app SET apkmirror_list_url = 'https://www.apkmirror.com/uploads/?appcategory=y', "
-                              "apkm_state = 'found' WHERE package = ?", (package,))
+                              "apkmirror_list_by = 'lookup' WHERE package = ?", (package,))
         self.locate.side_effect = found
         self.run_job({"item_id": 1})
         self.assertEqual(self.jobs_of("build"), [({"item_id": 1}, "schedule")])

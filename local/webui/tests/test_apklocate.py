@@ -1,6 +1,8 @@
-import pathlib, shutil, tempfile, unittest
+import datetime, pathlib, shutil, unittest
 from unittest import mock
-from webui import apklocate, db, jobs, server
+from webui import apklocate, db, jobs, server, settings
+from webui.tests import helpers
+from webui.tests.catalog_rows import FakeLog
 
 FIX = pathlib.Path(__file__).with_name('fixtures') / 'apkmirror'
 YT = 'com.google.android.youtube'
@@ -27,11 +29,21 @@ class Clock:
         return self.t
 
 
-class LocateCase(unittest.TestCase):
+class Wall:
+    def __init__(self):
+        self.t = db.parse_iso('2026-11-02T00:00:00Z')
+
+    def __call__(self):
+        return db.iso(self.t)
+
+
+class LocateCase(helpers.DataTestCase):
     def setUp(self):
-        self.clock = Clock()
+        super().setUp()
+        self.clock, self.wall = Clock(), Wall()
         self.enterContext(mock.patch.object(apklocate, '_clock', self.clock))
-        self.enterContext(mock.patch.dict(apklocate._state, {'last': None, 'blocked_until': 0.0, 'retry_at': None}))
+        self.enterContext(mock.patch.object(apklocate, '_now', self.wall))
+        self.enterContext(mock.patch.dict(apklocate._state, {'last': None}, clear=True))
 
 
 class ParseTest(LocateCase):
@@ -93,10 +105,6 @@ class DecideTest(LocateCase):
         self.assertEqual(apklocate.decide(YT, 'YouTube', blocked).state, 'blocked')
 
     def test_fetch_challenge_and_runner_failure_start_cooldown(self):
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        (pathlib.Path(tmp.name) / 'work').mkdir()
-        self.enterContext(mock.patch.object(db, 'DATA', pathlib.Path(tmp.name)))
         argv = []
 
         def runner(log, args, home, **kw):
@@ -111,12 +119,14 @@ class DecideTest(LocateCase):
         body = 'challenge.html'
         with self.assertRaisesRegex(apklocate.Blocked, 'challenge'):
             apklocate._fetch('https://u/2', None, FakeEvent())
-        self.assertEqual(apklocate._state['blocked_until'], self.clock.t + apklocate.BLOCK_COOLDOWN)
+        self.assertEqual(settings.get(apklocate.BLOCKED_KEY),
+                         db.iso(self.wall.t + datetime.timedelta(seconds=apklocate.BLOCK_COOLDOWN)))
         self.clock.t += apklocate.BLOCK_COOLDOWN
+        self.wall.t += datetime.timedelta(seconds=apklocate.BLOCK_COOLDOWN)
         body, rc = 'app-youtube.html', 1
         with self.assertRaisesRegex(apklocate.Blocked, 'runner exit 1'):
             apklocate._fetch('https://u/3', None, FakeEvent())
-        self.assertEqual(list((pathlib.Path(tmp.name) / 'work').iterdir()), [])   # work dirs removed
+        self.assertEqual(list((self.data / 'work').iterdir()), [])   # work dirs removed
 
 
 class ThrottleTest(LocateCase):
@@ -138,8 +148,37 @@ class ThrottleTest(LocateCase):
             return ''
         r = apklocate.decide(YT, 'YouTube', fetch)
         self.assertEqual((r.state, fetched), ('blocked', []))   # zero requests during the cooldown
-        self.clock.t += apklocate.BLOCK_COOLDOWN
+        self.wall.t += datetime.timedelta(seconds=apklocate.BLOCK_COOLDOWN)
         apklocate.throttle(ev)   # cooldown over
+
+
+class StoredStateTest(LocateCase):
+    def test_block_survives_restart(self):
+        db.conn().execute("INSERT OR IGNORE INTO app(package) VALUES ('x.y')")
+        apklocate._block('test')
+        apklocate._state.clear()
+        apklocate._state.update(last=None)    # a restart keeps only the import value
+        with self.assertRaises(server.HttpError) as e:
+            apklocate.reset_lookup('x.y')
+        self.assertEqual((e.exception.status, e.exception.code), (409, 'apkmirror_blocked'))
+        with self.assertRaises(apklocate.Blocked):
+            apklocate.throttle(FakeEvent())
+        self.wall.t += datetime.timedelta(seconds=apklocate.BLOCK_COOLDOWN + 1)
+        apklocate.reset_lookup('x.y')
+        apklocate.throttle(FakeEvent())
+
+    def test_state_is_derived_from_the_list_url(self):
+        url = 'https://www.apkmirror.com/uploads/?appcategory=xy'
+        def by():
+            return db.conn().execute("SELECT apkmirror_list_by FROM app WHERE package = 'x.y'").fetchone()[0]
+        apklocate.put_download('x.y', {'apkmirror_list_url': url})
+        self.assertEqual((apklocate.download_state('x.y')['state'], by()), ('manual', 'user'))
+        apklocate.put_download('x.y', {'apkmirror_list_url': None})
+        st = apklocate.download_state('x.y')
+        self.assertEqual((st['state'], st['blocked_until'], by()), ('pending', None, None))
+        with mock.patch.object(apklocate, 'decide', lambda *a: apklocate.Result('found', url, [], None)):
+            apklocate.locate('x.y', FakeLog(), FakeEvent())
+        self.assertEqual((apklocate.download_state('x.y')['state'], by()), ('found', 'lookup'))
 
 
 class UrlTest(unittest.TestCase):

@@ -137,10 +137,19 @@ class MarketplaceMigrationTest(unittest.TestCase):
             self.assertEqual(rows('SELECT upstream_id, tag FROM bundle_info'), [(12, 'v2')])
             names = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
             self.assertFalse({'source', 'grp'} & names)
-            self.assertEqual(rows("SELECT package, apkm_state FROM app WHERE package LIKE 'a.%' ORDER BY package"),
-                             [('a.four', 'pending'), ('a.one', 'manual'), ('a.three', 'pending'), ('a.two', 'pending')])
-            self.assertEqual(rows("SELECT apkmirror_list_url, apkm_state FROM app WHERE package = 'com.reddit.frontpage'"),
-                             [('https://www.apkmirror.com/uploads/?appcategory=reddit', 'manual')])
+            c.execute("UPDATE app SET apkmirror_list_url = 'https://www.apkmirror.com/uploads/?appcategory=two', "
+                      "apkm_state = 'found' WHERE package = 'a.two'")
+            c.execute("UPDATE app SET apkm_state = 'blocked', apkm_retry_at = '2026-11-02T01:00:00Z' WHERE package = 'a.three'")
+            db.migrate()                       # through 020: found/manual become a list URL plus its setter
+            self.assertEqual(rows("SELECT package, apkm_state, apkmirror_list_by FROM app WHERE package LIKE 'a.%' ORDER BY package"),
+                             [('a.four', 'pending', None), ('a.one', 'pending', 'user'), ('a.three', 'blocked', None),
+                              ('a.two', 'pending', 'lookup')])
+            self.assertEqual(rows("SELECT apkm_retry_at FROM app WHERE package = 'a.three'"), [(None,)])   # block end lives in settings
+            self.assertEqual(rows("SELECT apkmirror_list_url, apkm_state, apkmirror_list_by FROM app "
+                                  "WHERE package = 'com.reddit.frontpage'"),
+                             [('https://www.apkmirror.com/uploads/?appcategory=reddit', 'pending', 'user')])
+            self.assertEqual(rows("SELECT COUNT(*) FROM app WHERE (apkmirror_list_url IS NULL) != (apkmirror_list_by IS NULL)"),
+                             [(0,)])
 
     def test_migration_010_fresh_db_has_builtin_bundle(self):
         with tempfile.TemporaryDirectory() as data:
