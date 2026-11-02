@@ -648,12 +648,6 @@ match_version() {
 	fi
 }
 
-# apk_signer <apk> -> lowercase SHA-256 of signer #1
-apk_signer() {
-	apksigner verify --print-certs "$1" 2>/dev/null | \
-		sed -nE 's/^Signer #1 certificate SHA-256 digest: ([0-9a-fA-F]+)$/\1/p' | head -1 | tr 'A-F' 'a-f' | grep .
-}
-
 # merge_splits <split dir | .apkm | .xapk> <out apk>: APKEditor merge into one standalone APK; return 1 (LAST_ERR set)
 merge_splits() {
 	green_log "[+] Merge splits apk to standalone apk"

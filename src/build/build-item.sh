@@ -207,31 +207,15 @@ for v in "${variants[@]}"; do
 	fi
 done
 
-# ---- verify and write result.json ----
+# ---- write result.json (the server reads package, version and signer of each output, decision 13) ----
 echo "::step::verify"
 : > variants.jsonl
-first_vname=""
 for v in "${variants[@]}"; do
 	name=$(jq -r .name <<<"$v")
-	abi=$(jq -r .abi <<<"$v")
-	f="release/$name.apk"
-	info=$(apk_info "$f") || fail patch_failed "cannot read the package of $f"
-	vpkg=$(sed -n 's/^package=//p' <<<"$info")
-	vcode=$(sed -n 's/^version_code=//p' <<<"$info")
-	vname=$(sed -n 's/^version_name=//p' <<<"$info")
-	[[ -z "$first_vname" ]] && first_vname=$vname
-	signer=$(apk_signer "$f") || signer=""
-	sha=$(sha256sum "$f" | cut -d' ' -f1)
-	size=$(wc -c < "$f" | tr -d ' ')
-	jq -nc --arg name "$name" --arg abi "$abi" --arg file "$f" --argjson size "$size" --arg sha "$sha" \
-		--arg pkg "$vpkg" --arg vname "$vname" --arg vcode "$vcode" --arg signer "$signer" \
-		'{name:$name, abi:$abi, file:$file, size:$size, sha256:$sha, package:$pkg, version_name:$vname,
-		  version_code:($vcode|tonumber? // null), signer_sha256:(if $signer == "" then null else $signer end)}' \
-		>> variants.jsonl || fail internal "cannot record variant $name"
+	jq -nc --arg name "$name" --arg abi "$(jq -r .abi <<<"$v")" --arg file "release/$name.apk" \
+		'{name:$name, abi:$abi, file:$file}' >> variants.jsonl || fail internal "cannot record variant $name"
 done
-app_version=${version:-$first_vname}
-[[ "$app_version" != "$printed_version" ]] && echo "::version::$app_version"
-jq -s --arg av "$app_version" --arg pv "$upstream_tag" --arg cv "$cli_tag" \
+jq -s --arg av "$version" --arg pv "$upstream_tag" --arg cv "$cli_tag" \
 	'{app_version:$av, patches_version:$pv, cli_version:$cv, variants:.}' variants.jsonl > result.json ||
 	fail internal "cannot write result.json"
 green_log "[+] Build finished: $n_var variant(s)"

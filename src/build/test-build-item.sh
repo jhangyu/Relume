@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runner self-check (spec build §8). Offline: wget/curl/java/apksigner are shims.
+# Runner self-check (spec build §8). Offline: wget/curl/java are shims.
 # Usage: bash src/build/test-build-item.sh   (exit 0 = all PASS)
 # shellcheck disable=SC2034,SC2154  # globals are read by the sourced scripts
 set -o pipefail
@@ -41,9 +41,6 @@ if [ -z "$(ls -A "$d")" ]; then pass utils_source_no_side_effects; else fail uti
 
 out=$(source "$REPO/src/build/utils.sh" && apk_info "$SHIM_SERVE/input.apk")
 if grep -qE '^package=[A-Za-z][A-Za-z0-9_.]+$' <<<"$out" && grep -qE '^version_code=[0-9]+$' <<<"$out" && grep -qE '^version_name=.+' <<<"$out"; then pass apk_info_capture; else fail apk_info_capture "$out"; fi
-
-out=$(source "$REPO/src/build/utils.sh" && apk_signer "$SHIM_SERVE/input.apk")
-if grep -qE '^[0-9a-f]{64}$' <<<"$out"; then pass apk_signer_capture; else fail apk_signer_capture "$out"; fi
 
 out=$(cd "$T/work" && mkdir -p release && source "$REPO/src/build/utils.sh" &&
 	engine=morphe cli_jar=$T/up/morphe-desktop-1.0.0-all.jar keystore=morphe.keystore RELUME_REPO=$REPO &&
@@ -119,8 +116,7 @@ if [ "$rc" = 0 ] && [ "$(jq '.variants|length' "$r")" = 2 ] &&
 	[ "$(jq -r '.variants[0].file' "$r")" = release/universal.apk ] &&
 	[ -s "$T/work/release/universal.apk" ] && [ -s "$T/work/release/arm64-v8a.apk" ] &&
 	[ "$(jq -r '.app_version' "$r")" = 1.0.0 ] && [ "$(jq -r '.patches_version' "$r")" = v1.2.3 ] &&
-	jq -e '.variants[0].package|length>0' "$r" >/dev/null && jq -e '.variants[0].version_code|type=="number"' "$r" >/dev/null &&
-	jq -re '.variants[0].signer_sha256' "$r" | grep -qE '^[0-9a-f]{64}$' &&
+	jq -e '.variants[0] == {name:"universal", abi:"universal", file:"release/universal.apk"}' "$r" >/dev/null &&
 	grep -q '^::step::patch::2/2$' "$T/out.txt" && grep -q '^::version::1.0.0$' "$T/out.txt" &&
 	[ -z "$(ls -A "$T/cache")" ] && [ "$(grep -c -- '--striplibs arm64-v8a' "$SHIM_LOG")" = 1 ]; then
 	pass runner_ok
@@ -140,10 +136,9 @@ if [ "$rc" != 0 ] && [ "$(fail_lines)" = 1 ] && grep -q '^::fail::patch_failed::
 
 new_env; make_job '.version.value=null'
 rc=$(run_runner)
-if [ "$rc" = 0 ] && [ "$(grep -c '^::version::' "$T/out.txt")" = 1 ] && [ "$(jq -r '.app_version' "$T/work/result.json")" != 1.0.0 ] &&
-	[ "$(jq -r '.app_version' "$T/work/result.json")" != "" ]; then
-	pass runner_version_null_takes_downloaded
-else fail runner_version_null_takes_downloaded "rc=$rc $(grep '^::' "$T/out.txt" | head -5)"; fi
+if [ "$rc" = 0 ] && [ "$(grep -c '^::version::' "$T/out.txt")" = 0 ] && [ "$(jq -r '.app_version' "$T/work/result.json")" = "" ]; then
+	pass runner_version_null_leaves_app_version_empty   # the server takes the APK's versionName (decision 13)
+else fail runner_version_null_leaves_app_version_empty "rc=$rc $(grep '^::' "$T/out.txt" | head -5)"; fi
 
 new_env; make_job '.recipe.variants[].download.kind="apkmirror"'
 rc=$(run_runner)
