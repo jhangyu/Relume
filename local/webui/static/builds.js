@@ -1,4 +1,4 @@
-import { $, $$, act, api, fmt, html, icon, iconTile, JOB_BADGE, live, logStream, report, shell, toast } from '/static/app.js';
+import { $, $$, act, api, fmt, html, icon, iconTile, JOB_BADGE, live, logStream, report, shell } from '/static/app.js';
 
 const qs = new URLSearchParams(location.search);
 const ITEM = qs.get('item') ? Number(qs.get('item')) : null;
@@ -213,19 +213,22 @@ $('#pills').addEventListener('click', e => {
   if (!b) return;
   B.filt = b.dataset.filt;
   $$('#pills .pill').forEach(x => x.setAttribute('aria-pressed', x === b));
-  renderHistory('reset').catch(err => toast(err.message, 'error'));
+  renderHistory('reset').catch(report);
 });
 $('#hq').addEventListener('input', applySearch);
 $('#older').addEventListener('click', () => renderHistory('append').catch(report));
 
-(async () => {
-  shell();
-  if (ITEM) $$('#pills .pill').forEach(x => x.setAttribute('aria-pressed', x.dataset.filt === 'item'));
-  else $('#pill-item').remove();
+let ready = false;   // set after the first full load succeeded; a failed one is retried by the next run
+async function load() {
+  if (ready) return refresh();
   await loadRefs();
   const running = await renderQueue();
   const newest = await renderHistory('reset');
   const first = qs.get('job') ? Number(qs.get('job')) : running ? running.id : newest ? newest.id : null;
   if (first) await select(first);
-  live(['jobs'], refresh);
-})().catch(e => toast(e.message, 'error'));
+  ready = true;
+}
+shell();
+if (ITEM) $$('#pills .pill').forEach(x => x.setAttribute('aria-pressed', x.dataset.filt === 'item'));
+else $('#pill-item').remove();
+live(['jobs'], load);
