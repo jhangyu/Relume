@@ -79,6 +79,11 @@ class SettingsTest(DataTestCase):
             with self.assertRaisesRegex(RuntimeError, rf"secret file {settings.google_play_path()} exists but cannot be read: Permission denied \(errno 13\)"):
                 settings.google_play()
 
+    def test_secret_path_under_a_file_names_the_real_cause(self):
+        f = self.data / 'afile'; f.write_text('x')
+        with self.assertRaisesRegex(RuntimeError, rf"a parent of {f / 'sub'} is not a directory"):
+            settings._read(f / 'sub')
+
     def test_disk(self):
         (self.data / 'artifacts' / '1' / '2').mkdir(parents=True)
         (self.data / 'artifacts' / '1' / '2' / 'a.apk').write_bytes(b'x' * 10)

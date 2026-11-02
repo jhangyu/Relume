@@ -54,6 +54,8 @@ def _read(p):
         return p.read_text().strip() if stat.S_ISREG(p.stat().st_mode) else None
     except FileNotFoundError:
         return None
+    except NotADirectoryError as e:  # FileNotFoundError's sibling: a parent of p is a file
+        raise RuntimeError(f'secret file {p} cannot be read: a parent of {p} is not a directory') from e
     except OSError as e:  # stat errors too: Path.is_file (3.14) would read them as "no file"
         raise RuntimeError(f'secret file {p} exists but cannot be read: {e.strerror} (errno {e.errno})') from e
 
