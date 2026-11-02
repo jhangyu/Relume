@@ -1,4 +1,4 @@
--- device part (spec device §3.1). ota_* keep device_id without FK so OTA history outlives the device.
+-- device part (spec device §3.1). ota_* keep device_id without FK: delete_device removes the device's ota_installs, its ota_jobs stay.
 CREATE TABLE devices (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
