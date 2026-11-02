@@ -31,7 +31,7 @@ class DeviceRoutesTest(helpers.DataTestCase):
         me = add_app_device(token_hash='11' * 32)
 
         def call(fn, kind, ref):
-            r = req(params={'id': ref}, body={}, path=f'/api/me/assignments/{kind}/{ref}')
+            r = req(params={'kind': kind, 'id': ref}, body={})
             r.device_id = me
             return fn(r)
 
@@ -52,6 +52,10 @@ class DeviceRoutesTest(helpers.DataTestCase):
             with self.assertRaises(HttpError) as cm:
                 call(devices.me_assign, kind, ref)
             self.assertEqual((cm.exception.status, cm.exception.message), (400, msg))
+        with self.assertRaises(HttpError) as cm:
+            call(devices.me_assign, 'apps', 1)
+        self.assertEqual((cm.exception.status, cm.exception.message),
+                         (404, "unknown assignment kind 'apps': expected 'items' or 'projects'"))
         call(devices.me_assign, 'projects', 4)
         call(devices.me_assign, 'projects', 4)
         self.assertEqual(rows('device_projects', 'project_id'), [4])

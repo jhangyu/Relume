@@ -534,10 +534,12 @@ def unassign_one(device_id, kind, ref_id):
 
 def _me_target(req):
     """-> (device id, kind, ref id) of /api/me/assignments/<kind>/<id>; the device is the token's own row."""
-    ref = req.params['id']
+    kind, ref = req.params['kind'], req.params['id']
+    if kind not in KINDS:
+        raise HttpError(404, f"unknown assignment kind {kind!r}: expected 'items' or 'projects'")
     if not is_int(ref):
         raise HttpError(400, f'id must be an integer, got {ref!r}')
-    return req.device_id, req.path.split('/')[4], ref
+    return req.device_id, kind, ref
 
 
 def me_assign(req):
@@ -582,8 +584,6 @@ ROUTES = [
     ('PATCH', '/api/devices/{id}', patch_device),
     ('DELETE', '/api/devices/{id}', delete_device),
     ('PUT', '/api/devices/{id}/assignments', put_assignments),
-    ('PUT', '/api/me/assignments/items/{id}', me_assign),
-    ('DELETE', '/api/me/assignments/items/{id}', me_unassign),
-    ('PUT', '/api/me/assignments/projects/{id}', me_assign),
-    ('DELETE', '/api/me/assignments/projects/{id}', me_unassign),
+    ('PUT', '/api/me/assignments/{kind}/{id}', me_assign),
+    ('DELETE', '/api/me/assignments/{kind}/{id}', me_unassign),
 ]
