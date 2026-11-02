@@ -792,6 +792,34 @@ class RetentionTest(BuildCase):
             build.run_retention()
         self.assertEqual((self.job_ids_with_files(1), self.job_ids_with_files(2)), (a[-1:], b[-1:]))
 
+    def rows(self, job_id):
+        return db.conn().execute("SELECT id, item_id, job_id, path FROM artifacts WHERE job_id = ?", (job_id,)).fetchall()
+
+    def test_delete_apks_raises_and_keeps_rows(self):
+        jid = self.build_n(1)[0]
+        with mock.patch.object(Path, "unlink", side_effect=PermissionError(13, "Permission denied")):
+            with self.assertRaises(server.HttpError) as e:
+                build.delete_apks(self.rows(jid))
+        self.assertEqual((e.exception.status, e.exception.code), (500, "apk_delete_failed"))
+        self.assertIn("cannot delete APK ", e.exception.message)
+        self.assertEqual(len(self.rows(jid)), 2)
+
+    def test_delete_apks_missing_file_and_dirs(self):
+        jid = self.build_n(1)[0]
+        rows = self.rows(jid)
+        Path(rows[0]["path"]).unlink()
+        build.delete_apks(rows)
+        self.assertEqual(self.rows(jid), [])
+        self.assertFalse((self.data / "artifacts" / "1").exists())   # job dir and the now empty item dir
+
+    def test_retention_failure_keeps_the_published_build(self):
+        self.build_n(1)
+        with mock.patch.object(build, "delete_apks", side_effect=server.HttpError(500, "cannot delete APK /x: denied", code="apk_delete_failed")):
+            job, log, err = self.run_handler()
+        self.assertIsNone(err)
+        self.assertEqual(len(self.rows(job.id)), 2)
+        self.assertIn(f"[-] retention: cannot delete APK /x: denied; build {job.id} stays published", log.lines)
+
     def test_latest_artifact(self):
         self.assertIsNone(build.latest_artifact(1, "arm64-v8a"))
         self.build_n(1)

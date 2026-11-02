@@ -184,7 +184,6 @@ def _register(job, item_id, inp, work, result, failed_patches, sha, cache_names)
                   "inputs_sha = ?, apk_cache = ? WHERE job_id = ?",
                   (result["app_version"], inp["upstream_tag"], inp["cli_tag"], json.dumps(failed_patches) if failed_patches else None,
                    sha, json.dumps(cache_names), job.id))
-    run_retention(item_id)
     events.emit("build.succeeded", {"item_id": item_id, "job_id": job.id, "app_version": result["app_version"],
                                     "patches_version": inp["upstream_tag"], "artifacts": ids})
 
@@ -411,8 +410,17 @@ def _attempt(job, item_id, inp, awork, googleplay, auto, sha, log):
         try:
             _register(job, item_id, inp, awork, result, failed, sha, [n for _, n in cache])
         except OSError as e:
-            shutil.rmtree(db.DATA / "artifacts" / str(item_id) / str(job.id), ignore_errors=True)
-            _fail(job, item_id, "internal", f"artifact rejected: {e}")
+            dest = db.DATA / "artifacts" / str(item_id) / str(job.id)
+            left = ""
+            try:
+                _remove(dest)
+            except OSError as e2:
+                left = f"; leftover {dest} not removed: {e2}"
+            _fail(job, item_id, "internal", f"artifact rejected: {e}{left}")
+        try:   # after publish: a failed delete of an older build is logged, the next build retries it
+            run_retention(item_id)
+        except server.HttpError as e:
+            log.line(f"[-] retention: {e.message}; build {job.id} stays published")
         _prune_cache(job, inp["package"], {n for _, n in cache}, log)
         return None
     if not (used and verdict[0] == "nothing_applied"):   # R0, R2: not a verdict on the variant
@@ -554,11 +562,35 @@ def run_retention(item_id=None):
     for iid in items:
         job_ids = [r[0] for r in c.execute("SELECT DISTINCT job_id FROM artifacts WHERE item_id = ? ORDER BY job_id DESC", (iid,))]
         for old in job_ids[n:]:
-            for r in c.execute("SELECT path FROM artifacts WHERE job_id = ?", (old,)).fetchall():
-                Path(r["path"]).unlink(missing_ok=True)
-            with db.tx() as t:
-                t.execute("DELETE FROM artifacts WHERE job_id = ?", (old,))
-            shutil.rmtree(db.DATA / "artifacts" / str(iid) / str(old), ignore_errors=True)
+            delete_apks(c.execute("SELECT id, item_id, job_id, path FROM artifacts WHERE job_id = ?", (old,)).fetchall())
+
+
+def delete_apks(rows):
+    """The one APK delete (decision 3): files, then rows, then empty dirs. A missing file is the wanted end state;
+    any other error raises HttpError 500 apk_delete_failed before a row of an undeleted file is removed."""
+    rows = list(rows)
+    if not rows:
+        return
+    for r in rows:
+        try:
+            Path(r["path"]).unlink(missing_ok=True)
+        except OSError as e:
+            raise server.HttpError(500, f"cannot delete APK {r['path']}: {e.strerror or e}", code="apk_delete_failed") from e
+    with db.tx() as t:
+        t.execute(f"DELETE FROM artifacts WHERE id IN ({','.join('?' * len(rows))})", [r["id"] for r in rows])
+    c = db.conn()
+    for item_id, job_id in sorted({(r["item_id"], r["job_id"]) for r in rows}):
+        if c.execute("SELECT 1 FROM artifacts WHERE job_id = ?", (job_id,)).fetchone():
+            continue
+        d = db.DATA / "artifacts" / str(item_id)
+        try:
+            if (d / str(job_id)).exists():
+                _remove(d / str(job_id))
+            if d.is_dir() and not any(d.iterdir()):
+                d.rmdir()
+        except OSError as e:
+            raise server.HttpError(500, f"cannot delete APK dir {d / str(job_id)}: {e.strerror or e}",
+                                   code="apk_delete_failed") from e
 
 
 def _files(path):
@@ -603,9 +635,10 @@ def cleanup(apply):
     out = {"bytes": sum(f.stat().st_size for p in dirs + paths + orphans for f in _files(p)),
            "artifact_items": len(off), "cache_files": sum(len(_files(p)) for p in paths), "orphan_dirs": len(orphans)}
     if apply:
-        with db.tx() as t:
-            t.executemany("DELETE FROM artifacts WHERE item_id = ?", [(i,) for i in off])
-        for p in dirs + paths + orphans:
+        if off:
+            delete_apks(db.conn().execute(f"SELECT id, item_id, job_id, path FROM artifacts WHERE item_id IN "
+                                          f"({','.join('?' * len(off))})", off).fetchall())
+        for p in dirs + paths + orphans:   # a disabled app's leftover dir holds files no row knows about
             _remove(p)
     return out
 
@@ -692,12 +725,8 @@ def needs_build(st, r):
 
 def drop_variants(item_id, keep):
     """Delete the artifacts of variants no longer in the item's settings (an ABI was unticked)."""
-    rows = db.conn().execute(f"SELECT id, path FROM artifacts WHERE item_id = ? AND variant NOT IN ({','.join('?' * len(keep))})",
-                             (item_id, *keep)).fetchall()
-    with db.tx() as t:
-        t.executemany("DELETE FROM artifacts WHERE id = ?", [(r["id"],) for r in rows])
-    for r in rows:
-        Path(r["path"]).unlink(missing_ok=True)
+    delete_apks(db.conn().execute(f"SELECT id, item_id, job_id, path FROM artifacts WHERE item_id = ? AND variant NOT IN "
+                                  f"({','.join('?' * len(keep))})", (item_id, *keep)).fetchall())
 
 
 def get_cleanup(req):
