@@ -157,9 +157,10 @@ class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
 
     suspend fun cleanup(): CleanupReport = send("POST", "/api/cleanup", EMPTY)
 
-    suspend fun jobs(kind: String?, status: String?, beforeId: Int?, limit: Int?): List<Job> {
+    suspend fun jobs(kind: String?, status: String?, beforeId: Int?, limit: Int?, scheduleId: Int? = null): List<Job> {
         val query = listOfNotNull(
             kind?.let { "kind=$it" },
+            scheduleId?.let { "schedule_id=$it" },
             status?.let { "status=$it" },
             beforeId?.let { "before_id=$it" },
             limit?.let { "limit=$it" },

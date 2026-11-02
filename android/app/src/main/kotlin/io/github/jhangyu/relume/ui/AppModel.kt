@@ -45,8 +45,6 @@ import kotlinx.serialization.json.put
 
 private const val HTTP_UNAUTHORIZED = 401
 private const val KIND_UPSTREAM = "upstream"
-/** Newest upstream jobs scanned for the last update run, as the web does (`/api/jobs?kind=upstream&limit=20`). */
-private const val LAST_RUN_SCAN = 20
 internal const val SIGNED_OUT_NOTICE = "This device was signed out by the server"
 
 /** Compose state owned by the signed-in account: [reset] puts every state made by [state] back to its initial value. */
@@ -192,7 +190,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         loaded = true
         val update = call { it.schedule() } ?: return error
         schedule = update
-        lastRun = (call { it.jobs(KIND_UPSTREAM, null, null, LAST_RUN_SCAN) } ?: return error).firstOrNull { it.scheduleId == update.id }
+        lastRun = (call { it.jobs(KIND_UPSTREAM, null, null, 1, update.id) } ?: return error).firstOrNull()
         otaSchedules = call { it.otaSchedules() } ?: return error
         loadDeviceState()
         watchActiveJobs()
