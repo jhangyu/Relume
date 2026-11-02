@@ -521,7 +521,7 @@ def list_route(req):
         if key in q:
             where.append(f"json_extract(target,'$.{key}')=?")
             args.append(_int(q, key))
-    if 'schedule_id' in q:   # update-run outcome strip (web Schedules page, decision 12): manual runs carry the id too
+    if 'schedule_id' in q:   # update-run outcome strip (web Schedules page, decision 12): manual runs carry the id too, and so do the build jobs a run queues (the strip adds kind=upstream)
         where.append('schedule_id=?')
         args.append(_int(q, 'schedule_id'))
     if 'before_id' in q:

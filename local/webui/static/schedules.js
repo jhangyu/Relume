@@ -174,7 +174,7 @@ $('#list').addEventListener('click', async e => {
 
 async function load() {
   const [{ schedules }, settings, g] = await Promise.all([api('GET', '/api/schedules'), api('GET', '/api/settings'), api('GET', '/api/schedule')]);
-  const { jobs } = await api('GET', `/api/jobs?schedule_id=${g.id}&limit=1`);   // newest run of the update schedule, scheduled or manual
+  const { jobs } = await api('GET', `/api/jobs?kind=upstream&schedule_id=${g.id}&limit=1`);   // newest update run (scheduled or manual); its queued builds carry the id too
   R.lastRun = jobs[0] || null;
   R.ota = schedules.filter(s => s.kind === 'ota');
   R.global = g;
