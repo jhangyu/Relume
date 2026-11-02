@@ -1,7 +1,7 @@
 // Followed projects page (spec 2026-10-23-follow-project-design §8).
-import { $, $$, act, api, ask, confirmDialog, fmt, html, icon, iconTile, live, report, shell, toast, toastSettled } from '/static/app.js';
+import { $, $$, act, afterWrite, api, ask, confirmDialog, fmt, html, icon, iconTile, live, report, shell, toast, toastSettled } from '/static/app.js';
 
-const S = { projects: [], devices: [], items: new Map(), schedule: null, running: [], queued: [], ota: [], cur: null, filter: 'all', q: '' };
+const S = { projects: [], devices: [], items: new Map(), schedule: null, running: [], queued: [], ota: [], cur: null, open: null, filter: 'all', q: '' };
 const byId = id => S.projects.find(p => p.id === id);
 const dpOf = (d, pid) => (d.projects || []).find(x => x.project_id === pid);
 const phonesOf = p => S.devices.filter(d => dpOf(d, p.id));
@@ -132,8 +132,8 @@ async function load() {
   S.ota = ota.jobs;
   if (!byId(S.cur)) S.cur = S.projects.length ? S.projects[0].id : null;
   render();
+  if (S.open && byId(S.open)) { const id = S.open; S.open = null; select(id, true); }
 }
-const reload = () => load().catch(e => toast(e.message, 'error'));
 
 function select(id, open) {
   S.cur = id;
@@ -158,8 +158,8 @@ $('#rows').addEventListener('change', async e => {
   const p = byId(id), on = e.target.checked;
   try {
     await act('PUT', `/api/projects/${id}`, { auto_push: on }, `Auto-push ${on ? 'on' : 'off'} for ${p.label}${p.signer_alert && on ? ' (still paused until the signer is confirmed)' : ''}`);
-  } catch (e) { report(e); }
-  reload();
+  } catch (e) { report(e); rows(); }   // rows() resets the checkbox when the write failed before the server published
+  afterWrite();
 });
 $('#rows').addEventListener('keydown', e => {
   const d = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
@@ -179,7 +179,7 @@ $$('input[name=f]').forEach(r => r.addEventListener('change', () => { S.filter =
 $('#pullAll').addEventListener('click', async () => {
   const r = await Promise.allSettled(S.projects.map(pull));
   toastSettled(r, `Checking ${r.length} projects`);
-  reload();
+  afterWrite();
 });
 
 $('#pane').addEventListener('click', async e => {
@@ -203,7 +203,7 @@ $('#pane').addEventListener('click', async e => {
       await act('DELETE', `/api/projects/${p.id}`, {}, `Unfollowed ${p.label}`);
       S.cur = null;
     } else return;
-    reload();
+    afterWrite();
   } catch (e) { report(e); }
 });
 
@@ -220,7 +220,7 @@ function signerDialog(p) {
       await act('POST', `/api/projects/${p.id}/signer/accept`, { signer_sha256: p.signer_alert }, `New signer trusted for ${p.label}`);
       $('#sigDlg').close();
     } catch (e) { report(e); }
-    reload();
+    afterWrite();
   };
   $('#sigDlg').showModal();
 }
@@ -237,7 +237,7 @@ async function assignDialog(p) {
   try {
     await act('PUT', `/api/projects/${p.id}`, { device_ids: $$('#asgList input:checked').map(i => Number(i.value)) }, 'Phones saved');
   } catch (e) { report(e); }
-  reload();
+  afterWrite();
 }
 
 // ---- add / edit dialog
@@ -388,20 +388,17 @@ $('#saveBtn').addEventListener('click', async () => {
     } else {
       const r = await api('POST', '/api/projects', { ...body, repo: A.repo, auto_push: $('#newAuto').checked, device_ids: $$('#phl input:checked').map(i => Number(i.value)) });
       S.cur = r.id;
+      S.open = r.id;   // the stream's load (run when this dialog closes) opens its pane
       toast(`Following ${A.repo} · downloading the latest release`);
     }
     $('#addDlg').close();
-    await reload();
-    if (!A.edit) select(S.cur, true);
+    afterWrite();
   } catch (e) {
     msg(e.message, true);
     $('#saveBtn').disabled = false;
   }
 });
 
-(async () => {
-  shell();
-  await load();
-  live(['projects', 'devices', 'apps', 'schedules', 'jobs'], reload,
-    () => Boolean(document.querySelector('dialog[open], details.dd[open]') || document.activeElement.closest('[data-rx-edit]')));
-})().catch(e => toast(e.message, 'error'));
+shell();
+live(['projects', 'devices', 'apps', 'schedules', 'jobs'], load,
+  () => Boolean(document.querySelector('dialog[open], details.dd[open]') || document.activeElement.closest('[data-rx-edit]')));
