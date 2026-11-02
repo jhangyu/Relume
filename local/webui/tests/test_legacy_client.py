@@ -50,8 +50,8 @@ class LegacyClientTest(DataTestCase):
         return json.loads(raw)['plan']['steps']
 
     def test_sign_in_makes_hidden_row(self):
-        row = db.conn().execute('SELECT kind, legacy, device_uid FROM devices WHERE id=?', (self.did,)).fetchone()
-        self.assertEqual(tuple(row), ('app', 1, None))
+        row = db.conn().execute('SELECT kind, device_uid FROM devices WHERE id=?', (self.did,)).fetchone()
+        self.assertEqual(tuple(row), ('app', None))
         normal = add_app_device(name='Mine')
         st, _, raw = http('GET', self.base + '/api/devices', headers={'Cookie': self.cookie})
         self.assertEqual((st, [d['id'] for d in json.loads(raw)['devices']]), (200, [normal]))
@@ -75,7 +75,7 @@ class LegacyClientTest(DataTestCase):
         self.assertEqual(self.bearer('GET', '/api/me/plan?projects=99')[0], 200)
 
     def test_sync_writes_no_device_facts(self):
-        facts = 'SELECT name, kind, legacy, device_uid, model, sdk, android_release, abi_list, app_version_code, token_hash ' \
+        facts = 'SELECT name, kind, device_uid, model, sdk, android_release, abi_list, app_version_code, token_hash ' \
                 'FROM devices WHERE id=?'
         before = tuple(db.conn().execute(facts, (self.did,)).fetchone())
         self.assertEqual(self.bearer('POST', '/api/me/sync', SYNC)[0], 200)
@@ -132,9 +132,9 @@ class LegacyClientTest(DataTestCase):
         body = json.loads(json.dumps(SYNC))
         body['device']['device_uid'] = UID
         self.assertEqual(self.bearer('POST', '/api/me/sync', body)[0], 200)
-        row = db.conn().execute('SELECT legacy, device_uid, app_version_code FROM devices WHERE id=?',
+        row = db.conn().execute('SELECT device_uid, app_version_code FROM devices WHERE id=?',
                                 (self.did,)).fetchone()
-        self.assertEqual(tuple(row), (0, UID, 12))
+        self.assertEqual(tuple(row), (UID, 12))
         st, _, raw = http('GET', self.base + '/api/devices', headers={'Cookie': self.cookie})
         self.assertEqual([d['id'] for d in json.loads(raw)['devices']], [self.did])
 
@@ -170,11 +170,11 @@ class LegacyClientTest(DataTestCase):
         self.assertEqual(count('SELECT count(*) FROM device_packages WHERE device_id=?', self.did), 2)
 
     def test_second_conversion_of_the_same_row_keeps_it(self):
-        """S2: two concurrent syncs both saw legacy=1: the second must not delete the converted row."""
+        """S2: two concurrent syncs both saw the legacy row: the second must not delete the converted row."""
         for _ in range(2):
             with db.tx() as c:
                 self.assertEqual(ota._leave_legacy(c, self.did, UID), self.did)
-        self.assertEqual(count('SELECT count(*) FROM devices WHERE id=? AND legacy=0 AND device_uid=?', self.did, UID), 1)
+        self.assertEqual(count('SELECT count(*) FROM devices WHERE id=? AND device_uid=?', self.did, UID), 1)
         self.assertEqual(self.bearer('GET', '/api/me')[0], 200)
 
     def test_logout_deletes_the_legacy_row(self):
@@ -200,17 +200,11 @@ class LegacyClientTest(DataTestCase):
         self.assertEqual(count('SELECT count(*) FROM devices WHERE id=?', self.did), 0)
         self.assertEqual(self.bearer('GET', '/api/me')[0], 401)
 
-    def test_migration_marks_pre_uid_app_rows_legacy_and_conversion_restores_them(self):
-        """B1: an app row from before device_uid (uid NULL, legacy 0) holds a v1.2.0 token: it becomes legacy,
-        and the upgraded app's sync with a uid converts it back with its assignments."""
-        did = add_app_device(name='Old', token_hash=auth.token_hash('old-token'))
-        assign_projects(did, 2)
-        db.conn().executescript(next(db.SCHEMA_DIR.glob('014_*.sql')).read_text())   # re-run 014 alone: later files need not be re-runnable
-        self.assertEqual(count('SELECT legacy FROM devices WHERE id=?', did), 1)
-        self.assertEqual(count('SELECT count(*) FROM devices WHERE id=? AND kind=?', self.did, 'app'), 1)
+    def test_conversion_keeps_assignments(self):
+        """The upgraded app's first sync with a uid turns the legacy row into a normal one with its assignments."""
+        assign_projects(self.did, 2)
         body = json.loads(json.dumps(SYNC))
         body['device']['device_uid'] = UID
-        self.assertEqual(self.bearer('POST', '/api/me/sync', body, 'old-token')[0], 200)
-        row = db.conn().execute('SELECT legacy, device_uid FROM devices WHERE id=?', (did,)).fetchone()
-        self.assertEqual(tuple(row), (0, UID))
-        self.assertEqual(count('SELECT count(*) FROM device_projects WHERE device_id=?', did), 1)
+        self.assertEqual(self.bearer('POST', '/api/me/sync', body)[0], 200)
+        self.assertEqual(count('SELECT count(*) FROM devices WHERE id=? AND device_uid=?', self.did, UID), 1)
+        self.assertEqual(count('SELECT count(*) FROM device_projects WHERE device_id=?', self.did), 1)

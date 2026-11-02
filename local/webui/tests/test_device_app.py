@@ -9,10 +9,11 @@ from webui.tests.device_helpers import (add_app_device, add_catalog_item, add_de
 
 YT, GMS = 'com.google.android.youtube', 'app.revanced.android.gms'
 SIGNER = 'ab' * 32
+UID = 'a1b2c3d4e5f60718'
 
 
 def sync_body(packages, abi_list=('arm64-v8a',)):
-    return {'device': {'device_uid': 'a1b2c3d4e5f60718', 'model': 'Pixel 9', 'sdk': 36, 'android_release': '16', 'abi_list': list(abi_list),
+    return {'device': {'device_uid': UID, 'model': 'Pixel 9', 'sdk': 36, 'android_release': '16', 'abi_list': list(abi_list),
                        'app_version_code': 7}, 'packages': packages}
 
 
@@ -30,7 +31,13 @@ class AppTest(helpers.DataTestCase):
     def setUp(self):
         super().setUp()
         add_catalog_item(1, YT)
-        self.me = add_app_device(token_hash='11' * 32)
+        self.me = add_app_device(token_hash='11' * 32, uid=UID)
+
+    def apk_path(self):
+        """A real 3-byte file: a published build needs its APK on disk (decision 3)."""
+        p = self.data / 'x.apk'
+        p.write_bytes(b'apk')
+        return str(p)
 
     def call(self, fn, body=None, query=None, device_id=None):
         return fn(helpers.fake_request(json=body, query=query, session=None, device_id=device_id or self.me))
@@ -146,7 +153,7 @@ class AppTest(helpers.DataTestCase):
             with db.tx() as c:
                 c.execute("INSERT INTO artifacts(job_id,item_id,variant,abi,package,version_name,version_code,"
                           "signer_sha256,path,size,sha256,created_at) VALUES (?,?,'universal','universal',?,'20.1',7,?,"
-                          "'/a/x.apk',3,?,'now')", (jid, item_id, package, SIGNER, 'cd' * 32))
+                          "?,3,?,'now')", (jid, item_id, package, SIGNER, self.apk_path(), 'cd' * 32))
         self.assertIn(renamed, ota.tracked_packages())
         self.call(ota.sync, sync_body([pkg(YT, 7), pkg(renamed, 1)]))
         self.assertEqual(self.stored(), {YT: 7, renamed: 1})             # the renamed install is kept in the report
@@ -173,7 +180,7 @@ class AppTest(helpers.DataTestCase):
             c.execute("INSERT INTO build_jobs(job_id, item_id) VALUES (?, 1)", (jid,))   # list_apps reads needs_build
             c.execute("INSERT INTO artifacts(job_id,item_id,variant,abi,package,version_name,version_code,patches_version,"
                       "signer_sha256,path,size,sha256,created_at) VALUES (?,1,'universal','universal',?,'20.1',7,'v1.25.2',?,"
-                      "'/a/x.apk',3,?,'now')", (jid, renamed, SIGNER, 'cd' * 32))
+                      "?,3,?,'now')", (jid, renamed, SIGNER, self.apk_path(), 'cd' * 32))
         st, body = self.call(market.list_apps)
         self.assertEqual(st, 200)
         self.assertEqual(body['apps'][0]['build'], {'package': renamed, 'version_code': 7, 'version_name': '20.1',
@@ -183,3 +190,19 @@ class AppTest(helpers.DataTestCase):
         with db.tx() as c:
             c.execute("UPDATE artifacts SET package = '' WHERE job_id = ?", (jid,))
         self.assertIsNone(self.call(market.list_apps)[1]['apps'][0]['build'])   # never guessed from item.package
+
+    def test_different_uid_on_filled_row_is_400(self):
+        body = sync_body([])
+        body['device']['device_uid'] = 'ffee'
+        with self.assertRaises(HttpError) as cm:
+            self.call(ota.sync, body)
+        self.assertEqual((cm.exception.status, str(cm.exception)),
+                         (400, f"device.device_uid must match this device's id {UID!r}, got 'ffee'"))
+
+    def test_bad_uid_is_400(self):
+        for bad in (None, '', 'a b', 'x' * 65, 5):
+            body = sync_body([])
+            body['device']['device_uid'] = bad
+            with self.assertRaises(HttpError) as cm:
+                self.call(ota.sync, body)
+            self.assertEqual(cm.exception.status, 400, bad)

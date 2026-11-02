@@ -1,4 +1,5 @@
 """Shared helpers for the device and ci tests. Not a test module."""
+import itertools
 import json
 import os
 import pathlib
@@ -61,11 +62,16 @@ def add_device(host='192.168.1.20', port=37011, serial='SER1', abi='arm64-v8a,ar
                          ('Pixel', serial, mdns_name, host, port, 'Pixel', abi, 35, '15', after_build)).lastrowid
 
 
-def add_app_device(name='Phone', abi='arm64-v8a', token_hash=None, app_version_code=None):
-    """An app row (schema 008): no ADB address, optional token hash."""
+_uids = itertools.count(1)   # unique per process; each test has a fresh database, so the unique index never collides
+
+
+def add_app_device(name='Phone', abi='arm64-v8a', token_hash=None, app_version_code=None, uid=None):
+    """An app row (schema 008) with a device_uid: no uid would make it a legacy row (decision 1)."""
+    uid = uid or f'uid{next(_uids)}'
     with db.tx() as c:
-        return c.execute("INSERT INTO devices(name,kind,token_hash,model,abi_list,sdk,android_release,app_version_code) "
-                         "VALUES (?,'app',?,'Pixel 9',?,35,'15',?)", (name, token_hash, abi, app_version_code)).lastrowid
+        return c.execute("INSERT INTO devices(name,kind,device_uid,token_hash,model,abi_list,sdk,android_release,"
+                         "app_version_code) VALUES (?,'app',?,?,'Pixel 9',?,35,'15',?)",
+                         (name, uid, token_hash, abi, app_version_code)).lastrowid
 
 
 def report(device_id, package, version_code, version_name=None, signer_sha256=None):
