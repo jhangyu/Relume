@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import io.github.jhangyu.relume.api.Download
 import io.github.jhangyu.relume.api.InstalledPackage
 import io.github.jhangyu.relume.api.PlanStep
+import io.github.jhangyu.relume.inventory.ApkHashes
 import io.github.jhangyu.relume.inventory.Inventory
 import java.io.File
 import java.security.MessageDigest
@@ -105,20 +106,13 @@ object ApkVerifier {
             ?.let(Inventory::packageFacts)
 
     /**
-     * sha256 of [packageName]'s installed base APK (a session writes the downloaded file unchanged as `base.apk`); null =
-     * not installed. Blocking file read: call off the main thread.
+     * sha256 of [packageName]'s installed base APK (a session writes the downloaded file unchanged as `base.apk`) through
+     * the hash cache (decision 15); null = not installed. Blocking file read: call off the main thread.
      */
-    fun installedSha256(context: Context, packageName: String): String? {
-        val dir = try {
-            context.packageManager.getApplicationInfo(packageName, 0).sourceDir
-        } catch (e: PackageManager.NameNotFoundException) {
-            // The API's defined answer for "not installed", as in Inventory.installed.
-            return null
-        }
-        return fileSha256(File(dir))
-    }
+    fun installedSha256(context: Context, packageName: String): String? =
+        Inventory.packageInfo(context, packageName)?.let { ApkHashes.of(context, it) }
 
-    private fun fileSha256(file: File): String {
+    internal fun fileSha256(file: File): String {
         val md = MessageDigest.getInstance(VerifyRules.SHA256)
         file.inputStream().use { input ->
             val buf = ByteArray(BUFFER)

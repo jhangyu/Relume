@@ -17,6 +17,8 @@ import io.github.jhangyu.relume.api.SyncReport
 import io.github.jhangyu.relume.install.InstallRunner
 import io.github.jhangyu.relume.install.VerifyRules
 import io.github.jhangyu.relume.install.seenInstalled
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** Result of `POST /api/me/sync`, plus the package list that was reported. */
 data class SyncResult(
@@ -31,7 +33,10 @@ data class SyncResult(
 /** What is installed on this phone for the server's tracked packages (spec 9.6). No package broadcast receiver. */
 object Inventory {
 
-    fun read(context: Context, tracked: List<String>): List<InstalledPackage> = tracked.mapNotNull { installed(context, it) }
+    /** Tracked packages on this phone with their base APK sha256 (decision 15). Hashing reads files: runs on IO. */
+    suspend fun read(context: Context, tracked: List<String>): List<InstalledPackage> = withContext(Dispatchers.IO) {
+        tracked.mapNotNull { pkg -> packageInfo(context, pkg)?.let { packageFacts(it).copy(apkSha256 = ApkHashes.of(context, it)) } }
+    }
 
     /** The installed package with its signing certificates; null = not installed. */
     fun packageInfo(context: Context, packageName: String): PackageInfo? = try {
