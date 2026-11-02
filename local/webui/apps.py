@@ -19,7 +19,7 @@ VERSION_MODES = ('auto', 'pinned', 'latest')
 SOURCE_CHANNELS = ('stable', 'prerelease')
 MODULE_ENGINE_OPTIONS = {'sigbypass': 0, 'injectdex': False}   # engine default of a module bundle
 CHECK_VERSIONS = str(db.REPO_ROOT / 'src' / 'build' / 'check-versions.sh')
-CHECK_TIMEOUT = 300           # one list-page request with solver retries
+CHECK_TIMEOUT = 300           # one list-page request: FlareSolverr then CFBypass, one try each
 VERSIONS_MAX_AGE = timedelta(hours=24)   # the build refreshes the APKMirror version list at most once a day
 URL_COLUMN = {'apkmirror': 'apkmirror_list_url', 'apkpure': 'apkpure_url'}   # download kind -> app column it needs
 
@@ -54,6 +54,12 @@ def _variants(r):
             if v['download']['kind'] == 'apkmirror':
                 v['download']['kind'] = 'apkpure'
     return variants
+
+
+def _download_source(r):
+    """Download kind the user selected and the one a build uses (APKPure when there is no APKMirror listing, decision 10).
+    First variant only: all variants share one kind."""
+    return {'selected': json.loads(r['variants'])[0]['download']['kind'], 'actual': _variants(r)[0]['download']['kind']}
 
 
 def _missing_url(r):
@@ -99,7 +105,8 @@ def _app_obj(r, st):
             'bundle': {'bundle_id': r['bundle_id'], 'name': r['bundle_name'], 'origin': r['origin'],
                        'engine': r['engine'], 'tag': r['bundle_tag'], 'channel': r['bundle_channel'],
                        'pinned_tag': r['bundle_pin']},
-            'app_version': ls['app_version'] if ls else None, 'status': _status(r, st)}
+            'app_version': ls['app_version'] if ls else None, 'status': _status(r, st),
+            'download_source': _download_source(r)}
 
 
 def _build_facts(item_id, abi):
@@ -209,11 +216,9 @@ def enable(package, bundle_id, overrides=None, rebuild=False):
             c.execute('UPDATE item SET bundle_id = ?, enabled = 1, variants = ?, patch_overrides = ?, engine_options = ? '
                       'WHERE id = ?', (bundle_id, json.dumps(variants), json.dumps(merged, sort_keys=True),
                                        None if eo is None else json.dumps(eo), iid))
-            # the user assigned a same-package project while the app was removed: the project wins, else the
-            # phone's assignment lists clash and every later PUT (incl. the background check) 400s
-            c.execute('DELETE FROM device_assignments WHERE item_id = ? AND device_id IN '
-                      '(SELECT dp.device_id FROM device_projects dp JOIN project p ON p.id = dp.project_id '
-                      'WHERE p.package = ?)', (iid, package))
+            # the user assigned a same-package project while the app was removed: the project wins (decision 18
+            # rule), else the phone's assignment lists clash and every later PUT (incl. the background check) 400s
+            projects.drop_item_clashes(c, package, item_id=iid)
     jobs.enqueue('upstream', _chain_target(iid, rebuild), 'manual')
     return {**get(iid), 'update_queued': True}
 

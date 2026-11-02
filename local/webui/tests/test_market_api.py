@@ -100,6 +100,17 @@ class AppsTest(MarketCase):
             return {'id': 4, 'package': package}
         self.enterContext(mock.patch.object(apps, 'enable', side_effect=enable))
 
+    def test_download_source_names_the_apkpure_fallback(self):
+        pkg = 'com.x.pure'
+        with db.tx() as c:
+            app_id = catalog_rows.add_item(c, pkg, self.basic['builtin'])
+            c.execute("UPDATE app SET apkpure_url = 'https://apkpure.com/x/com.x.pure' WHERE package = ?", (pkg,))
+        st, body = self.send('GET', f'/api/apps/{app_id}')
+        self.assertEqual((st, body['download_source']), (200, {'selected': 'apkmirror', 'actual': 'apkpure'}))
+        with db.tx() as c:
+            c.execute("UPDATE app SET apkmirror_list_url = 'https://www.apkmirror.com/uploads/?appcategory=pure' WHERE package = ?", (pkg,))
+        self.assertEqual(self.send('GET', f'/api/apps/{app_id}')[1]['download_source'], {'selected': 'apkmirror', 'actual': 'apkmirror'})
+
     def test_enable_201_and_conflicts(self):
         st, body = self.send('POST', '/api/apps', {
             'package': 'com.x.app', 'bundle_id': self.basic['official'], 'patches': {'Hide ads': False},

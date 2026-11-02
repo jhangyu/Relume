@@ -188,7 +188,7 @@ class NotifyTest(helpers.DataTestCase):
     def test_default_events_include_signer_changed(self):
         st, got = notify.get_notify(req(method='GET'))
         self.assertEqual(got['events'], ['upstream.new_version', 'build.succeeded', 'build.failed', 'ota.done', 'ota.failed',
-                                         'project.signer_changed'])
+                                         'project.signer_changed', 'project.assignment_dropped'])
         notify.put_notify(req(body={'type': 'discord', 'enabled': True, 'config': {'webhook_url': 'https://d.example/x'}}))
         self.assertNotIn('device.offline', settings.get('notify')['events'])
 

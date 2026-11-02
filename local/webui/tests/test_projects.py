@@ -614,6 +614,22 @@ class ReleaseTest(ProjectCase):
         self.pull("v3", {"microg-3.apk": ()})
         self.assertIsNone(upstream._row(9)["download_error"])
 
+    def test_first_download_drops_clashing_app_assignment(self):
+        with db.tx() as c:
+            iid = add_item(c, GMS, builtin_id(c))
+            add_device(c, 4)
+            add_device(c, 5)
+            c.execute("INSERT INTO device_assignments(device_id, item_id) VALUES (4, ?), (5, ?)", (iid, iid))
+            c.execute("INSERT INTO device_projects(device_id, project_id) VALUES (4, 1)")
+        self.pull("v1", {"microg-1.apk": ()})
+        rows = [tuple(r) for r in db.conn().execute("SELECT device_id, item_id FROM device_assignments ORDER BY device_id")]
+        self.assertEqual(rows, [(5, iid)])                    # only the device that follows the project
+        self.assertEqual([tuple(r) for r in db.conn().execute("SELECT device_id, project_id FROM device_projects")], [(4, 1)])
+        self.assertEqual([pl for t, pl in self.emitted if t == "project.assignment_dropped"],
+                         [{"project_id": 1, "package": GMS, "dropped": [{"device_id": 4, "item_id": iid}], "job_id": None}])
+        self.pull("v1", {"microg-1.apk": ()})                 # package already known: nothing more
+        self.assertEqual(len([t for t, _ in self.emitted if t == "project.assignment_dropped"]), 1)
+
     def test_mixed_packages_not_committed(self):
         reason = self.failed_pull("v1", {"microg-1.apk": (), "other-1.apk": ()})
         self.assertEqual(reason, "download failed: packages differ within release")

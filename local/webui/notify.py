@@ -10,7 +10,7 @@ from . import db, events, jobs, projects, server, settings, upstream
 from .server import HttpError
 
 EVENTS = ('upstream.new_version', 'build.succeeded', 'build.failed', 'ota.done', 'ota.failed', 'device.offline',
-          'project.signer_changed')
+          'project.signer_changed', 'project.assignment_dropped')
 DEFAULT_EVENTS = tuple(e for e in EVENTS if e != 'device.offline')
 TELEGRAM_API = 'https://api.telegram.org'
 CONFIG_KEYS = {'telegram': {'bot_token': True, 'chat_id': True}, 'discord': {'webhook_url': True},
@@ -103,6 +103,12 @@ def format_message(t, p):
         text, path = f"OTA {p.get('outcome')}: {_device(p['device_id'])}", '/devices.html'
     elif t == 'ota.failed':
         text, path = f"OTA failed: {_device(p['device_id'])}: {p.get('reason')}", '/devices.html'
+    elif t == 'project.assignment_dropped':
+        apps_ = ', '.join(sorted({_label(x['item_id']) for x in p['dropped']}))
+        devs = ', '.join(sorted({_device(x['device_id']) for x in p['dropped']}))
+        text = (f"Unassigned {apps_} from {devs}: followed project {_project_label('p.id', p['project_id'])} "
+                f"installs the same package {p['package']}.")
+        path = '/devices.html'
     else:
         text, path = f"Device offline, scheduled OTA skipped: {_device(p['device_id'])}", '/devices.html'
     base = (settings.get('base_url') or '').rstrip('/')

@@ -223,11 +223,29 @@ def verify_release(upstream_id, part, log):
     return facts
 
 
+def drop_item_clashes(c, package, *, item_id=None, project_id=None):
+    """Unassign enabled apps with this package from devices that follow a project with the same package: the
+    project wins (decision 18, re-enable uses the same rule). c = connection inside the caller's tx.
+    Returns the removed (device_id, item_id) pairs."""
+    sql = ("SELECT DISTINCT da.device_id, da.item_id FROM device_assignments da JOIN item i ON i.id = da.item_id "
+           "JOIN device_projects dp ON dp.device_id = da.device_id JOIN project p ON p.id = dp.project_id "
+           "WHERE i.enabled = 1 AND i.package = ? AND p.package = ?")
+    args = [package, package]
+    if item_id is not None:
+        sql, args = sql + " AND da.item_id = ?", args + [item_id]
+    if project_id is not None:
+        sql, args = sql + " AND p.id = ?", args + [project_id]
+    pairs = sorted(tuple(r) for r in c.execute(sql, args))
+    c.executemany("DELETE FROM device_assignments WHERE device_id = ? AND item_id = ?", pairs)
+    return pairs
+
+
 def after_download(upstream_id, tag, log, job_id):
     facts = _apks(upstream_id, tag)
     if not facts:
         return
     sig, pkg = facts[0]["signer_sha256"], facts[0]["package"]
+    dropped = []
     with db.tx() as c:
         p = c.execute("SELECT * FROM project WHERE upstream_id = ?", (upstream_id,)).fetchone()
         if p is None:
@@ -235,6 +253,7 @@ def after_download(upstream_id, tag, log, job_id):
         pin, alert, changed = p["signer_sha256"], p["signer_alert"], False
         if p["package"] is None:
             c.execute("UPDATE project SET package = ? WHERE id = ?", (pkg, p["id"]))
+            dropped = drop_item_clashes(c, pkg, project_id=p["id"])
         if pin is None:
             alert = None
             c.execute("UPDATE project SET signer_sha256 = ?, signer_since = ?, signer_alert = NULL WHERE id = ?",
@@ -251,6 +270,10 @@ def after_download(upstream_id, tag, log, job_id):
         log.line(f"[!] signer changed: {pin} -> {sig}")
         events.emit("project.signer_changed", {"project_id": p["id"], "upstream_id": upstream_id, "tag": tag,
                                                "old_sha256": pin, "new_sha256": sig, "job_id": job_id})
+    if dropped:
+        log.line(f"[!] unassigned {len(dropped)} app(s) with package {pkg}: followed project {p['id']} installs it")
+        events.emit("project.assignment_dropped", {"project_id": p["id"], "package": pkg, "job_id": job_id,
+                                                   "dropped": [{"device_id": d, "item_id": i} for d, i in dropped]})
     if alert is None and p["auto_push"]:
         row = jobs.get(job_id) if job_id is not None else None
         enqueue_auto_push(p["id"], row["options"].get("notify", True) if row else True)
