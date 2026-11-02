@@ -468,8 +468,11 @@ def _schedule_row():
 
 def get_schedule():
     r = _schedule_row()
+    newest = db.conn().execute("SELECT MAX(created_at) FROM jobs WHERE kind = 'upstream' AND schedule_id = ?",
+                               (r['id'],)).fetchone()[0]  # manual "Run now" carries the row id (decision 12)
+    last = max((v for v in (r['last_run_at'], newest) if v), default=None)
     return {'id': r['id'], 'spec': json.loads(r['spec']), 'enabled': bool(r['enabled']),
-            'options': json.loads(r['options']), 'last_run_at': r['last_run_at'], 'next_run_at': r['next_run_at']}
+            'options': json.loads(r['options']), 'last_run_at': last, 'next_run_at': r['next_run_at']}
 
 
 def put_schedule(fields):

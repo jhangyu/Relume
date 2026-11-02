@@ -1,7 +1,7 @@
 import contextlib, datetime as dt, io, json, os, unittest
 from unittest import mock
 from zoneinfo import ZoneInfo
-from webui import db, jobs, scheduler
+from webui import apps, db, jobs, scheduler
 from webui.tests.helpers import DataTestCase, serve, http, login
 
 U = dt.timezone.utc
@@ -60,6 +60,16 @@ class FireTest(DataTestCase):
         self.assertEqual((r['name'], json.loads(r['target']), json.loads(r['spec']), json.loads(r['options']),
                           r['enabled']), ('Update', {}, {'every': 'day', 'at': '09:00'}, {'notify': True}, 1))
         self.assertIsNotNone(r['next_run_at'])
+
+    def test_manual_run_shows_as_last_run_without_moving_the_schedule(self):
+        scheduler.ensure_update()
+        scheduler.fire(self.update_row(), NOW)
+        row = self.update_row()
+        jid = apps.run_schedule()
+        db.conn().execute("UPDATE jobs SET created_at='2026-10-20T08:00:00Z' WHERE id=?", (jid,))  # no real clock
+        self.assertEqual(apps.get_schedule()['last_run_at'], '2026-10-20T08:00:00Z')
+        after = self.update_row()
+        self.assertEqual((after['last_run_at'], after['next_run_at']), (row['last_run_at'], row['next_run_at']))
 
     def test_update_schedule_fires_one_all_run(self):
         scheduler.ensure_update()
