@@ -66,11 +66,11 @@ def tx():
     c.execute('BEGIN IMMEDIATE')
     try:
         yield c
+        c.execute('COMMIT')
     except BaseException:
         if c.in_transaction:  # SQLite already rolled back on some errors (e.g. disk I/O); keep the original error
             c.execute('ROLLBACK')
         raise
-    c.execute('COMMIT')
 
 
 def migrate(schema_dir=None):

@@ -49,6 +49,16 @@ class DbTest(DataTestCase):
                 raise RuntimeError('x')
         self.assertIsNone(db.conn().execute("SELECT 1 FROM settings WHERE key='k'").fetchone())
 
+    def test_tx_failed_commit_rolls_back_and_raises(self):
+        c = db.conn()
+        c.execute('CREATE TABLE par (id INTEGER PRIMARY KEY)')
+        c.execute('CREATE TABLE chi (pid INTEGER REFERENCES par(id) DEFERRABLE INITIALLY DEFERRED)')
+        with self.assertRaises(sqlite3.IntegrityError):  # the deferred FK check fails inside COMMIT
+            with db.tx() as c:
+                c.execute('INSERT INTO chi VALUES (99)')
+        self.assertFalse(db.conn().in_transaction)
+        self.assertIsNone(db.conn().execute('SELECT 1 FROM chi').fetchone())
+
     def test_connection_per_thread(self):
         main = db.conn()
         other = []
