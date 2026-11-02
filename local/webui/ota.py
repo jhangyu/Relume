@@ -39,19 +39,50 @@ def assigned_item_ids(device_id):
 
 
 def last_installs(device_id):
-    """-> (items, projects): newest installed/up_to_date row per item id and per project id. No JOIN on jobs:
-    rows written from an app receipt have job_id NULL."""
+    """-> (items, projects): newest installed/up_to_date receipt per item id and per project id (history: decision 15
+    makes install_records the deciding record). Item records carry the build's patch version (decision 14)."""
     items, projects = {}, {}
     rows = db.conn().execute(
-        "SELECT kind, ref_id, build_job_id, upstream_tag, version_name, version_code, at FROM ota_installs "
-        "WHERE device_id = ? AND result IN ('installed','up_to_date') ORDER BY id", (device_id,))
+        "SELECT o.kind, o.ref_id, o.build_job_id, o.upstream_tag, o.version_name, o.version_code, b.patches_version "
+        "FROM ota_installs o LEFT JOIN build_jobs b ON b.job_id = o.build_job_id "
+        "WHERE o.device_id = ? AND o.result IN ('installed','up_to_date') ORDER BY o.id", (device_id,))
     for r in rows:  # oldest first: newer rows overwrite
         if r['kind'] == 'item':
             items[r['ref_id']] = {'build_job_id': r['build_job_id'], 'version_name': r['version_name'],
-                                  'version_code': r['version_code'], 'at': r['at']}
+                                  'version_code': r['version_code'], 'patch_version': r['patches_version']}
         else:
-            projects[r['ref_id']] = {'upstream_tag': r['upstream_tag'], 'at': r['at']}
+            projects[r['ref_id']] = {'upstream_tag': r['upstream_tag']}
     return items, projects
+
+
+def _reported_hash(present, package):
+    return (present or {}).get(package, {}).get('apk_sha256')
+
+
+def install_records(device_id, arts, infos, present):
+    """-> (items, projects): the server's install record per item/project id on this phone (decisions 14, 15).
+    A reported apk_sha256 decides: equal to the published file -> that build/release; different -> only an older
+    receipt stays (for display), never one of the current build. No hash (companion up to v1.4.0, a report stored
+    before migration 019, an ADB phone never read) -> the receipts, as before."""
+    items, projs = last_installs(device_id)
+    for iid, a in arts.items():
+        h = a and a['package'] and _reported_hash(present, a['package'])
+        if not h:
+            continue
+        if h == a['sha256']:
+            items[iid] = {'build_job_id': a['job_id'], 'version_name': a['version_name'],
+                          'version_code': a['version_code'], 'patch_version': a['patches_version']}
+        elif items.get(iid, {}).get('build_job_id') == a['job_id']:
+            del items[iid]
+    for p in infos:
+        h = p['package'] and _reported_hash(present, p['package'])
+        if not h:
+            continue
+        if h == p['sha256']:
+            projs[p['project_id']] = {'upstream_tag': p['tag']}
+        elif projs.get(p['project_id'], {}).get('upstream_tag') == p['tag']:
+            del projs[p['project_id']]
+    return items, projs
 
 
 def tracked_packages():
@@ -192,7 +223,6 @@ def _plan_for(dev, item_ids, project_ids, present):
     else:
         items = assigned_items(dev['id'], item_ids)
         direct = [pid for pid in projects.assigned_projects(dev['id']) if project_ids is None or pid in project_ids]
-    item_inst, proj_inst = last_installs(dev['id'])
     info = {}
 
     def pinfo(pid):
@@ -202,6 +232,7 @@ def _plan_for(dev, item_ids, project_ids, present):
     arts = {i['item_id']: build.latest_artifact(i['item_id'], first_abi(dev)) for i in items}
     deps = {i['item_id']: [p for p in map(pinfo, projects.item_projects(i['item_id'])) if p] for i in items}
     direct_info = [p for p in map(pinfo, direct) if p]
+    item_inst, proj_inst = install_records(dev['id'], arts, [p for p in info.values() if p], present)
     steps = plan(items, arts, deps, direct_info, item_inst, proj_inst, present)
     return {'items': items, 'arts': arts, 'deps': deps, 'projects': direct_info, 'item_inst': item_inst,
             'proj_inst': proj_inst, 'steps': steps}
@@ -228,7 +259,7 @@ def _view(dev, states, v, reported):
         assignments.append({
             'item_id': i['item_id'],
             'installed': inst and {'version_name': inst['version_name'], 'build_job_id': inst['build_job_id'],
-                                   'at': inst['at']},
+                                   'patch_version': inst['patch_version']},
             'available': a and {'version_name': a['version_name'], 'build_job_id': a['job_id']},
             'pending': ('item', i['item_id']) in pending, 'installed_reported': reported.get(item_pkgs[i['item_id']])})
     pmap = {}

@@ -142,9 +142,37 @@ class AppTest(helpers.DataTestCase):
                            r['result'], r['error_code']) for r in rows],
                          [(None, self.me, 'item', 5, None, 1547, 'installed', None),
                           (None, self.me, 'project', None, '7.2.1', 255070218, 'failed', 'USER_REJECTED')])
-        self.call(ota.sync, sync_body([pkg(YT, 1547)]))   # the companion syncs right after its receipts
+        with db.tx() as c:   # the receipt's build: its patch version reaches the install record (decision 14)
+            c.execute("INSERT INTO jobs(id,kind,status,trigger,target,options,created_at) "
+                      "VALUES (5,'build','success','manual','{}','{}','now')")
+            c.execute("INSERT INTO build_jobs(job_id, item_id, patches_version) VALUES (5, 1, 'v1')")
+        body = self.call(ota.sync, sync_body([pkg(YT, 1547)]))[1]   # the companion syncs right after its receipts
+        self.assertEqual(body['device']['assignments'][0]['installed'],
+                         {'version_name': '19.47.53', 'build_job_id': 5, 'patch_version': 'v1'})
         step = self.call(ota.me_plan)[1]['plan']['steps'][0]
         self.assertEqual((step['kind'], step['action'], step['download']), ('item', 'up_to_date', None))
+
+    def test_hash_decides_needs_update(self):
+        """Decision 15 (the real bug: a lost receipt caused a reinstall) and 14 (patch version from the server)."""
+        assign(self.me, 1)
+        jid = add_job(kind='build', target={'item_id': 1}, status='success')
+        with db.tx() as c:
+            c.execute("INSERT INTO build_jobs(job_id, item_id, patches_version) VALUES (?, 1, 'v1')", (jid,))
+            aid = c.execute("INSERT INTO artifacts(job_id,item_id,variant,abi,package,version_name,version_code,"
+                            "patches_version,signer_sha256,path,size,sha256,created_at) VALUES "
+                            "(?,1,'universal','universal',?,'20.1',7,'v1',?,?,3,?,'now')",
+                            (jid, YT, SIGNER, self.apk_path(), 'cd' * 32)).lastrowid
+        same, other, hashless = dict(pkg(YT, 7), apk_sha256='cd' * 32), dict(pkg(YT, 7), apk_sha256='ee' * 32), pkg(YT, 7)
+
+        def synced(p):
+            body = self.call(ota.sync, sync_body([p]))[1]
+            return body['plan']['steps'][0]['action'], body['device']['assignments'][0]['installed']
+        action, inst = synced(same)                       # no receipt at all: the file is the published one
+        self.assertEqual((action, inst['patch_version'], inst['build_job_id']), ('up_to_date', 'v1', jid))
+        self.call(ota.post_install, {'kind': 'item', 'ref_id': 1, 'artifact_id': aid, 'result': 'installed'})
+        self.assertEqual(synced(other), ('install', None))   # receipt names this build, the file differs
+        action, inst = synced(hashless)                   # released companion: receipt rule, patch from build_jobs
+        self.assertEqual((action, inst['patch_version']), ('up_to_date', 'v1'))
 
     def test_renamed_package_uses_artifact_package(self):
         """A package-rename patch: the phone has the artifact's package, not the source item.package."""
