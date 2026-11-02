@@ -763,6 +763,19 @@ def _recovery_steps(dev, package, abis):
     return None
 
 
+def _reconnect(dev, job, log, attempts):
+    """devices.reconnect with the approved offline retry (decision 8): RETRY_WAIT s between tries, cancellable.
+    -> the last state, or None when the job was cancelled."""
+    for n in range(attempts):
+        state = devices.reconnect(dev, cancel_event=job.cancel_event, log=log)
+        if state != 'offline' or n == attempts - 1:
+            break
+        log.line(f'device offline, retry {n + 1} of {attempts - 1} in {RETRY_WAIT} s')
+        if job.cancel_event.wait(RETRY_WAIT):
+            return None
+    return None if job.cancel_event.is_set() else state
+
+
 def handle(job, log):
     mode = job.options.get('mode', 'normal')
     if mode != 'normal' and job.trigger != 'manual':
@@ -786,14 +799,8 @@ def handle(job, log):
         if recovery is None:
             _fail(job, dev['id'], 'package not assigned')
     attempts = 1 + (int(job.options.get('retries') or 0) if job.trigger in ('schedule', 'after_build') else 0)
-    for n in range(attempts):
-        state = devices.reconnect(dev, cancel_event=job.cancel_event, log=log)
-        if state != 'offline' or n == attempts - 1:
-            break
-        log.line(f'device offline, retry {n + 1} of {attempts - 1} in {RETRY_WAIT} s')
-        if job.cancel_event.wait(RETRY_WAIT):
-            return
-    if job.cancel_event.is_set():
+    state = _reconnect(dev, job, log, attempts)
+    if state is None:
         return
     if state == 'unauthorized':
         _fail(job, dev['id'], 'failed: UNAUTHORIZED', extra={'reason': 'UNAUTHORIZED'})
