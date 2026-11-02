@@ -60,8 +60,6 @@ Uses the published images, nothing to build.
 5. Deploy the stack, then open `http://<server-ip>:47000`.
 6. After a new release, use **Pull and redeploy** on the stack.
 
-Open `local/docker-compose-portainer.yml` in your clone, paste its content into the Web editor, load the env below with "Load variables from .env file" (or paste it into Environment variables), then **Deploy the stack**.
-
 <details><summary>Reference env (placeholders: replace paths, UID/GID and TZ with your own)</summary>
 
 ```dotenv

@@ -60,8 +60,6 @@ Relume 是可自行架設的 Web UI（Docker），讓你**免 root** 取得熱�
 5. 部署堆疊，然後開啟 `http://<伺服器 IP>:47000`。
 6. 發佈新版本後，在堆疊上使用 **Pull and redeploy**。
 
-在你 clone 下來的目錄開啟 `local/docker-compose-portainer.yml`，把內容貼到 Web editor，用「Load variables from .env file」載入下方的環境變數（或貼進 Environment variables），然後 **Deploy the stack**。
-
 <details><summary>參考環境變數（以下皆為範例值：請換成你自己的路徑、UID/GID 與 TZ）</summary>
 
 ```dotenv
