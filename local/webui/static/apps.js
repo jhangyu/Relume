@@ -1,7 +1,6 @@
 import { $, $$, act, api, confirmDialog, fillDownloads, live, fmt, html, icon, iconTile, report, scrollKeeper, shell, STATUS, toast } from '/static/app.js';
 
-// rules the server owns (GET /api/auth/state): ABI list, engine kind, max signature-bypass level
-const { limits: LIMITS } = await api('GET', '/api/auth/state');
+let LIMITS = null;   // GET /api/auth/state limits (ABIs, engine kinds, max signature bypass); set by openDrawer, read only by drawer code
 
 const scroll = scrollKeeper();
 const COLOR = /^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/;
@@ -260,7 +259,7 @@ function renderBundle() {
   })}</div>
 <p class="hint">Switching bundle keeps the patch choices whose names match in the new bundle.</p>
 <div class="field"><label for="b-chan">Release channel</label><span class="select"><select class="dropdown" id="b-chan" data-f="channel" ${D.bundleId === D.orig.bundleId ? '' : html`disabled`}>${CHANNELS.map(([k, n]) => html`<option value="${k}" ${k === D.cur.channel ? html`selected` : ''}>${n}</option>`)}</select></span><span class="hint">Applies to the patch source, so every app that uses it follows this channel. Save the bundle change first to change the channel.</span></div>
-<div class="field"><label for="b-tag">Patch version</label><span class="select"><select class="dropdown" id="b-tag" data-f="patchTag" ${tagLocked() ? html`disabled` : ''}>${patchTagOptions().map(([k, n]) => html`<option value="${k}" ${k === D.cur.patchTag ? html`selected` : ''}>${n}</option>`)}</select></span><span class="hint">Pins the patch source to one release, so every app that uses it builds with that version. Save the bundle or channel change first to change the version.</span></div>`;
+<div class="field"><label for="b-tag">Patch version</label><span class="select"><select class="dropdown" id="b-tag" data-f="patchTag" ${tagLocked() ? html`disabled` : ''}>${patchTagOptions().map(([k, n]) => html`<option value="${k}" ${k === D.cur.patchTag ? html`selected` : ''}>${n}</option>`)}</select></span><span class="hint">Pins the patch source to one release, so every app that uses it builds with that version. Save the bundle or channel change first to change the version.</span>${D.tagsError ? html`<span class="hint danger">Release list unavailable: ${D.tagsError}</span>` : ''}</div>`;
 }
 
 function stale() {
@@ -394,7 +393,7 @@ function withCodes(download, codes) {
 function renderUrls() {
   const dl = D.app.download || { state: 'pending', candidates: [] };
   const [cls, text] = DL_TEXT[dl.state] || ['', dl.state];
-  const until = dl.blocked_until ? ` until ${fmt.abs(dl.blocked_until)}` : '';
+  const until = dl.state === 'blocked' && dl.blocked_until ? ` until ${fmt.abs(dl.blocked_until)}` : '';
   const src = D.app.download_source;
   const fallback = src.actual !== src.selected;
   const kind = D.cur.variants[0].download.kind;
@@ -428,22 +427,22 @@ function renderAll() {
 
 async function openDrawer(id, scrollTo) {
   if (D && D.app.id !== id && !(await closeDrawer())) return;
-  let app;
+  let app, limits, market, projects, patches, tags, tagsError = null;
   try {
-    app = await api('GET', `/api/apps/${id}`);
-  } catch (e) {
-    return toast(e.message, 'error');
-  }
-  const [market, projects, patches, tags] = await Promise.all([
-    api('GET', `/api/marketplace/${encodeURIComponent(app.package)}`).catch(() => null),
-    api('GET', '/api/projects').then(r => r.projects),
-    isModule(app.bundle.engine) ? null : api('GET', `/api/apps/${id}/patches`).catch(() => null),
-    api('GET', `/api/apps/${id}/patch-tags`).catch(() => null),
-  ]).catch(e => { toast(e.message, 'error'); return []; });
-  if (!projects) return;
+    [app, { limits }] = await Promise.all([api('GET', `/api/apps/${id}`), api('GET', '/api/auth/state')]);
+    LIMITS = limits;
+    [market, projects, patches, tags] = await Promise.all([
+      // 404 = the package is in no catalog (market.py:108-109): the drawer lists only the app's own bundle
+      api('GET', `/api/marketplace/${encodeURIComponent(app.package)}`).catch(e => { if (e.status === 404) return null; throw e; }),
+      api('GET', '/api/projects').then(r => r.projects),
+      isModule(app.bundle.engine) ? null : api('GET', `/api/apps/${id}/patches`),
+      // 502 = GitHub release list unavailable (catalog.py:682-683): the drawer still opens, the reason is shown
+      api('GET', `/api/apps/${id}/patch-tags`).catch(e => { if (e.status !== 502) throw e; tagsError = e.message; return null; }),
+    ]);
+  } catch (e) { report(e); return; }
   scroll.mark();
   const f = fieldsOf(app);
-  D = { app, market, projects, patches, tags, orig: f, cur: clone(f), get bundleId() { return this.cur.bundleId; } };
+  D = { app, market, projects, patches, tags, tagsError, orig: f, cur: clone(f), get bundleId() { return this.cur.bundleId; } };
   D.saved = patches ? overridesFrom(patches) : {};
   D.edit = clone(D.saved);
   $('#dr-tile').innerHTML = html`${iconTile(app, 's48')}`;
@@ -650,6 +649,7 @@ async function save(rebuild) {
     await closeDrawer();
     await loadList();
   } catch (e) {
+    if (e.status === 401) return;   // api() already went to the login page
     const msg = [...done, `${step} failed: ${e.message}`].join(', ');
     toast(msg[0].toUpperCase() + msg.slice(1), 'error');
   }
