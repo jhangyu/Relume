@@ -486,16 +486,16 @@ def put_assignments(req):
     for key, v in (('item_ids', ids), ('project_ids', [] if pids is None else pids)):
         server.ints(v, key)
     ids = list(dict.fromkeys(ids))
-    keep = pids is None
-    pids = projects.assigned_projects(dev['id']) if keep else list(dict.fromkeys(pids))
-    projects.check_assignment(ids, pids)
-    _write_assignments(dev['id'], ids, None if keep else pids)
+    _write_assignments(dev['id'], ids, None if pids is None else list(dict.fromkeys(pids)))
     return 200, {'device': device_json(get(dev['id']))}
 
 
 def _write_assignments(device_id, item_ids, project_ids):
-    """Full-list write: item_ids replace device_assignments, project_ids (None = keep) replace device_projects."""
+    """Full-list write: item_ids replace device_assignments, project_ids (None = keep) replace device_projects.
+    The conflict check runs inside the write transaction (BEGIN IMMEDIATE): no other writer can commit between the
+    check and the write."""
     with db.tx() as c:
+        projects.check_assignment(item_ids, projects.assigned_projects(device_id) if project_ids is None else project_ids)
         # a removed (disabled) app is hidden from every client, so a full-list PUT cannot mean to drop it
         c.execute('DELETE FROM device_assignments WHERE device_id=? AND item_id NOT IN (SELECT id FROM item WHERE enabled=0)',
                   (device_id,))
@@ -514,14 +514,14 @@ def assign_one(device_id, kind, ref_id):
     """Add one item or project ('items'/'projects') to a phone (decision 17): idempotent, same conflict rule as the
     full-list PUT."""
     table, col = KINDS[kind]
-    ids = [r[0] for r in db.conn().execute('SELECT item_id FROM device_assignments WHERE device_id=?', (device_id,))]
-    pids = projects.assigned_projects(device_id)
-    if kind == 'items' and ref_id not in ids:
-        ids.append(ref_id)
-    if kind == 'projects' and ref_id not in pids:
-        pids.append(ref_id)
-    projects.check_assignment(ids, pids)
     with db.tx() as c:
+        ids = [r[0] for r in c.execute('SELECT item_id FROM device_assignments WHERE device_id=?', (device_id,))]
+        pids = projects.assigned_projects(device_id)
+        if kind == 'items' and ref_id not in ids:
+            ids.append(ref_id)
+        if kind == 'projects' and ref_id not in pids:
+            pids.append(ref_id)
+        projects.check_assignment(ids, pids)
         c.execute(f'INSERT OR IGNORE INTO {table}(device_id,{col}) VALUES (?,?)', (device_id, ref_id))
 
 

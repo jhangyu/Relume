@@ -1,6 +1,7 @@
+import sqlite3
 from unittest import mock
 
-from webui import db, devices
+from webui import db, devices, projects
 from webui.server import HttpError
 from webui.tests import helpers
 from webui.tests.device_helpers import (FIXTURES, FakeAdb, add_app_device, add_catalog_item, add_device, add_job, add_project, assign,
@@ -21,6 +22,28 @@ class DeviceRoutesTest(helpers.DataTestCase):
         self.fa.rule('pair', out='Successfully paired to 192.168.1.20:41000 [guid=adb-ABC123]\n')
         self.fa.rule('connect', out='connected to 192.168.1.20:37011\n')
         self.fa.rule('getprop', out=GETPROP)
+
+    def test_conflict_check_holds_the_write_lock(self):
+        """D1: the package-conflict check runs inside the write transaction, so no writer slips in between."""
+        add_catalog_item(1, 'com.a')
+        me = add_app_device(token_hash='11' * 32)
+        real, seen = projects.check_assignment, []
+
+        def locked_check(*args):
+            other = sqlite3.connect(db.DATA / 'webui.db', timeout=0)
+            try:
+                with self.assertRaisesRegex(sqlite3.OperationalError, 'locked'):
+                    other.execute('BEGIN IMMEDIATE')
+            finally:
+                other.close()
+            seen.append(args)
+            return real(*args)
+        self.enterContext(mock.patch.object(projects, 'check_assignment', locked_check))
+        r = req(params={'kind': 'items', 'id': 1}, body={})
+        r.device_id = me
+        devices.me_assign(r)
+        devices.put_assignments(req(params={'id': me}, body={'item_ids': [1]}))
+        self.assertEqual(len(seen), 2)
 
     def test_single_item_assign_unassign(self):
         """Decision 17: the phone changes one row, so a web edit in between survives (the full-list overwrite bug)."""
