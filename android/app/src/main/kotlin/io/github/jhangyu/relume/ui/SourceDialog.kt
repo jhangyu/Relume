@@ -8,8 +8,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import io.github.jhangyu.relume.R
+import io.github.jhangyu.relume.api.ENGINE_LSPATCH
+import io.github.jhangyu.relume.api.ENGINE_MORPHE
+import io.github.jhangyu.relume.api.ENGINE_NPATCH
 
-private val ENGINES = listOf("morphe", "lspatch", "npatch")
+private val ENGINES = listOf(ENGINE_MORPHE, ENGINE_LSPATCH, ENGINE_NPATCH)
 
 /** Dialog behind the top-bar "Add custom source" button (URL, engine, module options). */
 @Composable

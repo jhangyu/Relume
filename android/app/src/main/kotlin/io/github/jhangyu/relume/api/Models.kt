@@ -616,6 +616,11 @@ data class Project(
 /** Engine kind of an Xposed module bundle in [ClientLimits.engines] (the other kind is `patches`). */
 const val ENGINE_KIND_MODULE = "module"
 
+/** Engine types a custom source can name (the first is the patches engine, the others are Xposed module engines). */
+const val ENGINE_MORPHE = "morphe"
+const val ENGINE_LSPATCH = "lspatch"
+const val ENGINE_NPATCH = "npatch"
+
 /** `GET /api/auth/state` `limits`: rules the server owns, the app keeps no copy. */
 @Serializable
 data class ClientLimits(
