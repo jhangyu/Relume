@@ -4,13 +4,15 @@ from webui import server
 from webui.tests.helpers import DataTestCase, serve, http
 
 
-def fake_module(name, routes, register=None):
+def fake_module(case, name, routes, register=None):
     m = types.ModuleType('webui.' + name)
     m.ROUTES = routes
     if register:
         m.register = register
     sys.modules['webui.' + name] = m
-    server.CHANGES.setdefault(name, ())   # make_server requires a topic entry for every module with routes
+    case.addCleanup(sys.modules.pop, 'webui.' + name, None)
+    server.CHANGES[name] = ()   # make_server requires a topic entry for every module with routes
+    case.addCleanup(server.CHANGES.pop, name, None)
     return name
 
 
@@ -38,7 +40,7 @@ class RouterTest(PublicRoutesMixin, DataTestCase):
                   ('GET', '/api/boom', boom), ('GET', '/api/locked', locked), ('POST', '/api/fail', fail)]
         for m, p, _ in routes:
             self.public(m, p)
-        self.base = serve(self, [fake_module('fakerouter', routes)])
+        self.base = serve(self, [fake_module(self, 'fakerouter', routes)])
 
     def test_int_params_and_query(self):
         st, _, body = http('GET', self.base + '/api/t/12/x/abc?k=v')
@@ -99,7 +101,7 @@ class FileResponseTest(PublicRoutesMixin, DataTestCase):
                   ('GET', '/api/noetag', lambda req: server.FileResponse(f, 'app.apk'))]
         for route in routes:
             self.public(route[0], route[1])
-        self.base = serve(self, [fake_module('fakefile', routes)])
+        self.base = serve(self, [fake_module(self, 'fakefile', routes)])
 
     def get(self, **headers):
         return http('GET', self.base + '/api/file', headers=headers)
@@ -156,7 +158,7 @@ class LoadModulesTest(DataTestCase):
         self.assertEqual(server.load_modules(()), [])
 
     def test_register_starts_no_thread(self):
-        name = fake_module('fakereg', [], register=lambda: None)
+        name = fake_module(self, 'fakereg', [], register=lambda: None)
         before = threading.active_count()
         for m in server.load_modules([name]):
             m.register()
