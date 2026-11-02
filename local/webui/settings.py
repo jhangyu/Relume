@@ -5,6 +5,7 @@ import pathlib
 import platform
 import re
 import shutil
+import stat
 import threading
 import time
 
@@ -45,12 +46,15 @@ def ui_token_path():
 
 
 def _read(p):
-    """Text of a secret file, '' when there is no such file. A file that exists but cannot be read raises: reading
-    it as 'not set' would hide the cause and send requests unauthenticated. RuntimeError, not OSError: callers treat
-    OSError as a network failure (upstream._get)."""
+    """Text of a secret file, None when there is no regular file at p (missing, or a directory: Docker creates one
+    for a missing bind-mount source). A file that exists but cannot be read raises: reading it as 'not set' would
+    hide the cause and send requests unauthenticated. RuntimeError, not OSError: callers treat OSError as a
+    network failure (upstream._get)."""
     try:
-        return p.read_text().strip() if p.is_file() else ''
-    except OSError as e:
+        return p.read_text().strip() if stat.S_ISREG(p.stat().st_mode) else None
+    except FileNotFoundError:
+        return None
+    except OSError as e:  # stat errors too: Path.is_file (3.14) would read them as "no file"
         raise RuntimeError(f'secret file {p} exists but cannot be read: {e.strerror} (errno {e.errno})') from e
 
 
@@ -59,7 +63,8 @@ def _token_source():
     t = _read(ui_token_path())
     if t:
         return t, 'ui'
-    return _read(TOKEN_PATH), 'file' if TOKEN_PATH.is_file() else None
+    f = _read(TOKEN_PATH)
+    return f or '', 'file' if f is not None else None
 
 
 def github_token():

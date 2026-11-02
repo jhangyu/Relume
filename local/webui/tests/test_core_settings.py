@@ -75,6 +75,9 @@ class SettingsTest(DataTestCase):
         with mock.patch.object(pathlib.Path, 'read_text', side_effect=PermissionError(13, 'Permission denied')):
             with self.assertRaisesRegex(RuntimeError, rf"secret file {settings.google_play_path()} exists but cannot be read: Permission denied \(errno 13\)"):
                 settings.google_play()
+        with mock.patch('os.stat', side_effect=PermissionError(13, 'Permission denied')):  # Path.stat and os.path.isfile both use it
+            with self.assertRaisesRegex(RuntimeError, rf"secret file {settings.google_play_path()} exists but cannot be read: Permission denied \(errno 13\)"):
+                settings.google_play()
 
     def test_disk(self):
         (self.data / 'artifacts' / '1' / '2').mkdir(parents=True)
