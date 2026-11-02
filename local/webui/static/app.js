@@ -48,6 +48,7 @@ export function report(e) {
 // One toast for a bulk action from Promise.allSettled: the first failure and the failed count, else okMsg.
 export function toastSettled(results, okMsg) {
   const bad = results.filter(x => x.status === 'rejected');
+  if (bad.some(x => x.reason.status === 401)) return;   // api() already went to the login page
   if (bad.length) toast(`${bad[0].reason.message} (${bad.length} of ${results.length} failed)`, 'error');
   else toast(okMsg);
 }
@@ -93,26 +94,35 @@ export const fmt = {
 };
 
 // One /api/events stream per tab (decision 2): pages refetch when a topic they show changes. No timers.
+// A sub's first run is the page's initial load. It waits for `open`: the server takes its change mark before it sends
+// the stream headers, so a load started after `open` misses no change. A stream that cannot open never leaves the
+// page blank: any error runs the subs that never ran, and the next `open` catches them up.
 const subs = [];
 let es = null;
+let down = false;   // the stream is not open and the browser is retrying it (an error with readyState CONNECTING)
 function run(s) {
   if (s.blocked()) { s.pending = true; return; }
   s.pending = false;
   if (s.busy) { s.again = true; return; }
-  s.busy = true;
+  s.busy = s.ran = true;
   Promise.resolve().then(s.fn).catch(err => { console.error(`refresh ${s.topics.join(',')}:`, err); report(err); })
-    .finally(() => { s.busy = false; if (s.again) { s.again = false; run(s); } });
+    .finally(() => { s.busy = false; s.first(); if (s.again) { s.again = false; run(s); } });
 }
 function connect() {
   if (es || document.visibilityState !== 'visible') return;
+  down = false;
   es = new EventSource('/api/events');
-  es.addEventListener('open', () => subs.forEach(run));   // first connect and every reconnect: catch up
+  es.addEventListener('open', () => { down = false; subs.forEach(run); });   // first connect and every reconnect
   es.addEventListener('change', e => {
     const topics = JSON.parse(e.data);
     subs.filter(s => s.topics.some(t => topics.includes(t))).forEach(run);
   });
   es.addEventListener('error', () => {
-    if (es.readyState !== EventSource.CLOSED) return;      // CONNECTING: the browser retries by itself
+    if (es.readyState !== EventSource.CLOSED) {            // CONNECTING: the browser retries by itself
+      down = true;
+      subs.filter(s => !s.ran).forEach(run);               // load once now; the next `open` catches up
+      return;
+    }
     console.error('events stream closed by the server');
     es = null;
     subs.forEach(run);                                     // a 401 here sends api() to the login page
@@ -126,11 +136,21 @@ function runPending() { subs.filter(s => s.pending).forEach(run); }
 for (const type of ['close', 'toggle', 'focusout']) {     // capture: close/toggle do not bubble
   document.addEventListener(type, runPending, true);
 }
-// fn refetches what the page shows; while blocked() (a dialog or edit is open) the refetch waits until it closes.
+// fn loads and refetches what the page shows; while blocked() (a dialog or edit is open) a refetch waits for it to close.
+// The first fn run is the page's initial load: the page must not fetch the same data itself.
+// -> Promise settled after the first fn run (a failure was already shown by report()).
 export function live(topics, fn, blocked = () => false) {
-  subs.push({ topics, fn, blocked, busy: false, again: false, pending: false });
-  connect();
+  return new Promise(first => {
+    const s = { topics, fn, blocked, busy: false, again: false, pending: false, ran: false, first };
+    subs.push(s);
+    connect();
+    if (es && (es.readyState === EventSource.OPEN || down)) run(s);   // already open: its mark predates this run
+  });
 }
+
+// After the page's own write. The server publishes the write's topic before it answers, so an open or reconnecting
+// stream refreshes the page by itself; only a stream closed by an error (until the tab is shown again) needs this.
+export function afterWrite() { if (!es) subs.forEach(run); }
 
 // List-page scroll memory. mark()/back(): an in-page panel opens and closes, so the page returns to where it was.
 // first(fill): after the first render, Back/reload restores the position saved on pagehide (fill may load more rows first).
@@ -306,8 +326,7 @@ export function shell() {
     count.hidden = false;
     count.setAttribute('aria-label', `${s.apps_enabled} enabled apps`);
   };
-  const refresh = () => load().catch(err => console.error('shell status:', err));
-  refresh();
+  const refresh = () => load().catch(err => { console.error('shell status:', err); box.textContent = `Server status unavailable: ${err.message}`; });
   live(['jobs', 'apps'], refresh);
 }
 
