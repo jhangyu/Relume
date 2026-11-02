@@ -630,6 +630,17 @@ class ReleaseTest(ProjectCase):
         self.pull("v1", {"microg-1.apk": ()})                 # package already known: nothing more
         self.assertEqual(len([t for t, _ in self.emitted if t == "project.assignment_dropped"]), 1)
 
+    def test_first_download_keeps_disabled_app_with_same_package(self):
+        with db.tx() as c:
+            iid = add_item(c, GMS, builtin_id(c), enabled=0)
+            add_device(c, 4)
+            c.execute("INSERT INTO device_assignments(device_id, item_id) VALUES (4, ?)", (iid,))
+            c.execute("INSERT INTO device_projects(device_id, project_id) VALUES (4, 1)")
+        self.pull("v1", {"microg-1.apk": ()})
+        self.assertEqual(self.project()["package"], GMS)
+        self.assertEqual([tuple(r) for r in db.conn().execute("SELECT device_id, item_id FROM device_assignments")], [(4, iid)])
+        self.assertEqual([t for t, _ in self.emitted if t == "project.assignment_dropped"], [])
+
     def test_mixed_packages_not_committed(self):
         reason = self.failed_pull("v1", {"microg-1.apk": (), "other-1.apk": ()})
         self.assertEqual(reason, "download failed: packages differ within release")
