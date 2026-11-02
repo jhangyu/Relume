@@ -587,8 +587,17 @@ def register():
     jobs.register("build", handler, detail)
 
 
+def _remove_staged():
+    """A crash during the artifact copy leaves .staged-* files that no row names: delete them and the job dirs they emptied."""
+    for staged in (db.DATA / "artifacts").glob("*/*/.staged-*"):
+        staged.unlink()
+        if not any(staged.parent.iterdir()):
+            staged.parent.rmdir()
+
+
 def start():
-    """No job can run yet: stale work dirs go (spec build §6)."""
+    """No job can run yet: stale work dirs and half-copied artifact files go (spec build §6)."""
+    _remove_staged()
     w = db.DATA / "work"
     if w.is_dir():
         for d in w.iterdir():

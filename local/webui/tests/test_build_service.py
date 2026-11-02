@@ -387,6 +387,16 @@ class HandlerFailTest(BuildCase):
         build.start()
         self.assertEqual(list((self.data / "work").iterdir()), [])
 
+    def test_start_removes_staged_leftovers_and_keeps_artifacts(self):
+        gone, kept = self.data / "artifacts" / "5" / "70", self.data / "artifacts" / "5" / "71"
+        gone.mkdir(parents=True); kept.mkdir(parents=True)
+        (gone / ".staged-0.apk").write_bytes(b"x")
+        (kept / ".staged-0.apk").write_bytes(b"x")
+        (kept / "app.apk").write_bytes(b"y")
+        build.start()
+        self.assertFalse(gone.exists())
+        self.assertEqual([p.name for p in kept.iterdir()], ["app.apk"])
+
     def test_start_keeps_foreign_owned_apk_cache_mode(self):
         """CI case: the workflow made apk-cache as the host user. start() must not retighten it."""
         if os.geteuid() != 0:
