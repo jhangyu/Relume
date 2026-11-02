@@ -6,7 +6,7 @@ import threading
 import traceback
 from zoneinfo import ZoneInfo
 
-from . import db, devices, jobs
+from . import db, devices, events, jobs
 from .server import HttpError, is_int
 
 UTC = dt.timezone.utc
@@ -161,6 +161,7 @@ def fire(row, now):
     with db.tx() as c:
         c.execute('UPDATE schedules SET last_run_at=?, next_run_at=? WHERE id=?',
                   (db.iso(now), db.iso(next_run(json.loads(row['spec']), now, last_run=now)), row['id']))
+    events.changed('schedules')
     return ids
 
 

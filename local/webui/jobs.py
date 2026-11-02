@@ -11,7 +11,7 @@ import threading
 import time
 import traceback
 
-from . import db, settings
+from . import db, events, settings
 from .server import HttpError, SSEResponse
 
 OPTION_DEFAULTS = {
@@ -26,29 +26,7 @@ _conds = {}
 _lock = threading.Lock()
 
 
-class _Signal(threading.Condition):
-    """Condition that counts its notifies. A waiter takes mark() before it looks at the state and then waits for
-    the count to change, so a notify sent between the look and the wait is never lost."""
-
-    def __init__(self):
-        super().__init__()
-        self.seq = 0
-
-    def notify_all(self):  # the caller holds the lock, as for Condition.notify_all
-        self.seq += 1
-        super().notify_all()
-
-    def mark(self):
-        with self:
-            return self.seq
-
-    def wait_change(self, seen, timeout=None):
-        """-> False when timeout passed with no notify since mark() returned seen."""
-        with self:
-            return self.wait_for(lambda: self.seq != seen, timeout)
-
-
-_wake = _Signal()  # enqueue, register, stop: a worker sees a notify sent while it was claiming
+_wake = events.Signal()  # enqueue, register, stop: a worker sees a notify sent while it was claiming
 _threads = []
 _stop = threading.Event()
 
@@ -94,9 +72,9 @@ class Job:
 
 
 def log_condition(job_id):
-    """The job's _Signal while it is queued or running (_drop_finished_conditions removes it after the end)."""
+    """The job's events.Signal while it is queued or running (_drop_finished_conditions removes it after the end)."""
     with _lock:
-        return _conds.setdefault(job_id, _Signal())
+        return _conds.setdefault(job_id, events.Signal())
 
 
 def _drop_finished_conditions():
@@ -315,6 +293,7 @@ def enqueue(kind, target, trigger, schedule_id=None, options=None):
                         "VALUES (?,'queued',?,?,?,?,?)",
                         (kind, trigger, schedule_id, t, o, db.utcnow())).lastrowid
     _notify()
+    events.changed('jobs')
     return jid
 
 
@@ -344,6 +323,7 @@ def _execute(job):
     log.close()
     _drop_finished_conditions()
     _cleanup(job.kind)
+    events.changed('jobs')  # job end and every DB write its handler made
     return status
 
 
@@ -354,6 +334,7 @@ def _claim(kind):
         if r is None:
             return None
         c.execute("UPDATE jobs SET status='running', started_at=? WHERE id=?", (db.utcnow(), r['id']))
+    events.changed('jobs')
     return Job(r)
 
 
@@ -398,6 +379,7 @@ def cancel(job_id):
     if n:
         _wake_job_waiters()
         _drop_finished_conditions()
+        events.changed('jobs')
         return 'cancelled'
     with _lock:
         job = _running.get(job_id)
@@ -452,9 +434,6 @@ def get(job_id):
     return to_json(r, with_detail=False) if r else None
 
 
-KEEPALIVE = 15
-
-
 def log_stream(job_id, offset=0):
     path = db.DATA / 'logs' / f'{job_id}.log'
     cond, last = None, time.monotonic()
@@ -480,8 +459,8 @@ def log_stream(job_id, offset=0):
         if done:
             yield f"event: end\ndata: {row['status'] if row else 'missing'}\n\n".encode()
             return
-        cond.wait_change(seen, max(0, KEEPALIVE - (time.monotonic() - last)))  # lines, job end, cancel notify
-        if time.monotonic() - last >= KEEPALIVE:
+        cond.wait_change(seen, max(0, events.KEEPALIVE - (time.monotonic() - last)))  # lines, job end, cancel notify
+        if time.monotonic() - last >= events.KEEPALIVE:
             yield b': keepalive\n\n'
             last = time.monotonic()
 

@@ -160,7 +160,7 @@ def server_info():
 
 
 def shell_route(req):
-    """Sidebar status polled by every open page (app.js shell()): counts and disk totals only, no directory walk."""
+    """Sidebar status, refetched by every open page on jobs/apps changes (app.js shell()): counts and disk totals only, no directory walk."""
     c = db.conn()
     counts = dict(c.execute("SELECT status, count(*) FROM jobs WHERE status IN ('running', 'queued') "
                             "GROUP BY status").fetchall())

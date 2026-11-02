@@ -10,6 +10,7 @@ def fake_module(name, routes, register=None):
     if register:
         m.register = register
     sys.modules['webui.' + name] = m
+    server.CHANGES.setdefault(name, ())   # make_server requires a topic entry for every module with routes
     return name
 
 

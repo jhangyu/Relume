@@ -15,7 +15,12 @@ from . import db
 VERSION = os.environ.get('RELUME_VERSION', 'dev')
 STARTED_AT = db.utcnow()
 MODULES = ('catalog', 'upstream', 'projects', 'build', 'devices', 'ota', 'notify', 'market')
-CORE = ('auth', 'jobs', 'scheduler', 'settings')
+CORE = ('auth', 'jobs', 'scheduler', 'settings', 'events')
+# Topics of /api/events (events.TOPICS) that an authenticated mutating request to a module's routes publishes.
+# Every module with routes needs an entry: make_server fails at startup without one (decision 2).
+CHANGES = {'auth': ('devices',), 'jobs': ('jobs',), 'scheduler': ('schedules',), 'settings': ('apps',),
+           'events': (), 'catalog': ('apps',), 'projects': ('projects',), 'build': ('apps',),
+           'devices': ('devices',), 'ota': ('devices',), 'notify': (), 'market': ('apps', 'schedules')}
 STATIC = pathlib.Path(__file__).with_name('static')
 MUTATING = {'POST', 'PUT', 'PATCH', 'DELETE'}
 MAX_BODY = 1 << 20
@@ -200,16 +205,16 @@ class Handler(BaseHTTPRequestHandler):
         from . import auth  # lazy: auth imports HttpError from this module
         found = None
         path_known = False
-        for m, rx, pattern, fn in self.server.routes:
+        for m, rx, pattern, fn, topics in self.server.routes:
             mt = rx.match(url.path)
             if mt:
                 path_known = True
                 if m == method:
-                    found = (pattern, fn, mt)
+                    found = (pattern, fn, topics, mt)
                     break
         if not found:
             raise HttpError(405 if path_known else 404, 'method not allowed' if path_known else 'not found')
-        pattern, fn, mt = found
+        pattern, fn, topics, mt = found
         params = {k: int(v) if re.fullmatch(r'-?\d+', v) else urllib.parse.unquote(v)
                   for k, v in mt.groupdict().items()}
         query = dict(urllib.parse.parse_qsl(url.query))
@@ -232,7 +237,13 @@ class Handler(BaseHTTPRequestHandler):
                 raise HttpError(403, 'session required')
             if req.device_id is not None and auth.legacy_refused(req.device_id, method, pattern):
                 raise HttpError(403, auth.LEGACY_DENIED_MSG)
-        return fn(req)
+        publish = method in MUTATING and (method, pattern) not in auth.PUBLIC and topics
+        try:
+            return fn(req)
+        finally:  # also after a failed handler: a spurious refresh is harmless, a missed one leaves a stale page
+            if publish:
+                from . import events  # lazy, as auth above
+                events.changed(*topics)
 
     def _read_json_body(self):
         cl = self.headers.get('Content-Length') or '0'
@@ -369,7 +380,7 @@ class Handler(BaseHTTPRequestHandler):
 def make_server(mods, host='0.0.0.0', port=47000):
     srv = ThreadingHTTPServer((host, port), Handler)
     srv.daemon_threads = True
-    routes = [(m, _compile(p), p, fn)
+    routes = [(m, _compile(p), p, fn, CHANGES[mod.__name__.rpartition('.')[2]])
               for mod in load_modules(CORE) + list(mods) for (m, p, fn) in getattr(mod, 'ROUTES', [])]
     srv.routes = sorted(routes, key=lambda r: r[2].count('{'))
     return srv

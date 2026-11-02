@@ -1,5 +1,5 @@
-import json, threading, time, urllib.request
-from webui import db, jobs
+import datetime as dt, json, threading, time, urllib.request
+from webui import db, events, jobs, scheduler
 from webui.tests.helpers import DataTestCase, serve, http, login, run_inline
 
 
@@ -74,3 +74,63 @@ class JobsApiTest(DataTestCase):
         self.assertEqual(http('POST', f'{self.base}/api/jobs/{jid}/cancel', {}, cookie=self.c)[0], 409)
         self.assertEqual(http('POST', f'{self.base}/api/jobs/999/cancel', {}, cookie=self.c)[0], 404)
         self.assertEqual(http('GET', f'{self.base}/api/jobs/999', cookie=self.c)[0], 404)
+
+
+class EventsTest(DataTestCase):
+    def test_change_stream_coalesces_topics(self):
+        s = events.stream(lambda: True)
+        events.changed('jobs')
+        events.changed('apps', 'jobs')
+        self.assertEqual(next(s), b'event: change\ndata: ["jobs","apps"]\n\n')
+        with self.assertRaises(ValueError):
+            events.changed('nope')
+        with self.assertRaises(ValueError):
+            events.changed()
+
+    def test_stream_requires_auth_and_ends_on_logout(self):
+        base = serve(self)
+        self.assertEqual(http('GET', base + '/api/events')[0], 401)
+        cookie = login(base)
+        got, opened = {}, threading.Event()
+
+        def read():
+            req = urllib.request.Request(base + '/api/events', headers={'Cookie': cookie})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                got['status'] = r.status
+                opened.set()                    # headers sent: the stream's mark is already taken
+                got['body'] = r.read()          # returns when the server closes the stream
+        t = threading.Thread(target=read)
+        t.start()
+        self.assertTrue(opened.wait(10), 'stream did not open')
+        # the logout's devices publish wakes the stream, which then sees the dead session and ends
+        self.assertEqual(http('POST', base + '/api/auth/logout', {}, cookie=cookie)[0], 200)
+        t.join(10)
+        self.assertFalse(t.is_alive(), 'stream still open after logout')
+        self.assertEqual(got['status'], 200)
+        self.assertEqual(http('GET', base + '/api/events', cookie=cookie)[0], 401)
+
+    def test_mutations_and_job_lifecycle_publish(self):
+        base = serve(self, ['market'])
+        cookie = login(base)
+        scheduler.ensure_update()
+        before = dict(events._last)
+        st, _, body = http('PUT', base + '/api/schedule', {'enabled': False}, cookie=cookie)
+        self.assertEqual(st, 200, body)
+        moved = {t for t in events.TOPICS if events._last[t] > before[t]}
+        self.assertEqual(moved, {'apps', 'schedules'})
+        before = dict(events._last)
+        self.assertNotEqual(http('POST', base + '/api/auth/login', {'username': 'admin', 'password': 'wrong-pass-1'})[0], 200)
+        self.assertEqual(events._last, before)  # PUBLIC routes never publish
+        before = dict(events._last)
+        jobs.register('build', lambda job, log: None)
+        jid = jobs.enqueue('build', {'item_id': 1}, 'manual')
+        self.assertGreater(events._last['jobs'], before['jobs'])
+        mark = events._last['jobs']
+        self.assertEqual(jobs.enqueue('build', {'item_id': 1}, 'manual'), jid)  # dedup: nothing new
+        self.assertEqual(events._last['jobs'], mark)
+        self.assertEqual(jobs.cancel(jid), 'cancelled')
+        self.assertGreater(events._last['jobs'], mark)
+        before = dict(events._last)
+        scheduler.fire(db.conn().execute("SELECT * FROM schedules WHERE kind='update'").fetchone(),
+                       dt.datetime(2026, 10, 19, 12, tzinfo=dt.timezone.utc))  # fixed clock
+        self.assertGreater(events._last['schedules'], before['schedules'])

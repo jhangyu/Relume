@@ -92,6 +92,7 @@ def _set(upstream_id, **cols):
     with db.tx() as c:
         c.execute("UPDATE upstream SET " + ", ".join(f"{k} = ?" for k in cols) + " WHERE id = ?",
                   (*cols.values(), upstream_id))
+    events.changed("projects")  # check results inside long upstream jobs
 
 
 def select_release(channel, data):
