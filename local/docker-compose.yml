@@ -18,11 +18,15 @@ services:
       PORT: "47191"
     restart: unless-stopped
   upstream-browser:
-    # build-only: the upstream browser image as-is (pinned commit; its Dockerfile is multi-arch: ubuntu:rolling + CloakBrowser linux-arm64),
+    # build-only: the upstream browser image (pinned commit; its Dockerfile is multi-arch: ubuntu:rolling + CloakBrowser linux-arm64),
+    # built by local/upstream-browser.Dockerfile = that Dockerfile plus a pinned cloakbrowser (0.7.0 needs a license key),
     # the base of the browser target in local/Dockerfile. Never started.
     deploy: {replicas: 0}
     build:
-      context: https://github.com/sarperavci/CloudflareBypassForScraping.git#0f628b9ccbea9ab69ca61bc1c896c2ef766a0f06
+      context: ..
+      dockerfile: local/upstream-browser.Dockerfile
+      additional_contexts:
+        src: https://github.com/sarperavci/CloudflareBypassForScraping.git#0f628b9ccbea9ab69ca61bc1c896c2ef766a0f06
     image: relume-upstream-browser:0f628b9
   cfbypass:
     build:
