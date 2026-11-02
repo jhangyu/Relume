@@ -109,22 +109,39 @@ def _read_result(work):
     return r
 
 
-def _apk_facts(work, result):
-    """Package, version and signer of each output, read by the server (decision 13): fills each variant dict and an
-    empty app_version from the first variant's versionName. None, or the error detail."""
-    for v in result["variants"]:
-        try:
-            with jobs.open_runner_file(work, v["file"]) as f:
-                fd = f.fileno()
-                size = os.fstat(fd).st_size
+def _artifact_dir(item_id, job):
+    return db.DATA / "artifacts" / str(item_id) / str(job.id)
 
-                def read(off, n):
-                    return os.pread(fd, n, off)
+
+def _copy_out(job, item_id, work, result):
+    """Copy each runner output into the job's artifact dir (server-only) and read package, version and signer from
+    that copy (decision 13): the copy is the one file the hash, size and APK info come from and the file _register
+    publishes. Fills each variant dict (staged, sha256, size, package, version_code, version_name, signer_sha256) and
+    an empty app_version from the first variant's versionName. None, or the detail of an output whose APK info cannot
+    be parsed. Raises OSError when a runner file cannot be opened or a copy cannot be written or read."""
+    dest = _artifact_dir(item_id, job)
+    if dest.exists():   # the copies of an earlier attempt of this job that was not published
+        _remove(dest)
+    dest.mkdir(parents=True)
+    for i, v in enumerate(result["variants"]):
+        staged, h = dest / f".staged-{i}.apk", hashlib.sha256()
+        with jobs.open_runner_file(work, v["file"]) as src, open(staged, "xb") as out:   # the fd validated now
+            for chunk in iter(lambda: src.read(COPY_CHUNK), b""):
+                h.update(chunk)
+                out.write(chunk)
+        with open(staged, "rb") as f:
+            fd = f.fileno()
+            size = os.fstat(fd).st_size
+
+            def read(off, n):
+                return os.pread(fd, n, off)
+            try:
                 m = apkmanifest.read_manifest(read, size)
-                v.update(package=m.package, version_code=m.version_code, version_name=m.version_name,
-                         signer_sha256=apkmanifest.read_signer(read, size))
-        except (OSError, apkmanifest.ManifestError) as e:
-            return f"cannot read the APK info of {v['file']}: {e}"
+                signer = apkmanifest.read_signer(read, size)
+            except apkmanifest.ManifestError as e:
+                return f"cannot read the APK info of {v['file']}: {e}"
+        v.update(staged=staged, sha256=h.hexdigest(), size=size, package=m.package, version_code=m.version_code,
+                 version_name=m.version_name, signer_sha256=signer)
     if not result.get("app_version"):
         result["app_version"] = result["variants"][0]["version_name"]
     return None
@@ -190,24 +207,20 @@ def artifact_name(package, variant, app_version, upstream_tag):
     return f"{package}-{variant}-{server.safe_remote(app_version)}-{server.safe_remote(upstream_tag)}.apk"
 
 
-def _register(job, item_id, inp, work, result, failed_patches, sha, cache_names):
-    dest = db.DATA / "artifacts" / str(item_id) / str(job.id)
-    dest.mkdir(parents=True, exist_ok=True)
+def _register(job, item_id, inp, result, failed_patches, sha, cache_names):
+    """Publish the copies _copy_out made: each gets its artifact name and its row, all rows in one transaction."""
+    dest = _artifact_dir(item_id, job)
     now, ids = db.utcnow(), []
     with db.tx() as c:
         for v in result["variants"]:
             target = dest / artifact_name(inp["package"], v["name"], result["app_version"], inp["upstream_tag"])
-            # copy from the fd validated now, not the path validated earlier
-            h = hashlib.sha256()
-            with jobs.open_runner_file(work, v["file"]) as src, open(target, "xb") as out:
-                for chunk in iter(lambda: src.read(COPY_CHUNK), b""):
-                    h.update(chunk)
-                    out.write(chunk)
+            open(target, "xb").close()   # claims the name: two outputs with one artifact name raise FileExistsError
+            os.replace(v["staged"], target)
             ids.append(c.execute("""INSERT INTO artifacts(job_id, item_id, variant, abi, package, version_name, version_code,
                 patches_version, signer_sha256, path, size, sha256, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                                  (job.id, item_id, v["name"], v["abi"], v["package"], v["version_name"],
                                   v["version_code"], inp["upstream_tag"], v["signer_sha256"], str(target),
-                                  target.stat().st_size, h.hexdigest(), now)).lastrowid)
+                                  v["size"], v["sha256"], now)).lastrowid)
         c.execute("UPDATE build_jobs SET app_version = ?, patches_version = ?, cli_version = ?, failed_patches = ?, "
                   "inputs_sha = ?, apk_cache = ? WHERE job_id = ?",
                   (result["app_version"], inp["upstream_tag"], inp["cli_tag"], json.dumps(failed_patches) if failed_patches else None,
@@ -420,13 +433,16 @@ def _attempt(job, item_id, inp, awork, googleplay, auto, sha, log):
         if used and m.fail_code == "patch_failed":   # the patcher refusing an automatic variant: next one
             return _Rejected(True, "", m.fail_detail or "the patcher failed", used)
         if m.fail_code:
-            return _Rejected(False, m.fail_code, m.fail_detail or m.last_err or "", used)
+            return _Rejected(False, m.fail_code, m.fail_detail or m.last_err or f"runner exited {rc}", used)
         return _Rejected(False, "internal", m.last_err or f"runner exited {rc} without result.json", used)
     try:
         result = _read_result(awork)
     except ValueError as e:
         return _Rejected(False, "internal", str(e), used)
-    bad = _apk_facts(awork, result)
+    try:
+        bad = _copy_out(job, item_id, awork, result)
+    except OSError as e:
+        _fail(job, item_id, "internal", f"artifact rejected: {e}")
     if bad:   # an unreadable output of an automatic APKMirror variant: next one
         return _Rejected(True, "", bad, used) if used else _Rejected(False, "patch_failed", bad, used)
     for device, vc in sorted({(g["device"], g["version_code"]) for g in googleplay if g["version_code"] is not None}):
@@ -439,15 +455,9 @@ def _attempt(job, item_id, inp, awork, googleplay, auto, sha, log):
         for a, u in used:
             _apkm_remember(inp["package"], u["version_name"], a["abis"], u["version_code"], u["variant_url"], u["bundle"])
         try:
-            _register(job, item_id, inp, awork, result, failed, sha, [n for _, n in cache])
+            _register(job, item_id, inp, result, failed, sha, [n for _, n in cache])
         except OSError as e:
-            dest = db.DATA / "artifacts" / str(item_id) / str(job.id)
-            left = ""
-            try:
-                _remove(dest)
-            except OSError as e2:
-                left = f"; leftover {dest} not removed: {e2}"
-            _fail(job, item_id, "internal", f"artifact rejected: {e}{left}")
+            _fail(job, item_id, "internal", f"artifact rejected: {e}")
         try:   # after publish: a failed delete of an older build is logged, the next build retries it
             run_retention(item_id)
         except server.HttpError as e:
@@ -550,6 +560,9 @@ def handler(job, log):
         shutil.rmtree(work, ignore_errors=True)
         with _steps_lock:
             _steps.pop(job.id, None)
+        dest = _artifact_dir(item_id, job)
+        if dest.exists() and not db.conn().execute("SELECT 1 FROM artifacts WHERE job_id = ?", (job.id,)).fetchone():
+            _remove(dest)   # copies of a build that was not published, a failure raises with the path
 
 
 def _artifact_obj(r):

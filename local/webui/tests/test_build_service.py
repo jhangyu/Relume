@@ -447,6 +447,8 @@ class HandlerOkTest(BuildCase):
         for r in rows:
             data = Path(r["path"]).read_bytes()
             self.assertEqual((r["size"], r["sha256"]), (len(data), hashlib.sha256(data).hexdigest()))
+        self.assertEqual(sorted(p.name for p in (self.data / "artifacts" / "1" / str(job.id)).iterdir()),
+                         sorted(Path(r["path"]).name for r in rows))   # no .staged-* left
         b = self.bj(job)
         self.assertEqual((b["app_version"], b["patches_version"], b["cli_version"], b["fail_code"], b["inputs_sha"]),
                          ("20.1.0", "v1.2.3", "v1.0.0", None, "sha-of-inputs"))
@@ -471,12 +473,26 @@ class HandlerOkTest(BuildCase):
         names = [Path(r[0]).name for r in db.conn().execute("SELECT path FROM artifacts WHERE job_id = ?", (job.id,))]
         self.assertEqual(names, [f"{YT}-universal-1.4.5-v1.2.3.apk", f"{YT}-arm64-v8a-1.4.5-v1.2.3.apk"])
 
+    def test_name_collision_registers_nothing(self):
+        script = self.data / "runner-inline.sh"
+        script.write_text(f'mkdir -p release && cp {SIGNED_APK} release/a.apk && cp {SIGNED_APK} release/b.apk\n'
+                          'echo \'{"app_version": "20.1.0", "variants": [{"name": "universal", "abi": "universal", '
+                          '"file": "release/a.apk"}, {"name": "universal", "abi": "universal", "file": "release/b.apk"}]}\' '
+                          '> result.json\n')
+        build.RUNNER = str(script)
+        job, log, err = self.run_handler()
+        self.assertEqual(self.bj(job)["fail_code"], "internal")
+        self.assertTrue(self.bj(job)["fail_detail"].startswith("artifact rejected:"), self.bj(job)["fail_detail"])
+        self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM artifacts").fetchone()[0], 0)
+        self.assertFalse((self.data / "artifacts" / "1" / str(job.id)).exists())
+
     def test_unreadable_output_is_patch_failed(self):
         self.inline_runner("printf 'not an apk' >", "20.1.0")
         job, log, err = self.run_handler()
         self.assertEqual(self.bj(job)["fail_code"], "patch_failed")
         self.assertIn("cannot read the APK info of release/universal.apk: APK end record", self.bj(job)["fail_detail"])
         self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM artifacts").fetchone()[0], 0)
+        self.assertFalse((self.data / "artifacts" / "1" / str(job.id)).exists())
 
     def test_latest_mode_fingerprints_the_version_built(self):
         # past bug: the sha was taken before the runner refreshed the APKMirror list, so the next run rebuilt once
@@ -662,6 +678,7 @@ class VariantLoopTest(BuildCase):
             c.execute("UPDATE jobs SET status = 'failed' WHERE id = ?", (job.id,))
         self.assertFalse(self.needs_build())
         self.assertEqual(self.remembered(), [])
+        self.assertFalse((self.data / "artifacts" / "1" / str(job.id)).exists())
 
     def test_patcher_refusing_every_variant_ends_as_patch_items_failed(self):
         job, err, used = self.build(codes=[101, 102], patchable=[], refuse=True)
@@ -725,14 +742,14 @@ class ArtifactSwapTest(BuildCase):
     """A leftover runner process swaps a validated artifact for a symlink before registration."""
 
     def swap_after_validation(self, swap):
-        real = build._apk_facts
+        real = build._read_result
 
-        def spy(work, result):
-            r = real(work, result)
+        def spy(work):
+            r = real(work)
             swap(work)
             return r
 
-        with mock.patch.object(build, "_apk_facts", spy):
+        with mock.patch.object(build, "_read_result", spy):
             return self.run_handler()
 
     def assert_rejected(self, job, err):
@@ -741,6 +758,27 @@ class ArtifactSwapTest(BuildCase):
         self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM artifacts").fetchone()[0], 0)
         leaked = [p for p in (self.data / "artifacts").rglob("*") if p.is_file() and b"secret" in p.read_bytes()]
         self.assertEqual(leaked, [])
+        self.assertFalse((self.data / "artifacts" / "1" / str(job.id)).exists())
+
+    def test_swap_after_copy_publishes_the_copy(self):
+        real = build._copy_out
+
+        def spy(job, item_id, work, result):
+            r = real(job, item_id, work, result)
+            (work / "release" / "universal.apk").unlink()
+            (work / "release" / "universal.apk").write_bytes(b"secret")
+            return r
+
+        with mock.patch.object(build, "_copy_out", spy):
+            job, log, err = self.run_handler()
+        self.assertIsNone(err)
+        rows = db.conn().execute("SELECT * FROM artifacts WHERE job_id = ?", (job.id,)).fetchall()
+        self.assertTrue(rows)
+        for r in rows:
+            data = Path(r["path"]).read_bytes()
+            self.assertEqual(data, Path(SIGNED_APK).read_bytes())
+            self.assertEqual(r["sha256"], hashlib.sha256(data).hexdigest())
+            self.assertEqual(r["signer_sha256"], SIGNED_DIGEST)
 
     def test_file_symlink_rejected(self):
         secret = self.data / "secret"
