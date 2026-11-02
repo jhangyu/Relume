@@ -1,3 +1,5 @@
+import contextlib
+import io
 import threading
 from unittest import mock
 
@@ -27,6 +29,19 @@ class ParserTest(helpers.DataTestCase):
                                                         'apk_sha256': None})
         with self.assertRaisesRegex(ValueError, "got 'package:a.b'"):
             devices.parse_packages('package:a.b\n')
+
+    def test_online_states_logs_once_per_change(self):
+        fail, ok = (1, 'boom\n'), (0, 'List of devices attached\n')
+        out = io.StringIO()
+        with mock.patch.object(devices, '_list_failing', False), \
+                mock.patch.object(devices, 'adb', side_effect=[fail, fail, devices.AdbTimeout('devices'), ok, ok, fail]), \
+                contextlib.redirect_stdout(out):
+            for _ in range(6):
+                devices.online_states()
+        lines = out.getvalue().splitlines()
+        self.assertEqual(len(lines), 3, lines)
+        self.assertEqual([x.split(':')[0] for x in lines], ['adb devices failed (exit 1)', 'adb devices answers again',
+                                                             'adb devices failed (exit 1)'])
 
     def test_install_error_codes(self):
         cases = {

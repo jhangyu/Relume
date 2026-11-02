@@ -306,16 +306,32 @@ def _warn(log, text):
         log.line(text)
 
 
+_list_failing = False                 # owned by online_states via _note_list_result, guarded by _list_failing_lock
+_list_failing_lock = threading.Lock()
+
+
+def _note_list_result(error):
+    """One server-log line per change of `adb devices` health: error = the failure text, None = adb answered."""
+    global _list_failing
+    with _list_failing_lock:
+        if _list_failing == (error is not None):
+            return
+        _list_failing = error is not None
+    print(f'{error}: every ADB device shows offline (logged once until adb answers again)' if error
+          else 'adb devices answers again', flush=True)
+
+
 def online_states():
-    """`adb devices` -> {address: state}. adb itself failing shows every ADB device offline and says so in the log."""
+    """`adb devices` -> {address: state}. adb itself failing shows every ADB device offline and says so once in the log."""
     try:
         rc, out = adb(['devices'], timeout=10)
     except AdbTimeout:
-        print('adb devices timed out: every ADB device shows offline', flush=True)
+        _note_list_result('adb devices timed out')
         return {}
     if rc != 0:
-        print(f'adb devices failed (exit {rc}): {last_line(out)}', flush=True)
+        _note_list_result(f'adb devices failed (exit {rc}): {last_line(out)}')
         return {}
+    _note_list_result(None)
     return parse_devices(out)
 
 
