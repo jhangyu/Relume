@@ -88,7 +88,7 @@ async function pair(body) {
     toast(`Paired ${r.device.name}`);
     await loadDevices();
   } catch (e) {
-    toast(e.message, 'error');   // e.g. PAIR_FAILED: <adb line>
+    report(e);   // e.g. PAIR_FAILED: <adb line>
   }
 }
 
@@ -131,7 +131,7 @@ async function reconnect(d, btn) {
       const port = await askPort(d);
       if (port) await act('POST', `/api/devices/${d.id}/connect`, { connect_port: port }, `${d.name} connected`).catch(report);
     } else {
-      toast(e.message, 'error');
+      report(e);
     }
   } finally {
     btn.disabled = false;
@@ -162,11 +162,11 @@ document.addEventListener('click', async e => {
   const sec = t('[data-dev]');
   const d = sec && D.devices.find(x => x.id === Number(sec.dataset.dev));
   try {
-    if (t('[data-pair]')) return pairDialog(t('[data-pair]'));
-    if (d && t('[data-reconnect]')) return reconnect(d, t('[data-reconnect]'));
+    if (t('[data-pair]')) return await pairDialog(t('[data-pair]'));
+    if (d && t('[data-reconnect]')) return await reconnect(d, t('[data-reconnect]'));
     if (d && t('[data-assign]')) {
       D.projects = (await act('GET', '/api/projects')).projects;
-      return editAssignments(d);
+      return await editAssignments(d);
     }
     if (d && t('[data-ota]')) await act('POST', `/api/devices/${d.id}/ota`, {}, `OTA queued on ${d.name}`);
     else if (d && t('[data-remove-app]')) {
@@ -191,7 +191,7 @@ document.addEventListener('click', async e => {
 
 document.addEventListener('change', e => {
   const sec = e.target.closest('[data-dev]');
-  if (sec && e.target.matches('[data-oab]')) act('PATCH', `/api/devices/${sec.dataset.dev}`, { ota_after_build: e.target.checked }, 'Saved').catch(loadDevices);
+  if (sec && e.target.matches('[data-oab]')) act('PATCH', `/api/devices/${sec.dataset.dev}`, { ota_after_build: e.target.checked }, 'Saved').catch(() => loadDevices().catch(report));
 });
 document.addEventListener('keydown', e => {
   const h = e.target.closest('[data-rename]');
@@ -205,7 +205,7 @@ document.addEventListener('focusout', e => {
   if (!h) return;
   const sec = h.closest('[data-dev]'), name = h.textContent.trim();
   const d = D.devices.find(x => x.id === Number(sec.dataset.dev));
-  if (name && name !== d.name) act('PATCH', `/api/devices/${d.id}`, { name }, 'Renamed').then(loadDevices).catch(loadDevices);
+  if (name && name !== d.name) act('PATCH', `/api/devices/${d.id}`, { name }, 'Renamed').then(loadDevices).catch(() => loadDevices().catch(report));
 });
 $('#man').addEventListener('submit', e => {
   e.preventDefault();
@@ -234,4 +234,4 @@ $('#of').addEventListener('change', () => loadHistory().catch(report));
     () => Boolean(document.querySelector('dialog[open]') || document.activeElement.closest('[data-rename]')));
   await loadHistory();
   await loadDiscovered().catch(report);
-})().catch(e => toast(e.message, 'error'));
+})().catch(report);
