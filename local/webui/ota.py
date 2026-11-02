@@ -186,7 +186,7 @@ def _plan_for(dev, item_ids, project_ids, present):
     """item_ids/project_ids None = all assigned (a legacy row: the companion app). Returns the planner inputs plus
     'direct' ids and 'steps'."""
     abis = abis_of(dev)
-    if dev['legacy']:
+    if devices.is_legacy(dev):
         items, direct = _legacy_scope(item_ids, project_ids)
     else:
         items = assigned_items(dev['id'], item_ids)
@@ -255,7 +255,7 @@ def _view(dev, states, v, reported):
 
 def list_devices(req):
     states = devices.online_states()
-    rows = db.conn().execute('SELECT * FROM devices WHERE legacy = 0 ORDER BY id').fetchall()
+    rows = db.conn().execute(f'SELECT * FROM devices WHERE NOT {devices.LEGACY_SQL} ORDER BY id').fetchall()
     return 200, {'devices': [_device_view(dict(r), states) for r in rows]}
 
 
@@ -463,30 +463,18 @@ def _parse_sync(body):
     return facts, d['app_version_code'], out
 
 
-def _adopt_device_uid(c, device_id, uid):
-    """A phone signed in before device_uid existed has it NULL: fill it so the next sign-in reuses this row.
-    A different uid on a filled row is a 400 (the token belongs to another phone). A uid another row already owns
-    (the phone signed in again and got a new row) is left alone: the unique index must not turn a sync into a 500."""
-    have = c.execute('SELECT device_uid FROM devices WHERE id=?', (device_id,)).fetchone()['device_uid']
-    if have is None:
-        c.execute('UPDATE devices SET device_uid=? WHERE id=? AND NOT EXISTS (SELECT 1 FROM devices WHERE device_uid=?)',
-                  (uid, device_id, uid))
-    elif have != uid:
-        raise HttpError(400, f'device.device_uid must match this device\'s id {have!r}, got {uid!r}')
-
-
 def _leave_legacy(c, device_id, uid):
     """The same token syncs with a uid: the app was replaced by a current one. The legacy row becomes a normal app
     row with that uid, or when a row with that uid exists the token moves there and the legacy row goes. -> row id.
     The row is re-read inside the transaction: a concurrent sync may have converted or merged it already."""
-    row = c.execute('SELECT legacy, token_hash FROM devices WHERE id=?', (device_id,)).fetchone()
+    row = c.execute('SELECT kind, device_uid, token_hash FROM devices WHERE id=?', (device_id,)).fetchone()
     if row is None:
         raise HttpError(401, 'invalid device token')   # merged by a concurrent sync: the token now lives on the owner row
-    if not row['legacy']:
+    if not devices.is_legacy(row):
         return device_id
     owner = c.execute('SELECT id FROM devices WHERE device_uid=?', (uid,)).fetchone()
     if owner is None:
-        c.execute('UPDATE devices SET legacy=0, device_uid=? WHERE id=?', (uid, device_id))
+        c.execute('UPDATE devices SET device_uid=? WHERE id=?', (uid, device_id))
         return device_id
     c.execute('DELETE FROM devices WHERE id=?', (device_id,))   # token_hash is UNIQUE: free it before the move
     c.execute('UPDATE devices SET token_hash=? WHERE id=?', (row['token_hash'], owner['id']))
@@ -502,7 +490,7 @@ def sync(req):
     me = _me(req)
     if me is None:   # merged into another row by a concurrent sync after authenticate
         raise HttpError(401, 'invalid device token')
-    if me['legacy']:
+    if devices.is_legacy(me):
         if uid is None:
             with db.tx() as c:
                 c.execute('UPDATE devices SET last_seen_at=? WHERE id=?', (db.utcnow(), did))
@@ -512,8 +500,10 @@ def sync(req):
         with db.tx() as c:
             did = _leave_legacy(c, did, uid)
     with db.tx() as c:
-        if uid is not None:
-            _adopt_device_uid(c, did, uid)
+        if uid is not None:   # after _leave_legacy every app row that syncs with a uid has one
+            have = c.execute('SELECT device_uid FROM devices WHERE id=?', (did,)).fetchone()['device_uid']
+            if have != uid:
+                raise HttpError(400, f"device.device_uid must match this device's id {have!r}, got {uid!r}")
         c.execute('UPDATE devices SET model=?, sdk=?, android_release=?, abi_list=?, app_version_code=?, last_seen_at=? '
                   'WHERE id=?', (facts.model, facts.sdk, facts.android_release, facts.abi_list, app_version_code,
                                  db.utcnow(), did))
@@ -538,7 +528,7 @@ def _query_ids(req, key, have, what):
 def me_plan(req):
     """?items=&projects= scope the plan like an OTA job target: either key given, the missing one means none."""
     dev = _me(req)
-    legacy = dev['legacy']   # an install request of a legacy client is answered for any app, assigned or not
+    legacy = devices.is_legacy(dev)   # an install request of a legacy client is answered for any app, assigned or not
     item_ids = _query_ids(req, 'items', None if legacy else assigned_item_ids(dev['id']), 'item')
     project_ids = _query_ids(req, 'projects', None if legacy else set(projects.assigned_projects(dev['id'])), 'project')
     if item_ids is not None or project_ids is not None:
@@ -588,7 +578,7 @@ def post_install(req):
         _bad('error_code', 'one of ' + ', '.join(sorted(devices.APP_ERROR_CODES)), code)
     if text is not None and not isinstance(text, str):
         _bad('error_text', 'a string or null', text)
-    if dev['legacy']:   # install-only client: the install happened, nothing about it is kept
+    if devices.is_legacy(dev):   # install-only client: the install happened, nothing about it is kept
         return 200, {'ok': True}
     job_id, tag, pkg, vname, vcode, signer = _receipt_target(dev, b)
     now = db.utcnow()

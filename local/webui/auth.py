@@ -9,7 +9,7 @@ import secrets
 import threading
 import time
 
-from . import catalog, db, ota, settings
+from . import catalog, db, devices, ota, settings
 from .server import HttpError
 
 COOKIE = 'relume_session'
@@ -141,8 +141,8 @@ def legacy_refused(device_id, method, pattern):
     check, install/upgrade, signer accept and logout flows use: LEGACY_ALLOWED. Everything else is 403."""
     if (method, pattern) in LEGACY_ALLOWED:
         return False
-    row = db.conn().execute('SELECT legacy FROM devices WHERE id=?', (device_id,)).fetchone()
-    return bool(row and row['legacy'])
+    row = devices.get(device_id)
+    return bool(row and devices.is_legacy(row))
 
 
 def client_limits():
@@ -229,8 +229,8 @@ def register_device(req):
             c.execute('UPDATE devices SET token_hash=?, model=?, sdk=?, android_release=?, abi_list=? WHERE id=?',
                       (token_hash(token), *hw, did))
         elif uid is None:   # companion up to v1.2.0: hidden install-only row, no ADB takeover (it would split on every sign-in)
-            did = c.execute("INSERT INTO devices(name, kind, legacy, token_hash, model, sdk, android_release, abi_list) "
-                            "VALUES (?, 'app', 1, ?, ?, ?, ?, ?)", (name, token_hash(token), *hw)).lastrowid
+            did = c.execute("INSERT INTO devices(name, kind, token_hash, model, sdk, android_release, abi_list) "
+                            "VALUES (?, 'app', ?, ?, ?, ?, ?)", (name, token_hash(token), *hw)).lastrowid
         else:
             did = c.execute("INSERT INTO devices(device_uid, name, kind, token_hash, model, sdk, android_release, "
                             "abi_list) VALUES (?, ?, 'app', ?, ?, ?, ?, ?)",
@@ -242,7 +242,7 @@ def register_device(req):
 def device_logout(req):
     """A legacy row has no uid to be found again by: signing out deletes it, a normal row only loses its token."""
     with db.tx() as c:
-        if not c.execute('DELETE FROM devices WHERE id=? AND legacy=1', (req.device_id,)).rowcount:
+        if not c.execute(f'DELETE FROM devices WHERE id=? AND {devices.LEGACY_SQL}', (req.device_id,)).rowcount:
             c.execute('UPDATE devices SET token_hash=NULL WHERE id=?', (req.device_id,))
     return 200, {'ok': True}
 
@@ -262,13 +262,13 @@ def revoke_device_token(req):
 
 def list_legacy_sign_ins(req):
     rows = db.conn().execute('SELECT id, name, model, android_release, created_at, last_seen_at FROM devices '
-                             'WHERE legacy=1 ORDER BY id').fetchall()
+                             f'WHERE {devices.LEGACY_SQL} ORDER BY id').fetchall()
     return 200, {'legacy_sign_ins': [dict(r) for r in rows]}
 
 
 def revoke_legacy_sign_in(req):
     with db.tx() as c:
-        if not c.execute('DELETE FROM devices WHERE id=? AND legacy=1', (req.params['id'],)).rowcount:
+        if not c.execute(f'DELETE FROM devices WHERE id=? AND {devices.LEGACY_SQL}', (req.params['id'],)).rowcount:
             raise HttpError(404, f"legacy sign-in {req.params['id']} not found")
     return 200, {'deleted': req.params['id']}
 

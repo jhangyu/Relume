@@ -227,7 +227,7 @@ class DeviceRoutesTest(helpers.DataTestCase):
 
     def test_device_list_hides_token_hash(self):
         add_device()
-        db.conn().execute("INSERT INTO devices(name, kind, token_hash) VALUES ('Phone', 'app', 'secret-hash')")
+        db.conn().execute("INSERT INTO devices(name, kind, device_uid, token_hash) VALUES ('Phone', 'app', 'uid-routes', 'secret-hash')")
         self.fa.rule('devices', out='List of devices attached\n')
         from webui import ota
         rows = ota.list_devices(req())[1]['devices']

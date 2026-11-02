@@ -9,7 +9,7 @@ import urllib.parse
 import zipfile
 from pathlib import Path
 
-from . import catalog, db, events, jobs, server, upstream
+from . import catalog, db, devices, events, jobs, server, upstream
 
 ABI_TOKENS = ("arm64-v8a", "armeabi-v7a", "x86_64", "aarch64", "armeabi", "arm64", "armv7", "x86")
 APKSIGNER = ["apksigner"]
@@ -353,7 +353,7 @@ def _bool(v, field):
 def _device_ids(v):
     server.int_list(v, "device_ids")
     for d in v:
-        if not db.conn().execute("SELECT 1 FROM devices WHERE id = ? AND legacy = 0", (d,)).fetchone():
+        if not db.conn().execute(f"SELECT 1 FROM devices WHERE id = ? AND NOT {devices.LEGACY_SQL}", (d,)).fetchone():
             raise server.HttpError(400, f"unknown device {d}")
     return v
 

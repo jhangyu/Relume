@@ -246,9 +246,16 @@ def get(device_id):
 
 def dev_or_404(device_id):
     dev = get(device_id)
-    if dev is None or dev['legacy']:   # a legacy row (companion up to v1.2.0) is not a device the server manages
+    if dev is None or is_legacy(dev):   # a legacy row (companion up to v1.2.0) is not a device the server manages
         raise HttpError(404, 'device not found')
     return dev
+
+
+LEGACY_SQL = "(kind = 'app' AND device_uid IS NULL)"   # companion up to v1.2.0: no ANDROID_ID (decision 1)
+
+
+def is_legacy(dev):
+    return dev['kind'] == 'app' and dev['device_uid'] is None
 
 
 def is_app(dev):
@@ -445,7 +452,7 @@ def delete_device(req):
 def put_assignments(req):
     """Items replace device_assignments; project_ids, when present, replace device_projects (spec follow-project 5.5)."""
     me = get(req.device_id) if req.device_id is not None else None
-    if me and me['legacy']:
+    if me and is_legacy(me):
         # Companion up to v1.2.0 assigns the app to its own row before every install and gives up on any error:
         # answer as if done, change nothing (the explicit-id plan that follows needs no assignment).
         if req.params['id'] != me['id']:
