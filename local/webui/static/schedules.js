@@ -1,4 +1,4 @@
-import { $, $$, act, api, confirmDialog, fmt, html, icon, JOB_BADGE, report, shell, toast } from '/static/app.js';
+import { $, $$, act, api, confirmDialog, fmt, html, icon, JOB_BADGE, report, shell } from '/static/app.js';
 
 const DAYS = ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'];
 const UI_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -159,21 +159,23 @@ $('#new').addEventListener('click', () => openDialog(null));
 $('#list').addEventListener('click', async e => {
   const run = e.target.closest('[data-run]'), edit = e.target.closest('[data-edit]'), del = e.target.closest('[data-del]'), en = e.target.closest('[data-en]');
   const find = id => R.ota.find(x => x.id === Number(id));
+  if (edit) return openDialog(find(edit.dataset.edit));
   try {
-    if (run) { await act('POST', `/api/schedules/${run.dataset.run}/run`, {}, `Started: ${find(run.dataset.run).name} — see Builds`); await load(); }
-    else if (edit) openDialog(find(edit.dataset.edit));
+    if (run) await act('POST', `/api/schedules/${run.dataset.run}/run`, {}, `Started: ${find(run.dataset.run).name} — see Builds`);
     else if (del) {
       const body = html`<strong>${find(del.dataset.del).name}</strong> is deleted and stops running.`;
       if (!await confirmDialog({ title: 'Delete schedule?', body, action: 'Delete' })) return;
       await act('DELETE', `/api/schedules/${del.dataset.del}`, {}, 'Schedule deleted');
-      await load();
-    } else if (en) { await act('PUT', `/api/schedules/${en.dataset.en}`, { enabled: en.checked }); await load(); }
-  } catch (e) { report(e); load(); }
+    } else if (en) await act('PUT', `/api/schedules/${en.dataset.en}`, { enabled: en.checked });
+    else return;
+  } catch (e) { report(e); }   // the reload below also resets a failed switch
+  load().catch(report);        // one reload after success or failure
 });
 
 async function load() {
-  const [{ schedules }, settings, g, { jobs }] = await Promise.all([api('GET', '/api/schedules'), api('GET', '/api/settings'), api('GET', '/api/schedule'), api('GET', '/api/jobs?kind=upstream&limit=20')]);
-  R.lastRun = jobs.find(j => j.schedule_id === g.id) || null;
+  const [{ schedules }, settings, g] = await Promise.all([api('GET', '/api/schedules'), api('GET', '/api/settings'), api('GET', '/api/schedule')]);
+  const { jobs } = await api('GET', `/api/jobs?schedule_id=${g.id}&limit=1`);   // newest run of the update schedule, scheduled or manual
+  R.lastRun = jobs[0] || null;
   R.ota = schedules.filter(s => s.kind === 'ota');
   R.global = g;
   $('#srvtime').textContent = `Server time ${new Date(settings.server.now).toLocaleString('en', { timeZone: settings.server.tz, weekday: 'short', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · ${settings.server.tz}`;
@@ -186,4 +188,4 @@ async function load() {
   shell();
   R.devices = (await api('GET', '/api/devices')).devices.filter(d => d.kind !== 'app');
   await load();
-})().catch(e => toast(e.message, 'error'));
+})().catch(report);
