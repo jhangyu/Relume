@@ -42,8 +42,13 @@ def add_job(c, item_id, status="running"):
                      (status, json.dumps({"item_id": item_id}, separators=(",", ":")))).lastrowid
 
 
-def add_artifact(c, item_id, job_id):
-    c.execute("INSERT INTO artifacts(job_id, item_id, variant, abi, path, created_at) VALUES (?, ?, 'universal', 'universal', '/x', 'now')", (job_id, item_id))
+def add_artifact(c, item_id, job_id, variant="universal"):
+    p = db.DATA / "artifacts" / str(item_id) / str(job_id) / f"{variant}.apk"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(b"apk")
+    c.execute("INSERT INTO artifacts(job_id, item_id, variant, abi, path, created_at) VALUES (?, ?, ?, ?, ?, 'now')",
+              (job_id, item_id, variant, variant, str(p)))
+    return p
 
 
 class SchemaTest(helpers.DataTestCase):
@@ -540,6 +545,16 @@ class GuardHandlerTest(BuildCase):
         job, _, _ = self.run_handler(patch_results=cases["R2"])
         self.assertEqual(json.loads(self.bj(job)["failed_patches"]), ["Old", "A"])
 
+    def test_guard_baseline_ignores_a_build_without_apks(self):
+        # the reported bug: the baseline pointed at a build whose APKs were gone, so a regression verdict kept nothing
+        first = self.published()
+        for r in db.conn().execute("SELECT path FROM artifacts WHERE job_id = ?", (first.id,)):
+            Path(r["path"]).unlink()
+        job, _, err = self.run_handler(patch_results={"universal": patch_result(5, [("Old", "e")]),
+                                                      "arm64-v8a": patch_result(5, [("A", "boom")])})
+        self.assertIsNone(err)                                      # R2 skipped: nothing is published
+        self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM artifacts WHERE job_id = ?", (job.id,)).fetchone()[0], 2)
+
     def test_other_engines_skip_the_guard(self):
         real = self.cat.job_input
         self.enterContext(mock.patch.object(apps, "job_input", lambda i: dict(real(i), engine="lspatch")))
@@ -803,6 +818,27 @@ class StatusTest(BuildCase):
         st = build.item_status([1])[1]
         self.assertEqual(st["last_build"], {"job_id": jid, "status": "success", "reason": None, "fail_code": None, "inputs_sha": None})
         self.assertEqual((st["last_success"]["patches_version"], st["last_success"]["variants"]), ("v1.2.3", ["universal"]))
+
+    def test_missing_files_are_not_published(self):
+        old = self.finished("success")
+        new = self.finished("success")
+        for r in db.conn().execute("SELECT path FROM artifacts WHERE job_id = ?", (new,)):
+            Path(r["path"]).unlink()
+        st = build.item_status([1])[1]
+        self.assertEqual(st["last_success"]["job_id"], old)          # the older build still has its APK
+        self.assertEqual(build.latest_artifact(1, "universal")["job_id"], old)
+        for r in db.conn().execute("SELECT path FROM artifacts WHERE job_id = ?", (old,)):
+            Path(r["path"]).unlink()
+        self.assertIsNone(build.item_status([1])[1]["last_success"])
+        self.assertIsNone(build.latest_artifact(1, "universal"))
+        self.assertEqual(db.conn().execute("SELECT COUNT(*) FROM artifacts").fetchone()[0], 2)   # readers delete nothing
+
+    def test_one_missing_variant_needs_a_build(self):
+        jid = self.finished("success")
+        with db.tx() as c:
+            p = add_artifact(c, 1, jid, "arm64-v8a")
+        p.unlink()
+        self.assertEqual(build.item_status([1])[1]["last_success"]["variants"], ["universal"])
 
     def test_failed_newest(self):
         self.finished("success")

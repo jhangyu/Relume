@@ -610,21 +610,30 @@ def cleanup(apply):
     return out
 
 
-def _newest_success_job(item_id):
-    r = db.conn().execute("""SELECT a.job_id FROM artifacts a JOIN jobs j ON j.id = a.job_id
-        WHERE a.item_id = ? AND j.status = 'success' ORDER BY a.job_id DESC LIMIT 1""", (item_id,)).fetchone()
-    return r[0] if r else None
+def _published(item_ids):
+    """{item_id: (job_id, rows)} of the published build (decision 3): the newest success build with at least one
+    artifact file on disk, rows = its artifacts whose file exists. Items without one are absent."""
+    out = {}
+    if not item_ids:
+        return out
+    for a in db.conn().execute(f"""SELECT a.* FROM artifacts a JOIN jobs j ON j.id = a.job_id
+            WHERE a.item_id IN ({','.join('?' * len(item_ids))}) AND j.status = 'success'
+            ORDER BY a.job_id DESC, a.id""", list(item_ids)):
+        cur = out.get(a["item_id"])
+        if cur is not None and cur[0] != a["job_id"]:
+            continue   # an older job of an item already published
+        if Path(a["path"]).is_file():
+            out.setdefault(a["item_id"], (a["job_id"], []))[1].append(a)
+    return out
 
 
 def latest_artifact(item_id, abi):
-    """Artifacts row of the newest success build with this ABI, else universal, else None."""
-    jid = _newest_success_job(item_id)
-    if jid is None:
-        return None
+    """Artifacts row of the published build with this ABI, else universal, else None."""
+    rows = _published([item_id]).get(item_id, (None, []))[1]
     for want in (abi, "universal"):
-        a = db.conn().execute("SELECT * FROM artifacts WHERE job_id = ? AND abi = ? ORDER BY id LIMIT 1", (jid, want)).fetchone()
-        if a:
-            return dict(a)
+        for a in rows:
+            if a["abi"] == want:
+                return dict(a)
     return None
 
 
@@ -635,27 +644,28 @@ STATUS_SQL = """SELECT j.id, j.status, j.reason, j.finished_at, json_extract(j.t
 
 
 def item_status(item_ids):
-    """{item_id: {last_build, last_success, active_job}} in three queries (spec build §3.4); last_success.variants =
-    the variant names that still have an artifact, sorted."""
+    """{item_id: {last_build, last_success, active_job}} in three queries (spec build §3.4); last_success = the
+    published build (decision 3); variants = variant names whose APK file exists, sorted."""
     out = {i: {"last_build": None, "last_success": None, "active_job": None} for i in item_ids}
     if not item_ids:
         return out
     sql = STATUS_SQL.format(q=",".join("?" * len(item_ids)))
     c = db.conn()
+    success = {}   # job_id -> last_success shape of every success build
     for r in c.execute(sql + " AND j.status IN ('success', 'failed', 'cancelled') ORDER BY j.id", list(item_ids)):
         o = out[r["item_id"]]
         o["last_build"] = {"job_id": r["id"], "status": r["status"], "reason": r["reason"], "fail_code": r["fail_code"],
                            "inputs_sha": r["inputs_sha"]}
         if r["status"] == "success":
-            o["last_success"] = {"job_id": r["id"], "app_version": r["app_version"], "patches_version": r["patches_version"],
-                                 "cli_version": r["cli_version"], "finished_at": r["finished_at"],
-                                 "inputs_sha": r["inputs_sha"], "apk_cache": json.loads(r["apk_cache"] or "[]"),
-                                 "variants": []}
-    ls = {o["last_success"]["job_id"]: o["last_success"] for o in out.values() if o["last_success"]}
-    if ls:
-        for r in c.execute(f"SELECT DISTINCT job_id, variant FROM artifacts WHERE job_id IN ({','.join('?' * len(ls))}) "
-                           "ORDER BY variant", list(ls)):
-            ls[r["job_id"]]["variants"].append(r["variant"])
+            success[r["id"]] = {"job_id": r["id"], "app_version": r["app_version"], "patches_version": r["patches_version"],
+                                "cli_version": r["cli_version"], "finished_at": r["finished_at"],
+                                "inputs_sha": r["inputs_sha"], "apk_cache": json.loads(r["apk_cache"] or "[]"),
+                                "variants": []}
+    for iid, (jid, rows) in _published(list(item_ids)).items():
+        ls = success.get(jid)
+        if ls is not None:
+            ls["variants"] = sorted({a["variant"] for a in rows})
+            out[iid]["last_success"] = ls
     # queued rows newest-first, then running: the last assignment wins = running job, else the oldest queued
     for r in c.execute(sql + " AND j.status IN ('queued', 'running') ORDER BY j.status = 'running', j.id DESC", list(item_ids)):
         with _steps_lock:

@@ -183,6 +183,7 @@ class NeedsBuildTest(AppsCase):
                       (jid, iid, apps.inputs_sha(apps.item_row(iid))))
             if status == "success":
                 for v in apps.get(iid)["settings"]["variants"]:
+                    (db.DATA / f"{v['name']}.apk").write_bytes(b"apk")   # published = the APK file exists (decision 3)
                     c.execute("INSERT INTO artifacts(job_id, item_id, variant, abi, path, created_at) VALUES (?, ?, ?, ?, ?, 'now')",
                               (jid, iid, v["name"], v["abi"], str(db.DATA / f"{v['name']}.apk")))
 
@@ -318,8 +319,9 @@ class UpdateRunTest(AppsCase):
             c.execute("INSERT INTO build_jobs(job_id, item_id, app_version, inputs_sha) VALUES (?, 1, '20.13.41', ?)",
                       (jid, apps.inputs_sha(apps.item_row(1))))
             for v in apps.get(1)["settings"]["variants"]:
-                c.execute("INSERT INTO artifacts(job_id, item_id, variant, abi, path, created_at) VALUES (?, 1, ?, ?, '/x', 'now')",
-                          (jid, v["name"], v["abi"]))
+                (db.DATA / f"{v['name']}.apk").write_bytes(b"apk")
+                c.execute("INSERT INTO artifacts(job_id, item_id, variant, abi, path, created_at) VALUES (?, 1, ?, ?, ?, 'now')",
+                          (jid, v["name"], v["abi"], str(db.DATA / f"{v['name']}.apk")))
         found = []   # the versions the next check_versions call finds
 
         def check(package, log, cancel_event):
