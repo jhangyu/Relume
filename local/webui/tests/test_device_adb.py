@@ -23,7 +23,8 @@ class ParserTest(helpers.DataTestCase):
         self.assertEqual({k: v['version_code'] for k, v in got.items()},
                          {'com.google.android.youtube': 1547053504, 'app.revanced.android.gms': 255070218,
                           'com.android.settings': 35})
-        self.assertEqual(got['com.android.settings'], {'version_code': 35, 'version_name': None, 'signer_sha256': None})
+        self.assertEqual(got['com.android.settings'], {'version_code': 35, 'version_name': None, 'signer_sha256': None,
+                                                        'apk_sha256': None})
         with self.assertRaisesRegex(ValueError, "got 'package:a.b'"):
             devices.parse_packages('package:a.b\n')
 
