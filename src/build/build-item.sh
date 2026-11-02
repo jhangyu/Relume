@@ -165,7 +165,6 @@ input_apk() {
 for k in "${!specs[@]}"; do fetch_input "$k" "${specs[$k]}"; done
 if [[ -n "$version" && "$version" != "$printed_version" ]]; then
 	echo "::version::$version"
-	printed_version=$version
 fi
 
 # APKMirror versions for the pin list (spec build §4 step 5d): at most one extra list-page request
