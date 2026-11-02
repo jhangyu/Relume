@@ -625,9 +625,7 @@ def _versions_due(checked_at):
 
 
 def job_input(item_id):
-    r = db.conn().execute(ROW_SQL + ' WHERE i.id = ?', (item_id,)).fetchone()
-    if r is None:
-        raise catalog.UpstreamMissing(f'app {item_id} not found')
+    r = item_row(item_id)
     tag, names, patches = catalog.patch_list(r['bundle_id'], r['package'])
     if not tag:
         raise catalog.UpstreamMissing(f"bundle {r['bundle_id']} ({r['repo']}) not downloaded")
