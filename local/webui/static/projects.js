@@ -7,7 +7,7 @@ const dpOf = (d, pid) => (d.projects || []).find(x => x.project_id === pid);
 const phonesOf = p => S.devices.filter(d => dpOf(d, p.id));
 const assignedOf = p => S.devices.filter(d => (dpOf(d, p.id) || {}).assigned);
 const behind = p => S.devices.some(d => (dpOf(d, p.id) || {}).update_available);
-const attn = p => !!(p.signer_alert || p.check_error || behind(p));
+const attn = p => !!(p.signer_alert || p.check_error || p.download_error || behind(p));
 const jobFor = (list, p) => list.some(j => j.target && j.target.upstream_id === p.upstream_id);
 const initials = s => (s || '?').split(/[\s_\-·/]+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 const hue = s => [...(s || '')].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
@@ -20,6 +20,7 @@ function chips(p) {
   if (p.signer_alert) c.push(['err', 'Signer changed']);
   if (p.auto_push && p.signer_alert) c.push(['', 'Auto-push paused']);
   if (p.check_error) c.push(['err', 'Check error']);
+  if (p.download_error) c.push(['err', 'Download error']);
   if (jobFor(S.running, p)) c.push(['brand', 'Downloading']);
   if (jobFor(S.queued, p)) c.push(['', 'Queued']);
   if (behind(p)) c.push(['warn', 'Update available']);
@@ -101,6 +102,7 @@ function pane() {
 <button class="btn" type="button" data-check>Check now</button>
 <details class="dd" style="margin-left:auto"><summary class="icon-btn" aria-label="More actions">${icon('more')}</summary><div class="menu"><button type="button" data-edit>Edit assets, regex &amp; channel</button><button type="button" data-assign>Assign phones</button><hr>${p.item_ids.length ? html`<button type="button" disabled class="danger">Unfollow · used by ${p.item_ids.length} items</button>` : html`<button type="button" class="danger" data-unfollow>Unfollow</button>`}</div></details></div></div>
 ${p.check_error ? html`<div class="pane-s"><div class="msgbar err" role="alert">${icon('error')}<span><b>Last check failed.</b> ${p.check_error}</span></div><div class="field"><label class="label" style="font-size:.75rem" for="rxEdit">Asset regex</label><div class="row" style="flex-wrap:nowrap"><input id="rxEdit" class="input rx" data-rx-edit value="${p.asset_regex}" spellcheck="false"><button class="btn small" type="button" data-rx-save>Save &amp; check</button></div></div></div>` : ''}
+${p.download_error ? html`<div class="pane-s"><div class="msgbar err" role="alert">${icon('error')}<span><b>Last download failed.</b> ${p.download_error}</span></div></div>` : ''}
 ${behindAsg.length && !p.auto_push ? html`<div class="pane-s"><div class="msgbar warn">${icon('warning')}<span>${behindAsg.map(d => `${d.name} is still on ${dpOf(d, p.id).installed_tag}`).join('; ')}. Auto-push is off; it updates on the next scheduled OTA, or use Install to phone.</span></div></div>` : ''}
 <div class="pane-s"><div class="row between"><span class="lbl-s">APK signer · SHA-256</span>${blocked ? html`<span class="badge err">Changed</span>` : p.signer_sha256 ? html`<span class="badge ok">Trusted since ${p.signer_since}</span>` : ''}</div>
 ${blocked ? html`<div class="msgbar err" role="alert">${icon('warning')}<span><b>${p.downloaded_tag} is signed with a different certificate.</b> It is downloaded but quarantined: auto-push, scheduled OTA and Install are blocked until you confirm.</span></div><div class="xs muted">Trusted (first seen ${p.signer_since})</div><div class="sha">${sha(p.signer_sha256)}</div><div class="xs muted">New in ${p.downloaded_tag}</div><div class="sha new">${sha(p.signer_alert)}</div><div class="row"><button class="btn small danger" type="button" data-sig>Review &amp; confirm signer…</button></div>`

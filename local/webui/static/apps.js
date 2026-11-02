@@ -62,7 +62,8 @@ function statusCell(a) {
       ? html`${dl.candidates.length} APKMirror matches · <button class="link" type="button" data-act="url">Pick one</button>`
       : html`${dl.error || 'No download URL yet'} · <button class="link" type="button" data-act="url">Add URL</button>`;
   } else {
-    line = a.app_version ? `Built ${a.app_version}` : 'Never built';
+    const src = a.download_source;
+    line = (a.app_version ? `Built ${a.app_version}` : 'Never built') + (src.actual !== src.selected ? ' · from APKPure' : '');
   }
   const label = s.state === 'needs_download_url' && dl.state === 'ambiguous' ? 'Pick one' : st.label;
   return html`<span><span class="badge ${st.cls}">${st.icon ? icon(st.icon) : ''}${label}</span></span><span class="caption">${line}</span>`;
@@ -393,13 +394,15 @@ function withCodes(download, codes) {
 function renderUrls() {
   const dl = D.app.download || { state: 'pending', candidates: [] };
   const [cls, text] = DL_TEXT[dl.state] || ['', dl.state];
-  const retry = dl.state === 'blocked' && dl.retry_at ? ` until ${fmt.abs(dl.retry_at)}` : '';
+  const until = dl.blocked_until ? ` until ${fmt.abs(dl.blocked_until)}` : '';
+  const src = D.app.download_source;
+  const fallback = src.actual !== src.selected;
   const kind = D.cur.variants[0].download.kind;
   const urlKind = D.orig.variants.some(v => v.download.kind === 'url');
   const opts = SOURCES.filter(([k]) => k !== 'url' || urlKind || kind === 'url');
   $('#sec-url').innerHTML = html`<h3 class="subtitle2" id="s-u">${icon('download')}Download source</h3>
-<div class="field"><label for="u-src">Source</label><span class="select"><select class="dropdown" id="u-src" data-f="src">${opts.map(([k, n]) => html`<option value="${k}" ${k === kind ? html`selected` : ''}>${n}</option>`)}</select></span>${kind === 'googleplay' ? html`<span class="hint">Pinned and Auto versions are looked up on Google Play by version code. Set the Google account email and token in <a href="/settings.html">Settings</a>.</span>` : ''}</div>
-${kind === 'apkmirror' ? html`<div class="field"><label for="u-am">APKMirror listing <span class="badge ${cls}" style="height:18px;margin-left:4px">${text}${retry}</span></label><div class="row"><span class="input grow">${icon('link')}<input id="u-am" data-f="dl" data-k="apkmirror_list_url" value="${D.cur.dl.apkmirror_list_url}" placeholder="https://www.apkmirror.com/uploads/?appcategory=…"></span>${LOCATABLE.has(dl.state) ? html`<button class="icon-btn outline" type="button" data-f="locate" aria-label="Locate the APKMirror page again" title="Locate again" data-tip="Locate again">${icon('search')}</button>` : ''}</div>${dl.error ? html`<span class="hint">${dl.error}</span>` : ''}</div>
+<div class="field"><label for="u-src">Source</label><span class="select"><select class="dropdown" id="u-src" data-f="src">${opts.map(([k, n]) => html`<option value="${k}" ${k === kind ? html`selected` : ''}>${n}</option>`)}</select></span>${fallback ? html`<span class="hint">No APKMirror listing: builds download from APKPure.</span>` : ''}${kind === 'googleplay' ? html`<span class="hint">Pinned and Auto versions are looked up on Google Play by version code. Set the Google account email and token in <a href="/settings.html">Settings</a>.</span>` : ''}</div>
+${kind === 'apkmirror' ? html`<div class="field"><label for="u-am">APKMirror listing ${fallback ? '' : html`<span class="badge ${cls}" style="height:18px;margin-left:4px">${text}${until}</span>`}</label><div class="row"><span class="input grow">${icon('link')}<input id="u-am" data-f="dl" data-k="apkmirror_list_url" value="${D.cur.dl.apkmirror_list_url}" placeholder="https://www.apkmirror.com/uploads/?appcategory=…"></span>${LOCATABLE.has(dl.state) && !dl.blocked_until && !fallback ? html`<button class="icon-btn outline" type="button" data-f="locate" aria-label="Locate the APKMirror page again" title="Locate again" data-tip="Locate again">${icon('search')}</button>` : ''}</div>${dl.error ? html`<span class="hint">${dl.error}</span>` : ''}</div>
 ${dl.state === 'ambiguous' ? html`<div class="field"><span class="strong">Pick the right APKMirror app</span>${dl.candidates.map((c, k) => html`<div class="dep"><span class="grow"><span class="strong">${c.title}</span><br><span class="mono subtle-text">${c.url}</span></span><button class="btn small" type="button" data-f="pick" data-k="${k}">Use this</button></div>`)}</div>` : ''}` : ''}
 ${kind === 'apkmirror' ? html`<div class="field"><label for="u-vc">APKMirror versionCode <span class="subtle-text" style="font-weight:400">(optional)</span></label><span class="input"><input id="u-vc" data-f="vcodes" inputmode="numeric" value="${(D.cur.variants[0].download.version_codes || []).join(', ')}" placeholder="476015655"></span><span class="hint">Empty = automatic: the build tries this version's variants and keeps the first one the patches apply to.</span></div>` : ''}
 ${kind === 'apkmirror' || kind === 'apkpure' ? html`<div class="field"><label for="u-ap">APKPure ${kind === 'apkmirror' ? html`<span class="subtle-text" style="font-weight:400">(optional)</span>` : ''}</label><span class="input">${icon('link')}<input id="u-ap" data-f="dl" data-k="apkpure_url" value="${D.cur.dl.apkpure_url}" placeholder="https://apkpure.com/…"></span></div>` : ''}`;
