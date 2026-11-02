@@ -3,6 +3,7 @@ import contextlib
 import io
 import json
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -265,6 +266,20 @@ class IconTest(FeedCase):
 
     def tried(self, pkg):
         return db.conn().execute("SELECT icon_tried_url FROM store_app WHERE package = ?", (pkg,)).fetchone()[0]
+
+    def test_failed_icon_is_retried_after_seven_days(self):
+        now = [datetime(2026, 11, 2, tzinfo=timezone.utc)]
+        self.enterContext(mock.patch.object(catalog, "_now", lambda: db.iso(now[0])))
+        ok = "https://play-lh.googleusercontent.com/reddit=s128-rw"
+        f = self.http({ok: (500, b"", {}, ok)})
+        self.set_icon_url(REDDIT, ok)
+        self.assertEqual(self.icon(REDDIT), 404)
+        now[0] += catalog.ICON_RETRY_AFTER - timedelta(seconds=1)
+        self.assertEqual(self.icon(REDDIT), 404)
+        self.assertEqual(len(f.calls), 1)                 # remembered for 7 days
+        now[0] += timedelta(seconds=1)
+        self.assertEqual(self.icon(REDDIT), 404)
+        self.assertEqual(len(f.calls), 2)                 # due again
 
     def test_icon_fetch_refuses_foreign_host_redirect_and_size(self):
         ok = "https://play-lh.googleusercontent.com/reddit=s128-rw"

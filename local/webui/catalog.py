@@ -6,7 +6,7 @@ import re
 import shutil
 import threading
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 from urllib.parse import urlsplit
 
@@ -22,6 +22,7 @@ PLAY_PAGE_MAX_BYTES = 4 * 1024 * 1024
 FEED_MAX_BYTES = 16 * 1024 * 1024
 PLAY_ICON_SIZE = "=s256-rw"
 ICON_TIMEOUT = 10
+ICON_RETRY_AFTER = timedelta(days=7)   # a failed store icon is fetched again after this (decision 7)
 FEED_TIMEOUT = 30
 GITLAB_REASON = "GitLab releases not supported"
 
@@ -50,6 +51,7 @@ PLAY_HOST = "play.google.com"
 OG_IMAGE_RE = re.compile(r'<meta[^>]+property="og:image"[^>]+content="([^"]*)"')
 SIZE_SUFFIX_RE = re.compile(r"=[^=/]*$")
 ICON_EXT = {"image/png": "png", "image/webp": "webp", "image/jpeg": "jpg"}
+_now = db.utcnow                       # wall clock of the icon retry; tests replace
 
 
 class CatalogInvalid(ValueError):
@@ -425,7 +427,8 @@ def _apply(log):
                 ON CONFLICT(package) DO UPDATE SET name = excluded.name, category = excluded.category,
                 description = excluded.description, icon_url = excluded.icon_url,
                 icon_file = CASE WHEN icon_url IS excluded.icon_url THEN icon_file END,
-                icon_tried_url = CASE WHEN icon_url IS excluded.icon_url THEN icon_tried_url END""",
+                icon_tried_url = CASE WHEN icon_url IS excluded.icon_url THEN icon_tried_url END,
+                icon_tried_at = CASE WHEN icon_url IS excluded.icon_url THEN icon_tried_at END""",
                       (s.package, s.name, s.category, s.description, s.icon_url))
     log.line(f"[+] catalog applied: {len(merged)} bundles, {len(gone)} left the feeds")
 
@@ -968,26 +971,31 @@ def _fetch_icon(package, icon_url):
 
 
 def get_icon(req):
-    """Cached icon, fetched lazily on a miss. A failure is logged, remembered per source URL and answered 404."""
+    """Cached icon, fetched lazily on a miss. A failure is logged, remembered per source URL for ICON_RETRY_AFTER and
+    answered 404."""
     pkg = server.validate_package(req.params["pkg"], "package")
-    r = db.conn().execute("SELECT icon_url, icon_file, icon_tried_url FROM store_app WHERE package = ?",
+    r = db.conn().execute("SELECT icon_url, icon_file, icon_tried_url, icon_tried_at FROM store_app WHERE package = ?",
                           (pkg,)).fetchone()
     if r is None:
         raise server.HttpError(404, f"no icon: {pkg} is in no catalog")
     path = db.DATA / "icons" / r["icon_file"] if r["icon_file"] else None
     if path is None or not path.is_file():
         source = r["icon_url"] or PLAY_URL.format(pkg)
-        if r["icon_tried_url"] == source:
-            raise server.HttpError(404, f"no icon: {source} failed before")
+        if r["icon_tried_url"] == source and r["icon_tried_at"]:
+            due = db.parse_iso(r["icon_tried_at"]) + ICON_RETRY_AFTER
+            if due > db.parse_iso(_now()):
+                raise server.HttpError(404, f"no icon: {source} failed before, retried after {db.iso(due)}")
         try:
             name = _fetch_icon(pkg, r["icon_url"])
         except _IconFailed as e:
             print(f"icon {pkg}: {e}", flush=True)
             with db.tx() as c:
-                c.execute("UPDATE store_app SET icon_tried_url = ? WHERE package = ?", (source, pkg))
+                c.execute("UPDATE store_app SET icon_tried_url = ?, icon_tried_at = ? WHERE package = ?",
+                          (source, _now(), pkg))
             raise server.HttpError(404, f"no icon: {e}")
         with db.tx() as c:
-            c.execute("UPDATE store_app SET icon_file = ?, icon_tried_url = NULL WHERE package = ?", (name, pkg))
+            c.execute("UPDATE store_app SET icon_file = ?, icon_tried_url = NULL, icon_tried_at = NULL WHERE package = ?",
+                      (name, pkg))
         path = db.DATA / "icons" / name
     return server.FileResponse(str(path), cache_seconds=86400)
 
@@ -995,7 +1003,8 @@ def get_icon(req):
 def post_icon_refresh(req):
     pkg = server.validate_package(req.params["pkg"], "package")
     with db.tx() as c:
-        if not c.execute("UPDATE store_app SET icon_file = NULL, icon_tried_url = NULL WHERE package = ?",
+        if not c.execute("UPDATE store_app SET icon_file = NULL, icon_tried_url = NULL, icon_tried_at = NULL "
+                         "WHERE package = ?",
                          (pkg,)).rowcount:
             raise server.HttpError(404, f"{pkg} is in no catalog")
     return 200, {"ok": True}
