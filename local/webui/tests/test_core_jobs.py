@@ -41,6 +41,9 @@ def assert_dead(case, pid):
 
 WAKE_LIMIT_S = 0.5   # a woken worker claims in milliseconds; a lost wakeup would wait for no notify at all
 FIRST_JOB_ID = 1     # every test starts on a fresh database
+# a status write of job FIRST_JOB_ID that leaves 'running' fails; the claim's UPDATE to 'running' passes
+END_WRITE_FAILS = ("CREATE {temp} TRIGGER end_write_fails BEFORE UPDATE OF status ON main.jobs "
+                   "WHEN OLD.id = {id} AND NEW.status <> 'running' BEGIN SELECT RAISE(ABORT, 'injected'); END")
 
 needs_pidfd = unittest.skipUnless(hasattr(os, 'pidfd_open'), 'needs Linux pidfd')
 
@@ -109,6 +112,29 @@ class WorkerTest(DataTestCase):
     def setUp(self):
         super().setUp()
         jobs.start()
+
+    def test_status_write_error_fails_job_and_worker_continues(self):
+        def h(job, log):
+            if job.id == FIRST_JOB_ID:  # a TEMP trigger lives on the worker's connection only
+                db.conn().execute(END_WRITE_FAILS.format(temp='TEMP', id=FIRST_JOB_ID))
+        jobs.register('build', h)
+        with mock.patch('builtins.print'):
+            first = jobs.enqueue('build', {'item_id': 1}, 'manual')
+            second = jobs.enqueue('build', {'item_id': 2}, 'manual')
+            wait_status(first, {'failed'})
+            wait_status(second, {'success'})
+        self.assertEqual(jobs.get(first)['reason'], 'internal error: IntegrityError: injected')
+
+    def test_failed_state_write_error_keeps_worker(self):
+        db.conn().execute(END_WRITE_FAILS.format(temp='', id=FIRST_JOB_ID))
+        jobs.register('build', lambda job, log: None)
+        with mock.patch('builtins.print') as out:
+            first = jobs.enqueue('build', {'item_id': 1}, 'manual')
+            second = jobs.enqueue('build', {'item_id': 2}, 'manual')
+            wait_status(second, {'success'})  # one serial worker: job 1 is fully handled first
+        self.assertEqual(jobs.get(first)['status'], 'running')
+        self.assertTrue(any(f'job {first}: cannot record the failure (IntegrityError: injected)' in str(c.args[0])
+                            for c in out.call_args_list))
 
     def test_serial_per_kind_parallel_across(self):
         running, peak, lock = [], {'build': 0, 'ota': 0}, threading.Lock()

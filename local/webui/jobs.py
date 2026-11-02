@@ -297,34 +297,61 @@ def enqueue(kind, target, trigger, schedule_id=None, options=None):
     return jid
 
 
+def _reason(e):
+    """'<Type>: <first line of the message>', or the bare type name when the message is empty."""
+    first = (str(e).splitlines() or [''])[0]
+    return f'{type(e).__name__}: {first}' if first else type(e).__name__
+
+
 def _execute(job):
     handler = _handlers[job.kind][0]
     log = Log(job)
-    with _lock:
-        _running[job.id] = job
-    status, reason = 'success', None
     try:
-        handler(job, log)
-    except JobFailed as e:
-        status, reason = 'failed', e.reason
-    except Exception as e:
-        first = (str(e).splitlines() or [''])[0]
-        status, reason = 'failed', f'{type(e).__name__}: {first}' if first else type(e).__name__
-        log.line(traceback.format_exc())
-    finally:
         with _lock:
-            _running.pop(job.id, None)
-    if job.cancel_event.is_set():
-        status, reason = 'cancelled', 'cancelled'
-    with db.tx() as c:
-        # a handler that returns normally may have written jobs.reason itself (OTA outcome)
-        c.execute('UPDATE jobs SET status=?, reason=COALESCE(?, reason), finished_at=? WHERE id=?',
-                  (status, reason, db.utcnow(), job.id))
-    log.close()
+            _running[job.id] = job
+        status, reason = 'success', None
+        try:
+            handler(job, log)
+        except JobFailed as e:
+            status, reason = 'failed', e.reason
+        except Exception as e:
+            status, reason = 'failed', _reason(e)
+            log.line(traceback.format_exc())
+        finally:
+            with _lock:
+                _running.pop(job.id, None)
+        if job.cancel_event.is_set():
+            status, reason = 'cancelled', 'cancelled'
+        with db.tx() as c:
+            # a handler that returns normally may have written jobs.reason itself (OTA outcome)
+            c.execute('UPDATE jobs SET status=?, reason=COALESCE(?, reason), finished_at=? WHERE id=?',
+                      (status, reason, db.utcnow(), job.id))
+    finally:
+        log.close()
     _drop_finished_conditions()
     _cleanup(job.kind)
     events.changed('jobs')  # job end and every DB write its handler made
     return status
+
+
+def _abort(job, e):
+    """_execute raised outside the handler (log file, status write, log close, cleanup). Called inside the
+    worker's except: prints the error, marks the job failed on a fresh connection (a failed COMMIT can leave the
+    old one inside its transaction) unless a final status is already written, and wakes the job's log streams.
+    If that write fails too the row stays 'running' until the next start (recover); the worker continues."""
+    print(f'jobs: {job.kind} job {job.id} raised outside its handler ({_reason(e)}); '
+          f'the {job.kind} worker continues\n{traceback.format_exc()}', flush=True)
+    db.close()
+    try:
+        with db.tx() as c:
+            c.execute("UPDATE jobs SET status='failed', reason=?, finished_at=? WHERE id=? AND status='running'",
+                      (f'internal error: {_reason(e)}', db.utcnow(), job.id))
+    except Exception as e2:  # handled: printed with job, kind and cause; the row keeps its stored state
+        print(f'jobs: {job.kind} job {job.id}: cannot record the failure ({_reason(e2)}); '
+              f'the row stays running until the next server start\n{traceback.format_exc()}', flush=True)
+        db.close()
+    _wake_job_waiters()  # log streams re-read the status
+    events.changed('jobs')
 
 
 def _claim(kind):
@@ -344,11 +371,20 @@ def _worker(kind):
             seen = _wake.mark()  # before the stop check: a stop() after it changes seq, one before it is seen
             if _stop.is_set():
                 return
-            job = _claim(kind) if kind in _handlers else None
+            try:
+                job = _claim(kind) if kind in _handlers else None
+            except Exception as e:  # nothing claimed: the claim is one transaction, close drops a half-open one
+                print(f'jobs: the {kind} worker could not claim a queued job ({_reason(e)}); '
+                      f'it claims again at the next wake\n{traceback.format_exc()}', flush=True)
+                db.close()
+                job = None
             if job is None:
                 _wake.wait_change(seen)  # stop() sets _stop, then notifies
                 continue
-            _execute(job)
+            try:
+                _execute(job)
+            except Exception as e:  # outside the handler: see _abort
+                _abort(job, e)
     finally:
         db.close()
 
