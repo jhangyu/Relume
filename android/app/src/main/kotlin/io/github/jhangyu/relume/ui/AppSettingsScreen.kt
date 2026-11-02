@@ -66,6 +66,7 @@ private const val KIND_URL = "url"
 private const val KIND_APKMIRROR = "apkmirror"
 private const val KIND_APKPURE = "apkpure"
 private const val KIND_GOOGLEPLAY = "googleplay"
+private const val ABI_UNIVERSAL = "universal"
 
 internal fun kindOf(v: JsonObject): String = v["download"]?.let { it as? JsonObject }?.get("kind")?.jsonPrimitive?.content ?: KIND_APKMIRROR
 
@@ -93,7 +94,7 @@ internal fun withVersionCodes(variants: List<JsonObject>, codes: List<Int>): Lis
 private fun JsonObject?.orEmpty(): JsonObject = this ?: JsonObject(emptyMap())
 
 /** Lookup states the manual retry refuses (409): the URL is already known. */
-private val LOOKUP_DONE = setOf("found", "manual")
+private val LOOKUP_DONE = setOf(LOOKUP_FOUND, LOOKUP_MANUAL)
 
 /** `patch_overrides` entries from the edited patch list: only switches and option values that differ from the default (web `overridesFrom`). */
 internal fun overridesFrom(patches: List<PatchView>): JsonObject = buildJsonObject {
@@ -108,7 +109,7 @@ internal fun overridesFrom(patches: List<PatchView>): JsonObject = buildJsonObje
 }
 
 /** Variants for the chosen ABIs: kept ones unchanged, new ones copied from the first (web item.js rule), in server ABI [order]. */
-internal fun variantsFor(current: List<JsonObject>, abis: Set<String>, engine: String, order: List<String>): List<JsonObject> {
+internal fun variantsFor(current: List<JsonObject>, abis: Set<String>, isModule: Boolean, order: List<String>): List<JsonObject> {
     val kept = current.filter { it["abi"]?.jsonPrimitive?.content in abis }
     val have = kept.map { it["abi"]?.jsonPrimitive?.content }.toSet()
     val template = current.first()
@@ -116,7 +117,7 @@ internal fun variantsFor(current: List<JsonObject>, abis: Set<String>, engine: S
         JsonObject(template + mapOf(
             "name" to JsonPrimitive(abi),
             "abi" to JsonPrimitive(abi),
-            "strip_libs" to if (abi == "universal" || engine != "morphe") JsonNull else JsonPrimitive(abi),
+            "strip_libs" to if (abi == ABI_UNIVERSAL || isModule) JsonNull else JsonPrimitive(abi),
         ))
     }
 }
@@ -179,7 +180,7 @@ fun AppSettingsScreen(model: AppModel, appId: Int, onBack: () -> Unit, onOpenLog
                     })
                 }
                 if ((abis != abisNow || kind != kindNow || codes != codesNow) && !bundleChanged) {
-                    put("variants", JsonArray(withVersionCodes(withKind(variantsFor(s.variants, abis, engine, d.limits.abis), kind), codes)))
+                    put("variants", JsonArray(withVersionCodes(withKind(variantsFor(s.variants, abis, engineLimits.isModule, d.limits.abis), kind), codes)))
                 }
                 if ((sigbypass != sigNow || injectdex != dexNow) && !bundleChanged) {
                     put("engine_options", buildJsonObject { put("sigbypass", sigbypass); put("injectdex", injectdex) })
@@ -355,12 +356,12 @@ private fun LookupPill(state: String) {
     val r = MaterialTheme.relume
     val s = MaterialTheme.colorScheme
     when (state) {
-        "found" -> Pill("Found automatically", r.green.container, r.green.onContainer, R.drawable.ms_check)
-        "manual" -> Pill("Set by you", r.green.container, r.green.onContainer, R.drawable.ms_check)
+        LOOKUP_FOUND -> Pill("Found automatically", r.green.container, r.green.onContainer, R.drawable.ms_check)
+        LOOKUP_MANUAL -> Pill("Set by you", r.green.container, r.green.onContainer, R.drawable.ms_check)
         LOOKUP_PENDING -> Pill("Lookup on the next update run", s.surfaceContainerHigh, s.onSurfaceVariant)
         LOOKUP_AMBIGUOUS -> Pill("Pick one", r.amber.container, r.amber.onContainer, R.drawable.ms_link)
         LOOKUP_BLOCKED -> Pill("APKMirror blocked the lookup", r.amber.container, r.amber.onContainer, R.drawable.ms_warning)
-        LOOKUP_NOT_FOUND, "failed" -> Pill("Needs URL", r.amber.container, r.amber.onContainer, R.drawable.ms_warning)
+        LOOKUP_NOT_FOUND, LOOKUP_FAILED -> Pill("Needs URL", r.amber.container, r.amber.onContainer, R.drawable.ms_warning)
         else -> throw IllegalArgumentException("download.state: expected pending, found, manual, not_found, ambiguous, blocked or failed, got '$state'")
     }
 }

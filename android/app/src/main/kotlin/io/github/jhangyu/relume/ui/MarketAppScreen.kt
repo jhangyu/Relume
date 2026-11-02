@@ -39,12 +39,12 @@ import kotlinx.coroutines.launch
 private fun DownloadState?.message(): String = when (this?.state) {
     null -> "No APK source yet. It is looked up on APKMirror when the first build runs."
     LOOKUP_PENDING -> "Waiting for the APKMirror lookup."
-    "found" -> "APKMirror listing found."
-    "manual" -> "Using the APKMirror listing you set."
+    LOOKUP_FOUND -> "APKMirror listing found."
+    LOOKUP_MANUAL -> "Using the APKMirror listing you set."
     LOOKUP_NOT_FOUND -> "APKMirror has no listing. Paste a URL below or pick another source."
     LOOKUP_AMBIGUOUS -> "Several APKMirror listings match. Pick one in the app settings."
     LOOKUP_BLOCKED -> "APKMirror is rate limiting this server" + (this.retryAt?.let { ", retry at $it." } ?: ".")
-    "failed" -> "APKMirror lookup failed" + (this.error?.let { ": $it" } ?: ".")
+    LOOKUP_FAILED -> "APKMirror lookup failed" + (this.error?.let { ": $it" } ?: ".")
     else -> throw IllegalArgumentException("download.state: expected pending, found, manual, not_found, ambiguous, blocked or failed, got '${this?.state}'")
 }
 

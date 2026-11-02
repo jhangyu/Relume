@@ -213,13 +213,13 @@ fun StatusPill(state: String, height: Dp = PillHeight) {
     val r = MaterialTheme.relume
     val s = MaterialTheme.colorScheme
     when (state) {
-        "up_to_date" -> Pill("Up to date", r.green.container, r.green.onContainer, R.drawable.ms_check, height)
-        "update_available" -> Pill("New version", r.lavender.container, r.lavender.onContainer, height = height)
-        "building" -> Pill("Building", r.blue.container, r.blue.onContainer, R.drawable.ms_progress_activity, height)
-        "queued" -> Pill("Queued", r.blue.container, r.blue.onContainer, height = height)
-        "needs_download_url" -> Pill("Needs URL", r.amber.container, r.amber.onContainer, R.drawable.ms_link, height)
-        "failed" -> Pill("Failed", s.errorContainer, s.onErrorContainer, R.drawable.ms_error, height)
-        "not_built" -> Pill("Not built", s.surfaceContainerHigh, s.onSurfaceVariant, height = height)
+        STATE_UP_TO_DATE -> Pill("Up to date", r.green.container, r.green.onContainer, R.drawable.ms_check, height)
+        STATE_UPDATE_AVAILABLE -> Pill("New version", r.lavender.container, r.lavender.onContainer, height = height)
+        STATE_BUILDING -> Pill("Building", r.blue.container, r.blue.onContainer, R.drawable.ms_progress_activity, height)
+        STATE_QUEUED -> Pill("Queued", r.blue.container, r.blue.onContainer, height = height)
+        STATE_NEEDS_URL -> Pill("Needs URL", r.amber.container, r.amber.onContainer, R.drawable.ms_link, height)
+        STATE_FAILED -> Pill("Failed", s.errorContainer, s.onErrorContainer, R.drawable.ms_error, height)
+        STATE_NOT_BUILT -> Pill("Not built", s.surfaceContainerHigh, s.onSurfaceVariant, height = height)
         else -> throw IllegalArgumentException("status.state: expected one of up_to_date, update_available, building, queued, failed, not_built, needs_download_url, got '$state'")
     }
 }
@@ -229,9 +229,9 @@ fun StatusPill(state: String, height: Dp = PillHeight) {
 fun OriginLabel(origin: String) {
     val r = MaterialTheme.relume
     val (text, pastel) = when (origin) {
-        "official" -> "OFFICIAL" to r.blue
+        ORIGIN_OFFICIAL -> "OFFICIAL" to r.blue
         ORIGIN_BUILTIN -> "BUILT-IN" to r.teal
-        "custom" -> "CUSTOM" to r.pink
+        ORIGIN_CUSTOM -> "CUSTOM" to r.pink
         else -> throw IllegalArgumentException("origin: expected official, builtin or custom, got '$origin'")
     }
     Label(text, pastel.container, pastel.onContainer, null, ORIGIN_RADIUS, ORIGIN_HEIGHT, ORIGIN_PADDING)

@@ -19,7 +19,11 @@ private const val FEATURED_RECENT = 3
 /** Server marketplace sort and origin keys (`/api/marketplace?sort=&origin=`). */
 internal const val SORT_BUNDLES = "bundles"
 internal const val SORT_UPDATED = "updated"
+internal const val SORT_STARS = "stars"
+internal const val SORT_NAME = "name"
 internal const val ORIGIN_BUILTIN = "builtin"
+internal const val ORIGIN_OFFICIAL = "official"
+internal const val ORIGIN_CUSTOM = "custom"
 private const val DEFAULT_SORT = SORT_BUNDLES
 
 /** One marketplace request (origin, sort, page size); null when it failed and the error is already shown. */

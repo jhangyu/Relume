@@ -207,7 +207,7 @@ private fun RunSteps() {
     }
 }
 
-/** Outcome of the newest update run, as the web shows it (schedules.js RUN_BADGE): status, failure reason, log link. */
+/** Outcome of the newest update run, as the web shows it (app.js JOB_BADGE): status, failure reason, log link. */
 @Composable
 private fun LastRun(job: Job, onLog: () -> Unit) {
     val r = MaterialTheme.relume
@@ -215,11 +215,11 @@ private fun LastRun(job: Job, onLog: () -> Unit) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         Txt("Last update run", style = MaterialTheme.typography.bodySmall, color = muted())
         when (job.status) {
-            "success" -> Pill("Succeeded", r.green.container, r.green.onContainer, R.drawable.ms_check)
-            "failed" -> Pill("Failed", s.errorContainer, s.onErrorContainer, R.drawable.ms_error)
-            "running" -> Pill("Running", r.blue.container, r.blue.onContainer, R.drawable.ms_progress_activity)
-            "queued" -> Pill("Waiting", s.surfaceContainerHigh, s.onSurfaceVariant)
-            "cancelled" -> Pill("Cancelled", s.surfaceContainerHigh, s.onSurfaceVariant)
+            STATUS_SUCCESS -> Pill("Succeeded", r.green.container, r.green.onContainer, R.drawable.ms_check)
+            STATUS_FAILED -> Pill("Failed", s.errorContainer, s.onErrorContainer, R.drawable.ms_error)
+            STATUS_RUNNING -> Pill("Running", r.blue.container, r.blue.onContainer, R.drawable.ms_progress_activity)
+            STATUS_QUEUED -> Pill("Waiting", s.surfaceContainerHigh, s.onSurfaceVariant)
+            STATUS_CANCELLED -> Pill("Cancelled", s.surfaceContainerHigh, s.onSurfaceVariant)
             else -> throw IllegalArgumentException("job ${job.id} status: expected success, failed, running, queued or cancelled, got '${job.status}'")
         }
         Spacer(Modifier.weight(1f))

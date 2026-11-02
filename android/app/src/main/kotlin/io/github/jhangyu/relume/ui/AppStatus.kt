@@ -9,11 +9,17 @@ internal const val STATE_BUILDING = "building"
 internal const val STATE_QUEUED = "queued"
 internal const val STATE_FAILED = "failed"
 internal const val STATE_NEEDS_URL = "needs_download_url"
+internal const val STATE_UP_TO_DATE = "up_to_date"
+internal const val STATE_UPDATE_AVAILABLE = "update_available"
+internal const val STATE_NOT_BUILT = "not_built"
 
 internal const val LOOKUP_AMBIGUOUS = "ambiguous"
 internal const val LOOKUP_BLOCKED = "blocked"
 internal const val LOOKUP_NOT_FOUND = "not_found"
 internal const val LOOKUP_PENDING = "pending"
+internal const val LOOKUP_FOUND = "found"
+internal const val LOOKUP_MANUAL = "manual"
+internal const val LOOKUP_FAILED = "failed"
 
 /** Apps card fix for a missing download URL: paste one, or pick one of the APKMirror candidates. */
 enum class Lookup { NeedsUrl, PickOne }

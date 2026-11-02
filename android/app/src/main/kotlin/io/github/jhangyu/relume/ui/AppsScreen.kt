@@ -173,7 +173,7 @@ private fun AppCard(
                     null -> Unit
                 }
                 IconAction(R.drawable.ms_sync, "Check ${app.name} for updates", { model.check(app.id) }, IconTone.Sync, enabled = !f.building)
-                val tonal = status.state == "update_available" || status.state == STATE_FAILED
+                val tonal = status.state == STATE_UPDATE_AVAILABLE || status.state == STATE_FAILED
                 IconAction(
                     R.drawable.ms_build,
                     if (status.state == STATE_FAILED) "Retry ${app.name} build" else "Rebuild ${app.name}",

@@ -49,11 +49,11 @@ private val LOG_FG = Color(0xFFC9D1D9)
 private val LOG_STEP = Color(0xFF7AA2F7)
 private val LOG_OK = Color(0xFF3FB97F)
 private val LOG_WARN = Color(0xFFE5B04A)
-private const val STATUS_QUEUED = "queued"
-private const val STATUS_RUNNING = "running"
-private const val STATUS_SUCCESS = "success"
-private const val STATUS_FAILED = "failed"
-private const val STATUS_CANCELLED = "cancelled"
+internal const val STATUS_QUEUED = "queued"
+internal const val STATUS_RUNNING = "running"
+internal const val STATUS_SUCCESS = "success"
+internal const val STATUS_FAILED = "failed"
+internal const val STATUS_CANCELLED = "cancelled"
 
 private val DATE_TIME = DateTimeFormatter.ofPattern("MMM d · HH:mm", Locale.ENGLISH)
 

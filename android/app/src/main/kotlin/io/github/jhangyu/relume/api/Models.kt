@@ -590,7 +590,7 @@ data class Job(
     val kind: String,
     val status: String,
     val trigger: String,
-    /** The schedule that started this job; null for manual and API triggers. */
+    /** The schedule row this job ran for: set by scheduled runs, by a manual run of a schedule (Check all) and by the builds those runs chain; null for single-app, project and manual OTA jobs. */
     @SerialName("schedule_id") val scheduleId: Int?,
     val target: JsonObject,
     val reason: String?,
