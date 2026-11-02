@@ -217,7 +217,7 @@ class Handler(BaseHTTPRequestHandler):
         pattern, fn, topics, mt = found
         params = {k: int(v) if re.fullmatch(r'-?\d+', v) else urllib.parse.unquote(v)
                   for k, v in mt.groupdict().items()}
-        query = dict(urllib.parse.parse_qsl(url.query))
+        query = dict(urllib.parse.parse_qsl(url.query, keep_blank_values=True))
         req = Request(method, url.path, params, query, self.headers)
         if method in MUTATING:
             if self.headers.get('Content-Type', '').split(';')[0].strip() != 'application/json':

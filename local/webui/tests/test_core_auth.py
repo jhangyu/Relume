@@ -11,6 +11,12 @@ class AuthTest(DataTestCase):
         self.addCleanup(db.close)   # the last test's main-thread connection would otherwise be finalized unclosed
         self.base = serve(self)
 
+    def test_blank_integer_query_is_400(self):
+        cookie = login(self.base)
+        st, _, body = http('GET', self.base + '/api/jobs?limit=', cookie=cookie)
+        self.assertEqual(st, 400)
+        self.assertIn(b"expected an integer, got ''", body)
+
     def test_hash_roundtrip(self):
         h = auth.hash_password('secret-pass-1')
         self.assertTrue(h.startswith('scrypt$'))
