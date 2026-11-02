@@ -656,9 +656,8 @@ async function save(rebuild) {
 }
 
 shell();
-const refresh = () => Promise.all([loadList(), loadNextRun()]).catch(e => toast(e.message, 'error'));
-refresh().then(() => scroll.first()).then(() => {
+const refresh = () => Promise.all([loadList(), loadNextRun()]).catch(report);
+live(['apps', 'projects', 'schedules', 'jobs'], refresh).then(() => scroll.first()).then(() => {
   const want = Number(new URLSearchParams(location.search).get('app'));
   if (want) return openDrawer(want);
 });
-live(['apps', 'projects', 'schedules', 'jobs'], refresh);

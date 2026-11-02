@@ -230,9 +230,8 @@ $('#of').addEventListener('change', () => loadHistory().catch(report));
   const [apps, s] = await Promise.all([api('GET', '/api/apps'), api('GET', '/api/settings')]);
   apps.apps.forEach(a => D.items.set(a.id, { ...a, label: a.name }));
   $('#hostline').textContent = `Network mode: ${s.server.network_mode || 'unknown'} · discovery runs on every platform; when nothing is found, enter the phone's IP and ports below`;
-  await loadDevices();
+  await live(['devices', 'apps', 'projects', 'jobs'], loadDevices,
+    () => Boolean(document.querySelector('dialog[open]') || document.activeElement.closest('[data-rename]')));
   await loadHistory();
   await loadDiscovered().catch(report);
-  live(['devices', 'apps', 'projects', 'jobs'], loadDevices,
-    () => Boolean(document.querySelector('dialog[open]') || document.activeElement.closest('[data-rename]')));
 })().catch(e => toast(e.message, 'error'));
