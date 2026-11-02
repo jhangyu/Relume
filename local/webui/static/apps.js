@@ -1,9 +1,8 @@
-import { $, $$, act, api, confirmDialog, every, fillDownloads, fmt, html, icon, iconTile, report, scrollKeeper, shell, STATUS, toast } from '/static/app.js';
+import { $, $$, act, api, confirmDialog, fillDownloads, live, fmt, html, icon, iconTile, report, scrollKeeper, shell, STATUS, toast } from '/static/app.js';
 
 // rules the server owns (GET /api/auth/state): ABI list, engine kind, max signature-bypass level
 const { limits: LIMITS } = await api('GET', '/api/auth/state');
 
-const REFRESH_MS = 5000;
 const scroll = scrollKeeper();
 const COLOR = /^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/;
 const ENGINE_LABEL = { lspatch: 'Xposed, LSPatch', npatch: 'Xposed, NPatch' };
@@ -138,6 +137,7 @@ async function openMenu(btn, a) {
 function closeMenus() {
   S.menuOpen = false;
   $$('.menu').forEach(m => m.remove());
+  renderList();   // data fetched while a menu was open (loadList skips the render) shows now
 }
 
 document.addEventListener('click', e => {
@@ -658,4 +658,4 @@ refresh().then(() => scroll.first()).then(() => {
   const want = Number(new URLSearchParams(location.search).get('app'));
   if (want) return openDrawer(want);
 });
-every(REFRESH_MS, refresh);
+live(['apps', 'projects', 'schedules', 'jobs'], refresh);

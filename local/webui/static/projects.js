@@ -1,5 +1,5 @@
 // Followed projects page (spec 2026-10-23-follow-project-design §8).
-import { $, $$, act, api, ask, confirmDialog, every, fmt, html, icon, iconTile, report, shell, toast, toastSettled } from '/static/app.js';
+import { $, $$, act, api, ask, confirmDialog, fmt, html, icon, iconTile, live, report, shell, toast, toastSettled } from '/static/app.js';
 
 const S = { projects: [], devices: [], items: new Map(), schedule: null, running: [], queued: [], ota: [], cur: null, filter: 'all', q: '' };
 const byId = id => S.projects.find(p => p.id === id);
@@ -400,8 +400,6 @@ $('#saveBtn').addEventListener('click', async () => {
 (async () => {
   shell();
   await load();
-  every(15000, () => {
-    if (document.querySelector('dialog[open], details.dd[open]') || document.activeElement.closest('[data-rx-edit]')) return;
-    reload();
-  });
+  live(['projects', 'devices', 'apps', 'schedules', 'jobs'], reload,
+    () => Boolean(document.querySelector('dialog[open], details.dd[open]') || document.activeElement.closest('[data-rx-edit]')));
 })().catch(e => toast(e.message, 'error'));

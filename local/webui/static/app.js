@@ -92,11 +92,44 @@ export const fmt = {
   duration: s => (s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s`),
 };
 
-export function every(ms, fn) {
-  const tick = () => { if (document.visibilityState === 'visible') fn(); };
-  const h = setInterval(tick, ms);
-  document.addEventListener('visibilitychange', tick);
-  return () => { clearInterval(h); document.removeEventListener('visibilitychange', tick); };
+// One /api/events stream per tab (decision 2): pages refetch when a topic they show changes. No timers.
+const subs = [];
+let es = null;
+function run(s) {
+  if (s.blocked()) { s.pending = true; return; }
+  s.pending = false;
+  if (s.busy) { s.again = true; return; }
+  s.busy = true;
+  Promise.resolve().then(s.fn).catch(err => { console.error(`refresh ${s.topics.join(',')}:`, err); report(err); })
+    .finally(() => { s.busy = false; if (s.again) { s.again = false; run(s); } });
+}
+function connect() {
+  if (es || document.visibilityState !== 'visible') return;
+  es = new EventSource('/api/events');
+  es.addEventListener('open', () => subs.forEach(run));   // first connect and every reconnect: catch up
+  es.addEventListener('change', e => {
+    const topics = JSON.parse(e.data);
+    subs.filter(s => s.topics.some(t => topics.includes(t))).forEach(run);
+  });
+  es.addEventListener('error', () => {
+    if (es.readyState !== EventSource.CLOSED) return;      // CONNECTING: the browser retries by itself
+    console.error('events stream closed by the server');
+    es = null;
+    subs.forEach(run);                                     // a 401 here sends api() to the login page
+  });
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') connect();
+  else if (es) { es.close(); es = null; }
+});
+function runPending() { subs.filter(s => s.pending).forEach(run); }
+for (const type of ['close', 'toggle', 'focusout']) {     // capture: close/toggle do not bubble
+  document.addEventListener(type, runPending, true);
+}
+// fn refetches what the page shows; while blocked() (a dialog or edit is open) the refetch waits until it closes.
+export function live(topics, fn, blocked = () => false) {
+  subs.push({ topics, fn, blocked, busy: false, again: false, pending: false });
+  connect();
 }
 
 // List-page scroll memory. mark()/back(): an in-page panel opens and closes, so the page returns to where it was.
@@ -275,7 +308,7 @@ export function shell() {
   };
   const refresh = () => load().catch(err => console.error('shell status:', err));
   refresh();
-  every(15000, refresh);
+  live(['jobs', 'apps'], refresh);
 }
 
 export const JOB_BADGE = { success: ['ok', 'Succeeded'], failed: ['err', 'Failed'], running: ['brand', 'Running'], queued: ['', 'Waiting'], cancelled: ['', 'Cancelled'] };

@@ -1,4 +1,4 @@
-import { $, $$, act, api, every, fmt, html, icon, iconTile, JOB_BADGE, logStream, report, shell, toast } from '/static/app.js';
+import { $, $$, act, api, fmt, html, icon, iconTile, JOB_BADGE, live, logStream, report, shell, toast } from '/static/app.js';
 
 const qs = new URLSearchParams(location.search);
 const ITEM = qs.get('item') ? Number(qs.get('item')) : null;
@@ -227,5 +227,5 @@ $('#older').addEventListener('click', () => renderHistory('append').catch(report
   const newest = await renderHistory('reset');
   const first = qs.get('job') ? Number(qs.get('job')) : running ? running.id : newest ? newest.id : null;
   if (first) await select(first);
-  every(5000, refresh);
+  live(['jobs'], refresh);
 })().catch(e => toast(e.message, 'error'));

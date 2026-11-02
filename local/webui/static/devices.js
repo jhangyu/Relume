@@ -1,4 +1,4 @@
-import { $, $$, act, api, ask, confirmDialog, every, fmt, html, report, shell, toast, toastSettled } from '/static/app.js';
+import { $, $$, act, api, ask, confirmDialog, fmt, html, live, report, shell, toast, toastSettled } from '/static/app.js';
 
 const D = { devices: [], items: new Map(), projects: [], last: new Map() };
 const label = id => (D.items.get(id) || {}).label || `app ${id}`;
@@ -65,7 +65,7 @@ async function loadDevices() {
 async function loadDiscovered() {
   const r = await api('GET', '/api/devices/discovered');
   const rows = [...r.pairing.map(p => ({ ...p, mode: 'pair' })), ...r.connect.map(c => ({ ...c, mode: 'conn' }))];
-  $('#scan').textContent = `Scanned ${new Date().toLocaleTimeString('en')}`;
+  $('#scan').textContent = `Scan again · scanned ${new Date().toLocaleTimeString('en')}`;
   $('#disc').innerHTML = html`${rows.length ? rows.map(x => html`<li><span class="dot on" aria-hidden="true"></span><span>${x.name} <span class="xs muted mono">${x.host}:${x.port}</span> <span class="badge">${x.mode === 'pair' ? 'Pairing mode' : x.device_id ? `Known: ${(D.devices.find(d => d.id === x.device_id) || {}).name || x.device_id}` : 'Paired'}</span></span>${x.mode === 'pair' ? html`<button class="btn primary small" type="button" data-pair="${x.host}" data-port="${x.port}">Pair</button>` : html`<span></span>`}</li>`) : html`<li><span></span><span class="sm muted">No devices discovered — enter IP and ports below</span><span></span></li>`}`;
 }
 
@@ -211,6 +211,11 @@ $('#man').addEventListener('submit', e => {
   e.preventDefault();
   pair(pairBody($('#m-host').value.trim(), $('#m-pport').value, $('#m-otp'), $('#m-cport')));
 });
+$('#scan').addEventListener('click', async e => {
+  e.currentTarget.disabled = true;
+  try { await loadDiscovered(); } catch (err) { report(err); } finally { $('#scan').disabled = false; }
+});
+
 $('#ota-all').addEventListener('click', async () => {
   const online = D.devices.filter(d => d.kind !== 'app' && d.online);
   const r = await Promise.allSettled(online.map(d => api('POST', `/api/devices/${d.id}/ota`, {})));
@@ -228,6 +233,6 @@ $('#of').addEventListener('change', () => loadHistory().catch(report));
   await loadDevices();
   await loadHistory();
   await loadDiscovered().catch(report);
-  every(10000, () => loadDiscovered().catch(report));
-  every(15000, () => { if (!document.querySelector('dialog[open]') && !document.activeElement.closest('[data-rename]')) loadDevices().catch(report); });
+  live(['devices', 'apps', 'projects', 'jobs'], loadDevices,
+    () => Boolean(document.querySelector('dialog[open]') || document.activeElement.closest('[data-rename]')));
 })().catch(e => toast(e.message, 'error'));
