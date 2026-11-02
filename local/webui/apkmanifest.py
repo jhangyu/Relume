@@ -2,7 +2,9 @@
 
 read(offset, n) must return exactly n bytes (callers use explicit ranges: the Play CDN answers 416 to suffix ranges).
 Path: zip end record -> central directory -> AndroidManifest.xml entry -> inflate -> Android binary XML.
+read_signer: APK Signing Block v3 (else v2) -> SHA-256 of the first signer certificate; no signature check (the phone verifies).
 """
+import hashlib
 import struct
 import zlib
 from typing import Callable, NamedTuple
@@ -22,6 +24,10 @@ RES_XML, RES_STRING_POOL, RES_XML_START_ELEMENT = 3, 1, 0x102
 UTF8_FLAG = 0x100
 TYPE_STRING, TYPE_INT_DEC = 3, 0x10
 NO_STRING = 0xFFFFFFFF
+SIG_MAGIC = b'APK Sig Block 42'
+SIG_V2_ID, SIG_V3_ID = 0x7109871a, 0xf05368c0
+MAX_SIG_BLOCK = 4 << 20
+SIG_FOOTER_LEN = 24  # uint64 block size + 16-byte magic
 
 
 class ManifestError(Exception):
@@ -46,7 +52,7 @@ def _read(read: Callable[[int, int], bytes], offset: int, n: int, size: int, fie
     return data
 
 
-def _find_entry(read, size):
+def _central_dir(read, size):
     tail_len = min(TAIL_BYTES, size)
     tail = _read(read, size - tail_len, tail_len, size, 'tail')
     i = tail.rfind(EOCD_SIG)
@@ -54,6 +60,11 @@ def _find_entry(read, size):
     _need(len(tail) - i >= EOCD_LEN, 'end record', f'{EOCD_LEN} bytes', len(tail) - i)
     cd_size, cd_off = struct.unpack('<II', tail[i + 12:i + 20])
     _need(ZIP64_MARK not in (cd_size, cd_off), 'central directory', 'non-zip64 offsets', 'zip64 marker')
+    return cd_off, cd_size
+
+
+def _find_entry(read, size):
+    cd_off, cd_size = _central_dir(read, size)
     _need(cd_size <= MAX_CENTRAL_DIR, 'central directory size', f'<= {MAX_CENTRAL_DIR}', cd_size)
     cd = _read(read, cd_off, cd_size, size, 'central directory')
     p = 0
@@ -135,3 +146,51 @@ def read_manifest(read: Callable[[int, int], bytes], size: int) -> Manifest:
         _need(key in attrs, f'manifest attribute {key}', 'present', 'missing')
     _need(isinstance(attrs['versionCode'], int), 'versionCode', 'integer', repr(attrs['versionCode']))
     return Manifest(attrs['package'], attrs['versionCode'], attrs['versionName'])
+
+
+def _prefixed(b: bytes, p: int, end: int, field: str) -> tuple:
+    """(start, stop) of the uint32-length-prefixed value at p, inside b[:end]."""
+    _need(p + 4 <= end, field, f'4-byte length at {p} inside {end}', 'past the end')
+    n, = struct.unpack('<I', b[p:p + 4])
+    _need(p + 4 + n <= end, field, f'{n} bytes at {p + 4} inside {end}', 'past the end')
+    return p + 4, p + 4 + n
+
+
+def _signer(read, size) -> str:
+    # Layout: source.android.com APK Signature Scheme v2 / v3; the block ends where the central directory starts.
+    cd_off, _ = _central_dir(read, size)
+    _need(cd_off >= SIG_FOOTER_LEN, 'signing block', 'room before the central directory', cd_off)
+    foot = _read(read, cd_off - SIG_FOOTER_LEN, SIG_FOOTER_LEN, size, 'signing block footer')
+    if foot[8:] != SIG_MAGIC:
+        raise ManifestError('APK signing block: expected a v2 or v3 signature block, got none')
+    bsize, = struct.unpack('<Q', foot[:8])
+    _need(8 <= bsize <= MAX_SIG_BLOCK and bsize + 8 <= cd_off, 'signing block size',
+          f'8..{MAX_SIG_BLOCK} and inside {cd_off} bytes', bsize)
+    blk = _read(read, cd_off - bsize - 8, bsize + 8, size, 'signing block')
+    lead, = struct.unpack('<Q', blk[:8])
+    _need(lead == bsize, 'signing block size', f'leading == trailing {bsize}', lead)
+    pairs, p, end = {}, 8, len(blk) - SIG_FOOTER_LEN
+    while p < end:
+        _need(p + 12 <= end, 'signing block pair', f'12 bytes at {p}', end - p)
+        n, pid = struct.unpack('<QI', blk[p:p + 12])
+        _need(n >= 4 and p + 8 + n <= end, 'signing block pair length', f'4..{end - p - 8}', n)
+        pairs[pid] = (p + 12, p + 8 + n)
+        p += 8 + n
+    v = pairs.get(SIG_V3_ID) or pairs.get(SIG_V2_ID)
+    if v is None:
+        raise ManifestError('APK signing block: expected a v2 or v3 signature block, got none')
+    s, e = _prefixed(blk, v[0], v[1], 'signers')
+    s, e = _prefixed(blk, s, e, 'signer')
+    s, e = _prefixed(blk, s, e, 'signed data')
+    _, d_end = _prefixed(blk, s, e, 'digests')
+    cs, ce = _prefixed(blk, d_end, e, 'certificates')
+    cs, ce = _prefixed(blk, cs, ce, 'certificate')
+    _need(ce > cs, 'certificate', 'non-empty DER', 0)
+    return hashlib.sha256(blk[cs:ce]).hexdigest()
+
+
+def read_signer(read: Callable[[int, int], bytes], size: int) -> str:
+    try:
+        return _signer(read, size)
+    except (struct.error, IndexError) as e:
+        raise ManifestError(f'APK of {size} bytes: expected a valid signing block, got {e!r}') from e
