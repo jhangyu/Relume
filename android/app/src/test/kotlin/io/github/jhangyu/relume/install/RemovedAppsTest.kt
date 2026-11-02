@@ -5,6 +5,7 @@ import io.github.jhangyu.relume.api.Assignment
 import io.github.jhangyu.relume.api.DeviceKind
 import io.github.jhangyu.relume.api.DeviceProject
 import io.github.jhangyu.relume.api.DeviceView
+import io.github.jhangyu.relume.api.InstallRecord
 import io.github.jhangyu.relume.api.StepKind
 import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertEquals
@@ -23,7 +24,7 @@ class RemovedAppsTest {
 
     /** An old install receipt always exists; [onPhone] is the phone's report at that sync. */
     private fun item(id: Int, onPhone: Boolean) =
-        Assignment(id, pending = !onPhone, installed = mark, installedReported = mark.takeIf { onPhone })
+        Assignment(id, pending = !onPhone, installed = InstallRecord(), installedReported = mark.takeIf { onPhone })
 
     /** Applies the syncs in order from a cleared set (sign-in) and returns the set after the last one. */
     private fun seenAfter(vararg syncs: DeviceView, lastRun: RunState? = null) =

@@ -96,6 +96,8 @@ data class InstalledPackage(
     @SerialName("version_code") val versionCode: Long,
     @SerialName("version_name") val versionName: String?,
     @SerialName("signer_sha256") val signerSha256: String,
+    /** sha256 of the installed base APK (decision 15); null for archive facts. Not sent when null. */
+    @SerialName("apk_sha256") val apkSha256: String? = null,
 )
 
 @Serializable
@@ -205,11 +207,15 @@ data class DeviceView(
 data class Assignment(
     @SerialName("item_id") val itemId: Int,
     val pending: Boolean,
-    /** Server-side receipt of an earlier install on this phone (`installed`/`up_to_date`); null = never installed here. */
-    val installed: JsonObject?,
+    /** The server's install record of this app on this phone (decisions 14, 15); null = not installed by a known build. */
+    val installed: InstallRecord?,
     /** The package in the phone's last sync report; null = absent from the phone now. */
     @SerialName("installed_reported") val installedReported: JsonObject?,
 )
+
+/** `assignments[].installed`: only the patch version is read (the card's patch-only Upgrade, decision 14). */
+@Serializable
+data class InstallRecord(@SerialName("patch_version") val patchVersion: String? = null)
 
 @Serializable
 data class DeviceProject(
@@ -359,7 +365,13 @@ data class AppObject(
     val build: AppBuild? = null,
     /** Only in PUT/POST `/api/apps` responses: the server queued the chained download-then-build job. */
     @SerialName("update_queued") val updateQueued: Boolean = false,
+    /** Selected and actual download kind (decision 10); null from a server before it. */
+    @SerialName("download_source") val downloadSource: DownloadSource? = null,
 )
+
+/** Download kind the user picked and the one a build uses (APKPure when no APKMirror listing; decision 10). */
+@Serializable
+data class DownloadSource(val selected: String, val actual: String)
 
 /** Facts of the built APK in `GET /api/apps` `build` (spec install-states 1); its package can differ from [AppObject.packageName]. */
 @Serializable
@@ -383,6 +395,10 @@ data class FollowedApp(
     val files: List<FollowedFile>,
     /** Signer of the downloaded release; null when nothing is downloaded. */
     @SerialName("signer_sha256") val signerSha256: String? = null,
+    /** Last release check failure (decision 11); null when the last check succeeded. */
+    @SerialName("check_error") val checkError: String? = null,
+    /** Last download failure, kept until a download succeeds (decision 11). */
+    @SerialName("download_error") val downloadError: String? = null,
 )
 
 @Serializable
@@ -430,6 +446,8 @@ data class DownloadState(
     val candidates: List<Candidate>,
     val error: String?,
     @SerialName("retry_at") val retryAt: String?,
+    /** Download blocked until this time after a rate limit (decision 6); null when not blocked. */
+    @SerialName("blocked_until") val blockedUntil: String? = null,
 )
 
 @Serializable
@@ -589,7 +607,6 @@ data class Project(
     @SerialName("package") val packageName: String?,
     @SerialName("downloaded_tag") val downloadedTag: String?,
     @SerialName("latest_tag") val latestTag: String?,
-    @SerialName("check_error") val checkError: String?,
     @SerialName("signer_sha256") val signerSha256: String?,
     @SerialName("signer_alert") val signerAlert: String?,
 )
