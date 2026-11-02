@@ -1,4 +1,4 @@
-import { $, $$, act, api, confirmDialog, fillDownloads, live, fmt, html, icon, iconTile, report, scrollKeeper, shell, STATUS, toast } from '/static/app.js';
+import { $, $$, act, afterWrite, api, confirmDialog, fillDownloads, live, fmt, html, icon, iconTile, report, scrollKeeper, shell, STATUS, toast } from '/static/app.js';
 
 let LIMITS = null;   // GET /api/auth/state limits (ABIs, engine kinds, max signature bypass); set by openDrawer, read only by drawer code
 
@@ -168,7 +168,7 @@ $('#list').addEventListener('click', async e => {
     if (t.dataset.act === 'install') await act('POST', `/api/projects/${a.id}/install`, {}, `Installing ${a.name} ${a.version} on ${a.device_ids.length} phone(s)`);
     if (t.dataset.act === 'check') await act('POST', `/api/apps/${a.id}/check`, {}, `Checking ${a.name}`);
     if (t.dataset.act === 'build') await act('POST', `/api/apps/${a.id}/build`, {}, `Build queued for ${a.name}`);
-    await loadList();
+    afterWrite();
   } catch (e) { report(e); }
 });
 $('#summary').addEventListener('click', e => {
@@ -178,7 +178,7 @@ $('#summary').addEventListener('click', e => {
   renderList();
 });
 $('#q').addEventListener('input', e => { S.q = e.target.value; renderList(); });
-$('#checkall').addEventListener('click', () => act('POST', '/api/schedule/run', {}, 'Checking all apps for updates').then(loadList).catch(report));
+$('#checkall').addEventListener('click', () => act('POST', '/api/schedule/run', {}, 'Checking all apps for updates').then(afterWrite).catch(report));
 
 // ---------- drawer: draft state ----------
 
@@ -613,9 +613,9 @@ async function save(rebuild) {
       if (!(await confirmDialog({ title: 'Disable app?', body: html`<strong>${D.app.name}</strong> stops updating and building. Its settings and builds are kept.`, action: 'Disable' }))) return;
       await act('DELETE', `/api/apps/${id}`, {}, `${D.app.name} disabled`);
       D = null;
-      step = 'list reload';
+      step = 'close drawer';
       await closeDrawer();
-      return await loadList();
+      return afterWrite();
     }
     let chained = false;   // the server already queued the download-then-build job
     if (c.enabled && !D.orig.enabled) {
@@ -645,9 +645,9 @@ async function save(rebuild) {
     }
     toast(rebuild ? (chained ? 'Saved · download and build queued' : 'Saved · build queued') : 'Saved');
     D = null;
-    step = 'list reload';
+    step = 'close drawer';
     await closeDrawer();
-    await loadList();
+    afterWrite();
   } catch (e) {
     if (e.status === 401) return;   // api() already went to the login page
     const msg = [...done, `${step} failed: ${e.message}`].join(', ');

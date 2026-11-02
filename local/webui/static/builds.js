@@ -1,4 +1,4 @@
-import { $, $$, act, api, fmt, html, icon, iconTile, JOB_BADGE, live, logStream, report, shell } from '/static/app.js';
+import { $, $$, act, afterWrite, api, fmt, html, icon, iconTile, JOB_BADGE, live, logStream, report, shell } from '/static/app.js';
 
 const qs = new URLSearchParams(location.search);
 const ITEM = qs.get('item') ? Number(qs.get('item')) : null;
@@ -120,7 +120,7 @@ async function select(id) {
     if (!$('#log').children.length) $('#log').textContent = 'No log output';
     $('#bt').textContent = `${it.label} #${j.id} · log`;
     renderProgress(status);
-    refresh();
+    afterWrite();
   });
 }
 
@@ -196,10 +196,10 @@ document.addEventListener('click', async e => {
       $('.live').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
     if (retry) await act('POST', retryRoute(B.jobs.get(Number(retry.dataset.retry))), {}, 'Retry queued');
-    if (retry) await refresh();
+    if (retry) afterWrite();
   } catch (e) { report(e); }
 });
-$('#cancel').addEventListener('click', () => act('POST', `/api/jobs/${B.sel}/cancel`, {}, 'Cancel requested').then(refresh).catch(report));
+$('#cancel').addEventListener('click', () => act('POST', `/api/jobs/${B.sel}/cancel`, {}, 'Cancel requested').then(afterWrite).catch(report));
 $('#log').addEventListener('scroll', () => { const l = $('#log'); B.follow = l.scrollTop + l.clientHeight >= l.scrollHeight - 24; });
 $('#dlog').addEventListener('click', () => {
   const a = document.createElement('a');

@@ -1,4 +1,4 @@
-import { $, $$, act, api, ask, confirmDialog, fmt, html, live, report, shell, toast, toastSettled } from '/static/app.js';
+import { $, $$, act, afterWrite, api, ask, confirmDialog, fmt, html, live, report, shell, toast, toastSettled } from '/static/app.js';
 
 const D = { devices: [], items: new Map(), projects: [], last: new Map() };
 const label = id => (D.items.get(id) || {}).label || `app ${id}`;
@@ -86,7 +86,7 @@ async function pair(body) {
   try {
     const r = await api('POST', '/api/devices/pair', body);
     toast(`Paired ${r.device.name}`);
-    await loadDevices();
+    afterWrite();
   } catch (e) {
     report(e);   // e.g. PAIR_FAILED: <adb line>
   }
@@ -136,7 +136,7 @@ async function reconnect(d, btn) {
   } finally {
     btn.disabled = false;
   }
-  await loadDevices();
+  afterWrite();
 }
 
 async function editAssignments(d) {
@@ -146,7 +146,7 @@ async function editAssignments(d) {
   $('#as-projects').innerHTML = html`<span class="label" style="margin-top:.5rem">Followed projects</span>${D.projects.length ? D.projects.map(p => html`<label class="row sm"><input type="checkbox" value="${p.id}" ${mineP.has(p.id) ? html`checked` : ''}> ${p.label} <span class="xs muted mono">${p.package || p.repo}</span></label>`) : html`<p class="xs muted">No followed projects.</p>`}`;
   const dlg = $('#dlg-assign');
   if (await ask(dlg) !== 'ok') return;
-  act('PUT', `/api/devices/${d.id}/assignments`, { item_ids: $$('#as-items input:checked').map(i => Number(i.value)), project_ids: $$('#as-projects input:checked').map(i => Number(i.value)) }, 'Apps saved').then(loadDevices).catch(report);
+  act('PUT', `/api/devices/${d.id}/assignments`, { item_ids: $$('#as-items input:checked').map(i => Number(i.value)), project_ids: $$('#as-projects input:checked').map(i => Number(i.value)) }, 'Apps saved').then(afterWrite).catch(report);
 }
 
 async function pairDialog(p) {
@@ -184,7 +184,7 @@ document.addEventListener('click', async e => {
       if (!await confirmDialog({ title: 'Install older version?', body: html`The older patched build of <strong class="mono">${dn.dataset.pkg}</strong> replaces the newer one on the phone.`, action: 'Downgrade', destructive: false })) return;
       await act('POST', `/api/ota/${dn.dataset.down}/downgrade`, { install_id: Number(dn.dataset.install) }, 'Downgrade install queued');
     } else return;
-    await loadDevices();
+    afterWrite();
     await loadHistory();
   } catch (e) { report(e); }
 });
@@ -205,7 +205,7 @@ document.addEventListener('focusout', e => {
   if (!h) return;
   const sec = h.closest('[data-dev]'), name = h.textContent.trim();
   const d = D.devices.find(x => x.id === Number(sec.dataset.dev));
-  if (name && name !== d.name) act('PATCH', `/api/devices/${d.id}`, { name }, 'Renamed').then(loadDevices).catch(() => loadDevices().catch(report));
+  if (name && name !== d.name) act('PATCH', `/api/devices/${d.id}`, { name }, 'Renamed').then(afterWrite).catch(() => loadDevices().catch(report));
 });
 $('#man').addEventListener('submit', e => {
   e.preventDefault();
