@@ -90,7 +90,9 @@ class LegacyClientTest(DataTestCase):
                    ('PUT', '/api/projects/2', {'device_ids': []}), ('POST', '/api/projects/2/install', {}),
                    ('POST', '/api/ota/1/force-reinstall', {}), ('GET', '/api/schedules', None),
                    ('POST', '/api/schedules', {}), ('DELETE', '/api/schedules/1', None), ('GET', '/api/settings', None),
-                   ('DELETE', '/api/projects/2', None))
+                   ('DELETE', '/api/projects/2', None),
+                   ('PUT', '/api/me/assignments/items/7', {}), ('DELETE', '/api/me/assignments/items/7', {}),
+                   ('PUT', '/api/me/assignments/projects/2', {}), ('DELETE', '/api/me/assignments/projects/2', {}))
         for method, path, body in refused:
             st, _, raw = self.bearer(method, path, body)
             self.assertEqual(st, 403, (method, path, raw))

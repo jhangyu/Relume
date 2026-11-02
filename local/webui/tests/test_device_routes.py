@@ -22,6 +22,42 @@ class DeviceRoutesTest(helpers.DataTestCase):
         self.fa.rule('connect', out='connected to 192.168.1.20:37011\n')
         self.fa.rule('getprop', out=GETPROP)
 
+    def test_single_item_assign_unassign(self):
+        """Decision 17: the phone changes one row, so a web edit in between survives (the full-list overwrite bug)."""
+        add_catalog_item(1, 'com.a')
+        add_catalog_item(2, 'com.b')
+        add_project(4, 'com.p')
+        add_project(5, 'com.a')                                                # same package as item 1
+        me = add_app_device(token_hash='11' * 32)
+
+        def call(fn, kind, ref):
+            r = req(params={'id': ref}, body={}, path=f'/api/me/assignments/{kind}/{ref}')
+            r.device_id = me
+            return fn(r)
+
+        def rows(table, col):
+            return [x[0] for x in db.conn().execute(f'SELECT {col} FROM {table} WHERE device_id=? ORDER BY 1', (me,))]
+        st, body = call(devices.me_assign, 'items', 1)
+        self.assertEqual((st, body['device']['id']), (200, me))
+        call(devices.me_assign, 'items', 1)                                    # idempotent
+        self.assertEqual(rows('device_assignments', 'item_id'), [1])
+        devices.put_assignments(req(params={'id': me}, body={'item_ids': [1, 2]}))   # web edit in between
+        call(devices.me_unassign, 'items', 1)
+        self.assertEqual(rows('device_assignments', 'item_id'), [2])
+        self.assertEqual(call(devices.me_unassign, 'items', 1)[0], 200)        # already gone: still 200
+        self.assertEqual(call(devices.me_unassign, 'items', 99)[0], 200)       # unknown: still 200
+        call(devices.me_assign, 'items', 1)
+        for kind, ref, msg in (('projects', 5, 'two apps with package com.a'), ('items', 99, 'unknown item 99'),
+                               ('projects', 99, 'unknown project 99'), ('items', 'x', "id must be an integer, got 'x'")):
+            with self.assertRaises(HttpError) as cm:
+                call(devices.me_assign, kind, ref)
+            self.assertEqual((cm.exception.status, cm.exception.message), (400, msg))
+        call(devices.me_assign, 'projects', 4)
+        call(devices.me_assign, 'projects', 4)
+        self.assertEqual(rows('device_projects', 'project_id'), [4])
+        call(devices.me_unassign, 'projects', 4)
+        self.assertEqual((rows('device_projects', 'project_id'), rows('device_assignments', 'item_id')), ([], [1, 2]))
+
     def test_pair_ok_upserts(self):
         self.pair_ok_rules()
         st, body = devices.pair(req(body=dict(PAIR_BODY)))

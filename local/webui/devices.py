@@ -9,7 +9,7 @@ import threading
 import time
 
 from . import db, projects, server
-from .server import HttpError, validate_host, validate_port
+from .server import HttpError, is_int, validate_host, validate_port
 
 ERROR_CODES = {
     'INSTALL_FAILED_UPDATE_INCOMPATIBLE': 'SIGNATURE_MISMATCH',
@@ -489,17 +489,67 @@ def put_assignments(req):
     keep = pids is None
     pids = projects.assigned_projects(dev['id']) if keep else list(dict.fromkeys(pids))
     projects.check_assignment(ids, pids)
+    _write_assignments(dev['id'], ids, None if keep else pids)
+    return 200, {'device': device_json(get(dev['id']))}
+
+
+def _write_assignments(device_id, item_ids, project_ids):
+    """Full-list write: item_ids replace device_assignments, project_ids (None = keep) replace device_projects."""
     with db.tx() as c:
         # a removed (disabled) app is hidden from every client, so a full-list PUT cannot mean to drop it
         c.execute('DELETE FROM device_assignments WHERE device_id=? AND item_id NOT IN (SELECT id FROM item WHERE enabled=0)',
-                  (dev['id'],))
+                  (device_id,))
         c.executemany('INSERT OR IGNORE INTO device_assignments(device_id,item_id) VALUES (?,?)',
-                      [(dev['id'], i) for i in ids])
-        if not keep:
-            c.execute('DELETE FROM device_projects WHERE device_id=?', (dev['id'],))
+                      [(device_id, i) for i in item_ids])
+        if project_ids is not None:
+            c.execute('DELETE FROM device_projects WHERE device_id=?', (device_id,))
             c.executemany('INSERT INTO device_projects(device_id,project_id) VALUES (?,?)',
-                          [(dev['id'], p) for p in pids])
-    return 200, {'device': device_json(get(dev['id']))}
+                          [(device_id, p) for p in project_ids])
+
+
+KINDS = {'items': ('device_assignments', 'item_id'), 'projects': ('device_projects', 'project_id')}
+
+
+def assign_one(device_id, kind, ref_id):
+    """Add one item or project ('items'/'projects') to a phone (decision 17): idempotent, same conflict rule as the
+    full-list PUT."""
+    table, col = KINDS[kind]
+    ids = [r[0] for r in db.conn().execute('SELECT item_id FROM device_assignments WHERE device_id=?', (device_id,))]
+    pids = projects.assigned_projects(device_id)
+    if kind == 'items' and ref_id not in ids:
+        ids.append(ref_id)
+    if kind == 'projects' and ref_id not in pids:
+        pids.append(ref_id)
+    projects.check_assignment(ids, pids)
+    with db.tx() as c:
+        c.execute(f'INSERT OR IGNORE INTO {table}(device_id,{col}) VALUES (?,?)', (device_id, ref_id))
+
+
+def unassign_one(device_id, kind, ref_id):
+    """Remove one item or project ('items'/'projects') from a phone (decision 17); an absent row is a no-op."""
+    table, col = KINDS[kind]
+    with db.tx() as c:
+        c.execute(f'DELETE FROM {table} WHERE device_id=? AND {col}=?', (device_id, ref_id))
+
+
+def _me_target(req):
+    """-> (device id, kind, ref id) of /api/me/assignments/<kind>/<id>; the device is the token's own row."""
+    ref = req.params['id']
+    if not is_int(ref):
+        raise HttpError(400, f'id must be an integer, got {ref!r}')
+    return req.device_id, req.path.split('/')[4], ref
+
+
+def me_assign(req):
+    device_id, kind, ref = _me_target(req)
+    assign_one(device_id, kind, ref)
+    return 200, {'device': device_json(get(device_id))}
+
+
+def me_unassign(req):
+    device_id, kind, ref = _me_target(req)
+    unassign_one(device_id, kind, ref)
+    return 200, {'device': device_json(get(device_id))}
 
 
 def resolve_devices(target):
@@ -532,4 +582,8 @@ ROUTES = [
     ('PATCH', '/api/devices/{id}', patch_device),
     ('DELETE', '/api/devices/{id}', delete_device),
     ('PUT', '/api/devices/{id}/assignments', put_assignments),
+    ('PUT', '/api/me/assignments/items/{id}', me_assign),
+    ('DELETE', '/api/me/assignments/items/{id}', me_unassign),
+    ('PUT', '/api/me/assignments/projects/{id}', me_assign),
+    ('DELETE', '/api/me/assignments/projects/{id}', me_unassign),
 ]
