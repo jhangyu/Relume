@@ -127,9 +127,7 @@ class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorke
     /** The user removed [step]'s app: unassign it from this phone and forget it; the step ends `removed`. */
     private suspend fun unassign(ctx: Context, api: RelumeApi, index: Int, step: PlanStep) {
         val error = try {
-            val d = api.me().device
-            val (items, projects) = assignmentsWithout(d, step)
-            api.putAssignments(d.id, items, projects)
+            api.unassign(step.kind, step.refId)
             null
         } catch (e: ApiError) {
             e

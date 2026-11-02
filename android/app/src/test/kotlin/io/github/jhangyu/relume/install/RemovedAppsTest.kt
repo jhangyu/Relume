@@ -42,7 +42,6 @@ class RemovedAppsTest {
 
     private fun assertSkippedAndUnassigned(run: RunState, seen: Set<String>) {
         assertTrue(removedFromPhone(run.steps[0], seen, onPhone = false))
-        assertEquals(listOf(2) to emptyList<Int>(), assignmentsWithout(device(item(1, false), item(2, true)), run.steps[0].step))
         val skipped = InstallRun.finish(run, 0, removedOutcome)
         assertEquals(StepState.REMOVED, skipped.steps[0].state)
         assertFalse("the unassign tells the server, no receipt", skipped.steps[0].receiptDue)
@@ -100,10 +99,8 @@ class RemovedAppsTest {
     }
 
     @Test
-    fun aRemovedProjectIsUnassignedAndBlocksItsDependents() {
-        val project = DeviceProject(3, assigned = true, pending = false, installedTag = "v3", installedReported = null)
+    fun aRemovedProjectBlocksItsDependents() {
         val run = InstallRun.create(plan(step(StepKind.PROJECT, 3), step(StepKind.ITEM, 4, needs = listOf(3))), Origin.BACKGROUND, null)
-        assertEquals(listOf(4) to emptyList<Int>(), assignmentsWithout(device(item(4, true), projects = listOf(project)), run.steps[0].step))
         assertEquals(StepState.DEPENDENCY_FAILED, InstallRun.finish(run, 0, removedOutcome).steps[1].state)
     }
 }

@@ -3,7 +3,6 @@ package io.github.jhangyu.relume.install
 import io.github.jhangyu.relume.api.DeviceView
 import io.github.jhangyu.relume.api.InstallPlan
 import io.github.jhangyu.relume.api.PlanAction
-import io.github.jhangyu.relume.api.PlanStep
 import io.github.jhangyu.relume.api.StepKind
 
 /** Outcome of a step skipped because the user removed its app from the phone. */
@@ -26,16 +25,6 @@ fun requestedKeys(plan: InstallPlan): Set<String> =
  */
 fun removedFromPhone(s: StepRun, seen: Set<String>, onPhone: Boolean): Boolean =
     !onPhone && seenKey(s.step.kind, s.step.refId) in seen
-
-/** Assigned item and project ids of [device] without [step]'s app: the body of the unassign `PUT`. */
-fun assignmentsWithout(device: DeviceView, step: PlanStep): Pair<List<Int>, List<Int>> {
-    val items = device.assignments.map { it.itemId }
-    val projects = device.projects.filter { it.assigned }.map { it.projectId }
-    return when (step.kind) {
-        StepKind.ITEM -> (items - step.refId) to projects
-        StepKind.PROJECT -> items to (projects - step.refId)
-    }
-}
 
 /** Key of an assigned item or project in the phone's "seen installed" set (stored in prefs). */
 fun seenKey(kind: StepKind, id: Int) = "${kind.name}:$id"

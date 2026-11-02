@@ -178,11 +178,14 @@ class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
     suspend fun acceptSigner(projectId: Int, signerSha256: String): Project =
         send("POST", "/api/projects/$projectId/signer/accept", buildJsonObject { put("signer_sha256", signerSha256) })
 
-    suspend fun putAssignments(deviceId: Int, itemIds: List<Int>, projectIds: List<Int>?): Device =
-        send<DeviceEnvelope>("PUT", "/api/devices/$deviceId/assignments", buildJsonObject {
-            putJsonArray("item_ids") { itemIds.forEach { add(it) } }
-            projectIds?.let { ids -> putJsonArray("project_ids") { ids.forEach { add(it) } } }
-        }).device
+    /** Assign one item or project to this phone (decision 17); idempotent. */
+    suspend fun assign(kind: StepKind, refId: Int): Device = send<DeviceEnvelope>("PUT", assignmentPath(kind, refId), EMPTY).device
+
+    /** Unassign one item or project from this phone (decision 17); idempotent, so the install worker may retry it. */
+    suspend fun unassign(kind: StepKind, refId: Int): Device = send<DeviceEnvelope>("DELETE", assignmentPath(kind, refId), EMPTY).device
+
+    private fun assignmentPath(kind: StepKind, refId: Int) =
+        "/api/me/assignments/${if (kind == StepKind.ITEM) "items" else "projects"}/$refId"
 
     /**
      * Blocking; call from a worker thread. Opens [path] (e.g. a plan `download.url`) and returns the connected

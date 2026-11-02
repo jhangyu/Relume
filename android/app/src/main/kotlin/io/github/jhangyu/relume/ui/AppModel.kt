@@ -260,13 +260,8 @@ class AppModel(application: Application) : AndroidViewModel(application) {
                 prompt = InstallPrompt.NeedPermission
                 return@launch
             }
-            // Fresh assignments: the cached device may predate an install started a moment ago.
-            val d = call { it.me().device } ?: return@launch
-            val items = d.assignments.map { a -> a.itemId }
-            val projects = d.projects.filter { it.assigned }.map { it.projectId }
-            // Spec 8.3: assign to this phone first, so OTA keeps it updated too.
-            if (kind == StepKind.ITEM && id !in items) call { it.putAssignments(d.id, items + id, null) } ?: return@launch
-            if (kind == StepKind.PROJECT && id !in projects) call { it.putAssignments(d.id, items, projects + id) } ?: return@launch
+            // Spec 8.3: assign to this phone first, so OTA keeps it updated too; one row, never the whole list (decision 17).
+            call { it.assign(kind, id) } ?: return@launch
             val scoped = scopedPlan(kind, id) ?: return@launch
             evaluate(kind, id, scoped)
         }
