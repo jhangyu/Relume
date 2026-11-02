@@ -47,8 +47,8 @@ async function boot() {
     const st = await api('GET', '/api/auth/state');
     minPassword = st.limits.min_password;
     setMode(st.setup_required);
-  } catch (_) {
-    showError('Server unreachable');
+  } catch (e) {
+    showError(`Cannot load the sign-in state: ${e.message}`);
   }
 }
 
@@ -78,7 +78,7 @@ form.addEventListener('submit', async e => {
       showError(`Too many attempts. Try again in ${fmt.duration(s)}.`);
       lockButton(go, s);
     } else {
-      showError('Server unreachable');
+      showError(`Sign-in failed: ${ex.message}`);
     }
   }
 });
@@ -90,7 +90,7 @@ boot();
   try {
     const h = await api('GET', '/api/health');
     srv.innerHTML = html`<dt>host</dt><dd style="margin:0">${location.host}</dd><dt>status</dt><dd style="margin:0">Server up · ${h.app}</dd><dt>version</dt><dd style="margin:0">${h.version}</dd><dt>up since</dt><dd style="margin:0">${fmt.abs(h.started_at)}</dd>`;
-  } catch (_) {
-    srv.innerHTML = html`<dt>status</dt><dd style="margin:0">Server unreachable</dd>`;
+  } catch (e) {
+    srv.innerHTML = html`<dt>status</dt><dd style="margin:0">Server status unavailable: ${e.message}</dd>`;
   }
 })();

@@ -1,14 +1,12 @@
-import { $, $$, act, api, confirmDialog, fmt, html, icon, shell, toast } from '/static/app.js';
-
-// rules the server owns (GET /api/auth/state): the password minimum
-const { limits: LIMITS } = await api('GET', '/api/auth/state');
+import { $, $$, act, api, confirmDialog, fmt, html, icon, report, shell, toast } from '/static/app.js';
 
 const FIELDS = {
   telegram: { bot_token: '#tg-token', chat_id: '#tg-chat' },
   discord: { webhook_url: '#dc-url' },
   ntfy: { server_url: '#nt-url', topic: '#nt-topic', token: '#nt-token' },
 };
-const Z = { settings: null, items: [], notify: null, appDevs: [] };
+// limits: the rules the server owns (GET /api/auth/state), the password minimum
+const Z = { settings: null, items: [], notify: null, appDevs: [], limits: null };
 
 function showChannel(t) {
   $$('[data-ch]').forEach(p => { p.hidden = p.dataset.ch !== t; });
@@ -90,7 +88,7 @@ async function saveSettings() {
 
 function score(p) {
   let n = 0;
-  if (p.length >= LIMITS.min_password) n++;
+  if (p.length >= Z.limits.min_password) n++;
   if (p.length >= 14) n++;
   if (/[a-z]/.test(p) && /[A-Z]/.test(p)) n++;
   if (/\d/.test(p)) n++;
@@ -104,20 +102,20 @@ function checkPw() {
   $('#pw-meter').value = s;
   $('#pw-meter').title = word;
   $('#pw-meter-l').textContent = a ? word : '';
-  const err = a && a.length < LIMITS.min_password ? `At least ${LIMITS.min_password} characters` : b && a !== b ? 'Passwords do not match' : '';
+  const err = a && a.length < Z.limits.min_password ? `At least ${Z.limits.min_password} characters` : b && a !== b ? 'Passwords do not match' : '';
   $('#pw-err').textContent = err;
   $('#pw-err').hidden = !err;
   $('#pw-save').disabled = !!err || !a || a !== b || !$('#pw-old').value;
 }
 
 $$('[name=ch]').forEach(r => r.addEventListener('change', () => showChannel(r.value)));
-$('#n-save').addEventListener('click', () => saveNotify().catch(() => {}));
+$('#n-save').addEventListener('click', () => saveNotify().catch(report));
 $('#n-test').addEventListener('click', async () => {
   try {
     const r = await api('POST', '/api/notify/test', {});
     toast(r.ok ? 'Delivered' : `Failed: ${r.detail}`, r.ok ? 'ok' : 'error');
-  } catch (e) { toast(e.message, 'error'); }
-  loadNotify().catch(() => {});
+  } catch (e) { report(e); }
+  loadNotify().catch(report);
 });
 $('#keep').addEventListener('input', renderEstimate);
 $('#cleanup').addEventListener('click', async () => {
@@ -130,16 +128,16 @@ $('#cleanup').addEventListener('click', async () => {
     const r = await api('POST', '/api/cleanup', {});
     toast(`Freed ${fmt.bytes(r.bytes)}`);
     await loadSettings(false);
-  } catch (e) { toast(e.message, 'error'); }
+  } catch (e) { report(e); }
 });
-$('#a-save').addEventListener('click', () => saveSettings().catch(() => {}));
+$('#a-save').addEventListener('click', () => saveSettings().catch(report));
 async function saveToken(v) {
   Z.settings = await act('PUT', '/api/settings', { github_token: v }, v ? 'Token saved' : 'Token removed');
   $('#gh-token').value = '';
   renderSettings();
 }
-$('#gh-save').addEventListener('click', () => { if ($('#gh-token').value.trim()) saveToken($('#gh-token').value.trim()).catch(() => {}); });
-$('#gh-clear').addEventListener('click', () => saveToken('').catch(() => {}));
+$('#gh-save').addEventListener('click', () => { if ($('#gh-token').value.trim()) saveToken($('#gh-token').value.trim()).catch(report); });
+$('#gh-clear').addEventListener('click', () => saveToken('').catch(report));
 async function saveGooglePlay(v) {
   Z.settings = await act('PUT', '/api/settings', { google_play: v }, v ? 'Google Play account saved' : 'Google Play account removed');
   $('#gp-token').value = '';
@@ -148,11 +146,10 @@ async function saveGooglePlay(v) {
 $('#gp-save').addEventListener('click', () => {
   const email = $('#gp-mail').value.trim(), aas_token = $('#gp-token').value.trim();
   if (!email || !aas_token) return toast('Email and AAS token are both required', 'error');
-  saveGooglePlay({ email, aas_token }).catch(() => {});
+  saveGooglePlay({ email, aas_token }).catch(report);
 });
-$('#gp-clear').addEventListener('click', () => saveGooglePlay(null).catch(() => {}));
-$('#gh-recheck').addEventListener('click', () => loadSettings(true).then(() => toast('Re-checked')).catch(() => {}));
-['#pw-old', '#pw-new', '#pw-new2'].forEach(s => $(s).addEventListener('input', checkPw));
+$('#gp-clear').addEventListener('click', () => saveGooglePlay(null).catch(report));
+$('#gh-recheck').addEventListener('click', () => loadSettings(true).then(() => toast('Re-checked')).catch(report));
 $('#pw-save').addEventListener('click', async () => {
   try {
     const r = await api('POST', '/api/auth/password', { old: $('#pw-old').value, new: $('#pw-new').value });
@@ -160,7 +157,7 @@ $('#pw-save').addEventListener('click', async () => {
     ['#pw-old', '#pw-new', '#pw-new2'].forEach(s => { $(s).value = ''; });
     checkPw();
   } catch (e) {
-    toast(e.status === 403 ? 'Current password is wrong' : e.message, 'error');
+    if (e.status === 403) toast('Current password is wrong', 'error'); else report(e);
   }
 });
 
@@ -185,8 +182,10 @@ $('#app-devs').addEventListener('click', async e => {
     const d = Z.appDevs.find(x => x.id === Number(rm.dataset.remove));
     const body = html`<strong>${d.name}</strong> is deleted with its app assignments and install history.${d.has_token ? html` It is also signed out of the app.` : ''}`;
     if (!await confirmDialog({ title: 'Remove this phone?', body, action: 'Remove' })) return;
-    await act('DELETE', `/api/devices/${d.id}`, {}, 'Phone removed');
-    await loadAppDevices();
+    try {
+      await act('DELETE', `/api/devices/${d.id}`, {}, 'Phone removed');
+      await loadAppDevices();
+    } catch (err) { report(err); }
     return;
   }
   const b = e.target.closest('[data-revoke]');
@@ -195,8 +194,10 @@ $('#app-devs').addEventListener('click', async e => {
   const body = html`<strong>${d.name}</strong> is signed out of the app and must log in again.`;
   const extra = html`<p class="caption dlg-sub">${d.model} · Android ${d.android_release} · last seen ${fmt.rel(d.last_seen_at)}</p>`;
   if (!await confirmDialog({ title: 'Revoke this phone?', body, extra, action: 'Revoke' })) return;
-  await act('DELETE', `/api/devices/${b.dataset.revoke}/token`, {}, 'Token revoked');   // act() toasts a failure and rethrows
-  await loadAppDevices();
+  try {
+    await act('DELETE', `/api/devices/${b.dataset.revoke}/token`, {}, 'Token revoked');   // act() toasts a failure and rethrows
+    await loadAppDevices();
+  } catch (err) { report(err); }
 });
 
 async function loadLegacy() {
@@ -211,13 +212,18 @@ $('#legacy-devs').addEventListener('click', async e => {
   const d = Z.legacy.find(x => x.id === Number(b.dataset.revokeLegacy));
   const body = html`<strong>${d.name}</strong> is signed out of the old app and must log in again.`;
   if (!await confirmDialog({ title: 'Revoke this sign-in?', body, action: 'Revoke' })) return;
-  await act('DELETE', `/api/legacy-sign-ins/${d.id}`, {}, 'Sign-in revoked');
-  await loadLegacy();
+  try {
+    await act('DELETE', `/api/legacy-sign-ins/${d.id}`, {}, 'Sign-in revoked');
+    await loadLegacy();
+  } catch (err) { report(err); }
 });
 
 (async () => {
   shell();
-  Z.items = (await api('GET', '/api/apps')).apps;
+  const [{ limits }, { apps }] = await Promise.all([api('GET', '/api/auth/state'), api('GET', '/api/apps')]);
+  Z.limits = limits;
+  Z.items = apps;
+  ['#pw-old', '#pw-new', '#pw-new2'].forEach(s => $(s).addEventListener('input', checkPw));   // needs the server's password minimum
   await Promise.all([loadNotify(), loadSettings(false), loadAppDevices(), loadLegacy(), loadCatalog()]);
   checkPw();
-})().catch(e => toast(e.message, 'error'));
+})().catch(report);

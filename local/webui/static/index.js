@@ -291,7 +291,7 @@ detail.addEventListener('click', e => {
     return;
   }
   if (a.dataset.act === 'close') { closeApp(); scroll.back(); }
-  else if (a.dataset.act === 'enable') enable();
+  else if (a.dataset.act === 'enable') enable().catch(report);
   else if (a.dataset.act === 'allon' || a.dataset.act === 'reset') {
     b.patches.forEach(p => setFlip(p.name, a.dataset.act === 'allon' ? true : p.default_enabled === true));
     $$('input[data-patch]', detail).forEach(i => { i.checked = isOn(b.patches.find(p => p.name === i.dataset.patch)); });
@@ -332,7 +332,7 @@ $('#hero').addEventListener('click', e => {
   $('#q').value = S.q;
   $('#origin').value = '';
   closeApp();
-  loadList(true).then(() => openApp(a.package)).catch(err => console.error('open featured app:', err));
+  loadList(true).then(() => openApp(a.package)).catch(report);
 });
 
 $('#cats').addEventListener('click', e => {
@@ -340,9 +340,9 @@ $('#cats').addEventListener('click', e => {
   if (!p) return;
   S.category = p.dataset.f;
   closeApp();
-  loadList(true).catch(err => console.error('category filter:', err));
+  loadList(true).catch(report);
 });
-const onFilter = fn => e => { fn(e.target.value); closeApp(); loadList(true).catch(err => console.error('filter:', err)); };
+const onFilter = fn => e => { fn(e.target.value); closeApp(); loadList(true).catch(report); };
 $('#q').addEventListener('input', onFilter(v => { S.q = v.trim(); }));
 $('#origin').addEventListener('change', onFilter(v => { S.origin = v; }));
 $('#sort').addEventListener('change', onFilter(v => { S.sort = v; }));
@@ -364,7 +364,7 @@ function loadMore() {
     paging = null;
     if (S.page === want) S.page = want - 1;   // a filter reset in between owns S.page: otherwise retry the same page
     console.error('load more:', err);
-    toast(err.message, 'error');
+    report(err);
     return false;
   });
   return paging;
@@ -381,8 +381,7 @@ async function refreshCatalog() {
   } catch (err) {
     console.error('catalog refresh:', err);   // act() showed the failure; Settings lists the feed errors
   }
-  await loadAll();
-  $('#refresh').disabled = false;
+  try { await loadAll(); } catch (e) { report(e); } finally { $('#refresh').disabled = false; }
 }
 $('#refresh').addEventListener('click', refreshCatalog);
 $('#empty').addEventListener('click', e => { if (e.target.closest('[data-act=refresh]')) refreshCatalog(); });
@@ -406,7 +405,7 @@ $('#add-source').addEventListener('click', async () => {
     return;
   }
   $('#c-url').value = $('#c-regex').value = $('#c-pkgs').value = '';
-  await loadAll();
+  await loadAll().catch(report);
 });
 $('#source-list').addEventListener('click', async e => {
   const b = e.target.closest('[data-del]');
@@ -419,11 +418,11 @@ $('#source-list').addEventListener('click', async e => {
     console.error('delete source:', err);   // act() showed the server message (409 source_in_use lists the apps)
     return;
   }
-  await loadAll();
+  await loadAll().catch(report);
 });
 
 shell();
 loadAll().catch(err => {
   console.error('marketplace load:', err);
-  toast(err.message, 'error');
+  report(err);
 });
