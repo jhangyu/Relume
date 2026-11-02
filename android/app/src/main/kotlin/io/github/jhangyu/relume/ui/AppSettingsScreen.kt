@@ -300,10 +300,15 @@ fun AppSettingsScreen(model: AppModel, appId: Int, onBack: () -> Unit, onOpenLog
                 Txt("Pinned and Auto versions are looked up on Google Play by version code. Set the Google account in the web Settings.", style = MaterialTheme.typography.bodySmall, color = muted())
             }
             if (kind == KIND_APKMIRROR) {
-            Field("APKMirror listing", listUrl, { listUrl = it }, leadingIcon = R.drawable.ms_link, mono = true, trailing = {
-                IconAction(R.drawable.ms_search, "Locate APKMirror page again", { model.locate(appId) }, IconTone.Sync, enabled = dl.state !in LOOKUP_DONE)
-            })
-            LookupPill(dl.state)
+            val fallback = d.detail.app.downloadSource?.let { it.actual != it.selected } == true
+            if (fallback) {
+                Txt("No APKMirror listing: builds download from APKPure.", style = MaterialTheme.typography.bodySmall, color = muted())
+            }
+            Field("APKMirror listing", listUrl, { listUrl = it }, leadingIcon = R.drawable.ms_link, mono = true, trailing = if (fallback) null else ({
+                IconAction(R.drawable.ms_search, "Locate APKMirror page again", { model.locate(appId) }, IconTone.Sync,
+                    enabled = dl.state !in LOOKUP_DONE && dl.blockedUntil == null)
+            }))
+            if (!fallback) LookupPill(dl.state)
             if (dl.state == LOOKUP_AMBIGUOUS) {
                 InsetGroup {
                     dl.candidates.forEach { c ->

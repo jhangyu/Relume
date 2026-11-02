@@ -36,7 +36,7 @@ class AppFacts(val app: AppObject, val target: InstallTarget?, val installed: In
             else -> null
         }
 
-    /** One line under the card head: build progress, failure, or why the download URL is missing. */
+    /** One line under the card head: build progress, failure, why the download URL is missing, or the APKPure fallback. */
     val statusLine: String?
         get() {
             val s = app.status
@@ -46,12 +46,12 @@ class AppFacts(val app: AppObject, val target: InstallTarget?, val installed: In
                 STATE_FAILED -> s.failDetail ?: s.failCode ?: "Build failed"
                 STATE_NEEDS_URL -> d.error ?: when (d.state) {
                     LOOKUP_AMBIGUOUS -> "${d.candidates.size} APKMirror pages match"
-                    LOOKUP_BLOCKED -> "APKMirror blocked the lookup${d.retryAt?.let { ", retry after ${formatTime(it)}" }.orEmpty()}"
+                    LOOKUP_BLOCKED -> "APKMirror blocked the lookup${(d.blockedUntil ?: d.retryAt)?.let { ", retry after ${formatTime(it)}" }.orEmpty()}"
                     LOOKUP_NOT_FOUND -> "No APKMirror page found"
                     LOOKUP_PENDING -> "APKMirror lookup on the next update run"
                     else -> "Needs a download URL"
                 }
-                else -> null
+                else -> app.downloadSource?.takeIf { it.actual != it.selected }?.let { "Downloads from APKPure (no APKMirror listing)" }
             }
         }
 }

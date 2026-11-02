@@ -248,6 +248,8 @@ private fun FollowedCard(app: FollowedApp, action: CardAction?, installing: Bool
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Txt(app.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
                     Txt(listOfNotNull(app.version, "Followed project").joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = muted(), maxLines = 1)
+                    app.checkError?.let { Txt("Check failed: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, maxLines = 2) }
+                    app.downloadError?.let { Txt("Download failed: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, maxLines = 2) }
                 }
             }
             Hairline()
