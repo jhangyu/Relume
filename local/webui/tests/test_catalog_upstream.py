@@ -147,7 +147,8 @@ class PullTest(UpstreamCase):
         base = self.data / "upstream" / str(self.pat)
         self.assertEqual(sorted(p.name for p in base.iterdir()), ["v1.47.0"])
         self.assertEqual(upstream._row(self.pat)["downloaded_tag"], "v1.47.0")
-        self.assertTrue(upstream._row(self.pat)["check_error"].startswith("download failed"))
+        self.assertEqual(upstream._row(self.pat)["download_error"], "size mismatch: patches-1.48.0.mpp")
+        self.assertIsNone(upstream._row(self.pat)["check_error"])
 
     def test_digest_mismatch(self):
         self.routes(self.new_release(digest="sha256:" + "0" * 64))

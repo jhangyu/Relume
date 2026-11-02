@@ -112,6 +112,27 @@ class MigrationTest(unittest.TestCase):
             "SELECT repo, list_error, list_skipped FROM bundle WHERE repo IN ('a/b', 'a/c') ORDER BY repo")]
         self.assertEqual(rows, [("a/b", None, '["a; b"]'), ("a/c", "rate limited", None)])
 
+    def test_follow_errors_migration(self):
+        old = self.data / "schema-old"
+        old.mkdir()
+        mine = db.SCHEMA_DIR / "021_follow_errors.sql"
+        for f in sorted(db.SCHEMA_DIR.glob("[0-9][0-9][0-9]_*.sql")):
+            if int(f.name[:3]) < 21:  # by number: another stream's 019/020 may land before or after this file
+                shutil.copy(f, old / f.name)
+        db.migrate(old)
+        with db.tx() as t:
+            t.execute("INSERT INTO upstream(id, kind, repo, channel, check_error) VALUES "
+                      "(31,'project','o/a','stable','download failed: size mismatch: x'), (32,'project','o/b','stable','rate limited')")
+            t.execute("INSERT INTO settings(key, value) VALUES ('notify', ?)",
+                      (json.dumps({"type": "ntfy", "enabled": True, "config": {}, "events": ["build.failed"]}),))
+        shutil.copy(mine, old / mine.name)
+        db.migrate(old)
+        c = db.conn()
+        self.assertEqual([tuple(r) for r in c.execute("SELECT id, download_error, check_error FROM upstream WHERE id IN (31, 32) ORDER BY id")],
+                         [(31, "size mismatch: x", None), (32, None, "rate limited")])
+        self.assertEqual(json.loads(c.execute("SELECT value FROM settings WHERE key = 'notify'").fetchone()[0])["events"],
+                         ["build.failed", "project.assignment_dropped"])
+
     def test_fresh_database_tables(self):
         db.migrate()
         names = {r[0] for r in db.conn().execute("SELECT name FROM sqlite_master WHERE type='table'")}
@@ -412,7 +433,7 @@ class CrudRouteTest(ProjectCase):
         p = b["projects"][0]
         self.assertEqual(set(p), {"id", "upstream_id", "repo", "channel", "asset_regex", "display_name", "label", "package",
                                   "auto_push", "latest_tag", "latest_published_at", "downloaded_tag", "checked_at",
-                                  "check_error", "signer_sha256", "signer_since", "signer_alert", "versions", "disk_bytes",
+                                  "check_error", "download_error", "signer_sha256", "signer_since", "signer_alert", "versions", "disk_bytes",
                                   "item_ids", "device_ids"})
         self.assertEqual((p["id"], p["upstream_id"], p["label"], p["auto_push"], p["item_ids"], p["device_ids"]),
                          (1, 9, "MicroG RE", False, [1, 3], [4]))
@@ -578,7 +599,20 @@ class ReleaseTest(ProjectCase):
         reason = self.failed_pull("v2", {"microg-2.apk": (), "microg-2-resigned.apk": ()})
         self.assertEqual(reason, "download failed: signers differ within release")
         row = upstream._row(9)
-        self.assertEqual((row["downloaded_tag"], row["check_error"]), ("v1", "download failed: signers differ within release"))
+        self.assertEqual((row["downloaded_tag"], row["check_error"], row["download_error"]),
+                         ("v1", None, "signers differ within release"))
+
+    def test_download_error_stays_until_a_download_succeeds(self):
+        self.pull("v1", {"microg-1.apk": ()})
+        self.failed_pull("v2", {"microg-2.apk": (), "microg-2-resigned.apk": ()})
+        row = upstream._row(9)
+        self.assertEqual((row["download_error"], row["check_error"]), ("signers differ within release", None))
+        self.pull("v3", {"microg-3.apk": ()})
+        self.assertIsNone(upstream._row(9)["download_error"])
+        with db.tx() as c:   # up to date: nothing pending, a stored failure goes
+            c.execute("UPDATE upstream SET download_error = 'old' WHERE id = 9")
+        self.pull("v3", {"microg-3.apk": ()})
+        self.assertIsNone(upstream._row(9)["download_error"])
 
     def test_mixed_packages_not_committed(self):
         reason = self.failed_pull("v1", {"microg-1.apk": (), "other-1.apk": ()})

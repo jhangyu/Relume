@@ -130,7 +130,7 @@ def _alert(r, facts):
 
 def _row(project_id):
     r = db.conn().execute("""SELECT p.*, u.repo, u.channel, u.asset_regex, u.latest_tag, u.latest_published_at,
-        u.downloaded_tag, u.checked_at, u.check_error FROM project p JOIN upstream u ON u.id = p.upstream_id
+        u.downloaded_tag, u.checked_at, u.check_error, u.download_error FROM project p JOIN upstream u ON u.id = p.upstream_id
         WHERE p.id = ?""", (project_id,)).fetchone()
     return dict(r) if r else None
 
@@ -279,6 +279,7 @@ def followed_apps():
                     "icon_url": f"/api/projects/{pid}/icon" if facts else None,
                     "repo": r["repo"], "version": tag if facts else None, "blocked": blocked,
                     "signer_sha256": facts[0].get("signer_sha256") if facts else None,
+                    "check_error": r["check_error"], "download_error": r["download_error"],
                     "files": [] if blocked else [
                         {"name": f["file"], "abi": f["abi"], "size": f["size"], "version_name": f["version_name"],
                          "version_code": f["version_code"], "url": apk_url(pid, f["file"])}
@@ -319,7 +320,7 @@ def _obj(project_id):
             "package": r["package"], "auto_push": bool(r["auto_push"]),
             "latest_tag": r["latest_tag"], "latest_published_at": r["latest_published_at"],
             "downloaded_tag": r["downloaded_tag"], "checked_at": r["checked_at"], "check_error": r["check_error"],
-            "signer_sha256": r["signer_sha256"], "signer_since": r["signer_since"],
+            "download_error": r["download_error"], "signer_sha256": r["signer_sha256"], "signer_since": r["signer_since"],
             "signer_alert": _alert(r, _apks(uid, r["downloaded_tag"]) if r["downloaded_tag"] else None),
             "versions": versions,
             "disk_bytes": sum(f.stat().st_size for f in base.rglob("*") if f.is_file()) if base.is_dir() else 0,

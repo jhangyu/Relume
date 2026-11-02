@@ -366,11 +366,11 @@ def _download(row, tag, assets, log, verify=None):
             verify(part)
     except (OSError, ValueError) as e:
         shutil.rmtree(part, ignore_errors=True)
-        _set(row["id"], check_error=f"download failed: {e}")
+        _set(row["id"], download_error=str(e))   # the bare cause; check_error is the release check (decision 11)
         raise jobs.JobFailed(f"download failed: {e}")
     shutil.rmtree(final, ignore_errors=True)
     part.rename(final)
-    _set(row["id"], downloaded_tag=tag)
+    _set(row["id"], downloaded_tag=tag, download_error=None)
     log.line(f"[+] {row['repo']} {tag} downloaded")
     return final
 
@@ -413,6 +413,7 @@ def _fetch_row(upstream_id, log, job_id=None):
     if assets is None:
         raise jobs.JobFailed(row["check_error"])
     if row["latest_tag"] == row["downloaded_tag"] and tag_dir(upstream_id, row["downloaded_tag"]).is_dir():
+        _set(upstream_id, download_error=None)   # nothing pending: no pending download failure
         # a crash after the tag commit leaves no pin: pin it now, before a later release is pinned instead
         if row["kind"] == "project" and db.conn().execute(
                 "SELECT 1 FROM project WHERE upstream_id = ? AND signer_sha256 IS NULL", (upstream_id,)).fetchone():
