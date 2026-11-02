@@ -80,6 +80,34 @@ if grep -q '^ok=1561173354$' <<<"$out" && grep -qxF 'rc=1 APKMirror download doe
 	pass match_version
 else fail match_version "$out"; fi
 
+# solver chain: a shell function curl stands in for both services; calls are logged to $T/calls
+solver_case() {   # FS_REPLY = FlareSolverr JSON, CFB_CODE / CFB_BODY = CFBypass /html answer, $1 = number of _cf_get calls
+	(source "$REPO/src/build/utils.sh"
+	curl() {
+		local o="" a="$*"
+		echo "$a" >> "$T/calls"
+		if [[ $a == *"/v1"* ]]; then printf '%s' "$FS_REPLY"; return 0; fi
+		if [[ $a == *"/cookies"* ]]; then echo '{}'; return 0; fi
+		while [[ $# -gt 0 ]]; do [[ $1 == -o ]] && o=$2; shift; done
+		printf '%s' "$CFB_BODY" > "$o"
+		printf '%s' "$CFB_CODE"
+	}
+	for _ in $(seq 1 "$1"); do _cf_get https://www.apkmirror.com/x; echo "rc=$? html=$html"; done) 2>&1
+}
+new_env; : > "$T/calls"
+out=$(FS_REPLY='{"status":"error","message":"Challenge not solved"}' CFB_CODE=200 CFB_BODY='<html>ok</html>' solver_case 2)
+if grep -q 'FlareSolverr: Challenge not solved' <<<"$out" && [ "$(grep -c 'rc=0 html=<html>ok</html>' <<<"$out")" = 2 ] &&
+	[ "$(grep -c '/v1' "$T/calls")" = 1 ] && [ "$(grep -c '/html' "$T/calls")" = 2 ]; then
+	pass cf_get_switches_solver
+else fail cf_get_switches_solver "$out / $(cat "$T/calls")"; fi
+
+new_env; : > "$T/calls"
+out=$(FS_REPLY='{"status":"error","message":"Challenge not solved"}' CFB_CODE=503 CFB_BODY='busy' solver_case 1)
+if grep -q '^rc=1' <<<"$out" && [ "$(grep -c '/v1' "$T/calls")" = 1 ] && [ "$(grep -c '/html' "$T/calls")" = 1 ] &&
+	grep -qF '[-] FlareSolverr and CFBypass both failed on https://www.apkmirror.com/x: FlareSolverr: Challenge not solved; CFBypass: HTTP 503: busy' <<<"$out"; then
+	pass cf_get_both_fail_once_each
+else fail cf_get_both_fail_once_each "$out / $(cat "$T/calls")"; fi
+
 # ---- runner cases (Task P3.3) ----
 run_runner() { (bash "$REPO/src/build/build-item.sh" "$T/job.json" > "$T/out.txt" 2>&1); echo $?; }
 fail_lines() { grep -c '^::fail::' "$T/out.txt"; }

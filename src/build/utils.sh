@@ -7,6 +7,9 @@ pup=pup
 APKEditor=${RELUME_APKEDITOR:-/opt/APKEditor.jar}
 user_agent='Mozilla/5.0 (Android 16; Mobile; rv:146.0) Gecko/146.0 Firefox/146.0'
 LAST_ERR=""
+SOLVER_ERR=""       # error of the last failed solver request, for _cf_get's summary
+SOLVER_ERR_MAX=200  # characters of a solver's error reply kept in the log
+_SOLVER_ORDER="_fs_get _cfb_get"   # preferred solver first; a solver that rescued a page moves to the front
 FAIL_CODE=""
 APKM_EMITTED=0
 
@@ -35,74 +38,70 @@ req() {
 }
 
 _fs_get() {
-	local url=$1
-	local max_retries=3
-	local attempt
-	for attempt in $(seq 1 $max_retries); do
-		local response
-		response=$(curl -s -X POST "${FLARESOLVERR_URL:-http://127.0.0.1:47191}/v1" \
-			-H 'Content-Type: application/json' \
-			-d "{\"cmd\":\"request.get\",\"url\":\"$url\",\"maxTimeout\":15000}")
-		local status
-		status=$(echo "$response" | jq -r '.status // empty' 2>/dev/null)
-		if [[ "$status" == "ok" ]]; then
-			html=$(echo "$response" | jq -r '.solution.response // empty')
-			export FS_COOKIES
-			FS_COOKIES=$(echo "$response" | jq -r '[.solution.cookies[] | .name + "=" + .value] | join("; ")')
-			user_agent=$(echo "$response" | jq -r '.solution.userAgent // empty')
-			return 0
-		fi
-		yellow_log "[!] FlareSolverr attempt $attempt/$max_retries failed: $url"
-		sleep 5
-	done
-	red_log "[-] FlareSolverr failed after $max_retries attempts: $url"
+	local url=$1 response rc status msg
+	response=$(curl -s -X POST "${FLARESOLVERR_URL:-http://127.0.0.1:47191}/v1" \
+		-H 'Content-Type: application/json' \
+		-d "{\"cmd\":\"request.get\",\"url\":\"$url\",\"maxTimeout\":15000}")
+	rc=$?
+	status=$(jq -r '.status // empty' <<<"$response" 2>/dev/null)
+	if [[ "$status" == "ok" ]]; then
+		html=$(jq -r '.solution.response // empty' <<<"$response")
+		export FS_COOKIES
+		FS_COOKIES=$(jq -r '[.solution.cookies[] | .name + "=" + .value] | join("; ")' <<<"$response")
+		user_agent=$(jq -r '.solution.userAgent // empty' <<<"$response")
+		return 0
+	fi
+	msg=$(jq -r '.message // empty' <<<"$response" 2>/dev/null)
+	if [[ -z "$msg" ]]; then
+		if [[ $rc -ne 0 ]]; then msg="curl exit $rc"; else msg="reply ${response:0:$SOLVER_ERR_MAX}"; fi
+	fi
+	SOLVER_ERR="FlareSolverr: $msg"
+	yellow_log "[!] $SOLVER_ERR: $url"
 	return 1
 }
 
 _cfb_get() {
-	local url=$1
-	local base=${CFBYPASS_URL:-http://127.0.0.1:47800}
-	local max_retries=3
-	local attempt
-	for attempt in $(seq 1 $max_retries); do
-		local response_file http_code
-		response_file=$(mktemp)
-		http_code=$(curl -s -o "$response_file" -w '%{http_code}' -G --data-urlencode "url=$url" --max-time 120 "$base/html")
-		if [[ "$http_code" == "200" ]]; then
-			html=$(cat "$response_file")
-			rm -f "$response_file"
-			if [[ -n "$html" ]]; then
-				export FS_COOKIES=""
-				local ck cfb_ck cfb_ua
-				# /cookies JSON: {"cookies": {k: v}, "user_agent": "..."}
-				ck=$(curl -sf --max-time 120 -G --data-urlencode "url=$url" "$base/cookies")
-				cfb_ck=$(jq -r '.cookies // {} | to_entries | map(.key + "=" + (.value|tostring)) | join("; ")' <<<"$ck" 2>/dev/null)
-				cfb_ua=$(jq -r '.user_agent // ""' <<<"$ck" 2>/dev/null)
-				# empty UA -> 403, so only use cookies + UA together
-				if [[ -n "$cfb_ck" && -n "$cfb_ua" ]]; then
-					FS_COOKIES="$cfb_ck"
-					user_agent="$cfb_ua"
-				fi
-				return 0
-			fi
-		else
-			rm -f "$response_file"
-			yellow_log "[!] CFB attempt $attempt/$max_retries: HTTP $http_code: $url"
+	local url=$1 base=${CFBYPASS_URL:-http://127.0.0.1:47800} response_file http_code
+	response_file=$(mktemp)
+	http_code=$(curl -s -o "$response_file" -w '%{http_code}' -G --data-urlencode "url=$url" --max-time 120 "$base/html")
+	html=$(cat "$response_file")
+	rm -f "$response_file"
+	if [[ "$http_code" == "200" && -n "$html" ]]; then
+		export FS_COOKIES=""
+		local ck cfb_ck cfb_ua
+		# /cookies JSON: {"cookies": {k: v}, "user_agent": "..."}
+		ck=$(curl -sf --max-time 120 -G --data-urlencode "url=$url" "$base/cookies")
+		cfb_ck=$(jq -r '.cookies // {} | to_entries | map(.key + "=" + (.value|tostring)) | join("; ")' <<<"$ck" 2>/dev/null)
+		cfb_ua=$(jq -r '.user_agent // ""' <<<"$ck" 2>/dev/null)
+		# empty UA -> 403, so only use cookies + UA together
+		if [[ -n "$cfb_ck" && -n "$cfb_ua" ]]; then
+			FS_COOKIES="$cfb_ck"
+			user_agent="$cfb_ua"
 		fi
-	done
-	red_log "[-] CFBypass failed after $max_retries attempts: $url"
+		return 0
+	fi
+	if [[ "$http_code" == "200" ]]; then
+		SOLVER_ERR="CFBypass: HTTP 200 with an empty body"
+	else
+		SOLVER_ERR="CFBypass: HTTP $http_code: ${html:0:$SOLVER_ERR_MAX}"
+	fi
+	html=""
+	yellow_log "[!] $SOLVER_ERR: $url"
 	return 1
 }
 
-_FFS_FAILED=0
-
+# _cf_get <url>: page through FlareSolverr or CFBypass into $html, one request each (decision 8)
 _cf_get() {
-	if [[ "$_FFS_FAILED" -eq 0 ]]; then
-		_fs_get "$@" && return 0
-		yellow_log "[!] FlareSolverr failed, falling back to CFB"
-		_FFS_FAILED=1
-	fi
-	_cfb_get "$@"
+	local s errs=()
+	for s in $_SOLVER_ORDER; do
+		if "$s" "$@"; then
+			[[ $s != "${_SOLVER_ORDER%% *}" ]] && _SOLVER_ORDER="$s ${_SOLVER_ORDER%% *}"
+			return 0
+		fi
+		errs+=("$SOLVER_ERR")
+	done
+	red_log "[-] FlareSolverr and CFBypass both failed on $1: ${errs[0]}; ${errs[1]}"
+	return 1
 }
 
 # Print ::apkm_versions:: once per run from the list page in $html (spec build §4 step 5d).
