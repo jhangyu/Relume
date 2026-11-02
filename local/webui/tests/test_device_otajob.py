@@ -261,6 +261,26 @@ class OtaJobTest(helpers.DataTestCase):
         jid, err = self.run_job(target={'device_id': self.d, 'project_ids': [1]})
         self.assertEqual(self.installs(jid), [('project', GMS, 'up_to_date', None)])
 
+    def test_adb_reads_hash_and_skips_current_build(self):
+        """Decision 15 over ADB: the on-device hash of the published file means up to date, with no receipt."""
+        apk = '/data/app/~~Zx9==/com.google.android.youtube-Yq1==/base.apk'
+        self.arts[1]['sha256'] = 'bb' * 32
+        self.fa.rule('pm', 'path', out=f'package:{apk}\n')
+        self.fa.rule('sha256sum', out=f"{'bb' * 32}  {apk}\n")
+        self.online(pm=f'package:{YT} versionCode:1\n')
+        jid, err = self.run_job({'device_id': self.d, 'item_ids': [1]})
+        self.assertIsNone(err)
+        self.assertEqual(self.adb_cmds('install'), [])
+        self.assertIn(['-s', ADDR, 'shell', 'sha256sum', apk], self.fa.calls())
+        self.assertEqual(db.conn().execute('SELECT apk_sha256 FROM device_packages WHERE package=?', (YT,)).fetchone()[0],
+                         'bb' * 32)
+        self.fa = FakeAdb(self)                           # a fresh rule set: the path would reach a device shell
+        self.fa.rule('pm', 'path', out='package:/data/app/x;rm -rf/base.apk\n')
+        self.online(pm=f'package:{YT} versionCode:1\n')
+        jid, err = self.run_job({'device_id': self.d, 'item_ids': [1]})
+        self.assertTrue(err.startswith(f'adb package list failed: pm path {YT}: expected'), err)
+        self.assertFalse([c for c in self.fa.calls() if 'sha256sum' in c])
+
     def test_signer_blocked_dependency_fails_item(self):
         self.infos[1] = pinfo(path=str(self.gms), signer_alert='cd' * 32)
         self.online()

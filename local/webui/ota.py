@@ -295,16 +295,37 @@ class PackageListFailed(Exception):
     """adb could not list the phone's packages: a plan cannot know what is installed."""
 
 
-def _present(dev, cancel_event=None):
-    """Installed packages read over adb and stored as the phone's report. Raises PackageListFailed."""
+PM_TIMEOUT = 60   # seconds for one read-only adb shell call (package list, pm path, sha256sum)
+
+
+def _adb_out(dev, args, what, cancel_event):
+    """Output of one read-only adb shell call; timeout or a non-zero exit -> PackageListFailed prefixed with what."""
     try:
-        rc, out = devices.adb(['shell', 'pm', 'list', 'packages', '--show-versioncode'], serial=devices.address(dev),
-                              timeout=60, cancel_event=cancel_event, log=None)
+        rc, out = devices.adb(args, serial=devices.address(dev), timeout=PM_TIMEOUT, cancel_event=cancel_event, log=None)
     except devices.AdbTimeout:
-        raise PackageListFailed('timeout')
+        raise PackageListFailed(f'{what}timeout')
     if rc != 0:
-        raise PackageListFailed(f'exit {rc}: {devices.last_line(out)}')
-    present = devices.parse_packages(out)
+        raise PackageListFailed(f'{what}exit {rc}: {devices.last_line(out)}')
+    return out
+
+
+def _present(dev, cancel_event=None):
+    """Installed packages read over adb, with the base APK sha256 of every tracked one (decision 15), stored as the
+    phone's report. Raises PackageListFailed."""
+    present = devices.parse_packages(_adb_out(dev, ['shell', 'pm', 'list', 'packages', '--show-versioncode'], '',
+                                              cancel_event))
+    for pkg in sorted(set(present) & set(tracked_packages())):
+        what = f'pm path {pkg}: '
+        try:
+            path = devices.parse_pm_path(_adb_out(dev, ['shell', 'pm', 'path', pkg], what, cancel_event))
+        except ValueError as e:
+            raise PackageListFailed(f'{what}{e}') from e
+        what = f'sha256sum {pkg}: '
+        try:
+            present[pkg]['apk_sha256'] = devices.parse_sha256sum(
+                _adb_out(dev, ['shell', 'sha256sum', path], what, cancel_event))
+        except ValueError as e:
+            raise PackageListFailed(f'{what}{e}') from e
     store_reported(dev['id'], present)
     return present
 
