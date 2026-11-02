@@ -95,14 +95,15 @@ def tracked_packages():
 
 def store_reported(device_id, packages):
     """Replace a phone's device_packages with the tracked part of packages {package: {version_code, version_name,
-    signer_sha256, apk_sha256}}; one transaction."""
+    signer_sha256, apk_sha256, apk_path}}; one transaction."""
     keep = set(tracked_packages())
     now = db.utcnow()
     with db.tx() as c:
         c.execute('DELETE FROM device_packages WHERE device_id = ?', (device_id,))
         c.executemany('INSERT INTO device_packages(device_id,package,version_code,version_name,signer_sha256,apk_sha256,'
-                      'reported_at) VALUES (?,?,?,?,?,?,?)',
-                      [(device_id, pkg, v['version_code'], v['version_name'], v['signer_sha256'], v['apk_sha256'], now)
+                      'apk_path,reported_at) VALUES (?,?,?,?,?,?,?,?)',
+                      [(device_id, pkg, v['version_code'], v['version_name'], v['signer_sha256'], v['apk_sha256'],
+                        v['apk_path'], now)
                        for pkg, v in sorted(packages.items()) if pkg in keep])
 
 
@@ -310,17 +311,27 @@ def _adb_out(dev, args, what, cancel_event):
 
 
 def _present(dev, cancel_event=None):
-    """Installed packages read over adb, with the base APK sha256 of every tracked one (decision 15), stored as the
-    phone's report. Raises PackageListFailed."""
-    present = devices.parse_packages(_adb_out(dev, ['shell', 'pm', 'list', 'packages', '--show-versioncode'], '',
-                                              cancel_event))
+    """Installed packages read over adb, stored as the phone's report. The base APK sha256 (decision 15) of a tracked
+    package is read when its path differs from the stored one; an unchanged path reuses the stored hash.
+    Raises PackageListFailed."""
+    try:
+        present = devices.parse_packages(_adb_out(dev, ['shell', 'pm', 'list', 'packages', '-f', '--show-versioncode'],
+                                                  '', cancel_event))
+    except ValueError as e:
+        raise PackageListFailed(f'pm list packages: {e}') from e
+    known = {r['package']: (r['apk_path'], r['apk_sha256']) for r in db.conn().execute(
+        'SELECT package, apk_path, apk_sha256 FROM device_packages WHERE device_id = ?', (dev['id'],))}
     for pkg in sorted(set(present) & set(tracked_packages())):
-        what = f'pm path {pkg}: '
-        try:
-            path = devices.parse_pm_path(_adb_out(dev, ['shell', 'pm', 'path', pkg], what, cancel_event))
-        except ValueError as e:
-            raise PackageListFailed(f'{what}{e}') from e
+        path = present[pkg]['apk_path']
+        old_path, old_hash = known.get(pkg, (None, None))
+        if old_hash and old_path == path:
+            # ponytail: Android installs every APK into a new random directory, so an unchanged path is an unchanged
+            # file. A root user who rewrites base.apk in place keeps the old hash.
+            present[pkg]['apk_sha256'] = old_hash
+            continue
         what = f'sha256sum {pkg}: '
+        if not devices.APK_PATH.fullmatch(path):
+            raise PackageListFailed(f'{what}expected an APK path of letters, digits and ._~=+/-, got {path!r}')
         try:
             present[pkg]['apk_sha256'] = devices.parse_sha256sum(
                 _adb_out(dev, ['shell', 'sha256sum', path], what, cancel_event))
@@ -487,7 +498,8 @@ def parse_device_facts(d):
 
 def _parse_sync(body):
     """Boundary parse of POST /api/me/sync -> (DeviceFacts, app_version_code, {package: {version_code, version_name, signer_sha256,
-    apk_sha256}}). apk_sha256 absent/null = no hash (companions up to v1.4.0, decision 15)."""
+    apk_sha256}}; apk_path is always None, the app reports its own hash). apk_sha256 absent/null = no hash (companions
+    up to v1.4.0, decision 15)."""
     d = body.get('device')
     facts = parse_device_facts(d)
     if not is_int(d.get('app_version_code')) or d['app_version_code'] < 1:
@@ -515,7 +527,7 @@ def _parse_sync(body):
         if e.get('apk_sha256') is not None and not (isinstance(e['apk_sha256'], str) and SIGNER.match(e['apk_sha256'])):
             _bad(f + '.apk_sha256', '64 lowercase hex characters or null', e['apk_sha256'])
         out[pkg] = {'version_code': e['version_code'], 'version_name': e.get('version_name'),
-                    'signer_sha256': e.get('signer_sha256'), 'apk_sha256': e.get('apk_sha256')}
+                    'signer_sha256': e.get('signer_sha256'), 'apk_sha256': e.get('apk_sha256'), 'apk_path': None}
     return facts, d['app_version_code'], out
 
 
@@ -881,7 +893,7 @@ def handle(job, log):
         else:
             ok.append(_run_item(job, dev, step, first_abi(dev), log, failed))
     try:
-        _present(dev)  # store what the phone really has now: the pre-run read is stale after any install
+        _present(dev)  # store what the phone really has now: an installed APK has a new path and is hashed again, unchanged ones reuse the stored hash
     except PackageListFailed as e:
         log.line(f'adb package list failed after the installs: {e}, the stored report keeps the pre-run list')
     if job.cancel_event.is_set():

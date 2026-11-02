@@ -1,3 +1,3 @@
-package:com.google.android.youtube versionCode:1547053504
-package:app.revanced.android.gms versionCode:255070218
-package:com.android.settings versionCode:35
+package:/data/app/~~Ab1==/com.google.android.youtube-Cd2==/base.apk=com.google.android.youtube versionCode:1547053504
+package:/data/app/~~Ef3==/app.revanced.android.gms-Gh4==/base.apk=app.revanced.android.gms versionCode:255070218
+package:/system/priv-app/Settings/Settings.apk=com.android.settings versionCode:35

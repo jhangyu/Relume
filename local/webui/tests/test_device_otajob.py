@@ -44,7 +44,7 @@ class OtaJobTest(helpers.DataTestCase):
             self.addCleanup(setattr, ota, name, getattr(ota, name))
             setattr(ota, name, value)
 
-    def online(self, pm='package:com.android.settings versionCode:35\n'):
+    def online(self, pm='package:/system/priv-app/Settings/Settings.apk=com.android.settings versionCode:35\n'):
         self.fa.rule('devices', out=ONLINE)
         self.fa.rule('pm', out=pm)
 
@@ -249,7 +249,7 @@ class OtaJobTest(helpers.DataTestCase):
 
     def test_project_install_records_tag_and_version(self):
         self.deps, self.assigned = {}, [1]
-        self.online(pm=f'package:{GMS} versionCode:255070218\n')
+        self.online(pm=f'package:/data/app/x/base.apk={GMS} versionCode:255070218\n')
         self.fa.rule('install', out='Success\n')
         jid, err = self.run_job(target={'device_id': self.d, 'project_ids': [1]})
         self.assertIsNone(err)
@@ -262,24 +262,35 @@ class OtaJobTest(helpers.DataTestCase):
         self.assertEqual(self.installs(jid), [('project', GMS, 'up_to_date', None)])
 
     def test_adb_reads_hash_and_skips_current_build(self):
-        """Decision 15 over ADB: the on-device hash of the published file means up to date, with no receipt."""
+        """Decision 15 over ADB: the on-device hash of the published file means up to date, with no receipt. A hash is
+        read again only when the APK path changed (D3)."""
         apk = '/data/app/~~Zx9==/com.google.android.youtube-Yq1==/base.apk'
         self.arts[1]['sha256'] = 'bb' * 32
-        self.fa.rule('pm', 'path', out=f'package:{apk}\n')
-        self.fa.rule('sha256sum', out=f"{'bb' * 32}  {apk}\n")
-        self.online(pm=f'package:{YT} versionCode:1\n')
-        jid, err = self.run_job({'device_id': self.d, 'item_ids': [1]})
+
+        def job_with(path, digest=None):
+            self.fa = FakeAdb(self)                       # fresh rules and call log per job
+            if digest:
+                self.fa.rule('sha256sum', out=f"{digest * 32}  {path}\n")
+            self.online(pm=f'package:{path}={YT} versionCode:1\n')
+            jid, err = self.run_job({'device_id': self.d, 'item_ids': [1]})
+            return err, [c for c in self.fa.calls() if 'sha256sum' in c]
+
+        def stored():
+            return tuple(db.conn().execute('SELECT apk_sha256, apk_path FROM device_packages WHERE package=?', (YT,)).fetchone())
+        err, hashed = job_with(apk, 'bb')
         self.assertIsNone(err)
         self.assertEqual(self.adb_cmds('install'), [])
-        self.assertIn(['-s', ADDR, 'shell', 'sha256sum', apk], self.fa.calls())
-        self.assertEqual(db.conn().execute('SELECT apk_sha256 FROM device_packages WHERE package=?', (YT,)).fetchone()[0],
-                         'bb' * 32)
-        self.fa = FakeAdb(self)                           # a fresh rule set: the path would reach a device shell
-        self.fa.rule('pm', 'path', out='package:/data/app/x;rm -rf/base.apk\n')
-        self.online(pm=f'package:{YT} versionCode:1\n')
-        jid, err = self.run_job({'device_id': self.d, 'item_ids': [1]})
-        self.assertTrue(err.startswith(f'adb package list failed: pm path {YT}: expected'), err)
-        self.assertFalse([c for c in self.fa.calls() if 'sha256sum' in c])
+        self.assertEqual(hashed, [['-s', ADDR, 'shell', 'sha256sum', apk]])   # once: the post-run read reuses it
+        self.assertEqual(stored(), ('bb' * 32, apk))
+        err, hashed = job_with(apk)                       # same path: nothing is hashed
+        self.assertEqual((err, hashed, stored()), (None, [], ('bb' * 32, apk)))
+        moved = '/data/app/~~Aa1==/com.google.android.youtube-Bb2==/base.apk'
+        self.arts[1]['sha256'] = 'cc' * 32
+        err, hashed = job_with(moved, 'cc')               # same versionCode, new file: hashed again
+        self.assertEqual((err, len(hashed), stored()), (None, 1, ('cc' * 32, moved)))
+        err, hashed = job_with('/data/app/x;reboot/base.apk')   # the path would reach a device shell
+        self.assertTrue(err.startswith(f'adb package list failed: sha256sum {YT}: expected an APK path'), err)
+        self.assertEqual(hashed, [])
 
     def test_signer_blocked_dependency_fails_item(self):
         self.infos[1] = pinfo(path=str(self.gms), signer_alert='cd' * 32)

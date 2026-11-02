@@ -26,8 +26,11 @@ class ParserTest(helpers.DataTestCase):
                          {'com.google.android.youtube': 1547053504, 'app.revanced.android.gms': 255070218,
                           'com.android.settings': 35})
         self.assertEqual(got['com.android.settings'], {'version_code': 35, 'version_name': None, 'signer_sha256': None,
-                                                        'apk_sha256': None})
-        with self.assertRaisesRegex(ValueError, "got 'package:a.b'"):
+                                                        'apk_sha256': None,
+                                                        'apk_path': '/system/priv-app/Settings/Settings.apk'})
+        self.assertEqual(got['app.revanced.android.gms']['apk_path'],
+                         '/data/app/~~Ef3==/app.revanced.android.gms-Gh4==/base.apk')
+        with self.assertRaisesRegex(ValueError, "package:<path>=<name> versionCode:<n>.*got 'package:a.b'"):
             devices.parse_packages('package:a.b\n')
 
     def test_online_states_logs_once_per_change(self):

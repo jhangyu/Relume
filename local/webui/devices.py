@@ -24,7 +24,7 @@ APP_ERROR_CODES = frozenset(ERROR_CODES.values()) | {'HASH_MISMATCH', 'SIGNER_MI
                                                     'USER_REJECTED', 'DEPENDENCY_FAILED'}
 APP_ONLY = 'device installs through the Relume app'
 _PROP = re.compile(r'^\[([^\]]+)\]: \[(.*)\]$')
-_PKG_LINE = re.compile(r'^package:(\S+) versionCode:(\d+)$')
+_PKG_LINE = re.compile(r'^package:(\S+)=([^=\s]+) versionCode:(\d+)$')
 
 
 def parse_devices(text):
@@ -41,30 +41,22 @@ def parse_getprop(text):
 
 
 def parse_packages(text):
-    """`pm list packages --show-versioncode` -> {package: {version_code, version_name: None, signer_sha256: None,
-    apk_sha256: None}}."""
+    """`pm list packages -f --show-versioncode` -> {package: {version_code, version_name: None, signer_sha256: None,
+    apk_sha256: None, apk_path}}. The path is not validated here (system apps have `@` in theirs)."""
     out = {}
     for line in text.splitlines():
         if not line.startswith('package:'):
             continue
         m = _PKG_LINE.match(line.strip())
         if m is None:
-            raise ValueError(f'pm list packages: expected "package:<name> versionCode:<n>", got {line!r}')
-        out[m[1]] = {'version_code': int(m[2]), 'version_name': None, 'signer_sha256': None, 'apk_sha256': None}
+            raise ValueError(f'pm list packages: expected "package:<path>=<name> versionCode:<n>", got {line!r}')
+        out[m[2]] = {'version_code': int(m[3]), 'version_name': None, 'signer_sha256': None, 'apk_sha256': None,
+                     'apk_path': m[1]}
     return out
 
 
-APK_PATH = re.compile(r'package:(/[A-Za-z0-9._~=+/-]+\.apk)\Z')   # also the guard: the path goes back to a device shell
+APK_PATH = re.compile(r'/[A-Za-z0-9._~=+/-]+\.apk')   # used with fullmatch: the guard, the path goes back to a device shell
 SHA256SUM = re.compile(r'([0-9a-f]{64})\s')
-
-
-def parse_pm_path(text):
-    """`pm path <pkg>` -> the base APK path (the first package: line, the file Android reports as sourceDir)."""
-    line = next((x.strip() for x in text.splitlines() if x.startswith('package:')), '')
-    m = APK_PATH.match(line)
-    if m is None:
-        raise ValueError(f'expected "package:/<path>.apk", got {line!r}')
-    return m[1]
 
 
 def parse_sha256sum(text):
