@@ -20,8 +20,10 @@ def have(*pkgs, version_code=1):
     return {p: {'version_code': version_code, 'version_name': None, 'signer_sha256': None} for p in pkgs}
 
 
-def inst(build_job_id, version_code=1):
-    return {'build_job_id': build_job_id, 'version_code': version_code}
+def inst(build_job_id, version_code=1, version_name='19.47.53', patch_version='v1'):
+    """An install record; the defaults equal art()'s versions."""
+    return {'build_job_id': build_job_id, 'version_code': version_code, 'version_name': version_name,
+            'patch_version': patch_version}
 
 
 def seams(tc, deps=None, assigned=None, infos=None, latest=None):
@@ -48,11 +50,36 @@ class PlanTest(helpers.DataTestCase):
     def kinds(self, steps):
         return [(s['kind'], s['ref_id'], s['action'], s['reason']) for s in steps]
 
-    def test_plan_d7_build_job(self):
-        steps = ota.plan(self.items()[:1], {1: art(1, 5)}, {1: []}, [], {1: inst(5)}, {}, have(YT))
-        self.assertEqual([s['action'] for s in steps], ['up_to_date'])
-        steps = ota.plan(self.items()[:1], {1: art(1, 6)}, {1: []}, [], {1: inst(5)}, {}, have(YT))
-        self.assertEqual((steps[0]['action'], steps[0]['reason']), ('install', 'new build'))
+    def verdict(self, artifact, installed, present):
+        steps = ota.plan(self.items()[:1], {1: artifact}, {1: []}, [], {1: installed}, {}, present)
+        return steps[0]['action'], steps[0]['reason']
+
+    def test_same_job_is_up_to_date(self):
+        self.assertEqual(self.verdict(art(1, 5), inst(5), have(YT))[0], 'up_to_date')
+
+    def test_same_versions_new_sha_is_up_to_date(self):
+        self.assertEqual(self.verdict(art(1, 6), inst(5), have(YT))[0], 'up_to_date')
+
+    def test_version_code_bump_is_new_build(self):
+        self.assertEqual(self.verdict(dict(art(1, 6), version_code=2), inst(5), have(YT)), ('install', 'new build'))
+
+    def test_version_name_change_is_new_build(self):
+        self.assertEqual(self.verdict(dict(art(1, 6), version_name='19.48.0'), inst(5), have(YT)),
+                         ('install', 'new build'))
+
+    def test_patches_version_bump_is_new_build(self):
+        self.assertEqual(self.verdict(dict(art(1, 6), patches_version='v2'), inst(5), have(YT)),
+                         ('install', 'new build'))
+
+    def test_higher_reported_code_is_changed_on_phone(self):
+        self.assertEqual(self.verdict(art(1, 6), inst(5, 1), have(YT, version_code=2)), ('install', 'changed on phone'))
+
+    def test_signer_differs_is_changed_on_phone(self):
+        def reported(signer):
+            return {YT: {'version_code': 1, 'version_name': None, 'signer_sha256': signer}}
+        self.assertEqual(self.verdict(art(1, 6), inst(5), reported('cc')), ('install', 'changed on phone'))
+        self.assertEqual(self.verdict(art(1, 6), inst(5), reported(None))[0], 'up_to_date')
+        self.assertEqual(self.verdict(art(1, 6), inst(5), reported('aa'))[0], 'up_to_date')
 
     def test_plan_changed_on_phone(self):
         one = self.items()[:1]

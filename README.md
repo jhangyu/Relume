@@ -361,7 +361,7 @@ Tap the account button at the top right of a tab.
 |---|---|
 | `Server` | `Server URL` (saving a new one signs this phone out) and `Connection` with the server version. |
 | `Account` | `Sign out and forget token`. Revoke the token itself on the server. |
-| `Background` | `Check for new builds`: `Off`, `1 h`, `6 h` or `24 h`. The phone checks in the background and starts installing new builds. `Notifications` shows whether they are allowed (`Allow`). `Last check` shows the last result. |
+| `Background` | `Check for new builds`: `Off`, `1 h`, `6 h` or `24 h`. The phone checks in the background and starts installing a build when its app version or patches version differs from what the phone has (a re-patch with the same versions does not trigger an install). `Notifications` shows whether they are allowed (`Allow`). `Last check` shows the last result. |
 | `Storage` | `Clean up` deletes builds of apps that are not enabled and unused download cache on the server, after a confirmation dialog. |
 | `This device` | The name, model and Android version the server has for this phone. |
 | `About` | `App version`. |

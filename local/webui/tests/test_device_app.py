@@ -4,8 +4,8 @@ from unittest import mock
 from webui import build, db, market, ota, projects
 from webui.server import HttpError
 from webui.tests import helpers
-from webui.tests.device_helpers import (add_app_device, add_catalog_item, add_device, add_job, add_project, assign,
-                                        assign_projects, pinfo)
+from webui.tests.device_helpers import (add_app_device, add_build, add_catalog_item, add_device, add_job, add_project,
+                                        assign, assign_projects, pinfo)
 
 YT, GMS = 'com.google.android.youtube', 'app.revanced.android.gms'
 SIGNER = 'ab' * 32
@@ -142,10 +142,7 @@ class AppTest(helpers.DataTestCase):
                            r['result'], r['error_code']) for r in rows],
                          [(None, self.me, 'item', 5, None, 1547, 'installed', None),
                           (None, self.me, 'project', None, '7.2.1', 255070218, 'failed', 'USER_REJECTED')])
-        with db.tx() as c:   # the receipt's build: its patch version reaches the install record (decision 14)
-            c.execute("INSERT INTO jobs(id,kind,status,trigger,target,options,created_at) "
-                      "VALUES (5,'build','success','manual','{}','{}','now')")
-            c.execute("INSERT INTO build_jobs(job_id, item_id, patches_version) VALUES (5, 1, 'v1')")
+        # the receipt stores the build's patch version itself (decision 14): no build_jobs row is needed
         body = self.call(ota.sync, sync_body([pkg(YT, 1547)]))[1]   # the companion syncs right after its receipts
         self.assertEqual(body['device']['assignments'][0]['installed'],
                          {'version_name': '19.47.53', 'build_job_id': 5, 'patch_version': 'v1'})
@@ -173,6 +170,61 @@ class AppTest(helpers.DataTestCase):
         self.assertEqual(synced(other), ('install', None))   # receipt names this build, the file differs
         action, inst = synced(hashless)                   # released companion: receipt rule, patch from build_jobs
         self.assertEqual((action, inst['patch_version']), ('up_to_date', 'v1'))
+
+    def ota_rows(self):
+        return db.conn().execute('SELECT * FROM ota_installs WHERE device_id = ? ORDER BY id', (self.me,)).fetchall()
+
+    def synced(self, p):
+        body = self.call(ota.sync, sync_body([p]))[1]
+        return body['plan']['steps'][0]['action'], body['device']['assignments'][0]['installed']
+
+    def test_hash_match_with_older_record_is_up_to_date(self):
+        assign(self.me, 1)
+        _, a1 = add_build(1, YT, self.apk_path(), 'aa' * 32, version_code=6, version_name='19.0')
+        self.call(ota.post_install, {'kind': 'item', 'ref_id': 1, 'artifact_id': a1, 'result': 'installed'})
+        j2, _ = add_build(1, YT, self.apk_path(), 'cd' * 32)
+        action, inst = self.synced(dict(pkg(YT, 7), apk_sha256='cd' * 32))
+        self.assertEqual((action, inst['build_job_id'], inst['version_name']), ('up_to_date', j2, '20.1'))
+
+    def test_hash_match_is_remembered_after_republish(self):
+        """Trap 2: no receipt; the published file changes and retention deletes the artifact row of the build held."""
+        assign(self.me, 1)
+        j1, _ = add_build(1, YT, self.apk_path(), 'cd' * 32)
+        held = dict(pkg(YT, 7), apk_sha256='cd' * 32)
+        self.assertEqual(self.synced(held)[0], 'up_to_date')
+        self.assertEqual([(r['build_job_id'], r['result'], r['job_id']) for r in self.ota_rows()],
+                         [(j1, 'up_to_date', None)])
+        add_build(1, YT, self.apk_path(), 'ee' * 32)
+        with db.tx() as c:
+            c.execute('DELETE FROM artifacts WHERE job_id = ?', (j1,))
+        action, inst = self.synced(held)
+        self.assertEqual((action, inst['build_job_id']), ('up_to_date', j1))
+        self.assertEqual(self.synced(held)[0], 'up_to_date')
+        self.assertEqual(len(self.ota_rows()), 1)
+
+    def test_hashless_and_legacy_syncs_write_no_install_row(self):
+        assign(self.me, 1)
+        add_build(1, YT, self.apk_path(), 'cd' * 32)
+        self.synced(pkg(YT, 7))
+        self.assertEqual(len(self.ota_rows()), 0)
+        with db.tx() as c:
+            c.execute('UPDATE devices SET device_uid = NULL WHERE id = ?', (self.me,))
+        body = sync_body([dict(pkg(YT, 7), apk_sha256='cd' * 32)])
+        del body['device']['device_uid']
+        self.call(ota.sync, body)
+        self.assertEqual(len(self.ota_rows()), 0)
+
+    def test_patch_version_survives_build_job_purge(self):
+        """Trap 3: the record keeps the patches version after jobs._cleanup deletes the build_jobs row."""
+        assign(self.me, 1)
+        j1, a1 = add_build(1, YT, self.apk_path(), 'cd' * 32, patches_version='v1')
+        self.call(ota.post_install, {'kind': 'item', 'ref_id': 1, 'artifact_id': a1, 'result': 'installed'})
+        add_build(1, YT, self.apk_path(), 'ee' * 32, patches_version='v1')
+        with db.tx() as c:
+            c.execute('DELETE FROM artifacts WHERE job_id = ?', (j1,))
+            c.execute('DELETE FROM build_jobs WHERE job_id = ?', (j1,))
+        action, inst = self.synced(pkg(YT, 7))
+        self.assertEqual((action, inst['build_job_id'], inst['patch_version']), ('up_to_date', j1, 'v1'))
 
     def test_renamed_package_uses_artifact_package(self):
         """A package-rename patch: the phone has the artifact's package, not the source item.package."""

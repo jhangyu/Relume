@@ -14,7 +14,7 @@ Server paths are relative to `local/webui/`. Kotlin paths are relative to
 
 1. **Native app** (Kotlin + Jetpack Compose, minSdk 29): log in to the Relume server with a per-device token, manage
    apps (Build/Update switches, check one app, build one app, follow job logs), report the phone's installed versions,
-   and download + verify + install builds through Android `PackageInstaller` (no ADB). When a new build is found it
+   and download + verify + install builds through Android `PackageInstaller` (no ADB). When a build with another app or patches version is found it
    runs the whole install flow in the background; Android shows its confirmation prompt when it requires one.
 2. **Mobile web**: the existing web UI gets a portrait phone layer (360–412 px) and a PWA manifest. The PWA can
    download an APK (the browser hands it to the system installer). HTTPS for PWA install comes from the user's
@@ -37,7 +37,7 @@ Android UI tests and screenshots; a global job-status push stream; per-device no
 | 5 | No self-update through the server: the user installs and updates the app by hand from this repo's GitHub release | §11.2 |
 | 6 | PWA HTTPS from the user's reverse proxy, no server/code work for TLS | §6 |
 | 7 | Followed-project signer accept is also allowed from the app | §4.3, §9.3 |
-| 8 | Background: new build found → app runs download, verify, PackageInstaller session in the background; prompt via notification | §9 |
+| 8 | Background: build with another app or patches version found → app runs download, verify, PackageInstaller session in the background; prompt via notification | §9 |
 | 9 | Full suite ≤ 90 s, reason written in a project `CLAUDE.md` | §12 |
 | 10 | `tests/test_core_jobs.py` sleep rewrite is one round-1 slice | §12.4 |
 | 11 | Release is signed with the committed `src/keystore/lspatch-signing.p12`; CI uses no GitHub secret | §11.2, §11.3 |
@@ -176,10 +176,12 @@ download: null | {url, file_name, size, sha256, signer_sha256, version_code, ver
 - `present` becomes `{package: {version_code, version_name, signer_sha256}}` or `None` (unknown, as today).
 - `last_installs` reads `ota_installs.at` and `version_code`, no JOIN on `jobs` (app rows have `job_id NULL`).
 - Item rule in `plan()`: (1) no artifact → `error NO_MATCHING_ARTIFACT`; (2) package not present → install `missing on
-  phone`; (3) no install record or record `build_job_id` ≠ newest artifact `job_id` → install `new build`;
-  (4) new: reported `version_code` ≠ recorded install `version_code` → install `changed on phone`; (5) up_to_date.
-  Build-job id stays the truth (patched builds keep the upstream versionCode when only patches change); rule 4 is a
-  drift check.
+  phone`; (3) no install record, or record `build_job_id` ≠ newest artifact `job_id` AND any of `version_code`,
+  `version_name`, patches version differs from the artifact → install `new build`; (4) reported `version_code` ≠
+  recorded install `version_code`, or reported signer ≠ artifact signer → install `changed on phone`; (5) up_to_date.
+  A sha256 change alone (a re-patch with the same app and patches versions) never triggers install; the patches
+  version is stored on the `ota_installs` row (patched builds keep the upstream versionCode when only patches change);
+  rule 4 is a drift check.
 - `_present` uses `adb shell pm list packages --show-versioncode`; `devices.parse_packages` returns
   `{package: {version_code, version_name: None, signer_sha256: None}}`; the OTA job writes it into `device_packages`.
 - `_device_view` passes `device_packages` rows as `present` and adds `installed_reported`.

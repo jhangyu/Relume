@@ -1,5 +1,6 @@
 package io.github.jhangyu.relume.install
 
+import io.github.jhangyu.relume.api.Download
 import io.github.jhangyu.relume.api.InstallPlan
 import io.github.jhangyu.relume.api.InstallReceipt
 import io.github.jhangyu.relume.api.PlanAction
@@ -98,7 +99,7 @@ data class RunState(
     /** A requested run that waits for step [QueuedStart.after] to end (its open system session or its pending worker download). */
     val queued: QueuedStart? = null,
     /**
-     * Builds the user declined in a background run, by app ([seenKey]) to the declined download sha256; carried into
+     * Builds the user declined in a background run, by app ([seenKey]) to the [declineKey] of the declined download; carried into
      * each new run like [outbox]. See [InstallRun.declined].
      */
     val declined: Map<String, String> = emptyMap(),
@@ -190,19 +191,19 @@ object InstallRun {
     }
 
     /**
-     * Builds the user declined in a background run, per app ([seenKey]) to the download sha256: [run]'s carried record
+     * Builds the user declined in a background run, per app ([seenKey]) to the [declineKey] of the download: [run]'s carried record
      * plus its steps the user was asked for and cancelled ([StepRun.userDeclined]: system confirmation cancel, sheet
      * Cancel while the confirmation was up, cancelled signature uninstall) or that wait for a signature uninstall the user
      * has not accepted (`needs_uninstall`). Steps a sheet Cancel ended before they were shown are no decline.
      * The background check does not plan that same build again ([io.github.jhangyu.relume.sync.BackgroundStart]); a
-     * newer build (another sha256) is planned, and a UI request for the app clears it ([create]). Failures that are not
+     * newer build (other versions, not a re-patch with another sha256) is planned, and a UI request for the app clears it ([create]). Failures that are not
      * the user's decline (download, verify, install errors) are not recorded and are retried at the next check.
      */
     fun declined(run: RunState?): Map<String, String> {
         if (run == null) return emptyMap()
         val now = if (run.origin != Origin.BACKGROUND) emptyList() else run.steps.mapNotNull { s ->
             val d = s.step.download
-            if (d != null && (s.state == StepState.NEEDS_UNINSTALL || s.userDeclined)) seenKey(s.step.kind, s.step.refId) to d.sha256 else null
+            if (d != null && (s.state == StepState.NEEDS_UNINSTALL || s.userDeclined)) seenKey(s.step.kind, s.step.refId) to declineKey(d) else null
         }
         return run.declined + now
     }
@@ -381,3 +382,6 @@ object InstallRun {
         return if (next == this) this else next.propagate()
     }
 }
+
+/** What a decline remembers: the versions of a build, not its sha256, so a re-patch of the same versions is not asked again. */
+fun declineKey(d: Download) = listOf(d.versionCode, d.versionName, d.patchVersion, d.tag).joinToString("|")

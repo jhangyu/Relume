@@ -40,11 +40,12 @@ def assigned_item_ids(device_id):
 
 def last_installs(device_id):
     """-> (items, projects): newest installed/up_to_date receipt per item id and per project id (history: decision 15
-    makes install_records the deciding record). Item records carry the build's patch version (decision 14)."""
+    makes install_records the deciding record). Item records carry the build's patch version (decision 14), stored on
+    the row: the build job it names may be purged."""
     items, projects = {}, {}
     rows = db.conn().execute(
-        "SELECT o.kind, o.ref_id, o.build_job_id, o.upstream_tag, o.version_name, o.version_code, b.patches_version "
-        "FROM ota_installs o LEFT JOIN build_jobs b ON b.job_id = o.build_job_id "
+        "SELECT o.kind, o.ref_id, o.build_job_id, o.upstream_tag, o.version_name, o.version_code, o.patches_version "
+        "FROM ota_installs o "
         "WHERE o.device_id = ? AND o.result IN ('installed','up_to_date') ORDER BY o.id", (device_id,))
     for r in rows:  # oldest first: newer rows overwrite
         if r['kind'] == 'item':
@@ -146,10 +147,22 @@ def _project_action(p, prev, has):
     return 'up_to_date', 'same release installed'
 
 
-def _drifted(present, pkg, last):
-    """Rule 4: the phone reports another versionCode than the recorded install. A record without a versionCode
-    (artifact built without one) cannot drift."""
-    return present is not None and last['version_code'] is not None and present[pkg]['version_code'] != last['version_code']
+def _new_versions(last, a):
+    """No record, or a record of another build with another app or patches version. A rebuild that keeps all three
+    is not new for the phone: its file differs, what it runs does not."""
+    return last is None or (last['build_job_id'] != a['job_id'] and
+                            (last['version_code'], last['version_name'], last['patch_version'])
+                            != (a['version_code'], a['version_name'], a['patches_version']))
+
+
+def _drifted(present, pkg, last, a):
+    """Rule 4: the phone reports another versionCode than the recorded install, or another signer than the artifact
+    (an ADB phone reports no signer). A record without a versionCode (artifact built without one) cannot drift on it."""
+    if present is None:
+        return False
+    signer = present[pkg]['signer_sha256']
+    return ((last['version_code'] is not None and present[pkg]['version_code'] != last['version_code'])
+            or bool(signer and a['signer_sha256'] and signer != a['signer_sha256']))
 
 
 def plan(items, artifacts, deps_by_item, direct, item_installs, proj_installs, present):
@@ -183,16 +196,16 @@ def plan(items, artifacts, deps_by_item, direct, item_installs, proj_installs, p
         last = item_installs.get(iid)
         if not has(pkg):
             action, reason = 'install', 'missing on phone'
-        elif last is None or last['build_job_id'] != a['job_id']:
+        elif _new_versions(last, a):
             action, reason = 'install', 'new build'
-        elif _drifted(present, pkg, last):
+        elif _drifted(present, pkg, last, a):
             action, reason = 'install', 'changed on phone'
         else:
             action, reason = 'up_to_date', 'same build installed'
         if action == 'install':
             for d in deps:
                 add(d, True)
-        steps.append(dict(step, action=action, reason=reason))
+        steps.append(dict(step, action=action, reason=reason, installed=last))
     for p in direct:
         add(p, False)
     return steps
@@ -438,10 +451,25 @@ def _me_json(dev):
     return {'device': _device_view(dev, {}), 'tracked_packages': tracked_packages()}
 
 
+def _remember_hash_matches(device_id, v, present):
+    """Stores a hash match as a history row: the published file changes at the next re-patch, and retention deletes the
+    artifact row, so this sync is the last chance to know which build the phone holds."""
+    recorded = last_installs(device_id)[0]
+    rows = [(device_id, iid, a['job_id'], a['package'], a['version_name'], a['version_code'], a['patches_version'])
+            for iid, a in v['arts'].items()
+            if a and a['package'] and _reported_hash(present, a['package']) == a['sha256']
+            and recorded.get(iid, {}).get('build_job_id') != a['job_id']]
+    with db.tx() as c:
+        c.executemany("INSERT INTO ota_installs(job_id,device_id,kind,ref_id,build_job_id,package,version_name,"
+                      "version_code,patches_version,result) VALUES (NULL,?,'item',?,?,?,?,?,?,'up_to_date')", rows)
+
+
 def _sync_json(dev):
     """GET /api/me body plus the full plan, both from one _plan_for (an app row plans on its report)."""
     reported = reported_packages(dev['id'])
     v = _plan_for(dev, None, None, reported)
+    if not devices.is_legacy(dev):
+        _remember_hash_matches(dev['id'], v, reported)
     return {'device': _view(dev, {}, v, reported), 'tracked_packages': tracked_packages(),
             'plan': _app_plan_from(v, reported)}
 
@@ -605,7 +633,7 @@ def me_plan(req):
 
 
 def _receipt_target(dev, b):
-    """-> (build_job_id, upstream_tag, package, version_name, version_code) of the install the receipt is for;
+    """-> (build_job_id, upstream_tag, package, version_name, version_code, patches_version) of the install the receipt is for;
     409 stale plan when the key is not the current download."""
     ref = b.get('ref_id')
     if not is_int(ref):
@@ -622,7 +650,7 @@ def _receipt_target(dev, b):
         a = build.latest_artifact(ref, first_abi(dev))
         if a is None or a['id'] != aid or not a['package']:  # no package = never offered for download
             raise HttpError(409, 'stale plan')
-        return a['job_id'], None, a['package'], a['version_name'], a['version_code']
+        return a['job_id'], None, a['package'], a['version_name'], a['version_code'], a['patches_version']
     tag = b.get('tag')
     if not isinstance(tag, str):
         _bad('tag', 'a string', tag)
@@ -631,7 +659,7 @@ def _receipt_target(dev, b):
         raise HttpError(400, f'project {ref} not found')
     if p['tag'] != tag or p['path'] is None:
         raise HttpError(409, 'stale plan')
-    return None, tag, p['package'], p['version_name'], p['version_code']
+    return None, tag, p['package'], p['version_name'], p['version_code'], None
 
 
 def post_install(req):
@@ -649,12 +677,12 @@ def post_install(req):
         _bad('error_text', 'a string or null', text)
     if devices.is_legacy(dev):   # install-only client: the install happened, nothing about it is kept
         return 200, {'ok': True}
-    job_id, tag, pkg, vname, vcode = _receipt_target(dev, b)
+    job_id, tag, pkg, vname, vcode, pversion = _receipt_target(dev, b)
     now = db.utcnow()
     with db.tx() as c:
         c.execute('INSERT INTO ota_installs(job_id,device_id,kind,ref_id,build_job_id,upstream_tag,package,version_name,'
-                  'version_code,result,error_code,error_text,at) VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?)',
-                  (dev['id'], b['kind'], b['ref_id'], job_id, tag, pkg, vname, vcode, b['result'], code,
+                  'version_code,patches_version,result,error_code,error_text,at) VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                  (dev['id'], b['kind'], b['ref_id'], job_id, tag, pkg, vname, vcode, pversion, b['result'], code,
                    text[-ERROR_TEXT_MAX:] if text else None, now))
     return 200, {'ok': True}
 
@@ -715,11 +743,12 @@ def _record(job, device_id, step, result, error_code=None, error_text=None, a=No
     proj = step['kind'] == 'project'
     with db.tx() as c:
         c.execute('INSERT INTO ota_installs(job_id,device_id,kind,ref_id,build_job_id,upstream_tag,package,version_name,'
-                  'version_code,result,error_code,error_text) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+                  'version_code,patches_version,result,error_code,error_text) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
                   (job.id, device_id, step['kind'], step['ref_id'], a and a['job_id'],
                    step['tag'] if proj else None, step['package'] or '',
                    step['version_name'] if proj else a and a['version_name'],
-                   step['version_code'] if proj else a and a['version_code'], result, error_code,
+                   step['version_code'] if proj else a and a['version_code'], a and a['patches_version'], result,
+                   error_code,
                    error_text[-ERROR_TEXT_MAX:] if error_text else None))
     return result in ('installed', 'up_to_date')
 
@@ -799,7 +828,10 @@ def _run_item(job, dev, step, abi, log, failed):
     if step['action'] == 'error':
         return _record(job, dev['id'], step, 'failed', step['reason'].split(':')[0], step['reason'])
     if step['action'] == 'up_to_date':
-        return _record(job, dev['id'], step, 'up_to_date', a=step['artifact'])
+        held = step['installed']   # what the phone holds, not the newest build: a re-patch with the same versions is no install
+        return _record(job, dev['id'], step, 'up_to_date',
+                       a={'job_id': held['build_job_id'], 'version_name': held['version_name'],
+                          'version_code': held['version_code'], 'patches_version': held['patch_version']})
     # ponytail: no fd pinning. A file deleted by retention between this read and adb's open fails ADB_ERROR and
     # the next OTA retries.
     a, code = _reread(lambda: build.latest_artifact(step['ref_id'], abi),

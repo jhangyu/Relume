@@ -14,6 +14,7 @@ import io.github.jhangyu.relume.install.StepOutcome
 import io.github.jhangyu.relume.install.StepState
 import io.github.jhangyu.relume.install.VerifyRules
 import io.github.jhangyu.relume.install.atTargetOutcome
+import io.github.jhangyu.relume.install.declineKey
 import io.github.jhangyu.relume.install.download
 import io.github.jhangyu.relume.install.plan
 import io.github.jhangyu.relume.install.seenKey
@@ -123,8 +124,11 @@ class BackgroundStartTest {
         // the record outlives the run that holds the declined steps
         val next = InstallRun.create(plan(c), Origin.BACKGROUND, ended)
         assertEquals(InstallRun.declined(ended), InstallRun.declined(next))
+        // a re-patch of A at the same versions (another sha256) is not asked again
+        val repatched = a.copy(download = checkNotNull(a.download).copy(sha256 = "ef".repeat(32)))
+        assertEquals(listOf(3), installs(BackgroundStart.backgroundPlan(plan(repatched, b, c), InstallRun.declined(next))))
         // a newer build of A is asked
-        val newer = a.copy(download = checkNotNull(a.download).copy(sha256 = "ef".repeat(32)))
+        val newer = a.copy(download = checkNotNull(a.download).copy(versionCode = checkNotNull(a.download).versionCode + 1))
         assertEquals(listOf(1, 3), installs(BackgroundStart.backgroundPlan(plan(newer, b, c), InstallRun.declined(next))))
         // a sheet Cancel of a background run declines only the confirmation that was up, not the steps never shown
         val shown = checkNotNull(InstallRun.move(InstallRun.create(plan(a, b, c), Origin.BACKGROUND, null), 0, setOf(StepState.PENDING), StepState.AWAITING_USER, 9))
@@ -139,7 +143,7 @@ class BackgroundStartTest {
         // a declined project leaves out the items that need it
         val p = step(StepKind.PROJECT, 4)
         val needsP = step(StepKind.ITEM, 5, needs = listOf(4))
-        val declinedP = mapOf(seenKey(StepKind.PROJECT, 4) to checkNotNull(p.download).sha256)
+        val declinedP = mapOf(seenKey(StepKind.PROJECT, 4) to declineKey(checkNotNull(p.download)))
         assertNull(BackgroundStart.backgroundPlan(plan(p, needsP), declinedP))
     }
 

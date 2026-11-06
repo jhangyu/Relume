@@ -104,6 +104,21 @@ def assign_projects(device_id, *project_ids):
                       [(device_id, p) for p in project_ids])
 
 
+def add_build(item_id, package, apk_path, sha256, version_code=7, version_name='20.1', patches_version='v1',
+              signer_sha256='ab' * 32):
+    """A successful build job with its build_jobs row and one published universal artifact -> (job_id, artifact_id)."""
+    jid = add_job(kind='build', target={'item_id': item_id}, status='success')
+    with db.tx() as c:
+        c.execute('INSERT INTO build_jobs(job_id, item_id, patches_version) VALUES (?, ?, ?)',
+                  (jid, item_id, patches_version))
+        aid = c.execute("INSERT INTO artifacts(job_id,item_id,variant,abi,package,version_name,version_code,"
+                        "patches_version,signer_sha256,path,size,sha256,created_at) VALUES "
+                        "(?,?,'universal','universal',?,?,?,?,?,?,3,?,'now')",
+                        (jid, item_id, package, version_name, version_code, patches_version, signer_sha256, apk_path,
+                         sha256)).lastrowid
+    return jid, aid
+
+
 def pinfo(project_id=1, package='app.revanced.android.gms', tag='7.2.1', path='/data/upstream/23/7.2.1/microg.apk',
           signer_alert=None, upstream_id=23, abi='universal', display_name='MicroG RE'):
     """A projects.project_info() result (spec follow-project 4.2); tag=None means not downloaded."""

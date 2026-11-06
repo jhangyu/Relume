@@ -292,6 +292,24 @@ class OtaJobTest(helpers.DataTestCase):
         self.assertTrue(err.startswith(f'adb package list failed: sha256sum {YT}: expected an APK path'), err)
         self.assertEqual(hashed, [])
 
+    def test_same_version_republish_keeps_the_held_build_record(self):
+        """Trap 1: the phone holds job 5, job 6 has the same versions. Each OTA run installs nothing, and the
+        up_to_date row names the held build, not the published one (else the next plan would drop it and install)."""
+        held_job = add_job(target={'device_id': self.d}, status='success')
+        with db.tx() as c:
+            c.execute("INSERT INTO ota_installs(job_id,device_id,kind,ref_id,build_job_id,package,version_name,"
+                      "version_code,patches_version,result) VALUES (?,?,'item',1,5,?,'19.47.53',1,'v1','installed')",
+                      (held_job, self.d, YT))
+        apk = '/data/app/~~Zx9==/com.google.android.youtube-Yq1==/base.apk'
+        self.fa.rule('sha256sum', out=f"{'dd' * 32}  {apk}\n")   # the old file, not the published bb
+        self.online(pm=f'package:{apk}={YT} versionCode:1\n')
+        for _ in range(2):
+            jid, err = self.run_job({'device_id': self.d, 'item_ids': [1]})
+            self.assertIsNone(err)
+            self.assertEqual(self.adb_cmds('install'), [])
+            rows = db.conn().execute('SELECT build_job_id, result FROM ota_installs WHERE job_id = ?', (jid,)).fetchall()
+            self.assertEqual([(r['build_job_id'], r['result']) for r in rows], [(5, 'up_to_date')])
+
     def test_signer_blocked_dependency_fails_item(self):
         self.infos[1] = pinfo(path=str(self.gms), signer_alert='cd' * 32)
         self.online()
