@@ -1,7 +1,9 @@
 # The upstream CloudflareBypassForScraping Dockerfile at the commit pinned in docker-compose.yml (named context "src"), verbatim except:
 # cloakbrowser is pinned (CLOAKBROWSER_PIN). Upstream lists it unpinned, and 0.7.0 requires a license key in ensure_binary(), which a non-interactive build cannot claim. Not named CLOAKBROWSER_VERSION: cloakbrowser reads that env var as a browser pin.
+# playwright is pinned too (PLAYWRIGHT_PIN): cloakbrowser 0.6.5 requires playwright>=1.53 unbounded and imports playwright._impl._js_handle, which 1.65.2 no longer has.
 FROM ubuntu:rolling
 ARG CLOAKBROWSER_PIN=0.6.5
+ARG PLAYWRIGHT_PIN=1.64.0
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV CLOAKBROWSER_AUTO_UPDATE=false
@@ -51,7 +53,7 @@ RUN python3 -m venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
 
 RUN pip install --upgrade pip
-RUN pip install --no-cache-dir -r server_requirements.txt "cloakbrowser==$CLOAKBROWSER_PIN"
+RUN pip install --no-cache-dir -r server_requirements.txt "cloakbrowser==$CLOAKBROWSER_PIN" "playwright==$PLAYWRIGHT_PIN"
 
 # Download the patched stealth Chromium into the ubuntu user's cache
 RUN python3 -c "import cloakbrowser; print(cloakbrowser.ensure_binary())"
