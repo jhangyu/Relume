@@ -412,7 +412,7 @@ def _guard_morphe(job, item_id, awork, result, sha):
 
 def _attempt(job, item_id, inp, awork, googleplay, auto, sha, log):
     """One isolated runner run in awork (design variant §1). None when the build was published or cancelled, else
-    _Rejected. Timeout, guard rules R0/R2 and a rejected artifact end the job here through _fail."""
+    _Rejected. Timeout, guard rule R0 (and R1/R2 without an automatic variant) and a rejected artifact end the job here through _fail."""
     want = inp["version"]["value"]
     cache = _apk_cache(inp, auto)
     _write_job_json(awork, job, inp, googleplay, auto, cache)
@@ -464,7 +464,7 @@ def _attempt(job, item_id, inp, awork, googleplay, auto, sha, log):
             log.line(f"[-] retention: {e.message}; build {job.id} stays published")
         _prune_cache(job, inp["package"], {n for _, n in cache}, log)
         return None
-    if not (used and verdict[0] == "nothing_applied"):   # R0, R2: not a verdict on the variant
+    if not used or verdict[0] == "result_missing":   # R0, or no automatic variant to swap: not a verdict on a variant
         _fail(job, item_id, "patch_items_failed", verdict[1])
     return _Rejected(True, "", verdict[1], used)
 
@@ -502,8 +502,8 @@ def _fail_exhausted(job, item_id, inp, tried, vname, last):
     way the last variant failed."""
     _refingerprint_if_latest(job, item_id, inp)
     _fail(job, item_id, "patch_items_failed",
-          f"Tried APKMirror variants {', '.join(map(str, tried))} of {vname}: the patches applied "
-          f"to none of them. Last: {last.rstrip('.')}. Set the app's APKMirror versionCode to pick one.")
+          f"Tried APKMirror variants {', '.join(map(str, tried))} of {vname}: none of them "
+          f"passed the patch guard. Last: {last.rstrip('.')}. Set the app's APKMirror versionCode to pick one.")
 
 
 def handler(job, log):

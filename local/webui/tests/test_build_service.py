@@ -682,13 +682,29 @@ class VariantLoopTest(BuildCase):
         self.assertEqual(used, ["101", "102", "103"])
         b = self.bj(job)
         self.assertEqual(b["fail_code"], "patch_items_failed")
-        self.assertTrue(b["fail_detail"].startswith("Tried APKMirror variants 101, 102, 103 of 1.0.0: the patches applied to none of them. "
+        self.assertTrue(b["fail_detail"].startswith("Tried APKMirror variants 101, 102, 103 of 1.0.0: none of them passed the patch guard. "
                                                     "Last: 0 of 1 patches applied (variant universal). First error: no fit for 103."), b["fail_detail"])
         with db.tx() as c:
             c.execute("UPDATE jobs SET status = 'failed' WHERE id = ?", (job.id,))
         self.assertFalse(self.needs_build())
         self.assertEqual(self.remembered(), [])
         self.assertFalse((self.data / "artifacts" / "1" / str(job.id)).exists())
+
+    def test_regression_on_a_variant_tries_the_next_one(self):
+        first, _, _ = self.build(patchable=[101])   # published: only "q" fails
+        with db.tx() as c:
+            c.execute("UPDATE jobs SET status = 'success' WHERE id = ?", (first.id,))
+            c.execute("DELETE FROM apkm_variant")
+        real = build._read_patch_result
+
+        def lite_regresses(awork, variant):   # attempt 1 also fails a patch the published build applies
+            r = real(awork, variant)
+            return dict(r, failed=r["failed"] + [("Lite", "no fit")]) if awork.name == "1" else r
+        with mock.patch.object(build, "_read_patch_result", lite_regresses):
+            job, err, used = self.build(patchable=[101, 102])
+        self.assertIsNone(err)
+        self.assertEqual(used, ["101", "102"])
+        self.assertEqual([r[3] for r in self.remembered()], [102])
 
     def test_patcher_refusing_every_variant_ends_as_patch_items_failed(self):
         job, err, used = self.build(codes=[101, 102], patchable=[], refuse=True)
