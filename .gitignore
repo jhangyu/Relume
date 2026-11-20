@@ -13,3 +13,4 @@ local/verify/
 scripts/tmp/
 tmp/
 android/.kotlin/
+/scratch/
