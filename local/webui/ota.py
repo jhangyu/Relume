@@ -936,6 +936,37 @@ def handle(job, log):
     _finish(job, dev['id'], outcome, outcome, 'ota.done', {'outcome': outcome})
 
 
+def install_ref(job, dev, kind, ref_id, log):
+    """App Manage build action on an ADB device: the scoped plan for one item or project, run like handle(), history rows
+    carry job.id. -> (None, 'installed'|'up_to_date') or (error_code, text) of the requested ref's ota_installs row."""
+    try:
+        present = _present(dev, job.cancel_event)
+    except PackageListFailed as e:
+        return 'ADB_ERROR', f'adb package list failed on {dev["name"]}: {e}'
+    steps = _plan_for(dev, [ref_id] if kind == 'item' else [], [ref_id] if kind == 'project' else [], present)['steps']
+    abis, failed = abis_of(dev), set()
+    for step in steps:
+        if job.cancel_event.is_set():
+            break
+        log.line(f"{step['kind']} {step['package']}: {step['action']} ({step['reason']})")
+        if step['kind'] == 'project':
+            _run_project(job, dev, step, abis, log, failed)
+        else:
+            _run_item(job, dev, step, first_abi(dev), log, failed)
+    try:
+        _present(dev)
+    except PackageListFailed as e:
+        log.line(f'adb package list failed after the install: {e}, the stored report keeps the pre-run list')
+    row = db.conn().execute('SELECT result, error_code, error_text FROM ota_installs WHERE job_id = ? AND kind = ? '
+                            'AND ref_id = ? ORDER BY id DESC LIMIT 1', (job.id, kind, ref_id)).fetchone()
+    if row is None:
+        why = 'cancelled' if job.cancel_event.is_set() else 'the plan has no step for it (not assigned, disabled or unknown)'
+        return 'ADB_ERROR', f'expected an install step for {kind} {ref_id} on {dev["name"]}, got none: {why}'
+    if row['result'] == 'failed':
+        return row['error_code'], row['error_text'] or row['error_code']
+    return None, row['result']
+
+
 def detail(job_id):
     c = db.conn()
     r = c.execute('SELECT * FROM ota_jobs WHERE job_id=?', (job_id,)).fetchone()

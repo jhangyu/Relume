@@ -1,0 +1,5 @@
+"""Fake adb for adb_pipe tests: prints argv and the byte count read from stdin."""
+import sys
+
+n = len(sys.stdin.buffer.read())
+sys.stdout.write(f"argv={' '.join(sys.argv[1:])} stdin={n}\n")

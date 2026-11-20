@@ -128,6 +128,13 @@ class PlayClient:
             return None
         return self._read_manifest(a["url"])
 
+    def delivery(self, code):
+        """{'url', 'splits': [{'name', 'url'}]} of version code; the URLs are signed, so never log them."""
+        a = self._ask(str(code), "delivery", code)
+        if not a.get("ok"):
+            raise VersionCodeError(f"Play has no delivery for {self.package} versionCode {code}: {a.get('error')}")
+        return {"url": a["url"], "splits": a.get("splits") or []}
+
     @staticmethod
     def _read_manifest(url):
         """Manifest of the APK at url through range reads (4 requests); the first answer's final URL is reused."""

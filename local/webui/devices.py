@@ -1,4 +1,5 @@
 """Device part: adb runner, mDNS browser, device manager and routes (spec device §2-§5)."""
+import json
 import os
 import re
 import signal
@@ -8,7 +9,7 @@ import subprocess
 import threading
 import time
 
-from . import db, projects, server
+from . import db, projects, server, settings
 from .server import HttpError, is_int, validate_host, validate_port
 
 ERROR_CODES = {
@@ -55,6 +56,112 @@ def parse_packages(text):
     return out
 
 
+_USER_PKG = re.compile(r'^package:(\S+) versionCode:(\d+)$')
+_DUMPSYS_PKG = re.compile(r'^\s*Package \[([^\]]+)\]')
+_VERSION_NAME = re.compile(r'^\s*versionName=(.*)$')
+_DISKSTATS_KEYS = ('Package Names', 'App Sizes', 'App Data Sizes', 'Cache Sizes')
+PRIMARY_KEY = 'appmanage_primary_device_id'   # same literal as appmanage_store.PRIMARY_KEY, not imported (import cycle)
+SIZE_REASON_MAX = 200
+INVENTORY_TIMEOUT = 120   # seconds for one inventory adb call (dumpsys output of a full phone is large)
+
+
+class InventoryFailed(Exception):
+    """adb could not list the user apps: no inventory is written."""
+
+
+def parse_user_packages(text):
+    """`pm list packages -3 --show-versioncode` -> {package: version_code}."""
+    out = {}
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        m = _USER_PKG.match(line.strip())
+        if m is None:
+            raise ValueError(f'pm list packages -3: expected "package:<name> versionCode:<n>", got {line!r}')
+        out[m[1]] = int(m[2])
+    return out
+
+
+def parse_version_names(text):
+    """`dumpsys package packages` -> {package: versionName} (first versionName of each `Package [x]` block)."""
+    out, pkg = {}, None
+    for line in text.splitlines():
+        m = _DUMPSYS_PKG.match(line)
+        if m:
+            pkg = m[1]
+            continue
+        m = _VERSION_NAME.match(line)
+        if m and pkg is not None:
+            out.setdefault(pkg, m[1].strip())
+    return out
+
+
+def _diskstats_array(text, key):
+    for line in text.splitlines():
+        if line.startswith(key + ': '):
+            try:
+                v = json.loads(line[len(key) + 2:])
+            except ValueError as e:
+                raise ValueError(f'expected a JSON array after "{key}: ", got {line[:200]!r}') from e
+            if not isinstance(v, list):
+                raise ValueError(f'expected a JSON array after "{key}: ", got {line[:200]!r}')
+            return v
+    raise ValueError(f'expected a "{key}: [...]" line, found none')
+
+
+def parse_diskstats(text):
+    """`dumpsys diskstats` (AOSP format) -> {package: (app, data, cache)}; ValueError on bad shape."""
+    names, apps, data, cache = (_diskstats_array(text, k) for k in _DISKSTATS_KEYS)
+    if not len(names) == len(apps) == len(data) == len(cache):
+        raise ValueError(f'expected equal array lengths, got names={len(names)} app={len(apps)} data={len(data)} '
+                         f'cache={len(cache)}')
+    sizes = (apps, data, cache)
+    if not all(isinstance(n, str) for n in names) or not all(
+            isinstance(v, int) and not isinstance(v, bool) and v >= 0 for arr in sizes for v in arr):
+        raise ValueError('expected package names as strings and sizes as integers >= 0')
+    return {n: (a, d, c) for n, a, d, c in zip(names, apps, data, cache)}
+
+
+def _shell_out(dev, args, what, cancel_event):
+    rc, out = adb(['shell'] + args, serial=address(dev), timeout=INVENTORY_TIMEOUT, cancel_event=cancel_event)
+    if rc != 0:
+        raise InventoryFailed(f'{what}: expected exit 0, got {rc} on {dev["name"]}: {last_line(out)}')
+    return out
+
+
+def app_inventory(dev, cancel_event=None):
+    """User apps of an ADB device -> {package: {label, version_code, version_name, app_bytes, data_bytes,
+    cache_bytes, size_reason, icon_sha256}}. Raises InventoryFailed / AdbTimeout when the app list cannot be read;
+    a missing diskstats only nulls the sizes."""
+    try:
+        codes = parse_user_packages(_shell_out(dev, ['pm', 'list', 'packages', '-3', '--show-versioncode'],
+                                               'pm list packages -3', cancel_event))
+    except ValueError as e:
+        raise InventoryFailed(f'{e} on {dev["name"]}') from e
+    names = parse_version_names(_shell_out(dev, ['dumpsys', 'package', 'packages'], 'dumpsys package packages',
+                                           cancel_event))
+    stats, why = {}, None
+    rc, out = adb(['shell', 'dumpsys', 'diskstats'], serial=address(dev), timeout=INVENTORY_TIMEOUT,
+                  cancel_event=cancel_event)
+    if rc != 0:
+        why = f'exit {rc}: {last_line(out)}'
+    else:
+        try:
+            stats = parse_diskstats(out)
+        except ValueError as e:
+            why = str(e)
+    apps = {}
+    for pkg, code in codes.items():
+        entry = {'label': None, 'version_code': code, 'version_name': names.get(pkg), 'icon_sha256': None}
+        if pkg in stats:
+            entry.update(zip(('app_bytes', 'data_bytes', 'cache_bytes'), stats[pkg]), size_reason=None)
+        else:
+            reason = f'dumpsys diskstats: {why or "package not listed"}'[:SIZE_REASON_MAX]
+            entry.update(app_bytes=None, data_bytes=None, cache_bytes=None, size_reason=reason)
+        apps[pkg] = entry
+    return apps
+
+
 APK_PATH = re.compile(r'/[A-Za-z0-9._~=+/-]+\.apk')   # used with fullmatch: the guard, the path goes back to a device shell
 SHA256SUM = re.compile(r'([0-9a-f]{64})\s')
 
@@ -78,6 +185,7 @@ def install_error(text):
 
 ADB = ['adb']
 _CRASH = ('cannot connect to daemon', 'daemon not running')
+FEED_CHUNK = 65536   # bytes per read of an adb_pipe source
 CANCEL_CHECK_S = 1   # a running adb command looks at its cancel_event this often
 _locks = {}
 _locks_guard = threading.Lock()
@@ -92,17 +200,40 @@ def _lock(serial):
         return _locks.setdefault(serial, threading.Lock())
 
 
-def _exec(argv, timeout, cancel_event):
+def _feed(src, fd, failure):
+    """Copy src (file-like .read) into the pipe fd, then close it; a read error goes to failure for the caller."""
     try:
-        p = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        with os.fdopen(fd, 'wb') as w:
+            while chunk := src.read(FEED_CHUNK):
+                w.write(chunk)
+    except BrokenPipeError:
+        pass   # adb exited before it read everything: its exit code and output carry the failure
+    except Exception as e:
+        failure.append(e)
+
+
+def _exec(argv, timeout, cancel_event, src=None):
+    stdin, feed_fd = subprocess.DEVNULL, None
+    if src is not None:
+        stdin, feed_fd = os.pipe()
+    try:
+        p = subprocess.Popen(argv, stdin=stdin, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                              text=True, errors='replace', start_new_session=True)
     except FileNotFoundError:
+        if src is not None:
+            os.close(stdin)
+            os.close(feed_fd)
         return 127, 'adb not found'
+    feeder, failure = None, []
+    if src is not None:
+        os.close(stdin)
+        feeder = threading.Thread(target=_feed, args=(src, feed_fd, failure), daemon=True)
+        feeder.start()
     deadline = time.monotonic() + timeout
     while True:
         try:
             out, _ = p.communicate(timeout=max(0, min(CANCEL_CHECK_S, deadline - time.monotonic())))
-            return p.returncode, out
+            break
         except subprocess.TimeoutExpired:
             if time.monotonic() > deadline or (cancel_event is not None and cancel_event.is_set()):
                 try:
@@ -111,6 +242,11 @@ def _exec(argv, timeout, cancel_event):
                     pass
                 p.communicate()
                 raise AdbTimeout(' '.join(argv[len(ADB):]))
+    if feeder is not None:
+        feeder.join()
+        if failure:
+            raise failure[0]
+    return p.returncode, out
 
 
 def adb(args, *, serial=None, timeout=60, cancel_event=None, log=None):
@@ -121,6 +257,18 @@ def adb(args, *, serial=None, timeout=60, cancel_event=None, log=None):
         if any(s in out for s in _CRASH):
             _exec(list(ADB) + ['start-server'], 60, None)
             rc, out = _exec(argv, timeout, cancel_event)
+    if log is not None:
+        for line in out.splitlines():
+            log.line('adb: ' + line)
+    return rc, out
+
+
+def adb_pipe(args, src, *, serial, timeout, cancel_event=None, log=None):
+    """adb with stdin streamed from src (file-like .read). Same per-serial lock and AdbTimeout as adb(); no crash retry
+    (src is consumed). A source read error is raised."""
+    argv = list(ADB) + ['-s', serial] + list(args)
+    with _lock(serial):
+        rc, out = _exec(argv, timeout, cancel_event, src)
     if log is not None:
         for line in out.splitlines():
             log.line('adb: ' + line)
@@ -476,6 +624,8 @@ def delete_device(req):
     with db.tx() as c:
         c.execute('DELETE FROM ota_installs WHERE device_id=?', (dev['id'],))
         c.execute('DELETE FROM devices WHERE id=?', (dev['id'],))
+        if settings.get(PRIMARY_KEY) == dev['id']:
+            settings.put(PRIMARY_KEY, None, c)
     return 200, {'deleted': dev['id']}
 
 

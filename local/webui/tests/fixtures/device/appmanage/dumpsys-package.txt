@@ -1,0 +1,13 @@
+Packages:
+  Package [com.google.android.youtube] (a1b2c3):
+    userId=10201
+    versionCode=1547053504 minSdk=26 targetSdk=35
+    versionName=19.47.53
+    flags=[ HAS_CODE ]
+  Package [app.revanced.android.gms] (d4e5f6):
+    userId=10202
+    versionCode=255070218 minSdk=24 targetSdk=34
+    versionName=0.3.1.4.250932
+  Package [org.example.plain] (070809):
+    userId=10203
+    versionCode=7 minSdk=21 targetSdk=33

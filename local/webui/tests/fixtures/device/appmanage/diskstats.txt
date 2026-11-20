@@ -1,0 +1,7 @@
+Latency: Data-Write: 31ms
+App Size: 1234567890
+Package Names: ["com.google.android.youtube","app.revanced.android.gms"]
+App Sizes: [400000000,25000000]
+App Data Sizes: [120000000,3000000]
+Cache Sizes: [80000000,0]
+System Size: 5000000000
