@@ -50,8 +50,9 @@ def _key(name):
 class PlayClient:
     """One apkeep probe=session process per lookup (one Google login). Needs `package` set before the first call."""
 
-    def __init__(self, apkeep, ini, device, log):
-        self.apkeep, self.ini, self.device, self.log = apkeep, ini, device, log
+    def __init__(self, apkeep, ini, device, log, locale=None):
+        """locale = apkeep `-o locale` (e.g. zh_TW) for the phone's language split; None = apkeep's en_US (APK builds)."""
+        self.apkeep, self.ini, self.device, self.log, self.locale = apkeep, ini, device, log, locale
         self.package = None
         self.calls = 0
         self._proc = self._tmp = self._err = None
@@ -61,9 +62,10 @@ class PlayClient:
         (db.DATA / "work").mkdir(parents=True, exist_ok=True)
         self._tmp = tempfile.TemporaryDirectory(dir=db.DATA / "work")
         self._err = tempfile.TemporaryFile()
+        options = [f"device={self.device}"] + ([f"locale={self.locale}"] if self.locale else []) + ["probe=session"]
         self._proc = subprocess.Popen(
             [self.apkeep, "-a", self.package, "-d", "google-play", "-i", str(self.ini),
-             "-o", f"device={self.device},probe=session", self._tmp.name],
+             "-o", ",".join(options), self._tmp.name],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self._err)
 
     def _stderr_tail(self):

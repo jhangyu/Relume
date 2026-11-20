@@ -10,6 +10,7 @@ from webui import appmanage_play, build, db, settings
 from webui.appmanage_play import PlayLookupError
 from webui.tests import helpers
 from webui.tests.catalog_rows import FakeLog
+from webui.tests.device_helpers import FakeAdb
 
 DETAILS = '{"mode":"details","ok":true,"versionString":"9.2","versionCode":77}'
 DELIVERY = ('{"mode":"delivery","vc":77,"ok":true,"url":"https://play.example/base?token=SECRET&cpn=x",'
@@ -32,16 +33,24 @@ class ProfileCase(unittest.TestCase):
 
 
 class ResolveCase(helpers.DataTestCase):
-    DEV = {"name": "Pixel", "abi_list": "arm64-v8a"}
+    DEV = {"name": "Pixel", "abi_list": "arm64-v8a", "kind": "app", "locale": "zh-Hant-TW"}
 
     def fake_apkeep(self, answers):
+        """Answers one stdin line each; returns the path its argv is written to."""
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         script = pathlib.Path(tmp.name) / "fake-apkeep"
-        script.write_text(f"#!{sys.executable}\nimport sys\nanswers = iter({list(answers)!r})\n"
+        argv = pathlib.Path(tmp.name) / "argv.json"
+        script.write_text(f"#!{sys.executable}\nimport json, sys\nanswers = iter({list(answers)!r})\n"
+                          f"open({str(argv)!r}, 'w').write(json.dumps(sys.argv[1:]))\n"
                           "for line in sys.stdin:\n    print(next(answers), flush=True)\n")
         script.chmod(script.stat().st_mode | stat.S_IXUSR)
         self.enterContext(mock.patch.object(build, "APKEEP", str(script)))
+        return argv
+
+    def apkeep_options(self, argv):
+        args = json.loads(argv.read_text())
+        return args[args.index("-o") + 1].split(",")
 
     def creds(self):
         settings.write_secret(settings.google_play_path(), json.dumps({"email": "a@b.c", "aas_token": "t"}))
@@ -76,3 +85,32 @@ class ResolveCase(helpers.DataTestCase):
         self.assertEqual(cm.exception.code, "PLAY_LOOKUP_FAILED")
         self.assertIn("credentials", str(cm.exception))
         self.assertEqual(self.inis(), [])
+
+    def test_app_row_locale_reaches_apkeep(self):
+        self.creds()
+        argv = self.fake_apkeep([DETAILS, DELIVERY])
+        appmanage_play.resolve("com.x", self.DEV)
+        self.assertIn("locale=zh_TW", self.apkeep_options(argv))
+
+    def test_adb_row_locale_from_getprop(self):
+        self.creds()
+        argv = self.fake_apkeep([DETAILS, DELIVERY])
+        fa = FakeAdb(self).rule("persist.sys.locale", out="\n").rule("ro.product.locale", out="zh-TW\n")
+        dev = {"name": "Tab", "abi_list": "arm64-v8a", "kind": "adb", "locale": None, "host": "10.0.0.2",
+               "connect_port": 5555}
+        appmanage_play.resolve("com.x", dev)
+        self.assertIn("locale=zh_TW", self.apkeep_options(argv))
+        self.assertEqual([c[-1] for c in fa.calls()], ["persist.sys.locale", "ro.product.locale"])
+
+    def test_missing_locale_fails_loudly(self):
+        self.creds()
+        self.fake_apkeep([DETAILS, DELIVERY])
+        for dev, adb_out in (({**self.DEV, "locale": None}, None),
+                             ({"name": "Tab", "abi_list": "arm64-v8a", "kind": "adb", "host": "10.0.0.2",
+                               "connect_port": 5555}, "\n")):
+            if adb_out is not None:
+                FakeAdb(self).rule("getprop", out=adb_out)
+            with self.assertRaises(PlayLookupError) as cm:
+                appmanage_play.resolve("com.x", dev)
+            self.assertEqual(cm.exception.code, "PLAY_LOOKUP_FAILED")
+            self.assertIn(f"device {dev['name']}", str(cm.exception))

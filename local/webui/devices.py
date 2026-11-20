@@ -162,6 +162,16 @@ def app_inventory(dev, cancel_event=None):
     return apps
 
 
+def adb_locale(dev, cancel_event=None):
+    """First system locale of an ADB device as a BCP-47 tag (persist.sys.locale = the user's pick, else the factory
+    ro.product.locale). Raises InventoryFailed when both are empty or adb fails; AdbTimeout on a hang."""
+    for prop in ('persist.sys.locale', 'ro.product.locale'):
+        value = _shell_out(dev, ['getprop', prop], f'getprop {prop}', cancel_event).strip()
+        if value:
+            return value
+    raise InventoryFailed(f'expected a locale in persist.sys.locale or ro.product.locale, got both empty on {dev["name"]}')
+
+
 APK_PATH = re.compile(r'/[A-Za-z0-9._~=+/-]+\.apk')   # used with fullmatch: the guard, the path goes back to a device shell
 SHA256SUM = re.compile(r'([0-9a-f]{64})\s')
 

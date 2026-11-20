@@ -3,6 +3,7 @@ package io.github.jhangyu.relume.inventory
 import android.content.Context
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.content.res.Resources
 import android.os.Build
 import android.provider.Settings
 import androidx.core.content.pm.PackageInfoCompat
@@ -95,6 +96,17 @@ object Inventory {
     )
 
     /**
+     * First system locale as the server's BCP-47 subset (language[-Script][-REGION]): extensions and numeric regions such as
+     * es-419 are dropped, because the server refuses the whole sync on any other shape. Null when the language is unset.
+     */
+    fun systemLocale(): String? {
+        val l = Resources.getSystem().configuration.locales[0]
+        if (l.language.isEmpty()) return null
+        return listOf(l.language, l.script, l.country.takeIf { REGION.matches(it) }.orEmpty())
+            .filter { it.isNotEmpty() }.joinToString("-")
+    }
+
+    /**
      * `GET /api/me` for the tracked list, read the packages and the App Manage inventory, `POST /api/me/sync`, then update the
      * seen-installed set. A diff the server refuses (`accepted=false`) is resent once as the full list; the icons it asks for
      * are uploaded; the accepted rev and list become the next diff base. Serialised: the UI and both workers sync.
@@ -105,18 +117,22 @@ object Inventory {
         val apps = withContext(Dispatchers.IO) { AppInventory.read(context) }
         val snapshotFile = File(context.applicationContext.filesDir, SNAPSHOT_FILE)
         val first = InventoryDiff.report(withContext(Dispatchers.IO) { readSnapshot(snapshotFile) }, apps.apps)
-        var r = api.sync(SyncReport(deviceFacts(context), reported, first))
+        val firstResponse = api.sync(SyncReport(deviceFacts(context), reported, first, systemLocale()))
+        var r = firstResponse
         if (r.inventory?.accepted == false && !first.full) {
-            r = api.sync(SyncReport(deviceFacts(context), reported, InventoryDiff.full(apps.apps)))
+            r = api.sync(SyncReport(deviceFacts(context), reported, InventoryDiff.full(apps.apps), systemLocale()))
         }
         storeInventory(api, r, apps, snapshotFile)
         InstallRunner.loadState(context)
         val seen = (context.applicationContext as RelumeApp).prefs
             .updateSeenInstalled { seenInstalled(it, r.device, InstallRunner.state.value) }
-        SyncResult(r.device, seen, r.trackedPackages, r.plan, reported, r.actions)
+        // the server delivers actions once, also on a refused diff: keep the first response's ones too
+        val actions = (firstResponse.actions + r.actions).distinctBy { it.id }
+        SyncResult(r.device, seen, r.trackedPackages, r.plan, reported, actions)
     }
 
     private const val SNAPSHOT_FILE = "app-inventory.json"
+    private val REGION = Regex("[A-Z]{2}")
     private val syncLock = Mutex()
     private val SnapshotJson = Json { ignoreUnknownKeys = true }
 

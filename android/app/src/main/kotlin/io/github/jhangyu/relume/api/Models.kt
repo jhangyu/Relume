@@ -134,9 +134,17 @@ data class InventoryReport(
     val removed: List<String>,
 )
 
-/** [inventory] null = old-app body: the server ingests nothing and hands out no actions. Not sent when null. */
+/**
+ * [inventory] null = old-app body: the server ingests nothing and hands out no actions. Not sent when null.
+ * [locale] = the phone's first system locale as a BCP-47 tag (e.g. zh-TW), for its Google Play language split; null keeps the stored one.
+ */
 @Serializable
-data class SyncReport(val device: SyncDevice, val packages: List<InstalledPackage>, val inventory: InventoryReport? = null)
+data class SyncReport(
+    val device: SyncDevice,
+    val packages: List<InstalledPackage>,
+    val inventory: InventoryReport? = null,
+    val locale: String? = null,
+)
 
 @Serializable
 data class InventoryAck(val rev: Long, val accepted: Boolean, @SerialName("need_icons") val needIcons: List<String>)

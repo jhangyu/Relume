@@ -204,6 +204,7 @@ class SessionCase(helpers.DataTestCase):
         c = self.client(['{"pkg":"p","mode":"details","ok":true,"versionCode":7,"versionString":"1.0"}'])
         self.assertEqual(c.details(), ("1.0", 7))
         proc = c._proc
+        self.assertIn("device=px_9a,probe=session", proc.args)   # no locale = apkeep's en_US, the APK build path
         c.close()
         self.assertEqual(proc.poll(), 0)
 
