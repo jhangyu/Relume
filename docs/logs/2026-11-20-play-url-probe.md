@@ -22,4 +22,9 @@
 | config.en | 206 | 1024 | zip | 1069465 |
 | config.xxhdpi | 206 | 1024 | zip | 545870 |
 
+## Locale probe (after 0f2a2c6)
+- The user ran `docker exec -w /repo/local relume-app python3 -c "$(cat scratch/appmanage-r2/r2f-locale/locale_probe.py)" com.spotify.music zh_TW`. It passes `-o device=px_9a,locale=zh_TW,probe=session` to the pinned apkeep and needed no image change.
+- Output: `com.spotify.music versionCode 148387875 locale zh_TW splits: config.arm64_v8a, config.xxhdpi, config.zh`.
+- Verdict: Play honors the locale, so a zh-TW request gets `config.zh` where the default profile got `config.en`.
+
 The commands were run by the user because the permission layer denied the agent's token-reading `docker exec`. The probe script and `/tmp/o1.jsonl` stay in the container until cleanup.
