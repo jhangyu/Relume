@@ -248,6 +248,7 @@ document.body.insertAdjacentHTML('afterbegin', html`<svg width="0" height="0" st
 <symbol id="i-menu" viewBox="0 0 20 20" fill="currentColor"><path d="M2 4.5C2 4.22386 2.22386 4 2.5 4H17.5C17.7761 4 18 4.22386 18 4.5C18 4.77614 17.7761 5 17.5 5H2.5C2.22386 5 2 4.77614 2 4.5ZM2 9.5C2 9.22386 2.22386 9 2.5 9H17.5C17.7761 9 18 9.22386 18 9.5C18 9.77614 17.7761 10 17.5 10H2.5C2.22386 10 2 9.77614 2 9.5ZM2.5 14C2.22386 14 2 14.2239 2 14.5C2 14.7761 2.22386 15 2.5 15H17.5C17.7761 15 18 14.7761 18 14.5C18 14.2239 17.7761 14 17.5 14H2.5Z"/></symbol>
 <symbol id="i-send" viewBox="0 0 20 20" fill="currentColor"><path d="M2.18412 2.11244C2.33657 1.98818 2.54771 1.96483 2.72363 2.05279L17.7236 9.55279C17.893 9.63749 18 9.81062 18 10C18 10.1894 17.893 10.3625 17.7236 10.4472L2.72363 17.9472C2.54771 18.0352 2.33657 18.0118 2.18412 17.8876C2.03167 17.7633 1.96623 17.5612 2.0169 17.3712L3.98255 10L2.0169 2.62884C1.96623 2.4388 2.03167 2.2367 2.18412 2.11244ZM4.88416 10.5L3.26911 16.5564L16.382 10L3.26911 3.44357L4.88416 9.5H11.5C11.7762 9.5 12 9.72386 12 10C12 10.2761 11.7762 10.5 11.5 10.5H4.88416Z"/></symbol>
 <symbol id="i-lock" viewBox="0 0 20 20" fill="currentColor"><path d="M10 1C12.2091 1 14 2.79086 14 5V7.0498C15.1411 7.28142 16 8.29051 16 9.5V15.5C16 16.8807 14.8807 18 13.5 18H6.5C5.11929 18 4 16.8807 4 15.5V9.5C4 8.29051 4.85886 7.28142 6 7.0498V5C6 2.79086 7.79086 1 10 1ZM6.5 8C5.67157 8 5 8.67157 5 9.5V15.5C5 16.3284 5.67157 17 6.5 17H13.5C14.3284 17 15 16.3284 15 15.5V9.5C15 8.67157 14.3284 8 13.5 8H6.5ZM10 11.5C10.5523 11.5 11 11.9477 11 12.5C11 13.0523 10.5523 13.5 10 13.5C9.44772 13.5 9 13.0523 9 12.5C9 11.9477 9.44772 11.5 10 11.5ZM10 2C8.34315 2 7 3.34315 7 5V7H13V5C13 3.34315 11.6569 2 10 2Z"/></symbol>
+<symbol id="i-manage" viewBox="0 0 20 20" fill="currentColor"><path d="M18 5.5a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0m-2.15-1.85a.5.5 0 0 0-.7 0L12.5 6.29l-.65-.64a.5.5 0 0 0-.7.7l1 1c.2.2.5.2.7 0l3-3a.5.5 0 0 0 0-.7M9.25 2H6.5C5.67 2 5 2.67 5 3.5v13c0 .83.67 1.5 1.5 1.5h7c.83 0 1.5-.67 1.5-1.5v-5.7q-.49.13-1 .18v5.52a.5.5 0 0 1-.5.5h-7a.5.5 0 0 1-.5-.5v-13c0-.28.22-.5.5-.5h2.1q.27-.54.66-1M8 14.5c0-.28.22-.5.5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5"/></symbol>
 </svg>`);
 
 export const icon = (name, cls = '') => html`<svg class="i ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
@@ -306,6 +307,7 @@ export function shell() {
 <div class="nav-section">Manage</div>
 <a href="/builds.html">${icon('builds')}Builds</a>
 <a href="/devices.html">${icon('devices')}Devices</a>
+<a href="/appmanage.html">${icon('manage')}App manage</a>
 <a href="/projects.html">${icon('follow')}Followed projects</a>
 <a href="/settings.html">${icon('settings')}Settings</a>
 <div class="caption" style="margin-top:auto;padding:0 12px 12px;display:grid;gap:4px" data-shell-status aria-label="Server status"></div>
