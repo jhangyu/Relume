@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import io.github.jhangyu.relume.RelumeApp
+import io.github.jhangyu.relume.action.ActionExecutor
 import io.github.jhangyu.relume.api.ApiError
 import io.github.jhangyu.relume.api.PlanAction
 import io.github.jhangyu.relume.install.InstallRun
@@ -13,7 +14,10 @@ import io.github.jhangyu.relume.install.StartResult
 import io.github.jhangyu.relume.inventory.Inventory
 import java.io.IOException
 
-/** Periodic check (spec 9.5): sync, then start a background install run for the apps not at their target. */
+/**
+ * Periodic check (spec 9.5): sync, run the App Manage actions it delivered, then start a background install run for the
+ * apps not at their target.
+ */
 class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
@@ -29,6 +33,11 @@ class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
             record(false, CODE_IO, "${e.javaClass.simpleName}: ${e.message}")
             // The allowed IO case: WorkManager backoff.
             return Result.retry()
+        }
+        // A build action's run would be replaced by the background run it is started next to: the next check plans the rest.
+        if (ActionExecutor.run(app, api, synced.actions)) {
+            record(true, null, "App Manage build actions: install run started, the background plan waits for the next check")
+            return Result.success()
         }
         val plan = synced.plan
         val pending = BackgroundStart.backgroundPlan(plan, InstallRun.declined(InstallRunner.state.value))

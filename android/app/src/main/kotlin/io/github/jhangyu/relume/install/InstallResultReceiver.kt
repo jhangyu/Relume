@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import androidx.core.content.IntentCompat
+import io.github.jhangyu.relume.action.ActionExecutor
 
 /** Not exported; receives PackageInstaller session and uninstall results (spec 9.4). */
 class InstallResultReceiver : BroadcastReceiver() {
@@ -14,6 +15,7 @@ class InstallResultReceiver : BroadcastReceiver() {
         if (intent.action == Intent.ACTION_PACKAGE_FULLY_REMOVED) {
             val pkg = checkNotNull(intent.data?.schemeSpecificPart) { "package removed: no package in ${intent.data}" }
             InstallRunner.onPackageRemoved(context, pkg)
+            if (ActionExecutor.onPackageRemoved(context, pkg)) report(context)
             return
         }
         val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, MISSING)
@@ -33,8 +35,19 @@ class InstallResultReceiver : BroadcastReceiver() {
                 val pkg = checkNotNull(intent.getStringExtra(EXTRA_PACKAGE)) { "uninstall result: extra $EXTRA_PACKAGE missing" }
                 InstallRunner.onUninstallResult(context, revision, step, pkg, status, message, confirm)
             }
-            else -> error("install result receiver: unexpected action ${intent.action}, expected $ACTION_INSTALL or $ACTION_UNINSTALL")
+            ACTION_APP_ACTION -> {
+                val id = intent.getLongExtra(EXTRA_ACTION_ID, MISSING.toLong())
+                check(id != MISSING.toLong()) { "app action result: extra $EXTRA_ACTION_ID missing" }
+                if (ActionExecutor.onResult(context, id, status, message, confirm)) report(context)
+            }
+            else -> error("install result receiver: unexpected action ${intent.action}, expected $ACTION_INSTALL, $ACTION_UNINSTALL or $ACTION_APP_ACTION")
         }
+    }
+
+    /** Posts the App Manage result now instead of at the next sync; the receiver stays alive until the post ends. */
+    private fun report(context: Context) {
+        val pending = goAsync()
+        ActionExecutor.reportAsync(context) { pending.finish() }
     }
 
     companion object {
@@ -43,6 +56,9 @@ class InstallResultReceiver : BroadcastReceiver() {
         const val EXTRA_STEP = "io.github.jhangyu.relume.extra.STEP"
         const val EXTRA_REVISION = "io.github.jhangyu.relume.extra.REVISION"
         const val EXTRA_PACKAGE = "io.github.jhangyu.relume.extra.PACKAGE"
+        /** App Manage action results (install session of `play_direct`, uninstall of `remove`), extra [EXTRA_ACTION_ID]. */
+        const val ACTION_APP_ACTION = "io.github.jhangyu.relume.action.APP_ACTION_RESULT"
+        const val EXTRA_ACTION_ID = "io.github.jhangyu.relume.extra.ACTION_ID"
         private const val MISSING = Int.MIN_VALUE
     }
 }

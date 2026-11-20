@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.jhangyu.relume.RelumeApp
+import io.github.jhangyu.relume.action.ActionExecutor
 import io.github.jhangyu.relume.api.ApiError
 import io.github.jhangyu.relume.api.AppDetail
 import io.github.jhangyu.relume.api.AppObject
@@ -202,6 +203,8 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         device = r.device
         plan = r.plan
         installed = r.reported.associateBy { it.packageName }
+        // Own coroutine: a play_direct download must not hold the refresh indicator.
+        viewModelScope.launch { call { ActionExecutor.run(relume, it, r.actions) } }
     }
 
     // ---- install start (spec 10: plan, assignment, dependency and signer prompts) ----

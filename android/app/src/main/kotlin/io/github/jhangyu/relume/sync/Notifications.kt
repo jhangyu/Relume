@@ -18,6 +18,9 @@ object Notifications {
     private const val ID_STEP_BASE = 1000
     private const val ID_RUN_FINISHED = 1
     private const val REQUEST_OPEN_APP = 0
+    /** App Manage notifications use the tag `action-<id>` with this id; their PendingIntents use request codes below 0. */
+    private const val ID_ACTION = 0
+    private const val REQUEST_ACTION_BASE = Int.MIN_VALUE
     private val ICON = android.R.drawable.stat_sys_download_done
 
     fun ensureChannels(context: Context) {
@@ -48,6 +51,22 @@ object Notifications {
 
     fun cancelStep(context: Context, stepIndex: Int) = NotificationManagerCompat.from(context).cancel(ID_STEP_BASE + stepIndex)
 
+    /** System confirmation of an App Manage install or uninstall ([title] names it); false = notifications are off. */
+    fun confirmAction(context: Context, actionId: Long, title: String, confirm: Intent): Boolean =
+        post(context, ID_ACTION, title, null, actionIntent(context, actionId, confirm), actionTag(actionId))
+
+    /** App Manage `play_page`: tapping opens [open] (the Play Store page); false = notifications are off. */
+    fun playPage(context: Context, actionId: Long, packageName: String, open: Intent): Boolean =
+        post(context, ID_ACTION, "Open the Play Store page of $packageName", "Requested on the Relume App Manage page",
+            actionIntent(context, actionId, open), actionTag(actionId))
+
+    fun cancelAction(context: Context, actionId: Long) = NotificationManagerCompat.from(context).cancel(actionTag(actionId), ID_ACTION)
+
+    private fun actionTag(actionId: Long) = "action-$actionId"
+
+    private fun actionIntent(context: Context, actionId: Long, intent: Intent): PendingIntent? =
+        PendingIntentCompat.getActivity(context, REQUEST_ACTION_BASE + Math.toIntExact(actionId), intent, PendingIntent.FLAG_UPDATE_CURRENT, false)
+
     private fun openApp(context: Context): PendingIntent? {
         val launch = checkNotNull(context.packageManager.getLaunchIntentForPackage(context.packageName)) {
             "package ${context.packageName}: no launcher activity"
@@ -56,11 +75,12 @@ object Notifications {
     }
 
     // MissingPermission: areNotificationsEnabled() is false when POST_NOTIFICATIONS is denied on API 33+; a permission
-    // check would need a version branch (spec 8.1). Not posted = the Apps screen lists awaiting steps (spec 9.5).
+    // check would need a version branch (spec 8.1). Not posted = the Apps screen lists awaiting steps (spec 9.5);
+    // App Manage callers read the false return.
     @SuppressLint("MissingPermission")
-    private fun post(context: Context, id: Int, title: String, text: String?, tap: PendingIntent?) {
+    private fun post(context: Context, id: Int, title: String, text: String?, tap: PendingIntent?, tag: String? = null): Boolean {
         val nm = NotificationManagerCompat.from(context)
-        if (!nm.areNotificationsEnabled()) return
+        if (!nm.areNotificationsEnabled()) return false
         val n = NotificationCompat.Builder(context, CHANNEL_INSTALL)
             .setSmallIcon(ICON)
             .setContentTitle(title)
@@ -68,6 +88,7 @@ object Notifications {
             .setContentIntent(tap)
             .setAutoCancel(true)
             .build()
-        nm.notify(id, n)
+        nm.notify(tag, id, n)
+        return true
     }
 }

@@ -9,7 +9,9 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import io.github.jhangyu.relume.RelumeApp
+import io.github.jhangyu.relume.action.ActionExecutor
 import io.github.jhangyu.relume.api.ApiError
+import io.github.jhangyu.relume.api.DeviceAction
 import io.github.jhangyu.relume.api.PlanStep
 import io.github.jhangyu.relume.api.RelumeApi
 import io.github.jhangyu.relume.inventory.Inventory
@@ -166,18 +168,23 @@ class InstallWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         }
     }
 
-    /** No runnable step left: once nothing is committed or awaiting the user, re-sync and report a background run. */
+    /**
+     * No runnable step left: once nothing is committed or awaiting the user, re-sync, report a background run, then run
+     * the App Manage actions the sync delivered (last: a build action's start replaces this worker).
+     */
     private suspend fun finishRun(ctx: Context, api: RelumeApi) {
         val run = InstallRunStore.state.value ?: return
         if (run.isActive || run.synced) return
+        var actions = emptyList<DeviceAction>()
         val error = try {
-            Inventory.sync(ctx, api)
+            actions = Inventory.sync(ctx, api).actions
             null
         } catch (e: ApiError) {
             e.toString()
         }
         InstallRunStore.update(ctx) { cur -> cur?.copy(synced = true, syncError = error) }
         if (run.origin == Origin.BACKGROUND) Notifications.runFinished(ctx, run)
+        ActionExecutor.run(ctx, api, actions)
     }
 
     private fun failRunnable(ctx: Context, text: String) {
