@@ -13,7 +13,7 @@
 ## Log
 - `docker exec -w /repo/local relume-app python3 /tmp/probe.py com.spotify.music px_9a /tmp/o1.jsonl details` → `apkeep_rc 0`, versionCode 148387875 (9.2.0.2053).
 - `docker exec -w /repo/local relume-app python3 /tmp/probe.py com.spotify.music px_9a /tmp/o1.jsonl 148387875` → `apkeep_rc 0`, mode delivery, 4 URLs on host `play.googleapis.com` with params `token`, `cpn`.
-- `docker exec relume-app cat /tmp/o1.jsonl | python3 scratch/appmanage-play-probe/fetch.py` (Range `bytes=0-1023`, run on the macOS host):
+- `docker exec relume-app cat /tmp/o1.jsonl | python3 fetch.py` (a one-off script, since deleted, that GETs each URL with Range `bytes=0-1023`, run on the macOS host):
 
 | APK | Status | Bytes | Header | Total size |
 |---|---|---|---|---|
@@ -23,8 +23,8 @@
 | config.xxhdpi | 206 | 1024 | zip | 545870 |
 
 ## Locale probe (after 0f2a2c6)
-- The user ran `docker exec -w /repo/local relume-app python3 -c "$(cat scratch/appmanage-r2/r2f-locale/locale_probe.py)" com.spotify.music zh_TW`. It passes `-o device=px_9a,locale=zh_TW,probe=session` to the pinned apkeep and needed no image change.
+- The user ran `docker exec -w /repo/local relume-app python3 -c "$(cat locale_probe.py)" com.spotify.music zh_TW` (a one-off script, since deleted, that runs apkeep details + delivery and prints split names only). It passes `-o device=px_9a,locale=zh_TW,probe=session` to the pinned apkeep and needed no image change.
 - Output: `com.spotify.music versionCode 148387875 locale zh_TW splits: config.arm64_v8a, config.xxhdpi, config.zh`.
 - Verdict: Play honors the locale, so a zh-TW request gets `config.zh` where the default profile got `config.en`.
 
-The commands were run by the user because the permission layer denied the agent's token-reading `docker exec`. The probe script and `/tmp/o1.jsonl` stay in the container until cleanup.
+The commands were run by the user because the permission layer denied the agent's token-reading `docker exec`. The user removed the probe script and `/tmp/o1.jsonl` from the container afterwards.
