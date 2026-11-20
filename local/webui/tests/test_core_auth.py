@@ -135,7 +135,7 @@ class DeviceTokenTest(DataTestCase):
     def setUp(self):
         super().setUp()
         self.addCleanup(db.close)   # the last test's main-thread connection would otherwise be finalized unclosed
-        self.base = serve(self, ['devices', 'notify', 'projects', 'ota'])
+        self.base = serve(self, ['devices', 'notify', 'projects', 'ota', 'appmanage'])
         self.cookie = login(self.base)
 
     def register(self, password='correct-horse-42', device=DEVICE):
@@ -224,7 +224,9 @@ class DeviceTokenTest(DataTestCase):
         self.assertEqual(auth.SESSION_ONLY, {
             ('POST', '/api/auth/password'), ('POST', '/api/auth/logout'), ('PUT', '/api/settings'),
             ('PUT', '/api/notify'), ('DELETE', '/api/devices/{id}'), ('DELETE', '/api/devices/{id}/token'),
-            ('GET', '/api/legacy-sign-ins'), ('DELETE', '/api/legacy-sign-ins/{id}')})
+            ('GET', '/api/legacy-sign-ins'), ('DELETE', '/api/legacy-sign-ins/{id}'),
+            ('GET', '/api/appmanage'), ('PUT', '/api/appmanage/primary'), ('POST', '/api/appmanage/actions'),
+            ('DELETE', '/api/appmanage/actions/{id}'), ('POST', '/api/appmanage/refresh')})
         tok = self.token()['token']
         for method, pattern in sorted(auth.SESSION_ONLY):
             st, _, body = self.bearer(method, pattern.replace('{id}', '1'), tok, {})

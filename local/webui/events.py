@@ -6,7 +6,7 @@ import traceback
 from .server import HttpError, SSEResponse
 
 KEEPALIVE = 15  # seconds without a frame before an SSE stream writes a keepalive comment (finds gone clients)
-TOPICS = ('jobs', 'apps', 'projects', 'devices', 'schedules')
+TOPICS = ('jobs', 'apps', 'projects', 'devices', 'schedules', 'appmanage')
 _subs = {}
 
 

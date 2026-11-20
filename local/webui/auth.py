@@ -18,7 +18,10 @@ PUBLIC = {('POST', '/api/auth/login'), ('POST', '/api/auth/setup'),
 # a device token gets 403 here: these change the account or revoke another phone
 SESSION_ONLY = {('POST', '/api/auth/password'), ('POST', '/api/auth/logout'), ('PUT', '/api/settings'),
                 ('PUT', '/api/notify'), ('DELETE', '/api/devices/{id}'), ('DELETE', '/api/devices/{id}/token'),
-                ('GET', '/api/legacy-sign-ins'), ('DELETE', '/api/legacy-sign-ins/{id}')}
+                ('GET', '/api/legacy-sign-ins'), ('DELETE', '/api/legacy-sign-ins/{id}'),
+                # App Manage web routes (plan 2026-11-20 §1.3): the companion uses only its /api/me/ routes
+                ('GET', '/api/appmanage'), ('PUT', '/api/appmanage/primary'), ('POST', '/api/appmanage/actions'),
+                ('DELETE', '/api/appmanage/actions/{id}'), ('POST', '/api/appmanage/refresh')}
 # v1.2.0 RelumeApi.kt: me/sync/plan/receipt/logout, assignments (own row, answered as a no-op), the cards of the
 # install screens (apps, marketplace, projects, icons), signer accept and the two download routes
 LEGACY_ALLOWED = {

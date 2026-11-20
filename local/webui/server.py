@@ -14,13 +14,14 @@ from . import db
 
 VERSION = os.environ.get('RELUME_VERSION', 'dev')
 STARTED_AT = db.utcnow()
-MODULES = ('catalog', 'upstream', 'projects', 'build', 'devices', 'ota', 'notify', 'market')
+MODULES = ('catalog', 'upstream', 'projects', 'build', 'devices', 'ota', 'notify', 'market', 'appmanage')
 CORE = ('auth', 'jobs', 'scheduler', 'settings', 'events')
 # Topics of /api/events (events.TOPICS) that an authenticated mutating request to a module's routes publishes.
 # Every module with routes needs an entry: make_server fails at startup without one (decision 2).
 CHANGES = {'auth': ('devices',), 'jobs': ('jobs',), 'scheduler': ('schedules',), 'settings': ('apps',),
            'events': (), 'catalog': ('apps',), 'projects': ('projects',), 'build': ('apps',),
-           'devices': ('devices',), 'ota': ('devices',), 'notify': (), 'market': ('apps', 'schedules')}
+           'devices': ('devices',), 'ota': ('devices', 'appmanage'), 'notify': (), 'market': ('apps', 'schedules'),
+           'appmanage': ('appmanage',)}
 STATIC = pathlib.Path(__file__).with_name('static')
 MUTATING = {'POST', 'PUT', 'PATCH', 'DELETE'}
 MAX_BODY = 1 << 20

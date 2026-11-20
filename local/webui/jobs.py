@@ -18,6 +18,7 @@ OPTION_DEFAULTS = {
     'upstream': {'notify': True},
     'build': {'notify': True},
     'ota': {'retries': 0, 'mode': 'normal', 'package': None, 'notify': True},
+    'appmanage': {},
 }
 ANSI = re.compile(r'\x1b\[[0-9;?]*[ -/]*[@-~]')
 _handlers = {}
