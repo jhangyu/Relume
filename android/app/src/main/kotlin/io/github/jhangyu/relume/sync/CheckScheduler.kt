@@ -27,7 +27,7 @@ object CheckScheduler {
     private const val WORK_NAME = "check"
     private const val PREFS = "relume-check"
     private const val KEY_LAST = "last_check"
-    private val HOURS = mapOf(CheckInterval.H1 to 1L, CheckInterval.H6 to 6L, CheckInterval.H24 to 24L)
+    private val MINUTES = mapOf(CheckInterval.M15 to 15L, CheckInterval.H1 to 60L, CheckInterval.H6 to 6 * 60L, CheckInterval.H24 to 24 * 60L)
     private const val DAILY_HOURS = 24L
     private val outcome = MutableStateFlow<CheckOutcome?>(null)
 
@@ -56,8 +56,9 @@ object CheckScheduler {
                     )
                     .build()
             }
-            CheckInterval.H1, CheckInterval.H6, CheckInterval.H24 ->
-                PeriodicWorkRequestBuilder<CheckWorker>(checkNotNull(HOURS[interval]) { "check interval $interval has no hours" }, TimeUnit.HOURS)
+            // M15 equals WorkManager's minimum periodic interval (PeriodicWorkRequest.MIN_PERIODIC_INTERVAL_MILLIS).
+            CheckInterval.M15, CheckInterval.H1, CheckInterval.H6, CheckInterval.H24 ->
+                PeriodicWorkRequestBuilder<CheckWorker>(checkNotNull(MINUTES[interval]) { "check interval $interval has no minutes" }, TimeUnit.MINUTES)
                     .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                     .build()
         }

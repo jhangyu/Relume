@@ -60,6 +60,18 @@ class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
         return get<PlanEnvelope>(path).plan
     }
 
+    suspend fun uploadIcon(icon: IconUpload) {
+        send<JsonObject>("POST", "/api/me/icons", ApiJson.encodeToJsonElement(IconUpload.serializer(), icon) as JsonObject)
+    }
+
+    /** Waits up to [ACTION_START_READ_TIMEOUT_MS]: the server may resolve Play URLs before it answers (plan F4). */
+    suspend fun startAction(id: Long): ActionStart =
+        call("/api/me/actions/$id/start", "POST", EMPTY, ActionStart.serializer(), ACTION_START_READ_TIMEOUT_MS)
+
+    suspend fun reportAction(id: Long, result: ActionResult) {
+        send<JsonObject>("POST", "/api/me/actions/$id/result", ApiJson.encodeToJsonElement(ActionResult.serializer(), result) as JsonObject)
+    }
+
     suspend fun receipt(r: InstallReceipt) {
         send<JsonObject>("POST", "/api/me/installs", ApiJson.encodeToJsonElement(InstallReceipt.serializer(), r) as JsonObject)
     }
@@ -243,8 +255,8 @@ class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
     private suspend inline fun <reified T> send(method: String, path: String, body: JsonObject): T =
         call(path, method, body, serializer())
 
-    private suspend fun <T> call(path: String, method: String, body: JsonObject?, de: KSerializer<T>): T {
-        val (status, text) = raw(path, method, body)
+    private suspend fun <T> call(path: String, method: String, body: JsonObject?, de: KSerializer<T>, readTimeoutMs: Int = READ_TIMEOUT_MS): T {
+        val (status, text) = raw(path, method, body, readTimeoutMs)
         try {
             return ApiJson.decodeFromString(de, text)
         } catch (e: IllegalArgumentException) {
@@ -258,9 +270,9 @@ class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
         raw(path, method, null)
     }
 
-    private suspend fun raw(path: String, method: String, body: JsonObject?): Pair<Int, String> =
+    private suspend fun raw(path: String, method: String, body: JsonObject?, readTimeoutMs: Int = READ_TIMEOUT_MS): Pair<Int, String> =
         withContext(Dispatchers.IO) {
-            val conn = open(path, method)
+            val conn = open(path, method, readTimeoutMs)
             try {
                 if (body != null) {
                     conn.doOutput = true
@@ -274,12 +286,12 @@ class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
             }
         }
 
-    private fun open(path: String, method: String): HttpURLConnection {
+    private fun open(path: String, method: String, readTimeoutMs: Int = READ_TIMEOUT_MS): HttpURLConnection {
         val conn = url.resolve(path).openConnection() as HttpURLConnection
         conn.requestMethod = method
         conn.instanceFollowRedirects = false // a redirect could carry the bearer token to another host
         conn.connectTimeout = CONNECT_TIMEOUT_MS
-        conn.readTimeout = READ_TIMEOUT_MS
+        conn.readTimeout = readTimeoutMs
         conn.setRequestProperty("Accept", JSON_TYPE)
         conn.setRequestProperty("Content-Type", JSON_TYPE) // the server answers 415 to a bodyless DELETE without it
         token()?.let { conn.setRequestProperty("Authorization", "Bearer $it") }
@@ -319,6 +331,8 @@ class RelumeApi(val url: ServerUrl, private val token: () -> String?) {
         const val CONNECT_TIMEOUT_MS = 15_000
         /** Longer than the server's 15 s SSE keepalive. */
         const val READ_TIMEOUT_MS = 60_000
+        /** Above the server's 120 s Play probe timeout (`playversion.PROBE_TIMEOUT`). */
+        const val ACTION_START_READ_TIMEOUT_MS = 180_000
         const val ERROR_BODY_PREVIEW = 200
         val HTTP_SUCCESS = 200..299
         val HTTP_REDIRECTS = 300..399

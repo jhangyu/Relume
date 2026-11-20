@@ -2,7 +2,7 @@ package io.github.jhangyu.relume.api
 
 import android.content.Context
 
-enum class CheckInterval { OFF, H1, H6, H24, DAILY }
+enum class CheckInterval { OFF, M15, H1, H6, H24, DAILY }
 
 /** Plain app settings (no secrets; the token lives in [TokenStore]). */
 class Prefs(context: Context) {

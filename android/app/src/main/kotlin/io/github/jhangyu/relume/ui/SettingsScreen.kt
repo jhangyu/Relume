@@ -1,5 +1,7 @@
 package io.github.jhangyu.relume.ui
 
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -39,21 +41,25 @@ import kotlinx.coroutines.launch
 import java.io.IOException
 import java.time.Instant
 
-private val INTERVALS = listOf(CheckInterval.OFF, CheckInterval.H1, CheckInterval.H6, CheckInterval.H24, CheckInterval.DAILY)
+private val INTERVALS = listOf(CheckInterval.OFF, CheckInterval.M15, CheckInterval.H1, CheckInterval.H6, CheckInterval.H24, CheckInterval.DAILY)
 
 private fun clock(minute: Int) = "%02d:%02d".format(minute / 60, minute % 60)
 
 private fun intervalLabel(i: CheckInterval, dailyMinute: Int) = when (i) {
     CheckInterval.OFF -> "Off"
+    CheckInterval.M15 -> "15 min"
     CheckInterval.H1 -> "1 h"
     CheckInterval.H6 -> "6 h"
     CheckInterval.H24 -> "24 h"
     CheckInterval.DAILY -> "Daily at ${clock(dailyMinute)}"
 }
 
-/** Phone settings and account, opened from the avatar. [notificationsOn] and [askNotifications] come from the root, which owns the API 33 permission request. */
+/**
+ * Phone settings and account, opened from the avatar. [notificationsOn] and [askNotifications] come from the root, which owns
+ * the API 33 permission request; [usageAccess] too, re-read when the user returns from the system settings.
+ */
 @Composable
-fun SettingsScreen(model: AppModel, notificationsOn: Boolean, askNotifications: () -> Unit, onBack: () -> Unit) {
+fun SettingsScreen(model: AppModel, notificationsOn: Boolean, askNotifications: () -> Unit, usageAccess: Boolean, onBack: () -> Unit) {
     val ctx = LocalContext.current
     val prefs = model.relume.prefs
     var interval by remember { mutableStateOf(prefs.checkInterval) }
@@ -112,6 +118,14 @@ fun SettingsScreen(model: AppModel, notificationsOn: Boolean, askNotifications: 
                     "Notifications",
                     supporting = if (notificationsOn) "On" else "Off · confirm prompts of background installs stay in the Apps list",
                     trailing = { if (!notificationsOn) ActionButton("Allow", askNotifications, kind = ButtonKind.Outlined) },
+                )
+                Hairline()
+                ListRow(
+                    "Usage access",
+                    supporting = if (usageAccess) "On · app sizes are reported to App Manage" else "Off · App Manage shows app sizes as unknown",
+                    trailing = {
+                        if (!usageAccess) ActionButton("Allow", { ctx.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }, kind = ButtonKind.Outlined)
+                    },
                 )
                 Hairline()
                 val last = lastCheck

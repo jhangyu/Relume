@@ -111,8 +111,92 @@ data class SyncDevice(
     @SerialName("app_version_code") val appVersionCode: Long,
 )
 
+/** One user app in the App Manage inventory (plan 1.4). Sizes are all set with [sizeReason] null, or all null with a reason. */
 @Serializable
-data class SyncReport(val device: SyncDevice, val packages: List<InstalledPackage>)
+data class InventoryApp(
+    @SerialName("package") val packageName: String,
+    val label: String,
+    @SerialName("version_code") val versionCode: Long,
+    @SerialName("version_name") val versionName: String?,
+    @SerialName("app_bytes") val appBytes: Long?,
+    @SerialName("data_bytes") val dataBytes: Long?,
+    @SerialName("cache_bytes") val cacheBytes: Long?,
+    @SerialName("size_reason") val sizeReason: String?,
+    @SerialName("icon_sha256") val iconSha256: String?,
+)
+
+/** `inventory` of `POST /api/me/sync`: the whole list ([full], [baseRev] null) or the changes since the accepted [baseRev]. */
+@Serializable
+data class InventoryReport(
+    @SerialName("base_rev") val baseRev: Long?,
+    val full: Boolean,
+    val apps: List<InventoryApp>,
+    val removed: List<String>,
+)
+
+/** [inventory] null = old-app body: the server ingests nothing and hands out no actions. Not sent when null. */
+@Serializable
+data class SyncReport(val device: SyncDevice, val packages: List<InstalledPackage>, val inventory: InventoryReport? = null)
+
+@Serializable
+data class InventoryAck(val rev: Long, val accepted: Boolean, @SerialName("need_icons") val needIcons: List<String>)
+
+@Serializable
+enum class ActionKind {
+    @SerialName("install") INSTALL,
+    @SerialName("upgrade") UPGRADE,
+    @SerialName("remove") REMOVE,
+}
+
+@Serializable
+enum class ActionSource {
+    @SerialName("build") BUILD,
+    @SerialName("play_direct") PLAY_DIRECT,
+    @SerialName("play_page") PLAY_PAGE,
+}
+
+/** Relume build behind a `build` action: `kind` item or project, `id` its row. */
+@Serializable
+data class ActionRef(val kind: StepKind, val id: Int)
+
+/** An App Manage action handed out by `POST /api/me/sync` (delivered once). */
+@Serializable
+data class DeviceAction(
+    val id: Long,
+    @SerialName("package") val packageName: String,
+    val action: ActionKind,
+    val source: ActionSource?,
+    val ref: ActionRef?,
+)
+
+@Serializable
+data class PlayApk(val name: String, val url: String)
+
+/** `POST /api/me/actions/{id}/start`: [apks] (base first) and [versionCode] only for `play_direct`. */
+@Serializable
+data class ActionStart(val id: Long, @SerialName("version_code") val versionCode: Long? = null, val apks: List<PlayApk> = emptyList())
+
+@Serializable
+enum class ActionOutcome {
+    @SerialName("done") DONE,
+    @SerialName("failed") FAILED,
+    @SerialName("cancelled") CANCELLED,
+}
+
+/** `POST /api/me/actions/{id}/result`; `failed` needs [errorCode]. Null fields are not sent. */
+@Serializable
+data class ActionResult(
+    val result: ActionOutcome,
+    @SerialName("error_code") val errorCode: String? = null,
+    @SerialName("error_text") val errorText: String? = null,
+) {
+    init {
+        require(result != ActionOutcome.FAILED || errorCode != null) { "action result failed needs error_code, got null" }
+    }
+}
+
+@Serializable
+data class IconUpload(val sha256: String, @SerialName("png_base64") val pngBase64: String)
 
 @Serializable
 enum class ReceiptKind {
@@ -245,6 +329,9 @@ data class SyncResponse(
     val device: DeviceView,
     @SerialName("tracked_packages") val trackedPackages: List<String>,
     val plan: InstallPlan,
+    /** Null when the request had no inventory (or the server predates App Manage). */
+    val inventory: InventoryAck? = null,
+    val actions: List<DeviceAction> = emptyList(),
 )
 
 @Serializable

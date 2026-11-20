@@ -8,17 +8,29 @@ import android.provider.Settings
 import androidx.core.content.pm.PackageInfoCompat
 import io.github.jhangyu.relume.BuildConfig
 import io.github.jhangyu.relume.RelumeApp
+import io.github.jhangyu.relume.api.DeviceAction
 import io.github.jhangyu.relume.api.DeviceView
+import io.github.jhangyu.relume.api.IconUpload
 import io.github.jhangyu.relume.api.InstallPlan
 import io.github.jhangyu.relume.api.InstalledPackage
 import io.github.jhangyu.relume.api.RelumeApi
 import io.github.jhangyu.relume.api.SyncDevice
 import io.github.jhangyu.relume.api.SyncReport
+import io.github.jhangyu.relume.api.SyncResponse
 import io.github.jhangyu.relume.install.InstallRunner
 import io.github.jhangyu.relume.install.VerifyRules
 import io.github.jhangyu.relume.install.seenInstalled
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
+import java.io.File
+import java.io.FileOutputStream
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.util.Base64
 
 /** Result of `POST /api/me/sync`, plus the package list that was reported. */
 data class SyncResult(
@@ -28,6 +40,8 @@ data class SyncResult(
     val trackedPackages: List<String>,
     val plan: InstallPlan,
     val reported: List<InstalledPackage>,
+    /** App Manage actions the server handed out in this sync (delivered once). */
+    val actions: List<DeviceAction>,
 )
 
 /** What is installed on this phone for the server's tracked packages (spec 9.6). No package broadcast receiver. */
@@ -80,14 +94,62 @@ object Inventory {
         appVersionCode = BuildConfig.VERSION_CODE.toLong(),
     )
 
-    /** `GET /api/me` for the tracked list, read the packages, `POST /api/me/sync`, then update the seen-installed set. */
-    suspend fun sync(context: Context, api: RelumeApi): SyncResult {
+    /**
+     * `GET /api/me` for the tracked list, read the packages and the App Manage inventory, `POST /api/me/sync`, then update the
+     * seen-installed set. A diff the server refuses (`accepted=false`) is resent once as the full list; the icons it asks for
+     * are uploaded; the accepted rev and list become the next diff base. Serialised: the UI and both workers sync.
+     */
+    suspend fun sync(context: Context, api: RelumeApi): SyncResult = syncLock.withLock {
         val tracked = api.me().trackedPackages
         val reported = read(context, tracked)
-        val r = api.sync(SyncReport(deviceFacts(context), reported))
+        val apps = withContext(Dispatchers.IO) { AppInventory.read(context) }
+        val snapshotFile = File(context.applicationContext.filesDir, SNAPSHOT_FILE)
+        val first = InventoryDiff.report(withContext(Dispatchers.IO) { readSnapshot(snapshotFile) }, apps.apps)
+        var r = api.sync(SyncReport(deviceFacts(context), reported, first))
+        if (r.inventory?.accepted == false && !first.full) {
+            r = api.sync(SyncReport(deviceFacts(context), reported, InventoryDiff.full(apps.apps)))
+        }
+        storeInventory(api, r, apps, snapshotFile)
         InstallRunner.loadState(context)
         val seen = (context.applicationContext as RelumeApp).prefs
             .updateSeenInstalled { seenInstalled(it, r.device, InstallRunner.state.value) }
-        return SyncResult(r.device, seen, r.trackedPackages, r.plan, reported)
+        SyncResult(r.device, seen, r.trackedPackages, r.plan, reported, r.actions)
+    }
+
+    private const val SNAPSHOT_FILE = "app-inventory.json"
+    private val syncLock = Mutex()
+    private val SnapshotJson = Json { ignoreUnknownKeys = true }
+
+    /** Uploads the icons the server lacks, then saves the accepted list as the next diff base. */
+    private suspend fun storeInventory(api: RelumeApi, r: SyncResponse, apps: AppInventory.Read, file: File) {
+        // ponytail: a server without App Manage answers no ack: nothing was stored there, so nothing is saved here.
+        val ack = r.inventory ?: return
+        check(ack.accepted) { "inventory sync: expected the full report to be accepted, got accepted=false at rev ${ack.rev}" }
+        for (sha in ack.needIcons) {
+            val png = checkNotNull(apps.icons[sha]) { "inventory sync: server asked for icon $sha, which no reported app has" }
+            api.uploadIcon(IconUpload(sha, Base64.getEncoder().encodeToString(png)))
+        }
+        withContext(Dispatchers.IO) { writeSnapshot(file, InventorySnapshot(ack.rev, apps.apps)) }
+    }
+
+    private fun readSnapshot(file: File): InventorySnapshot? {
+        if (!file.exists()) return null
+        return try {
+            SnapshotJson.decodeFromString(InventorySnapshot.serializer(), file.readText(Charsets.UTF_8))
+        } catch (e: SerializationException) {
+            // ponytail: the snapshot only caches what the server holds; an unreadable one (e.g. older app format) is
+            // dropped and the next report is the full list, which the server always accepts.
+            check(file.delete()) { "inventory snapshot ${file.path}: unreadable ($e) and cannot delete" }
+            null
+        }
+    }
+
+    private fun writeSnapshot(file: File, snapshot: InventorySnapshot) {
+        val temp = File(file.path + ".tmp")
+        FileOutputStream(temp).use { out ->
+            out.write(SnapshotJson.encodeToString(InventorySnapshot.serializer(), snapshot).toByteArray(Charsets.UTF_8))
+            out.fd.sync()
+        }
+        Files.move(temp.toPath(), file.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
     }
 }

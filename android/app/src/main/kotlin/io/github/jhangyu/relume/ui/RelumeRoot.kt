@@ -44,6 +44,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.jhangyu.relume.install.InstallRunner
+import io.github.jhangyu.relume.inventory.AppInventory
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 
@@ -76,6 +77,7 @@ private fun ColumnScope.RootContent() {
     val ctx = LocalContext.current
     var stack by rememberSaveable(stateSaver = StackSaver) { mutableStateOf<List<Screen>>(listOf(Screen.Apps)) }
     var notificationsOn by remember { mutableStateOf(NotificationManagerCompat.from(ctx).areNotificationsEnabled()) }
+    var usageAccess by remember { mutableStateOf(AppInventory.usageAccess(ctx)) }
     val run by InstallRunner.state.collectAsState()
     // List scroll positions live above the screen switch so leaving to a detail or settings page and back keeps them.
     val marketList = rememberLazyListState()
@@ -92,6 +94,7 @@ private fun ColumnScope.RootContent() {
     LifecycleEventEffect(Lifecycle.Event.ON_START) { model.refresh() }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         notificationsOn = NotificationManagerCompat.from(ctx).areNotificationsEnabled()
+        usageAccess = AppInventory.usageAccess(ctx)
         // Back from system settings: a granted install permission closes the "allow installs" prompt.
         if (model.prompt == AppModel.InstallPrompt.NeedPermission && InstallRunner.canInstall(ctx)) model.dismissPrompt()
     }
@@ -129,7 +132,7 @@ private fun ColumnScope.RootContent() {
                 Screen.Apps -> AppsScreen(model, appsList, onOpenSettings = { stack = stack + Screen.AppSettings(it) }, onOpenLog = openLog)
                 is Screen.AppSettings -> AppSettingsScreen(model, current.appId, onBack = back, onOpenLog = openLog)
                 Screen.Schedules -> SchedulesScreen(model, onOpenLog = openLog)
-                Screen.Settings -> SettingsScreen(model, notificationsOn, askNotifications, onBack = back)
+                Screen.Settings -> SettingsScreen(model, notificationsOn, askNotifications, usageAccess, onBack = back)
                 is Screen.Log -> model.api?.let { api ->
                     val app = current.appId?.let(model::app)
                     LogScreen(api, current.jobId, app?.status?.takeIf { it.jobId == current.jobId }?.progress, app?.name, back, model::buildEnded)
