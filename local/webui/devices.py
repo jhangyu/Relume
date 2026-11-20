@@ -671,23 +671,33 @@ KINDS = {'items': ('device_assignments', 'item_id'), 'projects': ('device_projec
 def assign_one(device_id, kind, ref_id):
     """Add one item or project ('items'/'projects') to a phone (decision 17): idempotent, same conflict rule as the
     full-list PUT."""
-    table, col = KINDS[kind]
     with db.tx() as c:
-        ids = [r[0] for r in c.execute('SELECT item_id FROM device_assignments WHERE device_id=?', (device_id,))]
-        pids = projects.assigned_projects(device_id)
-        if kind == 'items' and ref_id not in ids:
-            ids.append(ref_id)
-        if kind == 'projects' and ref_id not in pids:
-            pids.append(ref_id)
-        projects.check_assignment(ids, pids)
-        c.execute(f'INSERT OR IGNORE INTO {table}(device_id,{col}) VALUES (?,?)', (device_id, ref_id))
+        assign_in(c, device_id, kind, ref_id)
+
+
+def assign_in(c, device_id, kind, ref_id):
+    """assign_one inside the caller's open db.tx() `c`."""
+    table, col = KINDS[kind]
+    ids = [r[0] for r in c.execute('SELECT item_id FROM device_assignments WHERE device_id=?', (device_id,))]
+    pids = projects.assigned_projects(device_id)
+    if kind == 'items' and ref_id not in ids:
+        ids.append(ref_id)
+    if kind == 'projects' and ref_id not in pids:
+        pids.append(ref_id)
+    projects.check_assignment(ids, pids)
+    c.execute(f'INSERT OR IGNORE INTO {table}(device_id,{col}) VALUES (?,?)', (device_id, ref_id))
 
 
 def unassign_one(device_id, kind, ref_id):
     """Remove one item or project ('items'/'projects') from a phone (decision 17); an absent row is a no-op."""
-    table, col = KINDS[kind]
     with db.tx() as c:
-        c.execute(f'DELETE FROM {table} WHERE device_id=? AND {col}=?', (device_id, ref_id))
+        unassign_in(c, device_id, kind, ref_id)
+
+
+def unassign_in(c, device_id, kind, ref_id):
+    """unassign_one inside the caller's open db.tx() `c`."""
+    table, col = KINDS[kind]
+    c.execute(f'DELETE FROM {table} WHERE device_id=? AND {col}=?', (device_id, ref_id))
 
 
 def _me_target(req):
