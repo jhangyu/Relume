@@ -524,10 +524,15 @@ def parse_device_facts(d):
     return DeviceFacts(uid, d['model'], d['sdk'], d['android_release'], ','.join(abis))
 
 
+LOCALE_RE = re.compile(r'^[a-z]{2,3}(-[A-Z]{2}|-[A-Za-z]{4}(-[A-Z]{2})?)?$')   # BCP-47 subset (App Manage A2)
+
+
 def _parse_sync(body):
     """Boundary parse of POST /api/me/sync -> (DeviceFacts, app_version_code, {package: {version_code, version_name, signer_sha256,
-    apk_sha256}}; apk_path is always None, the app reports its own hash). apk_sha256 absent/null = no hash (companions
-    up to v1.4.0, decision 15)."""
+    apk_sha256}}, appmanage_store.Inventory | None, locale | None); apk_path is always None, the app reports its own
+    hash. apk_sha256 absent/null = no hash (companions up to v1.4.0, decision 15); inventory and locale absent = an
+    app before App Manage."""
+    from . import appmanage_store
     d = body.get('device')
     facts = parse_device_facts(d)
     if not is_int(d.get('app_version_code')) or d['app_version_code'] < 1:
@@ -556,7 +561,12 @@ def _parse_sync(body):
             _bad(f + '.apk_sha256', '64 lowercase hex characters or null', e['apk_sha256'])
         out[pkg] = {'version_code': e['version_code'], 'version_name': e.get('version_name'),
                     'signer_sha256': e.get('signer_sha256'), 'apk_sha256': e.get('apk_sha256'), 'apk_path': None}
-    return facts, d['app_version_code'], out
+    inv = body.get('inventory')
+    locale = body.get('locale')
+    if locale is not None and not (isinstance(locale, str) and LOCALE_RE.match(locale)):
+        _bad('locale', 'a BCP-47 tag like zh-TW (' + LOCALE_RE.pattern + ')', locale)
+    return (facts, d['app_version_code'], out, None if inv is None else appmanage_store.parse_inventory(inv),
+            locale)
 
 
 def _leave_legacy(c, device_id, uid):
@@ -579,8 +589,10 @@ def _leave_legacy(c, device_id, uid):
 
 def sync(req):
     """Report + plan in one call: facts and tracked packages stored, full plan returned. A legacy row (no uid yet)
-    stores the report and last_seen only: it gets no device facts."""
-    facts, app_version_code, packages = _parse_sync(req.json)
+    stores the report and last_seen only: it gets no device facts, no App Manage inventory and no actions. A body with
+    `inventory` is ingested and picks up the device's queued actions (plan 2026-11-20 §1.4)."""
+    from . import appmanage_store
+    facts, app_version_code, packages, inv, locale = _parse_sync(req.json)
     uid = facts.uid
     did = req.device_id
     me = _me(req)
@@ -592,7 +604,7 @@ def sync(req):
                 c.execute('UPDATE devices SET last_seen_at=? WHERE id=?', (db.utcnow(), did))
             store_reported(did, packages)
             dev = _me(req)
-            return 200, _sync_json(dev)
+            return 200, {**_sync_json(dev), 'inventory': None, 'actions': []}
         with db.tx() as c:
             did = _leave_legacy(c, did, uid)
     with db.tx() as c:
@@ -600,12 +612,15 @@ def sync(req):
             have = c.execute('SELECT device_uid FROM devices WHERE id=?', (did,)).fetchone()['device_uid']
             if have != uid:
                 raise HttpError(400, f"device.device_uid must match this device's id {have!r}, got {uid!r}")
-        c.execute('UPDATE devices SET model=?, sdk=?, android_release=?, abi_list=?, app_version_code=?, last_seen_at=? '
-                  'WHERE id=?', (facts.model, facts.sdk, facts.android_release, facts.abi_list, app_version_code,
-                                 db.utcnow(), did))
+        c.execute('UPDATE devices SET model=?, sdk=?, android_release=?, abi_list=?, app_version_code=?, last_seen_at=?, '
+                  'locale=COALESCE(?, locale) WHERE id=?',   # an absent locale keeps the stored one
+                  (facts.model, facts.sdk, facts.android_release, facts.abi_list, app_version_code, db.utcnow(),
+                   locale, did))
     store_reported(did, packages)
+    ack = None if inv is None else appmanage_store.ingest(did, inv)
+    picked = [] if inv is None else appmanage_store.pickup(did)
     dev = devices.get(did)
-    return 200, _sync_json(dev)
+    return 200, {**_sync_json(dev), 'inventory': ack, 'actions': picked}
 
 
 def _query_ids(req, key, have, what):
@@ -684,12 +699,15 @@ def post_install(req):
                   'version_code,patches_version,result,error_code,error_text,at) VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                   (dev['id'], b['kind'], b['ref_id'], job_id, tag, pkg, vname, vcode, pversion, b['result'], code,
                    text[-ERROR_TEXT_MAX:] if text else None, now))
+    from . import appmanage_store
+    appmanage_store.finish_by_receipt(dev['id'], pkg, b['result'], code, text)
     return 200, {'ok': True}
 
 
 def adopt(req):
     """The phone takes over an ADB row: assignments, projects and history stay on that id, the phone's own new row
-    goes away (its receipts and report move over first)."""
+    goes away (its receipts, report and App Manage rows move over first, plan 2026-11-20 §1.10)."""
+    from . import appmanage_store
     tid = req.json.get('device_id')
     if not is_int(tid):
         _bad('device_id', 'an integer', tid)
@@ -704,12 +722,13 @@ def adopt(req):
         c.execute('UPDATE ota_installs SET device_id = ? WHERE device_id = ?', (tid, me_id))
         c.execute('DELETE FROM device_packages WHERE device_id = ?', (tid,))
         c.execute('UPDATE device_packages SET device_id = ? WHERE device_id = ?', (tid, me_id))
+        appmanage_store.move_device(c, me_id, tid)
         c.execute('DELETE FROM devices WHERE id = ?', (me_id,))
         c.execute("UPDATE devices SET kind='app', serial=NULL, mdns_name=NULL, host=NULL, connect_port=NULL, "
                   'ota_after_build=0, device_uid=?, token_hash=?, model=?, abi_list=?, sdk=?, android_release=?, '
-                  'app_version_code=?, last_seen_at=? WHERE id=?',
+                  'app_version_code=?, locale=?, last_seen_at=? WHERE id=?',
                   (*(me_row[k] for k in ('device_uid', 'token_hash', 'model', 'abi_list', 'sdk', 'android_release',
-                                         'app_version_code')), db.utcnow(), tid))
+                                         'app_version_code', 'locale')), db.utcnow(), tid))
     return 200, {'device': device_view_by_id(tid)}
 
 
