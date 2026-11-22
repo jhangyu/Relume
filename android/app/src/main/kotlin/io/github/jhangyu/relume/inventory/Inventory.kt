@@ -41,7 +41,7 @@ data class SyncResult(
     val trackedPackages: List<String>,
     val plan: InstallPlan,
     val reported: List<InstalledPackage>,
-    /** App Manage actions the server handed out in this sync (delivered once). */
+    /** App Manage actions the server handed out in this sync (delivered once; the server hands them out with the inventory). */
     val actions: List<DeviceAction>,
 )
 
@@ -107,13 +107,27 @@ object Inventory {
     }
 
     /**
-     * `GET /api/me` for the tracked list, read the packages and the App Manage inventory, `POST /api/me/sync`, then update the
-     * seen-installed set. A diff the server refuses (`accepted=false`) is resent once as the full list; the icons it asks for
-     * are uploaded; the accepted rev and list become the next diff base. Serialised: the UI and both workers sync.
+     * `GET /api/me` for the tracked list, read those packages, `POST /api/me/sync` without the App Manage inventory, then
+     * update the seen-installed set and start the background [InventoryWorker]. Serialised: the UI and both workers sync.
      */
     suspend fun sync(context: Context, api: RelumeApi): SyncResult = syncLock.withLock {
         val tracked = api.me().trackedPackages
         val reported = read(context, tracked)
+        val r = api.sync(SyncReport(deviceFacts(context), reported, null, systemLocale()))
+        InstallRunner.loadState(context)
+        val seen = (context.applicationContext as RelumeApp).prefs
+            .updateSeenInstalled { seenInstalled(it, r.device, InstallRunner.state.value) }
+        InventoryWorker.enqueue(context)
+        SyncResult(r.device, seen, r.trackedPackages, r.plan, reported, r.actions)
+    }
+
+    /**
+     * The App Manage inventory sync (run by [InventoryWorker] only, so not under the sync lock): all user apps with the tracked
+     * packages in one `POST /api/me/sync`. A diff the server refuses (`accepted=false`) is resent once as the full list; the
+     * icons it asks for are uploaded; the accepted rev and list become the next diff base. Returns the delivered actions.
+     */
+    suspend fun syncApps(context: Context, api: RelumeApi): List<DeviceAction> {
+        val reported = read(context, api.me().trackedPackages)
         val apps = withContext(Dispatchers.IO) { AppInventory.read(context) }
         val snapshotFile = File(context.applicationContext.filesDir, SNAPSHOT_FILE)
         val first = InventoryDiff.report(withContext(Dispatchers.IO) { readSnapshot(snapshotFile) }, apps.apps)
@@ -123,12 +137,8 @@ object Inventory {
             r = api.sync(SyncReport(deviceFacts(context), reported, InventoryDiff.full(apps.apps), systemLocale()))
         }
         storeInventory(api, r, apps, snapshotFile)
-        InstallRunner.loadState(context)
-        val seen = (context.applicationContext as RelumeApp).prefs
-            .updateSeenInstalled { seenInstalled(it, r.device, InstallRunner.state.value) }
         // the server delivers actions once, also on a refused diff: keep the first response's ones too
-        val actions = (firstResponse.actions + r.actions).distinctBy { it.id }
-        SyncResult(r.device, seen, r.trackedPackages, r.plan, reported, actions)
+        return (firstResponse.actions + r.actions).distinctBy { it.id }
     }
 
     private const val SNAPSHOT_FILE = "app-inventory.json"

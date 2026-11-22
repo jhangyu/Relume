@@ -48,7 +48,7 @@ object ActionExecutor {
     private val uninstallRequested: MutableSet<Long> = ConcurrentHashMap.newKeySet()
 
     /**
-     * Call after every `Inventory.sync` with its [delivered] actions. Runs the new ones, settles started ones whose status
+     * Call after every `Inventory.sync` and `Inventory.syncApps` with its [delivered] actions. Runs the new ones, settles started ones whose status
      * never arrived, posts every result held; true when it started (or queued) an install run for `build` actions.
      */
     suspend fun run(context: Context, api: RelumeApi, delivered: List<DeviceAction>): Boolean = runLock.withLock {
